@@ -1,0 +1,29 @@
+### Rust ###
+# Cargo artifacts
+target/
+managers/*/target
+
+### macOS ###
+# General macOS files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+### Visual Studio Code ###
+.vscode/
+*.code-workspace
+
+.env
+.*origintrail_noderc
+.node*_config*
+data*/

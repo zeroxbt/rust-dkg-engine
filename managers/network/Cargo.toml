@@ -1,0 +1,15 @@
+[package]
+name = "network"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = {version = "1.32.0", features = ["full"]}
+tracing = "0.1.37"
+rsa = "0.9.2"
+rand = "0.8.5"
+serde = "1.0.188"
+serde_derive = "1.0.188"
+libp2p = { version = "0.52.3", features = ["tokio", "dns", "macros", "noise", "ping", "tcp", "websocket", "yamux", "rsa", "json", "request-response", "kad", "identify"] }
+void = "1.0.2"
+base64= "0.21.4"
