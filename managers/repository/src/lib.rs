@@ -2,8 +2,8 @@ mod migrations;
 pub mod models;
 mod repositories;
 
-use repositories::command_repository::CommandRepository;
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use repositories::{command_repository::CommandRepository, shard_repository::ShardRepository};
+use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::Deserialize;
 use std::{error::Error, sync::Arc};
@@ -11,9 +11,8 @@ use std::{error::Error, sync::Arc};
 use self::migrations::Migrator;
 
 pub struct RepositoryManager {
-    config: RepositoryConfig,
-    connection: Arc<DatabaseConnection>,
     command_repository: CommandRepository,
+    shard_repository: ShardRepository,
 }
 
 impl RepositoryManager {
@@ -35,14 +34,17 @@ impl RepositoryManager {
         Migrator::up(conn.as_ref(), None).await?;
 
         Ok(RepositoryManager {
-            config,
-            connection: Arc::clone(&conn),
             command_repository: CommandRepository::new(Arc::clone(&conn)),
+            shard_repository: ShardRepository::new(Arc::clone(&conn)),
         })
     }
 
     pub fn get_command_repository(&self) -> &CommandRepository {
         &self.command_repository
+    }
+
+    pub fn get_shard_repository(&self) -> &ShardRepository {
+        &self.shard_repository
     }
 }
 
@@ -56,16 +58,6 @@ pub struct RepositoryConfig {
 }
 
 impl RepositoryConfig {
-    fn new(user: String, password: String, database: String, host: String, port: u16) -> Self {
-        Self {
-            user,
-            password,
-            database,
-            host,
-            port,
-        }
-    }
-
     fn root_connection_string(&self) -> String {
         format!(
             "mysql://{}:{}@{}:{}",

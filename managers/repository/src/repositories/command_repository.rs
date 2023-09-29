@@ -1,4 +1,4 @@
-use crate::models::commands::{self, Entity as CommandEntity, Model as CommandModel};
+use crate::models::commands::{self, Entity, Model};
 use sea_orm::entity::prelude::*;
 use sea_orm::{error::DbErr, DatabaseConnection};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
@@ -15,7 +15,7 @@ impl CommandRepository {
 
     pub async fn update_command(
         &self,
-        command: &CommandModel,
+        command: &Model,
         new_status: Option<String>,
         new_started_at: Option<i64>,
         new_retries: Option<i32>,
@@ -32,31 +32,31 @@ impl CommandRepository {
             active_model.set(commands::Column::Retries, retries.into());
         };
 
-        CommandEntity::update(active_model)
+        Entity::update(active_model)
             .exec(self.conn.as_ref())
             .await?;
 
         Ok(())
     }
 
-    pub async fn create_command(&self, command: &CommandModel) -> Result<(), DbErr> {
+    pub async fn create_command(&self, command: &Model) -> Result<(), DbErr> {
         let active_model: commands::ActiveModel = command.to_owned().into();
 
-        CommandEntity::insert(active_model)
+        Entity::insert(active_model)
             .exec_without_returning(self.conn.as_ref())
             .await?;
 
         Ok(())
     }
 
-    pub async fn get_command_with_id(&self, id: Uuid) -> Result<Option<CommandModel>, DbErr> {
-        CommandEntity::find_by_id(id.hyphenated().to_string())
+    pub async fn get_command_with_id(&self, id: Uuid) -> Result<Option<Model>, DbErr> {
+        Entity::find_by_id(id.hyphenated().to_string())
             .one(self.conn.as_ref())
             .await
     }
 
     pub async fn destroy_command(&self, name: &str) -> Result<(), DbErr> {
-        let _ = CommandEntity::delete_many()
+        let _ = Entity::delete_many()
             .filter(commands::Column::Name.eq(name))
             .exec(self.conn.as_ref())
             .await?;
@@ -66,8 +66,8 @@ impl CommandRepository {
     pub async fn get_commands_with_status(
         &self,
         status_array: Vec<String>,
-    ) -> Result<Vec<CommandModel>, DbErr> {
-        CommandEntity::find()
+    ) -> Result<Vec<Model>, DbErr> {
+        Entity::find()
             .filter(commands::Column::Status.is_in(status_array))
             .all(self.conn.as_ref())
             .await
@@ -77,7 +77,7 @@ impl CommandRepository {
         &self,
         timestamp: i64,
         limit: i32,
-    ) -> Result<Vec<CommandModel>, DbErr> {
+    ) -> Result<Vec<Model>, DbErr> {
         let statuses = [
             CommandStatus::Completed.to_string(),
             CommandStatus::Failed.to_string(),
@@ -85,11 +85,11 @@ impl CommandRepository {
             CommandStatus::Unknown.to_string(),
         ];
 
-        CommandEntity::find(&self.conn)
+        Entity::find(&self.conn)
             .filter(
-                CommandEntity::Column::Status
+                Entity::Column::Status
                     .in_iter(statuses.iter().cloned())
-                    .and(CommandEntity::Column::StartedAt.le(timestamp)),
+                    .and(Entity::Column::StartedAt.le(timestamp)),
             )
             .limit(limit)
             .all()

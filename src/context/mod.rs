@@ -2,18 +2,18 @@ use network::command::NetworkCommand;
 use repository::RepositoryManager;
 use tokio::sync::mpsc::Sender;
 
-use crate::commands::command::CommandTrait;
+use crate::commands::command::AbstractCommand;
 
 pub struct Context {
     network_command_tx: Sender<NetworkCommand>,
-    schedule_command_tx: Sender<Box<dyn CommandTrait>>,
+    schedule_command_tx: Sender<Box<dyn AbstractCommand>>,
     repository_manager: RepositoryManager,
 }
 
 impl Context {
     pub fn new(
         network_command_tx: Sender<NetworkCommand>,
-        schedule_command_tx: Sender<Box<dyn CommandTrait>>,
+        schedule_command_tx: Sender<Box<dyn AbstractCommand>>,
         repository_manager: RepositoryManager,
     ) -> Self {
         Self {
@@ -31,7 +31,7 @@ impl Context {
         &self.network_command_tx
     }
 
-    pub fn get_schedule_command_tx(&self) -> &Sender<Box<dyn CommandTrait>> {
+    pub fn get_schedule_command_tx(&self) -> &Sender<Box<dyn AbstractCommand>> {
         &self.schedule_command_tx
     }
 }

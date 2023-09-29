@@ -111,9 +111,7 @@ impl NetworkManager {
             )
             .expect("could not initialize swarm listener");
 
-        if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
-            tracing::error!("Failed to bootstrap Kademlia: {}", e);
-        }
+        let _ = swarm.behaviour_mut().kad.bootstrap();
 
         Self {
             swarm: tokio::sync::Mutex::new(swarm),

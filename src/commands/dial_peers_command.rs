@@ -1,5 +1,5 @@
 use super::command::CommandName;
-use crate::commands::command::{CommandResult, CommandTrait, CoreCommand};
+use crate::commands::command::{AbstractCommand, CommandResult, CoreCommand};
 use crate::constants::DIAL_PEERS_COMMAND_FREQUENCY_MILLS;
 use crate::context::Context;
 use async_trait::async_trait;
@@ -18,7 +18,7 @@ pub struct DialPeersCommand {
 pub struct DialPeersCommandData;
 
 #[async_trait]
-impl CommandTrait for DialPeersCommand {
+impl AbstractCommand for DialPeersCommand {
     async fn execute(&self, context: Arc<Context>) -> CommandResult {
         tracing::info!("Started executing dial peers command...");
 

@@ -1,13 +1,9 @@
-use blockchain::BlockchainConfig;
-use clap::Arg;
-use clap::Command;
-use dotenvy::dotenv;
+use blockchain::BlockchainManagerConfig;
+use config::File;
 use network::NetworkConfig;
 use repository::RepositoryConfig;
 use serde::Deserialize;
-use serde_json::Value;
 use std::env;
-use std::fs;
 
 use crate::controllers::http_api::http_api_router::HttpApiConfig;
 
@@ -21,17 +17,22 @@ pub struct Config {
 pub struct ManagersConfig {
     pub network: NetworkConfig,
     pub repository: RepositoryConfig,
-    pub blockchain: BlockchainConfig,
+    pub blockchain: BlockchainManagerConfig,
 }
 
 pub fn initialize_configuration() -> Config {
-    // Load the .env file
-    dotenv().ok();
+    // Start building the configuration
+    let mut builder = config::Config::builder();
+
+    // Load the default configuration from config.json
+    let node_env = env::var("NODE_ENV").unwrap_or_else(|_| "development".to_string());
+    let default_config_path = format!("./config/{}.json", node_env);
+    builder = builder.add_source(File::with_name(&default_config_path));
 
     // Parse CLI arguments for a custom config file
-    let matches = Command::new("Your Application Name")
+    let matches = clap::Command::new("Your Application Name")
         .arg(
-            Arg::new("config")
+            clap::Arg::new("config")
                 .short('c')
                 .long("config")
                 .value_name("FILE")
@@ -41,41 +42,18 @@ pub fn initialize_configuration() -> Config {
 
     let config_file_path: Option<&String> = matches.get_one("config");
 
-    // Fetch the NODE_ENV or default to "development"
-    let node_env = env::var("NODE_ENV").unwrap_or_else(|_| "development".to_string());
-
-    // Load the default configuration from config.json
-    let config_data =
-        fs::read_to_string("./config/config.json").expect("Failed to read the config.json");
-
-    let config_json: Value = serde_json::from_str(&config_data).expect("Error parsing config.json");
-    let mut default_config = config_json[node_env.as_str()].clone();
-
     if let Some(config_path) = config_file_path {
-        let user_config_data =
-            fs::read_to_string(config_path).expect("Failed to read the user config file");
-        let user_config_json: Value =
-            serde_json::from_str(&user_config_data).expect("Error parsing user config");
-        deep_merge(&mut default_config, &user_config_json);
-    } else if let Ok(ot_noderc_data) = fs::read_to_string(".origintrail_noderc") {
-        // If user has a .origintrail_noderc file, merge it
-        let ot_noderc_json: Value =
-            serde_json::from_str(&ot_noderc_data).expect("Error parsing .origintrail_noderc");
-        deep_merge(&mut default_config, &ot_noderc_json);
+        // If user provides a custom config file, add it as a source
+        builder = builder.add_source(File::with_name(config_path));
+    } else if let Ok(ot_noderc_data) = std::fs::read_to_string(".origintrail_noderc") {
+        // If user has a .origintrail_noderc file, add it as a source
+        builder = builder.add_source(File::from_str(&ot_noderc_data, config::FileFormat::Json));
     }
 
-    serde_json::from_value(default_config).expect("Error deserializing config")
-}
-
-fn deep_merge(a: &mut Value, b: &Value) {
-    match (a, b) {
-        (&mut Value::Object(ref mut a), Value::Object(b)) => {
-            for (k, v) in b {
-                deep_merge(a.entry(k.clone()).or_insert(Value::Null), v);
-            }
-        }
-        (a, b) => {
-            *a = b.clone();
-        }
-    }
+    // Convert it into your Config type
+    builder
+        .build()
+        .expect("Unable to build Config")
+        .try_deserialize::<Config>()
+        .expect("Error deserializing config")
 }

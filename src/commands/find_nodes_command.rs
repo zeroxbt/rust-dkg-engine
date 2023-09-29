@@ -1,5 +1,5 @@
 use super::command::CommandName;
-use crate::commands::command::{CommandResult, CommandTrait, CoreCommand};
+use crate::commands::command::{AbstractCommand, CommandResult, CoreCommand};
 use crate::context::Context;
 use async_trait::async_trait;
 use repository::models::commands;
@@ -31,7 +31,7 @@ pub struct FindNodesCommandData {
 }
 
 #[async_trait]
-impl CommandTrait for FindNodesCommand {
+impl AbstractCommand for FindNodesCommand {
     async fn execute(&self, context: Arc<Context>) -> CommandResult {
         tracing::info!(
             "Searching for closest nodes for keyword: {}",

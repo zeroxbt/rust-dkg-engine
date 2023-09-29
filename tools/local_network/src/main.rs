@@ -1,3 +1,4 @@
+mod local_blockchain;
 use clap::{value_parser, Arg, Command};
 use serde_json::Value;
 use std::fs;
@@ -11,7 +12,24 @@ fn open_terminal_with_command(command: &str) {
         .expect("Failed to start terminal with command");
 }
 
-fn main() {
+fn drop_database(database_name: &str) {
+    let drop_command = format!(
+        "echo \"DROP DATABASE IF EXISTS {}\" | mysql -u root",
+        database_name
+    );
+    let output = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(&drop_command)
+        .output()
+        .expect("Failed to execute drop database command");
+
+    if !output.status.success() {
+        eprintln!("Failed to drop database '{}'.", database_name);
+    }
+}
+
+#[tokio::main]
+async fn main() {
     const NUM_CONFIGS: usize = 4;
 
     let matches = Command::new("Your Application Name")
@@ -75,7 +93,15 @@ fn main() {
     let current_dir = std::env::current_dir().expect("Failed to get current directory");
     let current_dir_str = current_dir.to_str().expect("Failed to convert Path to str");
 
+    local_blockchain::LocalBlockchain::run().await.unwrap();
+
     for i in 0..=nodes - 1 {
+        // ... [your previous code]
+
+        // Drop the database for this config
+        let database_name = format!("operationaldb{}", i);
+        drop_database(&database_name);
+
         let config_path = format!("tools/local_network/.node{}_config.json", i);
         open_terminal_with_command(&format!(
             "cd {} && cargo run -- --config {}",

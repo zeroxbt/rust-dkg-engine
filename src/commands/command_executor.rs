@@ -1,5 +1,5 @@
 use super::{
-    command::{CommandResult, CommandStatus, CommandTrait},
+    command::{AbstractCommand, CommandResult, CommandStatus},
     dial_peers_command::DialPeersCommand,
     find_nodes_command::FindNodesCommand,
 };
@@ -18,14 +18,14 @@ use tokio::sync::{mpsc, Mutex, Semaphore};
 
 pub struct CommandExecutor {
     pub context: Arc<Context>,
-    pub process_command_tx: mpsc::Sender<Box<dyn CommandTrait>>,
-    pub process_command_rx: Arc<Mutex<mpsc::Receiver<Box<dyn CommandTrait>>>>,
+    pub process_command_tx: mpsc::Sender<Box<dyn AbstractCommand>>,
+    pub process_command_rx: Arc<Mutex<mpsc::Receiver<Box<dyn AbstractCommand>>>>,
     pub semaphore: Arc<Semaphore>,
 }
 
 impl CommandExecutor {
     pub async fn new(context: Arc<Context>) -> Self {
-        let (tx, rx) = mpsc::channel::<Box<dyn CommandTrait>>(COMMAND_QUEUE_PARALLELISM);
+        let (tx, rx) = mpsc::channel::<Box<dyn AbstractCommand>>(COMMAND_QUEUE_PARALLELISM);
 
         Self {
             context,
@@ -58,7 +58,7 @@ impl CommandExecutor {
 
     pub async fn schedule_commands(
         &self,
-        mut schedule_command_rx: mpsc::Receiver<Box<dyn CommandTrait>>,
+        mut schedule_command_rx: mpsc::Receiver<Box<dyn AbstractCommand>>,
     ) {
         loop {
             if let Some(command) = schedule_command_rx.recv().await {
@@ -71,10 +71,10 @@ impl CommandExecutor {
 
     async fn add(
         &self,
-        command: Box<dyn CommandTrait>,
+        command: Box<dyn AbstractCommand>,
         delay: i64,
         insert: bool,
-    ) -> Result<(), mpsc::error::SendError<Box<dyn CommandTrait>>> {
+    ) -> Result<(), mpsc::error::SendError<Box<dyn AbstractCommand>>> {
         let delay = min(delay as u64, MAX_COMMAND_DELAY_IN_MILLS as u64);
 
         if insert {
@@ -96,7 +96,7 @@ impl CommandExecutor {
         }
     }
 
-    async fn execute(&self, command: Box<dyn CommandTrait>) {
+    async fn execute(&self, command: Box<dyn AbstractCommand>) {
         let _ = self.semaphore.acquire().await.unwrap();
         let now = chrono::Utc::now().timestamp_millis();
 
@@ -160,7 +160,7 @@ impl CommandExecutor {
         }
     }
 
-    async fn handle_retry(&self, command: Box<dyn CommandTrait>) {
+    async fn handle_retry(&self, command: Box<dyn AbstractCommand>) {
         self.update(
             command.as_ref(),
             Some(CommandStatus::Repeating.to_string()),
@@ -174,7 +174,7 @@ impl CommandExecutor {
         self.add(command, delay, false).await.unwrap();
     }
 
-    async fn handle_repeat(&self, command: Box<dyn CommandTrait>) {
+    async fn handle_repeat(&self, command: Box<dyn AbstractCommand>) {
         self.update(
             command.as_ref(),
             Some(CommandStatus::Repeating.to_string()),
@@ -191,7 +191,7 @@ impl CommandExecutor {
         self.add(command, period, false).await.unwrap();
     }
 
-    async fn handle_completed(&self, command: Box<dyn CommandTrait>) {
+    async fn handle_completed(&self, command: Box<dyn AbstractCommand>) {
         self.update(
             command.as_ref(),
             Some(CommandStatus::Completed.to_string()),
@@ -201,7 +201,7 @@ impl CommandExecutor {
         .await;
     }
 
-    async fn insert(&self, command: &dyn CommandTrait) {
+    async fn insert(&self, command: &dyn AbstractCommand) {
         self.context
             .get_repository_manager()
             .get_command_repository()
@@ -212,7 +212,7 @@ impl CommandExecutor {
 
     async fn update(
         &self,
-        command: &dyn CommandTrait,
+        command: &dyn AbstractCommand,
         new_status: Option<String>,
         new_started_at: Option<i64>,
         new_retries: Option<i32>,
@@ -265,7 +265,7 @@ impl CommandExecutor {
         }
     }
 
-    fn model_to_command(command_model: Model) -> Option<Box<dyn CommandTrait>> {
+    fn model_to_command(command_model: Model) -> Option<Box<dyn AbstractCommand>> {
         let command_name = command_model.name.parse::<CommandName>().unwrap();
 
         if PERMANENT_COMMANDS.contains(&command_name) {

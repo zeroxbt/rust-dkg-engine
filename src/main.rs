@@ -6,11 +6,13 @@ mod constants;
 mod context;
 mod controllers;
 
-use commands::command::CommandTrait;
+use blockchain::BlockchainManager;
+use commands::command::AbstractCommand;
 use commands::command_executor::CommandExecutor;
 use context::Context;
 use controllers::http_api::http_api_router::HttpApiRouter;
 use controllers::rpc::rpc_router::RpcRouter;
+use dotenvy::dotenv;
 use network::command::NetworkCommand;
 use network::NetworkEvent;
 use network::NetworkManager;
@@ -20,10 +22,29 @@ use tokio::join;
 
 #[tokio::main]
 async fn main() {
-    let filter = tracing_subscriber::EnvFilter::new(
-        "trace,axum=off,sea_orm=off,sqlx=off,rustls=off,hyper=off,libp2p_tcp=off,libp2p_noise=off,yamux=off",
-    );
+    dotenv().ok();
+    let filter =
+        tracing_subscriber::EnvFilter::new("off,blockchain=trace,network=trace,rust_ot_node=trace");
     tracing_subscriber::fmt().with_env_filter(filter).init();
+
+    tracing::info!(" ██████╗ ████████╗███╗   ██╗ ██████╗ ██████╗ ███████╗");
+    tracing::info!("██╔═══██╗╚══██╔══╝████╗  ██║██╔═══██╗██╔══██╗██╔════╝");
+    tracing::info!("██║   ██║   ██║   ██╔██╗ ██║██║   ██║██║  ██║█████╗");
+    tracing::info!("██║   ██║   ██║   ██║╚██╗██║██║   ██║██║  ██║██╔══╝");
+    tracing::info!("╚██████╔╝   ██║   ██║ ╚████║╚██████╔╝██████╔╝███████╗");
+    tracing::info!(" ╚═════╝    ╚═╝   ╚═╝  ╚═══╝ ╚═════╝ ╚═════╝ ╚══════╝");
+
+    tracing::info!("======================================================");
+    tracing::info!(
+        "             OriginTrail Node v{}",
+        env!("CARGO_PKG_VERSION")
+    );
+    tracing::info!("======================================================");
+    if let Ok(environment) = std::env::var("NODE_ENV") {
+        tracing::info!("Node is running in {} environment", environment);
+    } else {
+        tracing::info!("NODE_ENV environment variable not set");
+    }
 
     let config = config::initialize_configuration();
 
@@ -31,12 +52,13 @@ async fn main() {
         tokio::sync::mpsc::channel::<NetworkCommand>(1000);
     let (network_event_tx, network_event_rx) = tokio::sync::mpsc::channel::<NetworkEvent>(1000);
     let (schedule_command_tx, schedule_command_rx) =
-        tokio::sync::mpsc::channel::<Box<dyn CommandTrait>>(1000);
+        tokio::sync::mpsc::channel::<Box<dyn AbstractCommand>>(1000);
 
     let network_manager = NetworkManager::new(config.managers.network).await;
     let repository_manager = RepositoryManager::new(config.managers.repository)
         .await
         .unwrap();
+    let blockchain_manager = BlockchainManager::new(config.managers.blockchain).await;
 
     let context = Arc::new(Context::new(
         network_command_tx.clone(),
