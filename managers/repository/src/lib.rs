@@ -2,7 +2,10 @@ mod migrations;
 pub mod models;
 mod repositories;
 
-use repositories::{command_repository::CommandRepository, shard_repository::ShardRepository};
+use repositories::{
+    blockchain_repository::BlockchainRepository, command_repository::CommandRepository,
+    shard_repository::ShardRepository,
+};
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::Deserialize;
@@ -13,6 +16,7 @@ use self::migrations::Migrator;
 pub struct RepositoryManager {
     command_repository: CommandRepository,
     shard_repository: ShardRepository,
+    blockchain_repository: BlockchainRepository,
 }
 
 impl RepositoryManager {
@@ -36,15 +40,20 @@ impl RepositoryManager {
         Ok(RepositoryManager {
             command_repository: CommandRepository::new(Arc::clone(&conn)),
             shard_repository: ShardRepository::new(Arc::clone(&conn)),
+            blockchain_repository: BlockchainRepository::new(Arc::clone(&conn)),
         })
     }
 
-    pub fn get_command_repository(&self) -> &CommandRepository {
+    pub fn command_repository(&self) -> &CommandRepository {
         &self.command_repository
     }
 
-    pub fn get_shard_repository(&self) -> &ShardRepository {
+    pub fn shard_repository(&self) -> &ShardRepository {
         &self.shard_repository
+    }
+
+    pub fn blockchain_repository(&self) -> &BlockchainRepository {
+        &self.blockchain_repository
     }
 }
 

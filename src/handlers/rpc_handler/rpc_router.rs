@@ -1,6 +1,5 @@
-use crate::controllers::rpc::{
-    base_controller::BaseController, get_controller::GetController,
-    store_controller::StoreController,
+use crate::handlers::rpc_handler::{
+    base_handler::BaseHandler, get_handler::GetHandler, store_handler::StoreHandler,
 };
 use network::{
     command::NetworkCommand, identify, request_response, BehaviourEvent, NetworkEvent, SwarmEvent,
@@ -10,15 +9,15 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{debug, error, info};
 
 pub struct RpcRouter {
-    get_controller: Arc<GetController>,
-    store_controller: Arc<StoreController>,
+    get_handler: Arc<GetHandler>,
+    store_handler: Arc<StoreHandler>,
 }
 
 impl RpcRouter {
     pub fn new() -> Self {
         RpcRouter {
-            get_controller: Arc::new(GetController {}),
-            store_controller: Arc::new(StoreController {}),
+            get_handler: Arc::new(GetHandler {}),
+            store_handler: Arc::new(StoreHandler {}),
         }
     }
 
@@ -36,7 +35,7 @@ impl RpcRouter {
                                 error!("Failed to store: {}", error);
                             }
                             request_response::Event::Message { message, peer } => {
-                                self.store_controller
+                                self.store_handler
                                     .handle_message(&network_command_tx, message, peer)
                                     .await;
                             }
@@ -48,7 +47,7 @@ impl RpcRouter {
                             error!("Failed to get: {}", error)
                         }
                         request_response::Event::Message { peer, message } => {
-                            self.get_controller
+                            self.get_handler
                                 .handle_message(&network_command_tx, message, peer)
                                 .await;
                         }

@@ -2,7 +2,8 @@ use super::command::CommandName;
 use crate::commands::command::{AbstractCommand, CommandResult, CoreCommand};
 use crate::context::Context;
 use async_trait::async_trait;
-use repository::models::commands;
+use blockchain::BlockchainName;
+use repository::models::command;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -25,7 +26,7 @@ pub enum ProtocolOperation {
 pub struct FindNodesCommandData {
     operation_id: Uuid,
     keyword: String,
-    blockchain: String,
+    blockchain: BlockchainName,
     operation: ProtocolOperation,
     hash_function_id: i32,
 }
@@ -47,11 +48,11 @@ impl AbstractCommand for FindNodesCommand {
         CommandResult::Completed
     }
 
-    fn get_core(&self) -> &CoreCommand {
+    fn core(&self) -> &CoreCommand {
         &self.core
     }
 
-    fn get_json_data(&self) -> Value {
+    fn json_data(&self) -> Value {
         serde_json::to_value(&self.data).unwrap()
     }
 }
@@ -60,7 +61,7 @@ impl FindNodesCommand {
     pub fn new(
         operation_id: Uuid,
         keyword: String,
-        blockchain: String,
+        blockchain: BlockchainName,
         operation: ProtocolOperation,
         hash_function_id: i32,
     ) -> Self {
@@ -80,8 +81,8 @@ impl FindNodesCommand {
     }
 }
 
-impl From<commands::Model> for FindNodesCommand {
-    fn from(model: commands::Model) -> Self {
+impl From<command::Model> for FindNodesCommand {
+    fn from(model: command::Model) -> Self {
         Self {
             core: CoreCommand::from_model(model.clone()),
             data: serde_json::from_value(model.data).unwrap(),

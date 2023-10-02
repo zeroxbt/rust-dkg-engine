@@ -17,6 +17,7 @@
     "blockchain": [
       {
         "Hardhat": {
+          "chain_id": 31337,
           "hub_contract_address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
           "initial_stake_amount": 50000,
           "initial_ask_amount": 0.2,

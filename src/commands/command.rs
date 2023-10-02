@@ -1,12 +1,10 @@
 use crate::context::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use repository::models::commands;
+use repository::models::command;
 use serde_json::Value;
 use std::{fmt, str::FromStr, sync::Arc};
 use uuid::Uuid;
-
-use super::find_nodes_command::ProtocolOperation;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CommandName {
@@ -103,7 +101,7 @@ pub struct CoreCommand {
 }
 
 impl CoreCommand {
-    pub fn from_model(model: commands::Model) -> Self {
+    pub fn from_model(model: command::Model) -> Self {
         Self {
             id: uuid::Uuid::from_str(model.id.as_str()).unwrap(),
             name: model.name.parse().unwrap(),
@@ -168,16 +166,16 @@ pub trait AbstractCommand: Send + Sync {
         tracing::trace!("Max retry count for command reached!");
     }
 
-    fn get_core(&self) -> &CoreCommand;
+    fn core(&self) -> &CoreCommand;
 
-    fn get_json_data(&self) -> Value;
+    fn json_data(&self) -> Value;
 
-    fn to_command(&self) -> commands::Model {
-        let core = self.get_core();
-        commands::Model {
+    fn to_command(&self) -> command::Model {
+        let core = self.core();
+        command::Model {
             id: core.id.hyphenated().to_string(),
             name: core.name.to_string(),
-            data: serde_json::to_value(self.get_json_data())
+            data: serde_json::to_value(self.json_data())
                 .expect("Failed to convert command data to Value"),
             sequence: serde_json::to_value(&core.sequence)
                 .expect("Failed to convert command sequence to Value"),

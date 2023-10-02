@@ -5,7 +5,7 @@ use repository::RepositoryConfig;
 use serde::Deserialize;
 use std::env;
 
-use crate::controllers::http_api::http_api_router::HttpApiConfig;
+use crate::handlers::http_api_handler::http_api_router::HttpApiConfig;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {

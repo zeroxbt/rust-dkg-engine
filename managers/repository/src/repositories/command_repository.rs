@@ -1,4 +1,4 @@
-use crate::models::commands::{self, Entity, Model};
+use crate::models::command::{self, Entity, Model};
 use sea_orm::entity::prelude::*;
 use sea_orm::{error::DbErr, DatabaseConnection};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
@@ -20,16 +20,16 @@ impl CommandRepository {
         new_started_at: Option<i64>,
         new_retries: Option<i32>,
     ) -> Result<(), DbErr> {
-        let mut active_model: commands::ActiveModel = command.to_owned().into();
+        let mut active_model: command::ActiveModel = command.to_owned().into();
 
         if let Some(status) = new_status {
-            active_model.set(commands::Column::Status, status.into());
+            active_model.set(command::Column::Status, status.into());
         };
         if let Some(started_at) = new_started_at {
-            active_model.set(commands::Column::StartedAt, started_at.into());
+            active_model.set(command::Column::StartedAt, started_at.into());
         };
         if let Some(retries) = new_retries {
-            active_model.set(commands::Column::Retries, retries.into());
+            active_model.set(command::Column::Retries, retries.into());
         };
 
         Entity::update(active_model)
@@ -40,7 +40,7 @@ impl CommandRepository {
     }
 
     pub async fn create_command(&self, command: &Model) -> Result<(), DbErr> {
-        let active_model: commands::ActiveModel = command.to_owned().into();
+        let active_model: command::ActiveModel = command.to_owned().into();
 
         Entity::insert(active_model)
             .exec_without_returning(self.conn.as_ref())
@@ -57,7 +57,7 @@ impl CommandRepository {
 
     pub async fn destroy_command(&self, name: &str) -> Result<(), DbErr> {
         let _ = Entity::delete_many()
-            .filter(commands::Column::Name.eq(name))
+            .filter(command::Column::Name.eq(name))
             .exec(self.conn.as_ref())
             .await?;
         Ok(())
@@ -68,7 +68,7 @@ impl CommandRepository {
         status_array: Vec<String>,
     ) -> Result<Vec<Model>, DbErr> {
         Entity::find()
-            .filter(commands::Column::Status.is_in(status_array))
+            .filter(command::Column::Status.is_in(status_array))
             .all(self.conn.as_ref())
             .await
     }

@@ -8,7 +8,7 @@ use sea_orm::{
 use serde::Deserialize;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Deserialize)]
-#[sea_orm(table_name = "commands")]
+#[sea_orm(table_name = "command")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: String,

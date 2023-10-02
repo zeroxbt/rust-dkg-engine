@@ -1,8 +1,9 @@
-use crate::BlockchainConfig;
+use crate::{BlockchainConfig, ContractName};
 use async_trait::async_trait;
 use ethers::{
     abi::Address,
     contract::abigen,
+    contract::Contract,
     middleware::{Middleware, MiddlewareBuilder, NonceManagerMiddleware, SignerMiddleware},
     providers::{Http, Provider},
     signers::{LocalWallet, Signer},
@@ -156,13 +157,24 @@ impl Contracts {
     pub fn unfinalized_state_storage(&self) -> &UnfinalizedStateStorage<BlockchainProvider> {
         &self.unfinalized_state_storage
     }
+
+    pub fn get(&self, contract_name: &ContractName) -> &Contract<BlockchainProvider> {
+        match contract_name {
+            ContractName::Hub => &self.hub,
+            ContractName::ShardingTable => &self.sharding_table,
+            ContractName::Staking => &self.staking,
+            ContractName::CommitManagerV1U1 => &self.commit_manager_v1_u1,
+            ContractName::Profile => &self.profile,
+            ContractName::ServiceAgreementV1 => &self.service_agreement_v1,
+        }
+    }
 }
 
 #[async_trait]
 pub trait BlockchainCreator {
     async fn new(config: BlockchainConfig) -> Self;
 
-    async fn create_ethers_provider(
+    async fn initialize_ethers_provider(
         config: &BlockchainConfig,
     ) -> Result<Arc<BlockchainProvider>, Box<dyn std::error::Error>> {
         let mut tries = 0;
@@ -171,7 +183,8 @@ pub trait BlockchainCreator {
         let signer = config
             .evm_operational_wallet_private_key
             .parse::<LocalWallet>()
-            .unwrap();
+            .unwrap()
+            .with_chain_id(config.chain_id);
         let signer_address = signer.address();
 
         while tries < config.rpc_endpoints.len() {

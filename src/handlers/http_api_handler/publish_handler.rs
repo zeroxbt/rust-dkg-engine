@@ -2,6 +2,7 @@ use crate::commands::find_nodes_command::FindNodesCommand;
 use crate::{commands::find_nodes_command::ProtocolOperation, context::Context};
 use axum::Json;
 use axum::{extract::State, response::IntoResponse};
+use blockchain::BlockchainName;
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -9,7 +10,7 @@ use uuid::Uuid;
 use validator::Validate;
 use validator_derive::Validate;
 
-pub struct PublishController;
+pub struct PublishHandler;
 
 #[derive(Deserialize, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
@@ -20,7 +21,7 @@ pub struct PublishRequest {
     #[validate(length(min = 1))]
     pub assertion: Vec<String>,
 
-    pub blockchain: String,
+    pub blockchain: BlockchainName,
 
     #[validate(length(equal = 42))]
     pub contract: String,
@@ -37,7 +38,7 @@ pub struct PublishResponse {
     operation_id: Uuid,
 }
 
-impl PublishController {
+impl PublishHandler {
     pub async fn handle_request(
         State(context): State<Arc<Context>>,
         Json(req): Json<PublishRequest>,
@@ -67,7 +68,7 @@ impl PublishController {
     ) {
         tracing::info!("Scheduling dial peers command...");
         context
-            .get_schedule_command_tx()
+            .schedule_command_tx()
             .send(Box::new(FindNodesCommand::new(
                 operation_id,
                 "".to_string(),

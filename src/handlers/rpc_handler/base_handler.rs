@@ -5,7 +5,7 @@ use tokio::sync::mpsc::Sender;
 use tracing::info;
 
 #[async_trait]
-pub trait BaseController
+pub trait BaseHandler
 where
     Self::RequestData: std::fmt::Debug,
     Self::ResponseData: std::fmt::Debug,

@@ -1,8 +1,9 @@
 use sea_orm_migration::async_trait::async_trait;
 pub use sea_orm_migration::prelude::*;
 
-mod m20230922_180100_create_command;
-mod m20230922_180100_create_shard;
+mod m001_create_command;
+mod m002_create_shard;
+mod m003_create_blockchain;
 
 pub struct Migrator;
 
@@ -10,8 +11,9 @@ pub struct Migrator;
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         vec![
-            Box::new(m20230922_180100_create_command::Migration),
-            Box::new(m20230922_180100_create_shard::Migration),
+            Box::new(m001_create_command::Migration),
+            Box::new(m002_create_shard::Migration),
+            Box::new(m003_create_blockchain::Migration),
         ]
     }
 }

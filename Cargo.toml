@@ -4,7 +4,8 @@ members = [
     "./managers/network",
     "./managers/repository",
     "./managers/blockchain",
-    "./tools/local_network"
+    "./tools/local_network",
+    "./scripts"
 ]
 
 [package]

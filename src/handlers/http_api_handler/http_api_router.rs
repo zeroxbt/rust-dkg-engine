@@ -9,9 +9,9 @@ use tower_http::cors::*;
 
 use crate::context::Context;
 
-use super::get_controller::GetController;
-use super::info_controller::InfoController;
-use super::publish_controller::PublishController;
+use super::get_handler::GetHandler;
+use super::info_handler::InfoHandler;
+use super::publish_handler::PublishHandler;
 
 #[derive(Debug, Deserialize)]
 pub struct HttpApiConfig {
@@ -31,9 +31,9 @@ impl HttpApiRouter {
 
         let router = Router::new()
             .layer(cors_layer)
-            .route("/info", get(InfoController::handle_request))
-            .route("/publish", post(PublishController::handle_request))
-            .route("/get", post(GetController::handle_request))
+            .route("/info", get(InfoHandler::handle_request))
+            .route("/publish", post(PublishHandler::handle_request))
+            .route("/get", post(GetHandler::handle_request))
             .with_state(Arc::clone(&context));
 
         HttpApiRouter {

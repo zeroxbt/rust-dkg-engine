@@ -28,7 +28,7 @@ pub type NestedError = Either<Either<Either<std::io::Error, std::io::Error>, Voi
 pub type SwarmError = Either<NestedError, Void>;
 pub type NetworkEvent = SwarmEvent<BehaviourEvent, SwarmError>;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct NetworkConfig {
     port: u32,
     data_folder_path: String,
@@ -36,12 +36,14 @@ pub struct NetworkConfig {
 }
 
 pub struct NetworkManager {
+    config: NetworkConfig,
     swarm: Mutex<Swarm<Behaviour>>,
+    peer_id: PeerId,
 }
 
 impl NetworkManager {
     pub async fn new(config: NetworkConfig) -> Self {
-        let key = KeyManager::generate_or_load_key(config.data_folder_path)
+        let key = KeyManager::generate_or_load_key(config.clone().data_folder_path)
             .await
             .unwrap();
 
@@ -72,7 +74,7 @@ impl NetworkManager {
             request_response::Config::default(),
         );
 
-        let mut swarm = {
+        let swarm = {
             // Create a Kademlia behaviour.
             let mut cfg = KademliaConfig::default();
             cfg.set_kbucket_inserts(KademliaBucketInserts::OnConnected);
@@ -103,22 +105,28 @@ impl NetworkManager {
             SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id).build()
         };
 
-        swarm
+        Self {
+            config,
+            swarm: tokio::sync::Mutex::new(swarm),
+            peer_id: local_peer_id,
+        }
+    }
+
+    pub async fn start_listening(&self) {
+        let mut locked_swarm = self.swarm.lock().await;
+
+        locked_swarm
             .listen_on(
-                format!("/ip4/0.0.0.0/tcp/{}", config.port)
+                format!("/ip4/0.0.0.0/tcp/{}", self.config.port)
                     .parse()
                     .expect("could not parse multiaddr"),
             )
             .expect("could not initialize swarm listener");
 
-        let _ = swarm.behaviour_mut().kad.bootstrap();
-
-        Self {
-            swarm: tokio::sync::Mutex::new(swarm),
-        }
+        let _ = locked_swarm.behaviour_mut().kad.bootstrap();
     }
 
-    pub async fn handle_swarm(
+    pub async fn handle_swarm_events(
         &self,
         mut command_rx: Receiver<NetworkCommand>,
         event_tx: Sender<NetworkEvent>,
@@ -172,6 +180,10 @@ impl NetworkManager {
                     }
                 }
         }
+    }
+
+    pub fn get_peer_id(&self) -> PeerId {
+        self.peer_id
     }
 }
 

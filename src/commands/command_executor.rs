@@ -12,7 +12,7 @@ use crate::{
     context::Context,
 };
 use futures::stream::{FuturesUnordered, StreamExt};
-use repository::models::commands::Model;
+use repository::models::command::Model;
 use std::{cmp::min, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, Mutex, Semaphore};
 
@@ -62,7 +62,7 @@ impl CommandExecutor {
     ) {
         loop {
             if let Some(command) = schedule_command_rx.recv().await {
-                let delay = command.get_core().delay;
+                let delay = command.core().delay;
 
                 self.add(command, delay, true).await.unwrap();
             }
@@ -100,7 +100,7 @@ impl CommandExecutor {
         let _ = self.semaphore.acquire().await.unwrap();
         let now = chrono::Utc::now().timestamp_millis();
 
-        let command_core = command.get_core();
+        let command_core = command.core();
 
         if let Some(deadline_at) = command_core.deadline_at {
             if deadline_at <= now {
@@ -165,11 +165,11 @@ impl CommandExecutor {
             command.as_ref(),
             Some(CommandStatus::Repeating.to_string()),
             None,
-            Some(command.get_core().retries - 1),
+            Some(command.core().retries - 1),
         )
         .await;
 
-        let delay = command.get_core().period.unwrap_or_default();
+        let delay = command.core().period.unwrap_or_default();
 
         self.add(command, delay, false).await.unwrap();
     }
@@ -184,7 +184,7 @@ impl CommandExecutor {
         .await;
 
         let period = command
-            .get_core()
+            .core()
             .period
             .unwrap_or(DEFAULT_COMMAND_REPEAT_INTERVAL_IN_MILLS);
 
@@ -203,8 +203,8 @@ impl CommandExecutor {
 
     async fn insert(&self, command: &dyn AbstractCommand) {
         self.context
-            .get_repository_manager()
-            .get_command_repository()
+            .repository_manager()
+            .command_repository()
             .create_command(&command.to_command())
             .await
             .unwrap();
@@ -218,8 +218,8 @@ impl CommandExecutor {
         new_retries: Option<i32>,
     ) {
         self.context
-            .get_repository_manager()
-            .get_command_repository()
+            .repository_manager()
+            .command_repository()
             .update_command(
                 &command.to_command(),
                 new_status,
@@ -232,8 +232,8 @@ impl CommandExecutor {
 
     async fn delete(&self, name: &str) {
         self.context
-            .get_repository_manager()
-            .get_command_repository()
+            .repository_manager()
+            .command_repository()
             .destroy_command(name)
             .await
             .unwrap()
@@ -244,8 +244,8 @@ impl CommandExecutor {
 
         let pending_commands = self
             .context
-            .get_repository_manager()
-            .get_command_repository()
+            .repository_manager()
+            .command_repository()
             .get_commands_with_status(vec![
                 CommandStatus::Pending.to_string(),
                 CommandStatus::Started.to_string(),
@@ -258,7 +258,7 @@ impl CommandExecutor {
 
         for model in pending_commands {
             if let Some(command) = Self::model_to_command(model) {
-                tracing::debug!("Adding command: {:?}", command.get_core().name);
+                tracing::debug!("Adding command: {:?}", command.core().name);
                 self.add(command, 0, false).await.unwrap();
             };
             // Adjust as per your needs. The JS version checks for parentId and other stuff.

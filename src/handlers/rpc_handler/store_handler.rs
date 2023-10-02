@@ -1,4 +1,4 @@
-use crate::controllers::rpc::base_controller::BaseController;
+use crate::handlers::rpc_handler::base_handler::BaseHandler;
 use async_trait::async_trait;
 use network::message::{
     MessageHeader, MessageType, RequestMessage, ResponseMessage, StoreInitResponseData,
@@ -7,10 +7,10 @@ use network::message::{
 use network::{command::NetworkCommand, request_response, PeerId};
 use tokio::sync::mpsc::Sender;
 
-pub struct StoreController;
+pub struct StoreHandler;
 
 #[async_trait]
-impl BaseController for StoreController {
+impl BaseHandler for StoreHandler {
     type RequestData = StoreMessageRequestData;
     type ResponseData = StoreMessageResponseData;
 

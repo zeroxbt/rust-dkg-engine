@@ -2,6 +2,10 @@ mod local_blockchain;
 use clap::{value_parser, Arg, Command};
 use serde_json::Value;
 use std::fs;
+
+const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";
+const PUBLIC_KEYS_PATH: &str = "./tools/local_network/src/public_keys.json";
+
 fn open_terminal_with_command(command: &str) {
     std::process::Command::new("osascript")
         .args([
@@ -31,6 +35,10 @@ fn drop_database(database_name: &str) {
 #[tokio::main]
 async fn main() {
     const NUM_CONFIGS: usize = 4;
+    let private_keys: Vec<String> =
+        serde_json::from_str(&std::fs::read_to_string(PRIVATE_KEYS_PATH).unwrap()).unwrap();
+    let public_keys: Vec<String> =
+        serde_json::from_str(&std::fs::read_to_string(PUBLIC_KEYS_PATH).unwrap()).unwrap();
 
     let matches = Command::new("Your Application Name")
         .arg(
@@ -78,6 +86,39 @@ async fn main() {
             repository["database"] = Value::from(database);
         }
 
+        {
+            let managers = template_value
+                .get_mut("managers")
+                .expect("Template format error");
+            let blockchain = managers
+                .get_mut("blockchain")
+                .expect("Template format error");
+            let config = blockchain
+                .get_mut(0)
+                .expect("Template format error")
+                .get_mut("Hardhat")
+                .expect("Template format error");
+
+            config["evm_operational_wallet_public_key"] =
+                Value::from(public_keys.get(i).unwrap().to_string());
+            config["evm_operational_wallet_private_key"] =
+                Value::from(private_keys.get(i).unwrap().to_string());
+            config["evm_management_wallet_public_key"] = Value::from(
+                public_keys
+                    .get(public_keys.len() - 1 - i)
+                    .unwrap()
+                    .to_string(),
+            );
+            config["evm_management_wallet_private_key"] = Value::from(
+                private_keys
+                    .get(private_keys.len() - 1 - i)
+                    .unwrap()
+                    .to_string(),
+            );
+            config["shares_token_name"] = Value::from(format!("LocalNode{}", i));
+            config["shares_token_symbol"] = Value::from(format!("LN{}", i));
+        }
+
         let http_port = template_value["http_api"]["port"].as_u64().unwrap() + i as u64;
         template_value["http_api"]["port"] = Value::from(http_port);
 
@@ -104,7 +145,7 @@ async fn main() {
 
         let config_path = format!("tools/local_network/.node{}_config.json", i);
         open_terminal_with_command(&format!(
-            "cd {} && cargo run -- --config {}",
+            "cd {} && cargo run --release -- --config {}",
             current_dir_str, config_path
         ));
     }

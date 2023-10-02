@@ -1,17 +1,326 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
-use ethers::contract::abigen;
+use ethers::{
+    abi::Address,
+    middleware::Middleware,
+    prelude::{Contract, ContractError, TransactionReceipt},
+    providers::{Http, PendingTransaction},
+    types::{Bytes, Filter, Log},
+};
+use std::sync::Arc;
 
 use crate::{
     blockchain_creator::{BlockchainProvider, Contracts},
-    BlockchainConfig,
+    BlockchainConfig, BlockchainName,
 };
 
+const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
+
+#[derive(Debug, thiserror::Error)]
+pub enum BlockchainError {
+    #[error("Contract error: {0}")]
+    Contract(#[from] ethers::contract::ContractError<BlockchainProvider>),
+
+    #[error("Failed to decode message")]
+    Decode,
+    #[error("Failed to parse address")]
+    Parse,
+    #[error("Failed to get logs")]
+    GetLogs,
+    #[error("Failed to get block number")]
+    GetBlockNumber,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ContractName {
+    Hub,
+    ShardingTable,
+    Staking,
+    Profile,
+    CommitManagerV1U1,
+    ServiceAgreementV1,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum EventName {
+    NewContract,
+    ContractChanged,
+    NewAssetStorage,
+    AssetStorageChanged,
+    NodeAdded,
+    NodeRemoved,
+    StakeIncreased,
+    StakeWithdrawalStarted,
+    AskUpdated,
+    StateFinalized,
+    ServiceAgreementV1Extended,
+    ServiceAgreementV1Terminated,
+}
+
+impl ContractName {
+    pub fn as_str(&self) -> &str {
+        match self {
+            ContractName::Hub => "Hub",
+            ContractName::ShardingTable => "ShardingTable",
+            ContractName::Staking => "Staking",
+            ContractName::CommitManagerV1U1 => "CommitManagerV1U1",
+            ContractName::ServiceAgreementV1 => "ServiceAgreementV1",
+            ContractName::Profile => "Profile",
+        }
+    }
+}
+
+impl EventName {
+    pub fn as_str(&self) -> &str {
+        match self {
+            EventName::NewContract => "NewContract",
+            EventName::ContractChanged => "ContractChanged",
+            EventName::NewAssetStorage => "NewAssetStorage",
+            EventName::AssetStorageChanged => "AssetStorageChanged",
+            EventName::NodeAdded => "NodeAdded",
+            EventName::NodeRemoved => "NodeRemoved",
+            EventName::StakeIncreased => "StakeIncreased",
+            EventName::StakeWithdrawalStarted => "StakeWithdrawalStarted",
+            EventName::AskUpdated => "AskUpdated",
+            EventName::StateFinalized => "StateFinalized",
+            EventName::ServiceAgreementV1Extended => "ServiceAgreementV1Extended",
+            EventName::ServiceAgreementV1Terminated => "ServiceAgreementV1Terminated",
+        }
+    }
+}
+
+pub struct EventLog {
+    contract_name: ContractName,
+    event_name: EventName,
+    log: Log,
+}
+
+impl EventLog {
+    pub fn new(contract_name: ContractName, event_name: EventName, log: Log) -> Self {
+        Self {
+            contract_name,
+            event_name,
+            log,
+        }
+    }
+
+    pub fn contract_name(&self) -> &ContractName {
+        &self.contract_name
+    }
+
+    pub fn event_name(&self) -> &EventName {
+        &self.event_name
+    }
+
+    pub fn log(&self) -> &Log {
+        &self.log
+    }
+}
+
 #[async_trait]
-pub trait AbstractBlockchain {
-    fn get_name(&self) -> String;
-    fn get_config(&self) -> &BlockchainConfig;
-    fn get_provider(&self) -> Arc<BlockchainProvider>;
-    fn get_contracts(&self) -> &Contracts;
+pub trait AbstractBlockchain: Send + Sync {
+    fn name(&self) -> BlockchainName;
+    fn config(&self) -> &BlockchainConfig;
+    fn provider(&self) -> Arc<BlockchainProvider>;
+    fn contracts(&self) -> &Contracts;
+    fn set_identity_id(&mut self, id: u128);
+
+    async fn get_block_number(&self) -> Result<u64, BlockchainError> {
+        let block_number = self
+            .provider()
+            .get_block_number()
+            .await
+            .map_err(|_| BlockchainError::GetLogs)?;
+
+        Ok(block_number.as_u64())
+    }
+
+    async fn get_event_logs(
+        &self,
+        contract_name: &ContractName,
+        events_to_filter: &Vec<EventName>,
+        from_block: u64,
+        current_block: u64,
+    ) -> Result<Vec<EventLog>, BlockchainError> {
+        let contract = self.contracts().get(contract_name);
+
+        let mut events = Vec::new();
+        let mut from_block = from_block;
+        while from_block <= current_block {
+            let to_block = std::cmp::min(
+                from_block + MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH - 1,
+                current_block,
+            );
+            let new_events = self
+                .process_block_range(
+                    from_block,
+                    to_block,
+                    contract,
+                    contract_name,
+                    events_to_filter,
+                )
+                .await?;
+            events.extend(new_events);
+            from_block = to_block + 1;
+        }
+
+        Ok(events)
+    }
+
+    async fn process_block_range(
+        &self,
+        from_block: u64,
+        to_block: u64,
+        contract: &Contract<BlockchainProvider>,
+        contract_name: &ContractName,
+        events_to_filter: &Vec<EventName>,
+    ) -> Result<Vec<EventLog>, BlockchainError> {
+        let mut all_events = Vec::new();
+
+        for event_name in events_to_filter {
+            let filter = contract
+                .event_for_name::<Filter>(event_name.as_str())
+                .unwrap()
+                .filter;
+            let logs = self
+                .provider()
+                .get_logs(&filter.from_block(from_block).to_block(to_block))
+                .await
+                .map_err(|_| BlockchainError::GetLogs)?;
+
+            for log in logs {
+                all_events.push(EventLog::new(
+                    contract_name.clone(),
+                    event_name.clone(),
+                    log,
+                ));
+            }
+        }
+
+        Ok(all_events)
+    }
+
+    async fn get_identity_id(&self) -> Option<u128> {
+        let evm_operational_address = self
+            .config()
+            .evm_operational_wallet_public_key
+            .parse::<Address>();
+        let Ok(evm_operational_address) = evm_operational_address else {
+            return None;
+        };
+
+        let result = Arc::new(
+            self.contracts()
+                .identity_storage()
+                .get_identity_id(evm_operational_address)
+                .call()
+                .await,
+        );
+
+        match *result {
+            Ok(id) if id != 0 => Some(id),
+            _ => None,
+        }
+    }
+
+    async fn identity_id_exists(&self) -> bool {
+        let identity_id = self.get_identity_id().await;
+
+        identity_id.is_some()
+    }
+
+    async fn create_profile(&self, peer_id: String) -> Result<(), BlockchainError> {
+        let config = self.config();
+        let admin_wallet = config
+            .evm_management_wallet_public_key
+            .parse::<Address>()
+            .map_err(|_| BlockchainError::Parse)?;
+        let peer_id_bytes = Bytes::from(peer_id.as_bytes().to_vec());
+        let shares_token_name = config.shares_token_name.to_string();
+        let shares_token_symbol = config.shares_token_symbol.to_string();
+
+        let create_profile_call = self.contracts().profile().create_profile(
+            admin_wallet,
+            peer_id_bytes,
+            shares_token_name.clone(),
+            shares_token_symbol.clone(),
+        );
+
+        let result = create_profile_call.send().await;
+
+        match handle_contract_call(result).await {
+            Ok(_) => {
+                tracing::info!(
+                    "Profile created with token name: {}, token symbol: {}.",
+                    shares_token_name,
+                    shares_token_symbol
+                );
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn initialize_identity(&mut self, peer_id: String) -> Result<(), BlockchainError> {
+        if !self.identity_id_exists().await {
+            let result = self.create_profile(peer_id).await;
+
+            if result.is_err() {
+                panic!("Unable to create profile");
+            }
+        }
+
+        let identity_id = self.get_identity_id().await;
+
+        if let Some(id) = identity_id {
+            tracing::info!("Identity ID: {}", id);
+
+            self.set_identity_id(id);
+            Ok(())
+        } else {
+            panic!("Identity not found");
+        }
+    }
+}
+
+pub async fn handle_contract_call(
+    result: Result<PendingTransaction<'_, Http>, ContractError<BlockchainProvider>>,
+) -> Result<Option<TransactionReceipt>, BlockchainError> {
+    match result {
+        Ok(future_receipt) => {
+            let receipt = future_receipt.await;
+            match receipt {
+                Ok(r) => Ok(r),
+                Err(err) => {
+                    tracing::error!("Failed to retrieve transaction receipt: {:?}", err);
+                    Err(BlockchainError::Contract(err.into()))
+                }
+            }
+        }
+        Err(err) => {
+            match &err {
+                // note the use of & to borrow rather than move
+                ethers::contract::ContractError::Revert(revert_msg) => {
+                    let error_msg =
+                        ethers::abi::decode(&[ethers::abi::ParamType::String], &revert_msg.0[4..])
+                            .map_err(|_| BlockchainError::Decode)?
+                            .into_iter()
+                            .next()
+                            .and_then(|param| match param {
+                                ethers::abi::Token::String(msg) => Some(msg),
+                                _ => None,
+                            });
+
+                    if let Some(msg) = error_msg {
+                        tracing::error!("Smart contract reverted with message: {}", msg);
+                    } else {
+                        tracing::error!("Failed to decode revert message");
+                    }
+                }
+                _ => {
+                    tracing::error!("An error occurred: {:?}", err);
+                }
+            }
+            Err(BlockchainError::Contract(err))
+        }
+    }
 }

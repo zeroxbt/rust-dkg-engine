@@ -3,7 +3,7 @@ use crate::commands::command::{AbstractCommand, CommandResult, CoreCommand};
 use crate::constants::DIAL_PEERS_COMMAND_FREQUENCY_MILLS;
 use crate::context::Context;
 use async_trait::async_trait;
-use repository::models::commands;
+use repository::models::command;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -35,11 +35,11 @@ impl AbstractCommand for DialPeersCommand {
         CommandResult::Repeat
     }
 
-    fn get_core(&self) -> &CoreCommand {
+    fn core(&self) -> &CoreCommand {
         &self.core
     }
 
-    fn get_json_data(&self) -> Value {
+    fn json_data(&self) -> Value {
         serde_json::to_value(&self.data).unwrap()
     }
 }
@@ -57,8 +57,8 @@ impl Default for DialPeersCommand {
     }
 }
 
-impl From<commands::Model> for DialPeersCommand {
-    fn from(model: commands::Model) -> Self {
+impl From<command::Model> for DialPeersCommand {
+    fn from(model: command::Model) -> Self {
         Self {
             core: CoreCommand::from_model(model.clone()),
             data: serde_json::from_value(model.data).unwrap(),
