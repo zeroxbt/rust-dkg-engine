@@ -14,5 +14,6 @@
     },
     "blockchain": {}
   },
-  "http_api": { "port": 8900 }
+  "http_api": { "port": 8900 },
+  "is_dev_env": true
 }

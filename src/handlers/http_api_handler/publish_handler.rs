@@ -48,7 +48,7 @@ impl PublishHandler {
                 let operation_id = Uuid::new_v4();
 
                 tokio::spawn(async move {
-                    Self::execute_publish_operation(context, req, operation_id).await
+                    Self::execute_publish_operation(Arc::clone(&context), req, operation_id).await
                 });
 
                 Json(PublishResponse { operation_id }).into_response()

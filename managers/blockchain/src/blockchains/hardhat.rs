@@ -1,5 +1,7 @@
-use crate::blockchain_creator::{BlockchainCreator, BlockchainProvider, Contracts};
-use crate::blockchains::abstract_blockchain::AbstractBlockchain;
+use crate::blockchains::{
+    abstract_blockchain::AbstractBlockchain,
+    blockchain_creator::{BlockchainCreator, BlockchainProvider, Contracts},
+};
 use crate::{BlockchainConfig, BlockchainName};
 
 use std::sync::Arc;
@@ -15,14 +17,14 @@ pub struct HardhatBlockchain {
 
 #[async_trait]
 impl AbstractBlockchain for HardhatBlockchain {
-    fn name(&self) -> BlockchainName {
-        BlockchainName::Hardhat
+    fn name(&self) -> &BlockchainName {
+        &BlockchainName::Hardhat
     }
     fn config(&self) -> &BlockchainConfig {
         &self.config
     }
-    fn provider(&self) -> Arc<BlockchainProvider> {
-        Arc::clone(&self.provider)
+    fn provider(&self) -> &Arc<BlockchainProvider> {
+        &self.provider
     }
 
     fn contracts(&self) -> &Contracts {
@@ -38,7 +40,7 @@ impl AbstractBlockchain for HardhatBlockchain {
 impl BlockchainCreator for HardhatBlockchain {
     async fn new(config: BlockchainConfig) -> Self {
         let provider = Self::initialize_ethers_provider(&config).await.unwrap();
-        let contracts = Self::initialize_contracts(&config, Arc::clone(&provider)).await;
+        let contracts = Self::initialize_contracts(&config, &provider).await;
 
         Self {
             provider,

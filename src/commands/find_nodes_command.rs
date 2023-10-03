@@ -33,7 +33,7 @@ pub struct FindNodesCommandData {
 
 #[async_trait]
 impl AbstractCommand for FindNodesCommand {
-    async fn execute(&self, context: Arc<Context>) -> CommandResult {
+    async fn execute(&self, context: &Arc<Context>) -> CommandResult {
         tracing::info!(
             "Searching for closest nodes for keyword: {}",
             self.data.keyword

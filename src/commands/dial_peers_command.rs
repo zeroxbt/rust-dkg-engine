@@ -19,7 +19,7 @@ pub struct DialPeersCommandData;
 
 #[async_trait]
 impl AbstractCommand for DialPeersCommand {
-    async fn execute(&self, context: Arc<Context>) -> CommandResult {
+    async fn execute(&self, context: &Arc<Context>) -> CommandResult {
         tracing::info!("Started executing dial peers command...");
 
         tracing::info!("Finished executing dial peers command...");

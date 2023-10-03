@@ -20,7 +20,7 @@ pub struct RepositoryManager {
 }
 
 impl RepositoryManager {
-    pub async fn new(config: RepositoryConfig) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(config: &RepositoryManagerConfig) -> Result<Self, Box<dyn Error>> {
         // Connect to MySQL server
         let conn = Database::connect(config.root_connection_string()).await?;
 
@@ -58,7 +58,7 @@ impl RepositoryManager {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RepositoryConfig {
+pub struct RepositoryManagerConfig {
     user: String,
     password: String,
     database: String,
@@ -66,7 +66,7 @@ pub struct RepositoryConfig {
     port: u16,
 }
 
-impl RepositoryConfig {
+impl RepositoryManagerConfig {
     fn root_connection_string(&self) -> String {
         format!(
             "mysql://{}:{}@{}:{}",

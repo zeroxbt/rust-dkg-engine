@@ -13,7 +13,7 @@ use super::get_handler::GetHandler;
 use super::info_handler::InfoHandler;
 use super::publish_handler::PublishHandler;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct HttpApiConfig {
     pub port: u16,
 }
@@ -24,7 +24,7 @@ pub struct HttpApiRouter {
 }
 
 impl HttpApiRouter {
-    pub fn new(config: HttpApiConfig, context: Arc<Context>) -> Self {
+    pub fn new(config: &HttpApiConfig, context: &Arc<Context>) -> Self {
         let cors_layer = CorsLayer::new()
             .allow_methods(vec![hyper::Method::GET])
             .allow_credentials(false);
@@ -34,10 +34,10 @@ impl HttpApiRouter {
             .route("/info", get(InfoHandler::handle_request))
             .route("/publish", post(PublishHandler::handle_request))
             .route("/get", post(GetHandler::handle_request))
-            .with_state(Arc::clone(&context));
+            .with_state(Arc::clone(context));
 
         HttpApiRouter {
-            config,
+            config: config.to_owned(),
             router: Arc::new(Mutex::new(router)),
         }
     }

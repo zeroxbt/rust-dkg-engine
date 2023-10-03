@@ -29,21 +29,21 @@ pub type SwarmError = Either<NestedError, Void>;
 pub type NetworkEvent = SwarmEvent<BehaviourEvent, SwarmError>;
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct NetworkConfig {
+pub struct NetworkManagerConfig {
     port: u32,
     data_folder_path: String,
     bootstrap: Vec<String>,
 }
 
 pub struct NetworkManager {
-    config: NetworkConfig,
+    config: NetworkManagerConfig,
     swarm: Mutex<Swarm<Behaviour>>,
     peer_id: PeerId,
 }
 
 impl NetworkManager {
-    pub async fn new(config: NetworkConfig) -> Self {
-        let key = KeyManager::generate_or_load_key(config.clone().data_folder_path)
+    pub async fn new(config: &NetworkManagerConfig) -> Self {
+        let key = KeyManager::generate_or_load_key(config.data_folder_path.as_str())
             .await
             .unwrap();
 
@@ -106,7 +106,7 @@ impl NetworkManager {
         };
 
         Self {
-            config,
+            config: config.to_owned(),
             swarm: tokio::sync::Mutex::new(swarm),
             peer_id: local_peer_id,
         }
@@ -167,7 +167,7 @@ impl NetworkManager {
                 },
                 NetworkCommand::AddAddress {peer_id, addresses} => {
                     addresses.iter().for_each(|addr| {
-                        locked_swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+                        locked_swarm.behaviour_mut().kad.add_address(&peer_id, addr.to_owned());
                     })
 
                 }

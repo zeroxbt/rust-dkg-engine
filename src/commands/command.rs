@@ -149,7 +149,7 @@ impl Default for CoreCommand {
 
 #[async_trait]
 pub trait AbstractCommand: Send + Sync {
-    async fn execute(&self, context: Arc<Context>) -> CommandResult;
+    async fn execute(&self, context: &Arc<Context>) -> CommandResult;
 
     async fn recover(&self) -> CommandResult {
         self.handle_error().await

@@ -1,23 +1,26 @@
 use blockchain::BlockchainManagerConfig;
-use config::File;
-use network::NetworkConfig;
-use repository::RepositoryConfig;
-use serde::Deserialize;
+use config::{Environment, File};
+use network::NetworkManagerConfig;
+use repository::RepositoryManagerConfig;
+use serde::{Deserialize, Deserializer};
 use std::env;
+use validation::ValidationManagerConfig;
 
 use crate::handlers::http_api_handler::http_api_router::HttpApiConfig;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
+    pub is_dev_env: bool,
     pub managers: ManagersConfig,
     pub http_api: HttpApiConfig,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ManagersConfig {
-    pub network: NetworkConfig,
-    pub repository: RepositoryConfig,
+    pub network: NetworkManagerConfig,
+    pub repository: RepositoryManagerConfig,
     pub blockchain: BlockchainManagerConfig,
+    pub validation: ValidationManagerConfig,
 }
 
 pub fn initialize_configuration() -> Config {

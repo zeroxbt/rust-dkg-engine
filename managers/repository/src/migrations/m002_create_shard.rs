@@ -23,13 +23,11 @@ impl MigrationTrait for Migration {
                     .col(
                         ColumnDef::new(shard::Column::LastSeen)
                             .date_time()
-                            .not_null()
                             .default("1970-01-01 00:00:00"),
                     )
                     .col(
                         ColumnDef::new(shard::Column::LastDialed)
                             .date_time()
-                            .not_null()
                             .default("1970-01-01 00:00:00"),
                     )
                     .col(ColumnDef::new(shard::Column::Sha256).string().not_null())

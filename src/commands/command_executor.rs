@@ -138,7 +138,7 @@ impl CommandExecutor {
         )
         .await;
 
-        let result = command.execute(Arc::clone(&self.context)).await;
+        let result = command.execute(&self.context).await;
 
         match result {
             CommandResult::Retry => {

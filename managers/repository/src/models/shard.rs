@@ -16,9 +16,9 @@ pub struct Model {
     pub ask: String,
     pub stake: String,
     #[sea_orm(default_value = "1970-01-01 00:00:00")]
-    pub last_seen: Option<DateTimeUtc>,
+    pub last_seen: DateTimeUtc,
     #[sea_orm(default_value = "1970-01-01 00:00:00")]
-    pub last_dialed: Option<DateTimeUtc>,
+    pub last_dialed: DateTimeUtc,
     pub sha256: String,
 }
 

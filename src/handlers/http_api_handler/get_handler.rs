@@ -22,7 +22,9 @@ impl GetHandler {
     ) -> Json<GetResponse> {
         let operation_id = Uuid::new_v4();
 
-        tokio::spawn(async move { Self::execute_get_operation(context, req, operation_id).await });
+        tokio::spawn(async move {
+            Self::execute_get_operation(Arc::clone(&context), req, operation_id).await
+        });
 
         Json(GetResponse { operation_id })
     }

@@ -1,9 +1,16 @@
-mod blockchain_creator;
 mod blockchains;
+pub mod utils;
 
-use blockchain_creator::BlockchainCreator;
-use blockchains::abstract_blockchain::{AbstractBlockchain, BlockchainError};
-pub use blockchains::abstract_blockchain::{ContractName, EventLog, EventName};
+use blockchains::{
+    abstract_blockchain::{AbstractBlockchain, BlockchainError},
+    blockchain_creator::BlockchainCreator,
+};
+pub use blockchains::{
+    abstract_blockchain::{ContractName, EventLog, EventName},
+    blockchain_creator::{
+        AskUpdatedFilter, NodeAddedFilter, NodeRemovedFilter, StakeIncreasedFilter,
+    },
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -88,13 +95,15 @@ pub struct BlockchainManager {
 }
 
 impl BlockchainManager {
-    pub async fn new(config: BlockchainManagerConfig) -> Self {
+    pub async fn new(config: &BlockchainManagerConfig) -> Self {
         let mut blockchains = HashMap::new();
         for blockchain in config.0.iter() {
             match blockchain {
-                Blockchain::Hardhat(c) => {
-                    let blockchain = blockchains::hardhat::HardhatBlockchain::new(c.clone()).await;
-                    let blockchain_name = blockchain.name();
+                Blockchain::Hardhat(blockchain_config) => {
+                    let blockchain =
+                        blockchains::hardhat::HardhatBlockchain::new(blockchain_config.clone())
+                            .await;
+                    let blockchain_name = blockchain.name().to_owned();
                     let trait_object: Box<dyn AbstractBlockchain> = Box::new(blockchain);
 
                     blockchains.insert(blockchain_name, trait_object);
@@ -129,9 +138,9 @@ impl BlockchainManager {
             .await
     }
 
-    pub async fn initialize_identities(&mut self, peer_id: String) -> Result<(), BlockchainError> {
+    pub async fn initialize_identities(&mut self, peer_id: &str) -> Result<(), BlockchainError> {
         for blockchain in self.blockchains.values_mut() {
-            blockchain.initialize_identity(peer_id.clone()).await?;
+            blockchain.initialize_identity(peer_id).await?;
         }
 
         Ok(())

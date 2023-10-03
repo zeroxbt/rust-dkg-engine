@@ -4771,6 +4771,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid 1.4.1",
+ "validation",
  "validator",
  "validator_derive",
 ]
@@ -6447,6 +6448,15 @@ checksum = "79daa5ed5740825c40b389c5e50312b9c86df53fccd33f281df655642b43869d"
 dependencies = [
  "getrandom 0.2.10",
  "serde",
+]
+
+[[package]]
+name = "validation"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "sha2",
 ]
 
 [[package]]

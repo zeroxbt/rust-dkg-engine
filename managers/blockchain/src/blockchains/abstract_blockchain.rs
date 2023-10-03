@@ -2,14 +2,14 @@ use async_trait::async_trait;
 use ethers::{
     abi::Address,
     middleware::Middleware,
-    prelude::{Contract, ContractError, TransactionReceipt},
-    providers::{Http, PendingTransaction},
+    prelude::Contract,
     types::{Bytes, Filter, Log},
 };
 use std::sync::Arc;
 
 use crate::{
-    blockchain_creator::{BlockchainProvider, Contracts},
+    blockchains::blockchain_creator::{BlockchainProvider, Contracts},
+    utils::handle_contract_call,
     BlockchainConfig, BlockchainName,
 };
 
@@ -118,9 +118,9 @@ impl EventLog {
 
 #[async_trait]
 pub trait AbstractBlockchain: Send + Sync {
-    fn name(&self) -> BlockchainName;
+    fn name(&self) -> &BlockchainName;
     fn config(&self) -> &BlockchainConfig;
-    fn provider(&self) -> Arc<BlockchainProvider>;
+    fn provider(&self) -> &Arc<BlockchainProvider>;
     fn contracts(&self) -> &Contracts;
     fn set_identity_id(&mut self, id: u128);
 
@@ -228,7 +228,7 @@ pub trait AbstractBlockchain: Send + Sync {
         identity_id.is_some()
     }
 
-    async fn create_profile(&self, peer_id: String) -> Result<(), BlockchainError> {
+    async fn create_profile(&self, peer_id: &str) -> Result<(), BlockchainError> {
         let config = self.config();
         let admin_wallet = config
             .evm_management_wallet_public_key
@@ -260,7 +260,7 @@ pub trait AbstractBlockchain: Send + Sync {
         }
     }
 
-    async fn initialize_identity(&mut self, peer_id: String) -> Result<(), BlockchainError> {
+    async fn initialize_identity(&mut self, peer_id: &str) -> Result<(), BlockchainError> {
         if !self.identity_id_exists().await {
             let result = self.create_profile(peer_id).await;
 
@@ -278,49 +278,6 @@ pub trait AbstractBlockchain: Send + Sync {
             Ok(())
         } else {
             panic!("Identity not found");
-        }
-    }
-}
-
-pub async fn handle_contract_call(
-    result: Result<PendingTransaction<'_, Http>, ContractError<BlockchainProvider>>,
-) -> Result<Option<TransactionReceipt>, BlockchainError> {
-    match result {
-        Ok(future_receipt) => {
-            let receipt = future_receipt.await;
-            match receipt {
-                Ok(r) => Ok(r),
-                Err(err) => {
-                    tracing::error!("Failed to retrieve transaction receipt: {:?}", err);
-                    Err(BlockchainError::Contract(err.into()))
-                }
-            }
-        }
-        Err(err) => {
-            match &err {
-                // note the use of & to borrow rather than move
-                ethers::contract::ContractError::Revert(revert_msg) => {
-                    let error_msg =
-                        ethers::abi::decode(&[ethers::abi::ParamType::String], &revert_msg.0[4..])
-                            .map_err(|_| BlockchainError::Decode)?
-                            .into_iter()
-                            .next()
-                            .and_then(|param| match param {
-                                ethers::abi::Token::String(msg) => Some(msg),
-                                _ => None,
-                            });
-
-                    if let Some(msg) = error_msg {
-                        tracing::error!("Smart contract reverted with message: {}", msg);
-                    } else {
-                        tracing::error!("Failed to decode revert message");
-                    }
-                }
-                _ => {
-                    tracing::error!("An error occurred: {:?}", err);
-                }
-            }
-            Err(BlockchainError::Contract(err))
         }
     }
 }

@@ -39,8 +39,20 @@ impl ShardRepository {
         Ok(())
     }
 
+    pub async fn remove_peer_record(
+        &self,
+        blockchain_id: &str,
+        peer_id: &str,
+    ) -> Result<(), DbErr> {
+        Entity::delete_by_id((blockchain_id.to_owned(), peer_id.to_owned()))
+            .exec(self.conn.as_ref())
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn create_peer_record(&self, model: Model) -> Result<(), DbErr> {
-        let active_model: ActiveModel = model.into();
+        let active_model: ActiveModel = model.clone().into();
 
         Entity::insert(active_model)
             .exec(self.conn.as_ref())
@@ -51,7 +63,7 @@ impl ShardRepository {
 
     pub async fn get_all_peer_records(
         &self,
-        blockchain_id: String,
+        blockchain_id: &str,
         filter_last_seen: bool,
     ) -> Result<Vec<Model>, DbErr> {
         let query = if filter_last_seen {
@@ -72,8 +84,8 @@ impl ShardRepository {
 
     pub async fn get_peer_record(
         &self,
-        blockchain_id: String,
-        peer_id: String,
+        blockchain_id: &str,
+        peer_id: &str,
     ) -> Result<Option<Model>, DbErr> {
         Entity::find()
             .filter(Column::BlockchainId.eq(blockchain_id))
@@ -82,7 +94,7 @@ impl ShardRepository {
             .await
     }
 
-    pub async fn get_peers_count(&self, blockchain_id: String) -> Result<u64, DbErr> {
+    pub async fn get_peers_count(&self, blockchain_id: &str) -> Result<u64, DbErr> {
         Entity::find()
             .filter(Column::BlockchainId.eq(blockchain_id))
             .count(self.conn.as_ref())
@@ -108,38 +120,46 @@ impl ShardRepository {
 
     pub async fn update_peer_ask(
         &self,
-        peer_id: String,
         blockchain_id: String,
+        peer_id: String,
         ask: String,
     ) -> Result<(), DbErr> {
-        ActiveModel {
+        let result = ActiveModel {
             peer_id: ActiveValue::Set(peer_id),
             blockchain_id: ActiveValue::Set(blockchain_id),
             ask: ActiveValue::Set(ask),
             ..Default::default()
         }
         .update(self.conn.as_ref())
-        .await?;
+        .await;
 
-        Ok(())
+        match result {
+            Ok(_) => Ok(()),
+            Err(DbErr::RecordNotUpdated) => Ok(()),
+            Err(other) => Err(other),
+        }
     }
 
     pub async fn update_peer_stake(
         &self,
-        peer_id: String,
         blockchain_id: String,
+        peer_id: String,
         stake: String,
     ) -> Result<(), DbErr> {
-        ActiveModel {
+        let result = ActiveModel {
             peer_id: ActiveValue::Set(peer_id),
             blockchain_id: ActiveValue::Set(blockchain_id),
             stake: ActiveValue::Set(stake),
             ..Default::default()
         }
         .update(self.conn.as_ref())
-        .await?;
+        .await;
 
-        Ok(())
+        match result {
+            Ok(_) => Ok(()),
+            Err(DbErr::RecordNotUpdated) => Ok(()),
+            Err(other) => Err(other),
+        }
     }
 
     pub async fn update_peer_record_last_dialed(
@@ -149,7 +169,7 @@ impl ShardRepository {
     ) -> Result<(), DbErr> {
         ActiveModel {
             peer_id: ActiveValue::Set(peer_id),
-            last_dialed: ActiveValue::Set(Some(timestamp)),
+            last_dialed: ActiveValue::Set(timestamp),
             ..Default::default()
         }
         .update(self.conn.as_ref())
@@ -165,8 +185,8 @@ impl ShardRepository {
     ) -> Result<(), DbErr> {
         ActiveModel {
             peer_id: ActiveValue::Set(peer_id),
-            last_dialed: ActiveValue::Set(Some(timestamp)),
-            last_seen: ActiveValue::Set(Some(timestamp)),
+            last_dialed: ActiveValue::Set(timestamp),
+            last_seen: ActiveValue::Set(timestamp),
             ..Default::default()
         }
         .update(self.conn.as_ref())
