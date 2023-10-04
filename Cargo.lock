@@ -584,6 +584,7 @@ dependencies = [
  "ethers",
  "serde",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 

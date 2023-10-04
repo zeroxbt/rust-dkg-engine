@@ -1,8 +1,8 @@
-pub mod command;
+pub mod action;
 mod key_manager;
 pub mod message;
 
-use command::NetworkCommand;
+use action::NetworkAction;
 use key_manager::KeyManager;
 use libp2p::core::upgrade::Version;
 use libp2p::futures::StreamExt;
@@ -79,6 +79,7 @@ impl NetworkManager {
             let mut cfg = KademliaConfig::default();
             cfg.set_kbucket_inserts(KademliaBucketInserts::OnConnected);
             let store = MemoryStore::new(local_peer_id);
+
             let mut behaviour = Behaviour {
                 kad: Kademlia::with_config(local_peer_id, store, cfg),
                 identify: identify::Behaviour::new(identify::Config::new(
@@ -93,10 +94,9 @@ impl NetworkManager {
             behaviour.kad.set_mode(Some(Mode::Server));
 
             config.bootstrap.iter().for_each(|bootstrap| {
-                let bootstrap_peer_id: PeerId =
-                    bootstrap.split("/p2p/").last().unwrap().parse().unwrap();
-
+                let bootstrap_peer_id = bootstrap.split("/p2p/").last().unwrap().parse().unwrap();
                 let bootstrap_address = bootstrap.split("/p2p/").next().unwrap().parse().unwrap();
+
                 behaviour
                     .kad
                     .add_address(&bootstrap_peer_id, bootstrap_address);
@@ -128,7 +128,7 @@ impl NetworkManager {
 
     pub async fn handle_swarm_events(
         &self,
-        mut command_rx: Receiver<NetworkCommand>,
+        mut command_rx: Receiver<NetworkAction>,
         event_tx: Sender<NetworkEvent>,
     ) {
         let mut locked_swarm = self.swarm.lock().await;
@@ -136,36 +136,36 @@ impl NetworkManager {
             tokio::select! {
                     Some(command) = command_rx.recv() => {
                         match command {
-                NetworkCommand::StoreRequest { peer, message } => {
+                NetworkAction::StoreRequest { peer, message } => {
                     locked_swarm
                         .behaviour_mut()
                         .store
                         .send_request(&peer, message);
                 }
-                NetworkCommand::StoreResponse { channel, message } => {
+                NetworkAction::StoreResponse { channel, message } => {
                     locked_swarm
                         .behaviour_mut()
                         .store
                         .send_response(channel, message)
                         .unwrap();
                 }
-                NetworkCommand::GetRequest { peer, message } => {
+                NetworkAction::GetRequest { peer, message } => {
                     locked_swarm
                         .behaviour_mut()
                         .get
                         .send_request(&peer, message);
                 }
-                NetworkCommand::GetResponse { channel, message } => {
+                NetworkAction::GetResponse { channel, message } => {
                     locked_swarm
                         .behaviour_mut()
                         .get
                         .send_response(channel, message)
                         .unwrap();
                 }
-                NetworkCommand::GetClosestPeers {peer} => {
+                NetworkAction::GetClosestPeers {peer} => {
                     locked_swarm.behaviour_mut().kad.get_closest_peers(peer);
                 },
-                NetworkCommand::AddAddress {peer_id, addresses} => {
+                NetworkAction::AddAddress {peer_id, addresses} => {
                     addresses.iter().for_each(|addr| {
                         locked_swarm.behaviour_mut().kad.add_address(&peer_id, addr.to_owned());
                     })
@@ -182,8 +182,8 @@ impl NetworkManager {
         }
     }
 
-    pub fn get_peer_id(&self) -> PeerId {
-        self.peer_id
+    pub fn get_peer_id(&self) -> &PeerId {
+        &self.peer_id
     }
 }
 

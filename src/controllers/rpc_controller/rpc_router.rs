@@ -1,0 +1,105 @@
+use crate::{
+    context::Context,
+    controllers::rpc_controller::{
+        base_controller::BaseController, get_controller::GetController,
+        store_controller::StoreController,
+    },
+};
+use futures::stream::{FuturesUnordered, StreamExt};
+use network::{
+    action::NetworkAction, identify, request_response, BehaviourEvent, NetworkEvent, SwarmEvent,
+};
+use std::sync::Arc;
+use tokio::sync::{mpsc::Receiver, Semaphore};
+use tracing::{error, info};
+
+use super::constants::NETWORK_EVENT_QUEUE_PARALLELISM;
+
+pub struct RpcRouter {
+    context: Arc<Context>,
+    get_controller: Arc<GetController>,
+    store_controller: Arc<StoreController>,
+    pub semaphore: Arc<Semaphore>,
+}
+
+impl RpcRouter {
+    pub fn new(context: Arc<Context>) -> Self {
+        RpcRouter {
+            get_controller: Arc::new(GetController::new(Arc::clone(&context))),
+            store_controller: Arc::new(StoreController::new(Arc::clone(&context))),
+            semaphore: Arc::new(Semaphore::new(NETWORK_EVENT_QUEUE_PARALLELISM)),
+            context,
+        }
+    }
+
+    pub async fn handle_network_events(&self, mut network_event_rx: Receiver<NetworkEvent>) {
+        let mut pending_tasks = FuturesUnordered::new();
+
+        loop {
+            tokio::select! {
+                _ = pending_tasks.select_next_some(), if !pending_tasks.is_empty() => {
+                    // Continue the loop when a task completes.
+                }
+                event = network_event_rx.recv(), if self.semaphore.available_permits() > 0 => {
+                    if let Some(event) = event {
+                        pending_tasks.push(self.handle_network_event(event));
+                    }
+                }
+            }
+        }
+    }
+
+    async fn handle_network_event(&self, event: NetworkEvent) {
+        let _ = self.semaphore.acquire().await.unwrap();
+
+        match event {
+            SwarmEvent::Behaviour(BehaviourEvent::Store(inner_event)) => match inner_event {
+                request_response::Event::OutboundFailure { error, .. } => {
+                    error!("Failed to store: {}", error);
+                }
+                request_response::Event::Message { message, peer } => {
+                    self.store_controller.handle_message(message, peer).await;
+                }
+                _ => {}
+            },
+            SwarmEvent::Behaviour(BehaviourEvent::Get(inner_event)) => match inner_event {
+                request_response::Event::OutboundFailure { error, .. } => {
+                    error!("Failed to get: {}", error)
+                }
+                request_response::Event::Message { peer, message } => {
+                    self.get_controller.handle_message(message, peer).await;
+                }
+                _ => {}
+            },
+            SwarmEvent::NewListenAddr { address, .. } => {
+                info!("Listening on {}", address)
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
+                peer_id,
+                info,
+            })) => {
+                tracing::trace!("Adding peer to routing table: {}", peer_id);
+
+                self.context
+                    .network_action_tx()
+                    .send(NetworkAction::AddAddress {
+                        peer_id,
+                        addresses: info.listen_addrs,
+                    })
+                    .await
+                    .unwrap();
+
+                self.context
+                    .repository_manager()
+                    .shard_repository()
+                    .update_peer_record_last_seen_and_last_dialed(
+                        peer_id.to_base58(),
+                        chrono::Utc::now(),
+                    )
+                    .await
+                    .unwrap();
+            }
+            _ => {}
+        }
+    }
+}

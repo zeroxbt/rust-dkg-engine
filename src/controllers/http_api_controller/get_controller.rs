@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub struct GetHandler;
+pub struct GetController;
 
 #[derive(Deserialize, Debug)]
 pub struct GetRequest {}
@@ -15,7 +15,7 @@ pub struct GetResponse {
     operation_id: Uuid,
 }
 
-impl GetHandler {
+impl GetController {
     pub async fn handle_request(
         State(context): State<Arc<Context>>,
         Json(req): Json<GetRequest>,

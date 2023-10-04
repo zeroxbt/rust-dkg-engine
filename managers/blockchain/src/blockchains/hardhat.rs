@@ -3,15 +3,14 @@ use crate::blockchains::{
     blockchain_creator::{BlockchainCreator, BlockchainProvider, Contracts},
 };
 use crate::{BlockchainConfig, BlockchainName};
-
-use std::sync::Arc;
-
 use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub struct HardhatBlockchain {
     config: BlockchainConfig,
     provider: Arc<BlockchainProvider>,
-    contracts: Contracts,
+    contracts: RwLock<Contracts>,
     identity_id: Option<u128>,
 }
 
@@ -27,8 +26,12 @@ impl AbstractBlockchain for HardhatBlockchain {
         &self.provider
     }
 
-    fn contracts(&self) -> &Contracts {
-        &self.contracts
+    async fn contracts(&self) -> RwLockReadGuard<'_, Contracts> {
+        self.contracts.read().await
+    }
+
+    async fn contracts_mut(&self) -> RwLockWriteGuard<'_, Contracts> {
+        self.contracts.write().await
     }
 
     fn set_identity_id(&mut self, id: u128) {
@@ -45,7 +48,7 @@ impl BlockchainCreator for HardhatBlockchain {
         Self {
             provider,
             config,
-            contracts,
+            contracts: RwLock::new(contracts),
             identity_id: None,
         }
     }

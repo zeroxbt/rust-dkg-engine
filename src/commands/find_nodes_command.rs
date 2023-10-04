@@ -1,5 +1,5 @@
 use super::command::CommandName;
-use crate::commands::command::{AbstractCommand, CommandResult, CoreCommand};
+use crate::commands::command::{AbstractCommand, CommandExecutionResult, CoreCommand};
 use crate::context::Context;
 use async_trait::async_trait;
 use blockchain::BlockchainName;
@@ -33,19 +33,17 @@ pub struct FindNodesCommandData {
 
 #[async_trait]
 impl AbstractCommand for FindNodesCommand {
-    async fn execute(&self, context: &Arc<Context>) -> CommandResult {
+    async fn execute(&self, context: &Arc<Context>) -> CommandExecutionResult {
         tracing::info!(
             "Searching for closest nodes for keyword: {}",
             self.data.keyword
         );
 
-        /*  let one_peer_id = "QmTT3iPYPjLxy7N8Z7u8sK6wwvfg2cMDV3NVxuW1WT23XY"
-        .parse()
-        .unwrap(); */
+        // TODO: implement this
 
         tracing::info!("Found ${} node(s) for keyword ${}", 1, self.data.keyword);
 
-        CommandResult::Completed
+        CommandExecutionResult::Completed
     }
 
     fn core(&self) -> &CoreCommand {

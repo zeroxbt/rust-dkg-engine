@@ -1,6 +1,7 @@
 use blockchain::{
-    AskUpdatedFilter, BlockchainName, ContractName, EventLog, EventName, NodeAddedFilter,
-    NodeRemovedFilter, StakeIncreasedFilter,
+    AskUpdatedFilter, AssetStorageChangedFilter, BlockchainName, ContractChangedFilter,
+    ContractName, EventLog, EventName, NewAssetStorageFilter, NewContractFilter, NodeAddedFilter,
+    NodeRemovedFilter, StakeIncreasedFilter, StakeWithdrawalStartedFilter,
 };
 use chrono::DateTime;
 use std::{collections::HashMap, sync::Arc, vec};
@@ -8,11 +9,13 @@ use validation::HashFunction;
 
 use crate::context::Context;
 
-pub struct BlockchainEventHandler {
+const BLOCKCHAIN_EVENTS_FETCH_INTERVAL_SECONDS: u64 = 2;
+
+pub struct BlockchainEventController {
     context: Arc<Context>,
 }
 
-impl BlockchainEventHandler {
+impl BlockchainEventController {
     pub fn new(context: Arc<Context>) -> Self {
         Self { context }
     }
@@ -51,11 +54,15 @@ impl BlockchainEventHandler {
                 EventName::ServiceAgreementV1Extended,
                 EventName::ServiceAgreementV1Terminated,
             ],
+
+            ContractName::ContentAssetStorage => vec![],
         }
     }
 
     pub async fn handle_blockchain_events(&self) {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(2));
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(
+            BLOCKCHAIN_EVENTS_FETCH_INTERVAL_SECONDS,
+        ));
         loop {
             interval.tick().await;
             let blockchains = self.context.blockchain_manager().get_blockchain_names();
@@ -164,16 +171,36 @@ impl BlockchainEventHandler {
                 let handle = tokio::spawn(async move {
                     match event_log.event_name() {
                         EventName::NewContract => {
-                            tracing::debug!("Found NewContract event!");
+                            Self::handle_contract_changed(
+                                &context_clone,
+                                &blockchain_clone,
+                                event_log,
+                            )
+                            .await;
                         }
                         EventName::ContractChanged => {
-                            tracing::debug!("Found ContractChanged event!");
+                            Self::handle_contract_changed(
+                                &context_clone,
+                                &blockchain_clone,
+                                event_log,
+                            )
+                            .await;
                         }
                         EventName::NewAssetStorage => {
-                            tracing::debug!("Found NewAssetStorage event!");
+                            Self::handle_contract_changed(
+                                &context_clone,
+                                &blockchain_clone,
+                                event_log,
+                            )
+                            .await;
                         }
                         EventName::AssetStorageChanged => {
-                            tracing::debug!("Found AssetStorageChanged event!");
+                            Self::handle_contract_changed(
+                                &context_clone,
+                                &blockchain_clone,
+                                event_log,
+                            )
+                            .await;
                         }
                         EventName::NodeAdded => {
                             Self::handle_node_added(&context_clone, &blockchain_clone, event_log)
@@ -184,7 +211,7 @@ impl BlockchainEventHandler {
                                 .await;
                         }
                         EventName::StakeIncreased => {
-                            Self::handle_stake_increased(
+                            Self::handle_stake_updated(
                                 &context_clone,
                                 &blockchain_clone,
                                 event_log,
@@ -192,7 +219,12 @@ impl BlockchainEventHandler {
                             .await;
                         }
                         EventName::StakeWithdrawalStarted => {
-                            tracing::debug!("Found StakeWithdrawalStarted event!");
+                            Self::handle_stake_updated(
+                                &context_clone,
+                                &blockchain_clone,
+                                event_log,
+                            )
+                            .await;
                         }
                         EventName::AskUpdated => {
                             Self::handle_ask_updated(&context_clone, &blockchain_clone, event_log)
@@ -266,17 +298,25 @@ impl BlockchainEventHandler {
             .unwrap();
     }
 
-    async fn handle_stake_increased(
+    async fn handle_stake_updated(
         context: &Arc<Context>,
         blockchain: &BlockchainName,
         event_log: EventLog,
     ) {
-        let stake_increased_filter =
-            blockchain::utils::decode_event_log::<StakeIncreasedFilter>(event_log);
-        let peer_id_bytes = stake_increased_filter
-            .node_id
-            .into_iter()
-            .collect::<Vec<u8>>();
+        let (node_id, new_stake) = match event_log.event_name() {
+            EventName::StakeIncreased => {
+                let filter = blockchain::utils::decode_event_log::<StakeIncreasedFilter>(event_log);
+                (filter.node_id, filter.new_stake)
+            }
+            EventName::StakeWithdrawalStarted => {
+                let filter =
+                    blockchain::utils::decode_event_log::<StakeWithdrawalStartedFilter>(event_log);
+                (filter.node_id, filter.new_stake)
+            }
+            _ => panic!("Unexpected event name in handle stake updated log!"),
+        };
+
+        let peer_id_bytes = node_id.into_iter().collect::<Vec<u8>>();
         let peer_id = String::from_utf8(peer_id_bytes.clone()).unwrap();
 
         tracing::debug!(
@@ -290,7 +330,7 @@ impl BlockchainEventHandler {
             .update_peer_stake(
                 peer_id,
                 blockchain.as_str().to_owned(),
-                blockchain::utils::from_wei(&stake_increased_filter.new_stake.to_string()),
+                blockchain::utils::from_wei(&new_stake.to_string()),
             )
             .await
             .unwrap();
@@ -320,5 +360,45 @@ impl BlockchainEventHandler {
             )
             .await
             .unwrap();
+    }
+
+    async fn handle_contract_changed(
+        context: &Arc<Context>,
+        blockchain: &BlockchainName,
+        event_log: EventLog,
+    ) {
+        let (contract_name, new_contract_address) = match event_log.event_name() {
+            EventName::NewContract => {
+                let filter = blockchain::utils::decode_event_log::<NewContractFilter>(event_log);
+                (filter.contract_name, filter.new_contract_address)
+            }
+            EventName::ContractChanged => {
+                let filter =
+                    blockchain::utils::decode_event_log::<ContractChangedFilter>(event_log);
+                (filter.contract_name, filter.new_contract_address)
+            }
+            EventName::NewAssetStorage => {
+                let filter =
+                    blockchain::utils::decode_event_log::<NewAssetStorageFilter>(event_log);
+                (filter.contract_name, filter.new_contract_address)
+            }
+            EventName::AssetStorageChanged => {
+                let filter =
+                    blockchain::utils::decode_event_log::<AssetStorageChangedFilter>(event_log);
+                (filter.contract_name, filter.new_contract_address)
+            }
+            _ => panic!("Unexpected event name in handle stake updated log!"),
+        };
+
+        tracing::debug!(
+            "New contract address found for {}: {}",
+            contract_name,
+            new_contract_address
+        );
+
+        let _ = context
+            .blockchain_manager()
+            .re_initialize_contract(blockchain, contract_name, new_contract_address)
+            .await;
     }
 }

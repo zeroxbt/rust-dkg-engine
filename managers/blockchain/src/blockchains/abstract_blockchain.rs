@@ -1,3 +1,8 @@
+use crate::{
+    blockchains::blockchain_creator::{BlockchainProvider, Contracts},
+    utils::handle_contract_call,
+    BlockchainConfig, BlockchainName,
+};
 use async_trait::async_trait;
 use ethers::{
     abi::Address,
@@ -5,13 +10,8 @@ use ethers::{
     prelude::Contract,
     types::{Bytes, Filter, Log},
 };
-use std::sync::Arc;
-
-use crate::{
-    blockchains::blockchain_creator::{BlockchainProvider, Contracts},
-    utils::handle_contract_call,
-    BlockchainConfig, BlockchainName,
-};
+use std::{str::FromStr, sync::Arc};
+use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
 
@@ -28,6 +28,8 @@ pub enum BlockchainError {
     GetLogs,
     #[error("Failed to get block number")]
     GetBlockNumber,
+    #[error("Error: {0}")]
+    Custom(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -38,6 +40,7 @@ pub enum ContractName {
     Profile,
     CommitManagerV1U1,
     ServiceAgreementV1,
+    ContentAssetStorage,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -65,6 +68,24 @@ impl ContractName {
             ContractName::CommitManagerV1U1 => "CommitManagerV1U1",
             ContractName::ServiceAgreementV1 => "ServiceAgreementV1",
             ContractName::Profile => "Profile",
+            ContractName::ContentAssetStorage => "ContentAssetStorage",
+        }
+    }
+}
+
+impl FromStr for ContractName {
+    type Err = String; // You can use a more complex error type if needed
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Hub" => Ok(ContractName::Hub),
+            "ShardingTable" => Ok(ContractName::ShardingTable),
+            "Staking" => Ok(ContractName::Staking),
+            "Profile" => Ok(ContractName::Profile),
+            "CommitManagerV1U1" => Ok(ContractName::CommitManagerV1U1),
+            "ServiceAgreementV1" => Ok(ContractName::ServiceAgreementV1),
+            // ... other match arms for your variants
+            _ => Err(format!("'{}' is not a valid contract name", s)),
         }
     }
 }
@@ -121,8 +142,25 @@ pub trait AbstractBlockchain: Send + Sync {
     fn name(&self) -> &BlockchainName;
     fn config(&self) -> &BlockchainConfig;
     fn provider(&self) -> &Arc<BlockchainProvider>;
-    fn contracts(&self) -> &Contracts;
+    async fn contracts(&self) -> RwLockReadGuard<'_, Contracts>;
+    async fn contracts_mut(&self) -> RwLockWriteGuard<'_, Contracts>;
     fn set_identity_id(&mut self, id: u128);
+
+    async fn re_initialize_contract(
+        &self,
+        contract_name: String,
+        contract_address: Address,
+    ) -> Result<(), BlockchainError> {
+        let contract_name = contract_name
+            .parse::<ContractName>()
+            .map_err(BlockchainError::Custom)?;
+
+        let mut contracts = self.contracts_mut().await;
+
+        contracts
+            .replace_contract(self.provider(), contract_name, contract_address)
+            .await
+    }
 
     async fn get_block_number(&self) -> Result<u64, BlockchainError> {
         let block_number = self
@@ -141,7 +179,8 @@ pub trait AbstractBlockchain: Send + Sync {
         from_block: u64,
         current_block: u64,
     ) -> Result<Vec<EventLog>, BlockchainError> {
-        let contract = self.contracts().get(contract_name);
+        let contracts = self.contracts().await;
+        let contract = contracts.get(contract_name);
 
         let mut events = Vec::new();
         let mut from_block = from_block;
@@ -208,15 +247,15 @@ pub trait AbstractBlockchain: Send + Sync {
             return None;
         };
 
-        let result = Arc::new(
-            self.contracts()
-                .identity_storage()
-                .get_identity_id(evm_operational_address)
-                .call()
-                .await,
-        );
+        let contracts = self.contracts().await;
 
-        match *result {
+        let result = contracts
+            .identity_storage()
+            .get_identity_id(evm_operational_address)
+            .call()
+            .await;
+
+        match result {
             Ok(id) if id != 0 => Some(id),
             _ => None,
         }
@@ -238,7 +277,9 @@ pub trait AbstractBlockchain: Send + Sync {
         let shares_token_name = config.shares_token_name.to_string();
         let shares_token_symbol = config.shares_token_symbol.to_string();
 
-        let create_profile_call = self.contracts().profile().create_profile(
+        let contracts = self.contracts().await;
+
+        let create_profile_call = contracts.profile().create_profile(
             admin_wallet,
             peer_id_bytes,
             shares_token_name.clone(),

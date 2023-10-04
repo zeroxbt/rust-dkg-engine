@@ -6,7 +6,7 @@ use serde::{Deserialize, Deserializer};
 use std::env;
 use validation::ValidationManagerConfig;
 
-use crate::handlers::http_api_handler::http_api_router::HttpApiConfig;
+use crate::controllers::http_api_controller::http_api_router::HttpApiConfig;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {

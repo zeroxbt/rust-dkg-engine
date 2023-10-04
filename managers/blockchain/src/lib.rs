@@ -8,9 +8,12 @@ use blockchains::{
 pub use blockchains::{
     abstract_blockchain::{ContractName, EventLog, EventName},
     blockchain_creator::{
-        AskUpdatedFilter, NodeAddedFilter, NodeRemovedFilter, StakeIncreasedFilter,
+        AskUpdatedFilter, AssetStorageChangedFilter, ContractChangedFilter, NewAssetStorageFilter,
+        NewContractFilter, NodeAddedFilter, NodeRemovedFilter, StakeIncreasedFilter,
+        StakeWithdrawalStartedFilter,
     },
 };
+use ethers::types::Address;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -169,6 +172,19 @@ impl BlockchainManager {
             .get(blockchain)
             .unwrap()
             .get_block_number()
+            .await
+    }
+
+    pub async fn re_initialize_contract(
+        &self,
+        blockchain: &BlockchainName,
+        contract_name: String,
+        contract_address: Address,
+    ) -> Result<(), BlockchainError> {
+        self.blockchains
+            .get(blockchain)
+            .unwrap()
+            .re_initialize_contract(contract_name, contract_address)
             .await
     }
 }

@@ -1,3 +1,4 @@
+use crate::commands::dial_peers_command::DialPeersCommand;
 use crate::commands::find_nodes_command::FindNodesCommand;
 use crate::{commands::find_nodes_command::ProtocolOperation, context::Context};
 use axum::Json;
@@ -10,7 +11,7 @@ use uuid::Uuid;
 use validator::Validate;
 use validator_derive::Validate;
 
-pub struct PublishHandler;
+pub struct PublishController;
 
 #[derive(Deserialize, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
@@ -38,7 +39,7 @@ pub struct PublishResponse {
     operation_id: Uuid,
 }
 
-impl PublishHandler {
+impl PublishController {
     pub async fn handle_request(
         State(context): State<Arc<Context>>,
         Json(req): Json<PublishRequest>,
@@ -69,13 +70,7 @@ impl PublishHandler {
         tracing::info!("Scheduling dial peers command...");
         context
             .schedule_command_tx()
-            .send(Box::new(FindNodesCommand::new(
-                operation_id,
-                "".to_string(),
-                request.blockchain.clone(),
-                ProtocolOperation::Publish,
-                request.hash_function_id.unwrap_or(1),
-            )))
+            .send(Box::new(DialPeersCommand::default()))
             .await
             .unwrap();
 

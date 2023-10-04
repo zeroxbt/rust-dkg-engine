@@ -1,18 +1,12 @@
 use super::{
-    command::{AbstractCommand, CommandResult, CommandStatus},
-    dial_peers_command::DialPeersCommand,
-    find_nodes_command::FindNodesCommand,
-};
-use crate::{
-    commands::command::CommandName,
+    command::{AbstractCommand, CommandExecutionResult, CommandStatus},
     constants::{
         COMMAND_QUEUE_PARALLELISM, DEFAULT_COMMAND_REPEAT_INTERVAL_IN_MILLS,
         MAX_COMMAND_DELAY_IN_MILLS, PERMANENT_COMMANDS,
     },
-    context::Context,
 };
+use crate::{commands::command::ToCommand, context::Context};
 use futures::stream::{FuturesUnordered, StreamExt};
-use repository::models::command::Model;
 use std::{cmp::min, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, Mutex, Semaphore};
 
@@ -38,6 +32,7 @@ impl CommandExecutor {
     pub async fn execute_commands(&self) {
         let mut pending_tasks = FuturesUnordered::new();
 
+        self.schedule_default_commands().await;
         self.replay().await;
 
         loop {
@@ -53,6 +48,19 @@ impl CommandExecutor {
                     }
                 }
             }
+        }
+    }
+
+    async fn schedule_default_commands(&self) {
+        for command_name in PERMANENT_COMMANDS {
+            let Some(command) = command_name.to_command() else {
+                tracing::warn!(
+                    "Permanent command: {} has no default implementation!",
+                    command_name
+                );
+                continue;
+            };
+            self.add(command, 0, true).await.unwrap();
         }
     }
 
@@ -84,13 +92,12 @@ impl CommandExecutor {
         if delay > 0 {
             let process_command_tx = self.process_command_tx.clone();
 
-            // Spawn a new async task
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(delay)).await;
                 let _ = process_command_tx.send(command).await;
             });
 
-            Ok(()) // Return Ok immediately, without waiting for the delay
+            Ok(())
         } else {
             self.process_command_tx.send(command).await
         }
@@ -98,6 +105,7 @@ impl CommandExecutor {
 
     async fn execute(&self, command: Box<dyn AbstractCommand>) {
         let _ = self.semaphore.acquire().await.unwrap();
+
         let now = chrono::Utc::now().timestamp_millis();
 
         let command_core = command.core();
@@ -141,7 +149,7 @@ impl CommandExecutor {
         let result = command.execute(&self.context).await;
 
         match result {
-            CommandResult::Retry => {
+            CommandExecutionResult::Retry => {
                 let retries = command_core.retries;
 
                 if retries < 1 {
@@ -151,10 +159,10 @@ impl CommandExecutor {
 
                 command.retry_finished().await;
             }
-            CommandResult::Repeat => {
+            CommandExecutionResult::Repeat => {
                 self.handle_repeat(command).await;
             }
-            CommandResult::Completed => {
+            CommandExecutionResult::Completed => {
                 self.handle_completed(command).await;
             }
         }
@@ -205,7 +213,7 @@ impl CommandExecutor {
         self.context
             .repository_manager()
             .command_repository()
-            .create_command(&command.to_command())
+            .create_command(&command.to_model())
             .await
             .unwrap();
     }
@@ -220,27 +228,13 @@ impl CommandExecutor {
         self.context
             .repository_manager()
             .command_repository()
-            .update_command(
-                &command.to_command(),
-                new_status,
-                new_started_at,
-                new_retries,
-            )
+            .update_command(&command.to_model(), new_status, new_started_at, new_retries)
             .await
             .unwrap();
     }
 
-    async fn delete(&self, name: &str) {
-        self.context
-            .repository_manager()
-            .command_repository()
-            .destroy_command(name)
-            .await
-            .unwrap()
-    }
-
     async fn replay(&self) {
-        tracing::info!("Replay pending/started commands from the database...");
+        tracing::info!("Replaying pending/started commands from the repository...");
 
         let pending_commands = self
             .context
@@ -254,28 +248,10 @@ impl CommandExecutor {
             .await
             .unwrap();
 
-        tracing::debug!("found: {} commands to be replayed.", pending_commands.len());
-
         for model in pending_commands {
-            if let Some(command) = Self::model_to_command(model) {
-                tracing::debug!("Adding command: {:?}", command.core().name);
+            if let Some(command) = model.to_command() {
                 self.add(command, 0, false).await.unwrap();
             };
-            // Adjust as per your needs. The JS version checks for parentId and other stuff.
-        }
-    }
-
-    fn model_to_command(command_model: Model) -> Option<Box<dyn AbstractCommand>> {
-        let command_name = command_model.name.parse::<CommandName>().unwrap();
-
-        if PERMANENT_COMMANDS.contains(&command_name) {
-            return None;
-        }
-
-        match command_name {
-            CommandName::DialPeers => Some(Box::new(DialPeersCommand::from(command_model))),
-            CommandName::FindNodes => Some(Box::new(FindNodesCommand::from(command_model))),
-            CommandName::Default => None,
         }
     }
 }

@@ -6,10 +6,10 @@ use repositories::{
     blockchain_repository::BlockchainRepository, command_repository::CommandRepository,
     shard_repository::ShardRepository,
 };
-use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::Deserialize;
-use std::{error::Error, sync::Arc};
+use std::{error::Error, sync::Arc, time::Duration};
 
 use self::migrations::Migrator;
 
@@ -31,8 +31,14 @@ impl RepositoryManager {
         ))
         .await?;
 
+        let mut opt = ConnectOptions::new(config.connection_string());
+        opt.max_connections(config.max_connections)
+            .min_connections(config.min_connections)
+            .sqlx_logging(true)
+            .sqlx_logging_level(tracing::log::LevelFilter::Debug);
+
         // Establish connection to the specific database
-        let conn = Arc::new(Database::connect(&config.connection_string()).await?);
+        let conn = Arc::new(Database::connect(opt).await?);
 
         // Apply all pending migrations
         Migrator::up(conn.as_ref(), None).await?;
@@ -64,6 +70,8 @@ pub struct RepositoryManagerConfig {
     database: String,
     host: String,
     port: u16,
+    max_connections: u32,
+    min_connections: u32,
 }
 
 impl RepositoryManagerConfig {

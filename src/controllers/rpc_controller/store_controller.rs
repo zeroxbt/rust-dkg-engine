@@ -1,22 +1,29 @@
-use crate::handlers::rpc_handler::base_handler::BaseHandler;
+use std::sync::Arc;
+
+use crate::context::Context;
+use crate::controllers::rpc_controller::base_controller::BaseController;
 use async_trait::async_trait;
 use network::message::{
     MessageHeader, MessageType, RequestMessage, ResponseMessage, StoreInitResponseData,
     StoreMessageRequestData, StoreMessageResponseData, StoreRequestResponseData,
 };
-use network::{command::NetworkCommand, request_response, PeerId};
-use tokio::sync::mpsc::Sender;
+use network::{request_response, PeerId};
 
-pub struct StoreHandler;
+pub struct StoreController {
+    context: Arc<Context>,
+}
 
 #[async_trait]
-impl BaseHandler for StoreHandler {
+impl BaseController for StoreController {
     type RequestData = StoreMessageRequestData;
     type ResponseData = StoreMessageResponseData;
 
+    fn new(context: Arc<Context>) -> Self {
+        Self { context }
+    }
+
     async fn handle_request(
         &self,
-        network_command_tx: &Sender<NetworkCommand>,
         request: RequestMessage<Self::RequestData>,
         channel: request_response::ResponseChannel<ResponseMessage<Self::ResponseData>>,
         peer: PeerId,
@@ -45,18 +52,14 @@ impl BaseHandler for StoreHandler {
             data: response_data,
         };
 
-        network_command_tx
-            .send(network::command::NetworkCommand::StoreResponse { channel, message })
+        self.context
+            .network_action_tx()
+            .send(network::action::NetworkAction::StoreResponse { channel, message })
             .await
             .unwrap();
     }
 
-    async fn handle_response(
-        &self,
-        network_command_tx: &Sender<NetworkCommand>,
-        response: ResponseMessage<Self::ResponseData>,
-        peer: PeerId,
-    ) {
+    async fn handle_response(&self, response: ResponseMessage<Self::ResponseData>, peer: PeerId) {
         let ResponseMessage { data, .. } = response;
 
         match data {

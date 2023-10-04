@@ -8,11 +8,13 @@ use ethers::{
     providers::{Http, Provider},
     signers::{LocalWallet, Signer},
 };
-use std::str::FromStr;
 use std::sync::Arc;
+use std::{collections::HashMap, str::FromStr};
+
+use super::abstract_blockchain::BlockchainError;
 
 abigen!(Hub, "../../abi/Hub.json");
-// abigen!(ContentAssetStorage, "../../abi/ContentAssetStorage.json");
+abigen!(ContentAssetStorage, "../../abi/ContentAssetStorage.json");
 // abigen!(AssertionStorage, "../../abi/AssertionStorage.json");
 abigen!(Staking, "../../abi/Staking.json");
 // abigen!(StakingStorage, "../../abi/StakingStorage.json");
@@ -44,7 +46,7 @@ pub type BlockchainProvider = NonceManagerMiddleware<SignerMiddleware<Provider<H
 
 pub struct Contracts {
     hub: Hub<BlockchainProvider>,
-    // content_asset_storage: ContentAssetStorage<BlockchainProvider>,
+    content_asset_storages: HashMap<Address, ContentAssetStorage<BlockchainProvider>>,
     //  assertion_storage: AssertionStorage<BlockchainProvider>,
     staking: Staking<BlockchainProvider>,
     //  staking_storage: StakingStorage<BlockchainProvider>,
@@ -84,7 +86,46 @@ impl Contracts {
             ContractName::CommitManagerV1U1 => &self.commit_manager_v1_u1,
             ContractName::Profile => &self.profile,
             ContractName::ServiceAgreementV1 => &self.service_agreement_v1,
+            _ => panic!("Unexpected contract"),
         }
+    }
+
+    pub async fn replace_contract(
+        &mut self,
+        provider: &Arc<BlockchainProvider>,
+        contract_name: ContractName,
+        contract_address: Address,
+    ) -> Result<(), BlockchainError> {
+        match contract_name {
+            ContractName::Profile => {
+                self.profile = Profile::new(contract_address, Arc::clone(provider))
+            }
+            ContractName::ShardingTable => {
+                self.sharding_table = ShardingTable::new(contract_address, Arc::clone(provider))
+            }
+            ContractName::Hub => {
+                self.hub = Hub::new(contract_address, Arc::clone(provider));
+            }
+            ContractName::Staking => {
+                self.staking = Staking::new(contract_address, Arc::clone(provider));
+            }
+            ContractName::CommitManagerV1U1 => {
+                self.commit_manager_v1_u1 =
+                    CommitManagerV1U1::new(contract_address, Arc::clone(provider));
+            }
+            ContractName::ServiceAgreementV1 => {
+                self.service_agreement_v1 =
+                    ServiceAgreementV1::new(contract_address, Arc::clone(provider));
+            }
+            ContractName::ContentAssetStorage => {
+                self.content_asset_storages.insert(
+                    contract_address,
+                    ContentAssetStorage::new(contract_address, Arc::clone(provider)),
+                );
+            }
+        };
+
+        Ok(())
     }
 }
 
@@ -142,18 +183,26 @@ pub trait BlockchainCreator {
         provider: &Arc<BlockchainProvider>,
     ) -> Contracts {
         let address = config.hub_contract_address.parse::<Address>().unwrap();
-
         let hub = Hub::new(address, provider.clone());
+
+        let asset_storages_addresses = hub.get_all_asset_storages().call().await.unwrap();
+
+        let content_asset_storages: HashMap<Address, ContentAssetStorage<BlockchainProvider>> =
+            asset_storages_addresses
+                .iter()
+                .filter_map(|contract| match contract.name.parse::<ContractName>() {
+                    Ok(ContractName::ContentAssetStorage) => Some((
+                        contract.addr,
+                        ContentAssetStorage::new(contract.addr, Arc::clone(provider)),
+                    )),
+                    _ => None,
+                })
+                .collect();
 
         Contracts {
             hub: hub.clone(),
-            /* content_asset_storage: ContentAssetStorage::new(
-                hub.get_asset_storage_address("ContentAssetStorage".to_string())
-                    .call()
-                    .await
-                    .unwrap(),
-                Arc::clone(provider),
-            ),
+            content_asset_storages,
+            /*
             assertion_storage: AssertionStorage::new(
                 hub.get_contract_address("AssertionStorage".to_string())
                     .call()

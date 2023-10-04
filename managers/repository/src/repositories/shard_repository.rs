@@ -2,7 +2,11 @@ use crate::models::shard::{ActiveModel, Column, Entity, Model};
 use chrono::Duration;
 use sea_orm::error::DbErr;
 use sea_orm::prelude::DateTimeUtc;
-use sea_orm::{ActiveModelTrait, ActiveValue, ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
+use sea_orm::sea_query::Expr;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue, ColumnTrait, EntityTrait, QueryFilter, QuerySelect,
+    UpdateResult, Value,
+};
 use sea_orm::{DatabaseConnection, DbBackend, Statement};
 use sea_orm::{PaginatorTrait, QueryOrder};
 use std::sync::Arc;
@@ -182,17 +186,13 @@ impl ShardRepository {
         &self,
         peer_id: String,
         timestamp: DateTimeUtc,
-    ) -> Result<(), DbErr> {
-        ActiveModel {
-            peer_id: ActiveValue::Set(peer_id),
-            last_dialed: ActiveValue::Set(timestamp),
-            last_seen: ActiveValue::Set(timestamp),
-            ..Default::default()
-        }
-        .update(self.conn.as_ref())
-        .await?;
-
-        Ok(())
+    ) -> Result<UpdateResult, DbErr> {
+        Entity::update_many()
+            .col_expr(Column::LastSeen, Expr::value::<DateTimeUtc>(timestamp))
+            .col_expr(Column::LastDialed, Expr::value::<DateTimeUtc>(timestamp))
+            .filter(Column::PeerId.eq(peer_id))
+            .exec(self.conn.as_ref())
+            .await
     }
 
     pub async fn clean_sharding_table(&self, blockchain_id: Option<String>) -> Result<(), DbErr> {

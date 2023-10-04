@@ -6,6 +6,11 @@ use serde_json::Value;
 use std::{fmt, str::FromStr, sync::Arc};
 use uuid::Uuid;
 
+use super::{
+    constants::PERMANENT_COMMANDS, dial_peers_command::DialPeersCommand,
+    find_nodes_command::FindNodesCommand,
+};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CommandName {
     Default,
@@ -35,7 +40,7 @@ impl FromStr for CommandName {
     }
 }
 
-pub enum CommandResult {
+pub enum CommandExecutionResult {
     Completed,
     Repeat,
     Retry,
@@ -147,19 +152,51 @@ impl Default for CoreCommand {
     }
 }
 
+pub trait ToCommand {
+    fn to_command(&self) -> Option<Box<dyn AbstractCommand>>;
+}
+
+impl ToCommand for command::Model {
+    fn to_command(&self) -> Option<Box<dyn AbstractCommand>> {
+        let command_name = self.name.parse::<CommandName>().unwrap();
+
+        if PERMANENT_COMMANDS.contains(&command_name) {
+            return None;
+        }
+
+        match command_name {
+            CommandName::DialPeers => Some(Box::new(DialPeersCommand::from(self.to_owned()))),
+            CommandName::FindNodes => Some(Box::new(FindNodesCommand::from(self.to_owned()))),
+            CommandName::Default => None,
+        }
+    }
+}
+
+impl ToCommand for CommandName {
+    fn to_command(&self) -> Option<Box<dyn AbstractCommand>> {
+        match self {
+            CommandName::DialPeers => Some(Box::<DialPeersCommand>::default()),
+            _ => panic!(
+                "Default trait not implemented for command with name {}",
+                self
+            ),
+        }
+    }
+}
+
 #[async_trait]
 pub trait AbstractCommand: Send + Sync {
-    async fn execute(&self, context: &Arc<Context>) -> CommandResult;
+    async fn execute(&self, context: &Arc<Context>) -> CommandExecutionResult;
 
-    async fn recover(&self) -> CommandResult {
+    async fn recover(&self) -> CommandExecutionResult {
         self.handle_error().await
     }
 
-    async fn handle_error(&self) -> CommandResult {
+    async fn handle_error(&self) -> CommandExecutionResult {
         // TODO: add error handling
         tracing::error!("Command error (): ");
 
-        CommandResult::Completed
+        CommandExecutionResult::Completed
     }
 
     async fn retry_finished(&self) {
@@ -170,7 +207,7 @@ pub trait AbstractCommand: Send + Sync {
 
     fn json_data(&self) -> Value;
 
-    fn to_command(&self) -> command::Model {
+    fn to_model(&self) -> command::Model {
         let core = self.core();
         command::Model {
             id: core.id.hyphenated().to_string(),

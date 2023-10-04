@@ -1,11 +1,14 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use network::message::{RequestMessage, ResponseMessage};
-use network::{command::NetworkCommand, request_response, PeerId};
-use tokio::sync::mpsc::Sender;
+use network::{request_response, PeerId};
 use tracing::info;
 
+use crate::context::Context;
+
 #[async_trait]
-pub trait BaseHandler
+pub trait BaseController
 where
     Self::RequestData: std::fmt::Debug,
     Self::ResponseData: std::fmt::Debug,
@@ -13,24 +16,19 @@ where
     type RequestData: Send;
     type ResponseData: Send;
 
+    fn new(context: Arc<Context>) -> Self;
+
     async fn handle_request(
         &self,
-        network_manager: &Sender<NetworkCommand>,
         request: RequestMessage<Self::RequestData>,
         channel: request_response::ResponseChannel<ResponseMessage<Self::ResponseData>>,
         peer: PeerId,
     );
 
-    async fn handle_response(
-        &self,
-        network_manager: &Sender<NetworkCommand>,
-        response: ResponseMessage<Self::ResponseData>,
-        peer: PeerId,
-    );
+    async fn handle_response(&self, response: ResponseMessage<Self::ResponseData>, peer: PeerId);
 
     async fn handle_message(
         &self,
-        network_manager: &Sender<NetworkCommand>,
         message: request_response::Message<
             RequestMessage<Self::RequestData>,
             ResponseMessage<Self::ResponseData>,
@@ -42,12 +40,11 @@ where
                 request, channel, ..
             } => {
                 info!("Received message: {:?} from peer: {:?}", request, peer);
-                self.handle_request(network_manager, request, channel, peer)
-                    .await;
+                self.handle_request(request, channel, peer).await;
             }
             request_response::Message::Response { response, .. } => {
                 info!("Received response: {:?} from peer: {:?}", response, peer);
-                self.handle_response(network_manager, response, peer).await;
+                self.handle_response(response, peer).await;
             }
         }
     }
