@@ -126,11 +126,13 @@ impl NetworkManager {
         let _ = locked_swarm.behaviour_mut().kad.bootstrap();
     }
 
-    pub async fn handle_swarm_events(
+    pub async fn listen_and_handle_swarm_events(
         &self,
         mut command_rx: Receiver<NetworkAction>,
         event_tx: Sender<NetworkEvent>,
     ) {
+        self.start_listening().await;
+
         let mut locked_swarm = self.swarm.lock().await;
         loop {
             tokio::select! {

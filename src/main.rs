@@ -65,32 +65,35 @@ async fn main() {
 
     let cloned_command_executor = Arc::clone(&command_executor);
 
-    let cloned_network_manager = Arc::clone(&network_manager);
-
     let schedule_commands_task = tokio::task::spawn(async move {
         cloned_command_executor
-            .schedule_commands(schedule_command_rx)
+            .listen_and_schedule_commands(schedule_command_rx)
             .await
     });
 
+    blockchain_event_controller
+        .retrieve_and_handle_unprocessed_events()
+        .await;
+
     let execute_commands_task =
-        tokio::task::spawn(async move { command_executor.execute_commands().await });
+        tokio::task::spawn(async move { command_executor.listen_and_execute_commands().await });
 
     let handle_blockchain_events_task =
         tokio::task::spawn(
-            async move { blockchain_event_controller.handle_blockchain_events().await },
+            async move { blockchain_event_controller.listen_and_handle_events().await },
         );
 
-    let handle_network_events_task =
-        tokio::task::spawn(async move { rpc_router.handle_network_events(network_event_rx).await });
+    let handle_network_events_task = tokio::task::spawn(async move {
+        rpc_router
+            .listen_and_handle_network_events(network_event_rx)
+            .await
+    });
     let handle_http_events_task =
-        tokio::task::spawn(async move { http_api_router.handle_http_requests().await });
-
-    cloned_network_manager.start_listening().await;
+        tokio::task::spawn(async move { http_api_router.listen_and_handle_http_requests().await });
 
     let handle_swarm_events_task = tokio::task::spawn(async move {
         network_manager
-            .handle_swarm_events(network_action_rx, network_event_tx)
+            .listen_and_handle_swarm_events(network_action_rx, network_event_tx)
             .await;
     });
 

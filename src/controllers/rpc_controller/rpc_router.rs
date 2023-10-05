@@ -32,7 +32,10 @@ impl RpcRouter {
         }
     }
 
-    pub async fn handle_network_events(&self, mut network_event_rx: Receiver<NetworkEvent>) {
+    pub async fn listen_and_handle_network_events(
+        &self,
+        mut network_event_rx: Receiver<NetworkEvent>,
+    ) {
         let mut pending_tasks = FuturesUnordered::new();
 
         loop {

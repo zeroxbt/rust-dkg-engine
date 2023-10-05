@@ -1,8 +1,8 @@
 use super::{
     command::{AbstractCommand, CommandExecutionResult, CommandStatus},
     constants::{
-        COMMAND_QUEUE_PARALLELISM, DEFAULT_COMMAND_REPEAT_INTERVAL_IN_MILLS,
-        MAX_COMMAND_DELAY_IN_MILLS, PERMANENT_COMMANDS,
+        COMMAND_QUEUE_PARALLELISM, DEFAULT_COMMAND_DELAY_MS, DEFAULT_COMMAND_REPEAT_INTERVAL_MS,
+        MAX_COMMAND_DELAY_MS, PERMANENT_COMMANDS,
     },
 };
 use crate::{commands::command::ToCommand, context::Context};
@@ -29,7 +29,7 @@ impl CommandExecutor {
         }
     }
 
-    pub async fn execute_commands(&self) {
+    pub async fn listen_and_execute_commands(&self) {
         let mut pending_tasks = FuturesUnordered::new();
 
         self.schedule_default_commands().await;
@@ -60,11 +60,13 @@ impl CommandExecutor {
                 );
                 continue;
             };
-            self.add(command, 0, true).await.unwrap();
+            self.add(command, DEFAULT_COMMAND_DELAY_MS, true)
+                .await
+                .unwrap();
         }
     }
 
-    pub async fn schedule_commands(
+    pub async fn listen_and_schedule_commands(
         &self,
         mut schedule_command_rx: mpsc::Receiver<Box<dyn AbstractCommand>>,
     ) {
@@ -83,7 +85,7 @@ impl CommandExecutor {
         delay: i64,
         insert: bool,
     ) -> Result<(), mpsc::error::SendError<Box<dyn AbstractCommand>>> {
-        let delay = min(delay as u64, MAX_COMMAND_DELAY_IN_MILLS as u64);
+        let delay = min(delay as u64, MAX_COMMAND_DELAY_MS as u64);
 
         if insert {
             self.insert(command.as_ref()).await;
@@ -194,7 +196,7 @@ impl CommandExecutor {
         let period = command
             .core()
             .period
-            .unwrap_or(DEFAULT_COMMAND_REPEAT_INTERVAL_IN_MILLS);
+            .unwrap_or(DEFAULT_COMMAND_REPEAT_INTERVAL_MS);
 
         self.add(command, period, false).await.unwrap();
     }

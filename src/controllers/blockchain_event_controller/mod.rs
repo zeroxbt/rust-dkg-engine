@@ -9,7 +9,7 @@ use validation::HashFunction;
 
 use crate::context::Context;
 
-const BLOCKCHAIN_EVENTS_FETCH_INTERVAL_SECONDS: u64 = 2;
+const EVENT_FETCH_INTERVAL_SEC: u64 = 2;
 
 pub struct BlockchainEventController {
     context: Arc<Context>,
@@ -59,30 +59,32 @@ impl BlockchainEventController {
         }
     }
 
-    pub async fn handle_blockchain_events(&self) {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(
-            BLOCKCHAIN_EVENTS_FETCH_INTERVAL_SECONDS,
-        ));
+    pub async fn listen_and_handle_events(&self) {
+        let mut interval =
+            tokio::time::interval(tokio::time::Duration::from_secs(EVENT_FETCH_INTERVAL_SEC));
         loop {
             interval.tick().await;
-            let blockchains = self.context.blockchain_manager().get_blockchain_names();
-            let mut handles = Vec::new();
-
-            for blockchain in blockchains {
-                let context_clone = Arc::clone(&self.context);
-                let blockchain = blockchain.clone();
-
-                let handle = tokio::spawn(async move {
-                    let event_logs =
-                        Self::get_blockchain_event_logs(&context_clone, &blockchain).await;
-                    Self::process_event_logs(&context_clone, blockchain, event_logs).await;
-                });
-
-                handles.push(handle);
-            }
-
-            futures::future::join_all(handles).await;
+            self.retrieve_and_handle_unprocessed_events().await
         }
+    }
+
+    pub async fn retrieve_and_handle_unprocessed_events(&self) {
+        let blockchains = self.context.blockchain_manager().get_blockchain_names();
+        let mut handles = Vec::new();
+
+        for blockchain in blockchains {
+            let context_clone = Arc::clone(&self.context);
+            let blockchain = blockchain.clone();
+
+            let handle = tokio::spawn(async move {
+                let event_logs = Self::get_blockchain_event_logs(&context_clone, &blockchain).await;
+                Self::process_event_logs(&context_clone, blockchain, event_logs).await;
+            });
+
+            handles.push(handle);
+        }
+
+        futures::future::join_all(handles).await;
     }
 
     async fn get_blockchain_event_logs(

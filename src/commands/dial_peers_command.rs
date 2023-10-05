@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 
-const DIAL_PEERS_FREQUENCY_MILLS: i64 = 30_000;
-const DIAL_PEERS_CONCURRENCY: usize = 5;
-const MIN_DIAL_FREQUENCY_MILLIS: i64 = 60 * 60 * 1000;
+const DIAL_PEERS_COMMAND_PERIOD_MS: i64 = 30_000;
+const DIAL_CONCURRENCY: usize = 5;
+const MIN_DIAL_FREQUENCY_PER_PEER_MS: i64 = 60 * 60 * 1000;
 
 #[derive(Clone)]
 pub struct DialPeersCommand {
@@ -28,7 +28,7 @@ impl AbstractCommand for DialPeersCommand {
         let potential_peer_ids = context
             .repository_manager()
             .shard_repository()
-            .get_peers_to_dial(DIAL_PEERS_CONCURRENCY, MIN_DIAL_FREQUENCY_MILLIS)
+            .get_peers_to_dial(DIAL_CONCURRENCY, MIN_DIAL_FREQUENCY_PER_PEER_MS)
             .await
             .unwrap();
 
@@ -80,7 +80,7 @@ impl Default for DialPeersCommand {
         Self {
             core: CoreCommand {
                 name: CommandName::DialPeers,
-                period: Some(DIAL_PEERS_FREQUENCY_MILLS),
+                period: Some(DIAL_PEERS_COMMAND_PERIOD_MS),
                 ..CoreCommand::default()
             },
             data: DialPeersCommandData {},

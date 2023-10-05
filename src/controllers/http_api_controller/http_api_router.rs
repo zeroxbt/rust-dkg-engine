@@ -42,7 +42,7 @@ impl HttpApiRouter {
         }
     }
 
-    pub async fn handle_http_requests(&self) {
+    pub async fn listen_and_handle_http_requests(&self) {
         let addr = ([127, 0, 0, 1], self.config.port).into();
 
         let cloned_router_for_serve = self.router.lock().await.clone(); // Clone it while locked
