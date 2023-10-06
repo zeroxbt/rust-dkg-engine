@@ -6,6 +6,7 @@ members = [
     "./managers/blockchain",
     "./managers/validation",
     "./tools/local_network",
+    "./rdf-canonize",
     "./scripts"
 ]
 
@@ -19,6 +20,7 @@ blockchain = { path = "./managers/blockchain" }
 network = { path = "./managers/network" }
 repository = { path = "./managers/repository" }
 validation = { path = "./managers/validation" }
+rdf-canonize = {path = "./rdf-canonize"}
 tokio = {version = "1.32.0", features = ["full"]}
 futures = "0.3.28"
 async-trait = "0.1.73"
