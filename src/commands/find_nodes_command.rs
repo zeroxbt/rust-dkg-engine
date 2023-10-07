@@ -1,26 +1,12 @@
-use super::command::CommandName;
-use crate::commands::command::{AbstractCommand, CommandExecutionResult, CoreCommand};
+use super::command::{Command, CommandData};
+use super::command_handler::{CommandExecutionResult, CommandHandler};
 use crate::context::Context;
+use crate::services::publish_service::ProtocolOperation;
 use async_trait::async_trait;
 use blockchain::BlockchainName;
-use repository::models::command;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
-
-#[derive(Clone)]
-pub struct FindNodesCommand {
-    core: CoreCommand,
-    data: FindNodesCommandData,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ProtocolOperation {
-    Publish,
-    Get,
-    Update,
-}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct FindNodesCommandData {
@@ -31,31 +17,7 @@ pub struct FindNodesCommandData {
     hash_function_id: i32,
 }
 
-#[async_trait]
-impl AbstractCommand for FindNodesCommand {
-    async fn execute(&self, context: &Arc<Context>) -> CommandExecutionResult {
-        tracing::info!(
-            "Searching for closest nodes for keyword: {}",
-            self.data.keyword
-        );
-
-        // TODO: implement this
-
-        tracing::info!("Found ${} node(s) for keyword ${}", 1, self.data.keyword);
-
-        CommandExecutionResult::Completed
-    }
-
-    fn core(&self) -> &CoreCommand {
-        &self.core
-    }
-
-    fn json_data(&self) -> Value {
-        serde_json::to_value(&self.data).unwrap()
-    }
-}
-
-impl FindNodesCommand {
+impl FindNodesCommandData {
     pub fn new(
         operation_id: Uuid,
         keyword: String,
@@ -64,26 +26,49 @@ impl FindNodesCommand {
         hash_function_id: i32,
     ) -> Self {
         Self {
-            core: CoreCommand {
-                name: CommandName::FindNodes,
-                ..CoreCommand::default()
-            },
-            data: FindNodesCommandData {
-                operation_id,
-                keyword,
-                blockchain,
-                operation,
-                hash_function_id,
-            },
+            operation_id,
+            keyword,
+            blockchain,
+            operation,
+            hash_function_id,
         }
     }
 }
 
-impl From<command::Model> for FindNodesCommand {
-    fn from(model: command::Model) -> Self {
-        Self {
-            core: CoreCommand::from_model(model.clone()),
-            data: serde_json::from_value(model.data).unwrap(),
-        }
+pub struct FindNodesCommandHandler {
+    context: Arc<Context>,
+}
+
+impl FindNodesCommandHandler {
+    pub fn new(context: Arc<Context>) -> Self {
+        Self { context }
+    }
+}
+
+#[async_trait]
+impl CommandHandler for FindNodesCommandHandler {
+    async fn execute(&self, command: &Command) -> CommandExecutionResult {
+        let data = match &command.data {
+            CommandData::FindNodes(data) => data,
+            _ => panic!("Unable to handle command data."),
+        };
+
+        tracing::info!("Searching for closest nodes for keyword: {}", data.keyword);
+
+        let peers = self
+            .context
+            .repository_manager()
+            .shard_repository()
+            .get_all_peer_records(data.blockchain.as_str(), true)
+            .await
+            .unwrap();
+
+        tracing::info!(
+            "Found ${} node(s) for keyword ${}",
+            peers.len(),
+            data.keyword
+        );
+
+        CommandExecutionResult::Completed
     }
 }

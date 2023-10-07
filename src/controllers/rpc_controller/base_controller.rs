@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -8,13 +9,9 @@ use tracing::info;
 use crate::context::Context;
 
 #[async_trait]
-pub trait BaseController
-where
-    Self::RequestData: std::fmt::Debug,
-    Self::ResponseData: std::fmt::Debug,
-{
-    type RequestData: Send;
-    type ResponseData: Send;
+pub trait BaseController {
+    type RequestData: Send + Debug;
+    type ResponseData: Send + Debug;
 
     fn new(context: Arc<Context>) -> Self;
 

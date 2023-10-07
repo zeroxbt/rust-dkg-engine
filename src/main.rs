@@ -2,9 +2,10 @@ mod commands;
 mod config;
 mod context;
 mod controllers;
+mod services;
 
 use blockchain::BlockchainManager;
-use commands::command::AbstractCommand;
+use commands::command::Command;
 use commands::command_executor::CommandExecutor;
 use config::ManagersConfig;
 use context::Context;
@@ -17,7 +18,7 @@ use network::action::NetworkAction;
 use network::NetworkEvent;
 use network::NetworkManager;
 use repository::RepositoryManager;
-use std::process::Command;
+use std::process::Command as ProcessCommand;
 use std::sync::Arc;
 use tokio::join;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -139,13 +140,12 @@ fn initialize_channels() -> (
     Receiver<NetworkAction>,
     Sender<NetworkEvent>,
     Receiver<NetworkEvent>,
-    Sender<Box<dyn AbstractCommand>>,
-    Receiver<Box<dyn AbstractCommand>>,
+    Sender<Command>,
+    Receiver<Command>,
 ) {
     let (network_action_tx, network_action_rx) = tokio::sync::mpsc::channel::<NetworkAction>(1000);
     let (network_event_tx, network_event_rx) = tokio::sync::mpsc::channel::<NetworkEvent>(1000);
-    let (schedule_command_tx, schedule_command_rx) =
-        tokio::sync::mpsc::channel::<Box<dyn AbstractCommand>>(1000);
+    let (schedule_command_tx, schedule_command_rx) = tokio::sync::mpsc::channel::<Command>(1000);
 
     (
         network_action_tx,
@@ -215,7 +215,7 @@ async fn initialize_dev_environment(blockchain_manager: &Arc<BlockchainManager>)
                 config.hub_contract_address()
             );
 
-        let status = Command::new("sh")
+        let status = ProcessCommand::new("sh")
             .arg("-c")
             .arg(stake_command)
             .status()
@@ -226,7 +226,7 @@ async fn initialize_dev_environment(blockchain_manager: &Arc<BlockchainManager>)
             "set-stake command did not complete successfully."
         );
 
-        let status = Command::new("sh")
+        let status = ProcessCommand::new("sh")
             .arg("-c")
             .arg(ask_command)
             .status()

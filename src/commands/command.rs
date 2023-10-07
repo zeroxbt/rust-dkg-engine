@@ -1,14 +1,13 @@
-use crate::context::Context;
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use repository::models::command;
+use repository::models::command::{self, Model};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{fmt, str::FromStr, sync::Arc};
+use std::{fmt, str::FromStr};
 use uuid::Uuid;
 
 use super::{
-    constants::PERMANENT_COMMANDS, dial_peers_command::DialPeersCommand,
-    find_nodes_command::FindNodesCommand,
+    dial_peers_command::{DialPeersCommandData, DialPeersCommandHandler},
+    find_nodes_command::FindNodesCommandData,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -16,6 +15,18 @@ pub enum CommandName {
     Default,
     DialPeers,
     FindNodes,
+}
+
+impl CommandName {
+    pub fn to_command(&self) -> Option<Command> {
+        match self {
+            CommandName::DialPeers => Some(DialPeersCommandHandler::create_default_command()),
+            _ => panic!(
+                "Default trait not implemented for command with name {}",
+                self
+            ),
+        }
+    }
 }
 
 impl fmt::Display for CommandName {
@@ -38,12 +49,6 @@ impl FromStr for CommandName {
             _ => Err(()),
         }
     }
-}
-
-pub enum CommandExecutionResult {
-    Completed,
-    Repeat,
-    Retry,
 }
 
 #[derive(Debug, Clone)]
@@ -86,8 +91,15 @@ impl FromStr for CommandStatus {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct CoreCommand {
+#[derive(Serialize, Deserialize, Clone)]
+pub enum CommandData {
+    FindNodes(FindNodesCommandData),
+    DialPeers(DialPeersCommandData),
+    Empty,
+}
+
+#[derive(Clone)]
+pub struct Command {
     pub id: Uuid,
     pub name: CommandName,
     pub sequence: Option<Value>,
@@ -103,10 +115,11 @@ pub struct CoreCommand {
     pub transactional: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub data: CommandData,
 }
 
-impl CoreCommand {
-    pub fn from_model(model: command::Model) -> Self {
+impl From<Model> for Command {
+    fn from(model: command::Model) -> Self {
         Self {
             id: uuid::Uuid::from_str(model.id.as_str()).unwrap(),
             name: model.name.parse().unwrap(),
@@ -125,11 +138,46 @@ impl CoreCommand {
             transactional: model.transactional,
             created_at: model.created_at,
             updated_at: model.updated_at,
+            data: serde_json::from_value(model.data).unwrap(),
         }
     }
 }
 
-impl Default for CoreCommand {
+impl Command {
+    pub fn new(name: CommandName, data: CommandData, retries: i32, period: Option<i64>) -> Self {
+        Self {
+            name,
+            period,
+            retries,
+            data,
+            ..Self::default()
+        }
+    }
+    pub fn to_model(&self) -> Model {
+        Model {
+            id: self.id.hyphenated().to_string(),
+            name: self.name.to_string(),
+            data: serde_json::to_value(self.data.clone())
+                .expect("Failed to convert command data to Value"),
+            sequence: serde_json::to_value(&self.sequence)
+                .expect("Failed to convert command sequence to Value"),
+            ready_at: self.ready_at,
+            delay: self.delay,
+            started_at: self.started_at,
+            deadline_at: self.deadline_at,
+            period: self.period,
+            status: self.status.to_string(),
+            message: self.message.clone(),
+            parent_id: self.parent_id.map(|uuid| uuid.hyphenated().to_string()),
+            transactional: self.transactional,
+            retries: self.retries,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        }
+    }
+}
+
+impl Default for Command {
     fn default() -> Self {
         let now = Utc::now();
         Self {
@@ -148,86 +196,7 @@ impl Default for CoreCommand {
             transactional: false,
             created_at: now,
             updated_at: now,
-        }
-    }
-}
-
-pub trait ToCommand {
-    fn to_command(&self) -> Option<Box<dyn AbstractCommand>>;
-}
-
-impl ToCommand for command::Model {
-    fn to_command(&self) -> Option<Box<dyn AbstractCommand>> {
-        let command_name = self.name.parse::<CommandName>().unwrap();
-
-        if PERMANENT_COMMANDS.contains(&command_name) {
-            return None;
-        }
-
-        match command_name {
-            CommandName::DialPeers => Some(Box::new(DialPeersCommand::from(self.to_owned()))),
-            CommandName::FindNodes => Some(Box::new(FindNodesCommand::from(self.to_owned()))),
-            CommandName::Default => None,
-        }
-    }
-}
-
-impl ToCommand for CommandName {
-    fn to_command(&self) -> Option<Box<dyn AbstractCommand>> {
-        match self {
-            CommandName::DialPeers => Some(Box::<DialPeersCommand>::default()),
-            _ => panic!(
-                "Default trait not implemented for command with name {}",
-                self
-            ),
-        }
-    }
-}
-
-#[async_trait]
-pub trait AbstractCommand: Send + Sync {
-    async fn execute(&self, context: &Arc<Context>) -> CommandExecutionResult;
-
-    async fn recover(&self) -> CommandExecutionResult {
-        self.handle_error().await
-    }
-
-    async fn handle_error(&self) -> CommandExecutionResult {
-        // TODO: add error handling
-        tracing::error!("Command error (): ");
-
-        CommandExecutionResult::Completed
-    }
-
-    async fn retry_finished(&self) {
-        tracing::trace!("Max retry count for command reached!");
-    }
-
-    fn core(&self) -> &CoreCommand;
-
-    fn json_data(&self) -> Value;
-
-    fn to_model(&self) -> command::Model {
-        let core = self.core();
-        command::Model {
-            id: core.id.hyphenated().to_string(),
-            name: core.name.to_string(),
-            data: serde_json::to_value(self.json_data())
-                .expect("Failed to convert command data to Value"),
-            sequence: serde_json::to_value(&core.sequence)
-                .expect("Failed to convert command sequence to Value"),
-            ready_at: core.ready_at,
-            delay: core.delay,
-            started_at: core.started_at,
-            deadline_at: core.deadline_at,
-            period: core.period,
-            status: core.status.to_string(),
-            message: core.message.clone(),
-            parent_id: core.parent_id.map(|uuid| uuid.hyphenated().to_string()),
-            transactional: core.transactional,
-            retries: core.retries,
-            created_at: core.created_at,
-            updated_at: core.updated_at,
+            data: CommandData::Empty,
         }
     }
 }

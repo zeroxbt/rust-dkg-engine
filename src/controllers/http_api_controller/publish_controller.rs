@@ -1,6 +1,6 @@
-use crate::commands::dial_peers_command::DialPeersCommand;
-use crate::commands::find_nodes_command::FindNodesCommand;
-use crate::{commands::find_nodes_command::ProtocolOperation, context::Context};
+use crate::commands::command::{Command, CommandData, CommandName};
+use crate::commands::dial_peers_command::DialPeersCommandData;
+use crate::{context::Context, services::publish_service::ProtocolOperation};
 use axum::Json;
 use axum::{extract::State, response::IntoResponse};
 use blockchain::BlockchainName;
@@ -70,7 +70,12 @@ impl PublishController {
         tracing::info!("Scheduling dial peers command...");
         context
             .schedule_command_tx()
-            .send(Box::new(DialPeersCommand::default()))
+            .send(Command::new(
+                CommandName::DialPeers,
+                CommandData::Empty,
+                0,
+                None,
+            ))
             .await
             .unwrap();
 

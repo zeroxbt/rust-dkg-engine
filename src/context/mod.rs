@@ -6,12 +6,12 @@ use repository::RepositoryManager;
 use tokio::sync::mpsc::Sender;
 use validation::ValidationManager;
 
-use crate::{commands::command::AbstractCommand, config::Config};
+use crate::{commands::command::Command, config::Config};
 
 pub struct Context {
     config: Arc<Config>,
     network_action_tx: Sender<NetworkAction>,
-    schedule_command_tx: Sender<Box<dyn AbstractCommand>>,
+    schedule_command_tx: Sender<Command>,
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -22,7 +22,7 @@ impl Context {
     pub fn new(
         config: Arc<Config>,
         network_action_tx: Sender<NetworkAction>,
-        schedule_command_tx: Sender<Box<dyn AbstractCommand>>,
+        schedule_command_tx: Sender<Command>,
         repository_manager: Arc<RepositoryManager>,
         network_manager: Arc<NetworkManager>,
         blockchain_manager: Arc<BlockchainManager>,
@@ -63,7 +63,7 @@ impl Context {
         &self.network_action_tx
     }
 
-    pub fn schedule_command_tx(&self) -> &Sender<Box<dyn AbstractCommand>> {
+    pub fn schedule_command_tx(&self) -> &Sender<Command> {
         &self.schedule_command_tx
     }
 }

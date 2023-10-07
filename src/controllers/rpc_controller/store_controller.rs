@@ -3,14 +3,17 @@ use std::sync::Arc;
 use crate::context::Context;
 use crate::controllers::rpc_controller::base_controller::BaseController;
 use async_trait::async_trait;
+use network::action::NetworkAction;
 use network::message::{
-    MessageHeader, MessageType, RequestMessage, ResponseMessage, StoreInitResponseData,
-    StoreMessageRequestData, StoreMessageResponseData, StoreRequestResponseData,
+    RequestMessage, ResponseMessage, ResponseMessageHeader, ResponseMessageType,
+    StoreInitResponseData, StoreMessageRequestData, StoreMessageResponseData,
+    StoreRequestResponseData,
 };
 use network::{request_response, PeerId};
+use tokio::sync::mpsc;
 
 pub struct StoreController {
-    context: Arc<Context>,
+    network_action_tx: mpsc::Sender<NetworkAction>,
 }
 
 #[async_trait]
@@ -19,7 +22,9 @@ impl BaseController for StoreController {
     type ResponseData = StoreMessageResponseData;
 
     fn new(context: Arc<Context>) -> Self {
-        Self { context }
+        Self {
+            network_action_tx: context.network_action_tx().clone(),
+        }
     }
 
     async fn handle_request(
@@ -44,32 +49,41 @@ impl BaseController for StoreController {
         };
 
         let message = ResponseMessage {
-            header: MessageHeader {
+            header: ResponseMessageHeader {
                 operation_id: header.operation_id,
                 keyword_uuid: header.keyword_uuid,
-                message_type: MessageType::Ack,
+                message_type: ResponseMessageType::Ack,
             },
             data: response_data,
         };
 
-        self.context
-            .network_action_tx()
-            .send(network::action::NetworkAction::StoreResponse { channel, message })
+        self.network_action_tx
+            .send(NetworkAction::StoreResponse { channel, message })
             .await
             .unwrap();
     }
 
     async fn handle_response(&self, response: ResponseMessage<Self::ResponseData>, peer: PeerId) {
-        let ResponseMessage { data, .. } = response;
+        let ResponseMessage { header, data } = response;
 
-        match data {
-            StoreMessageResponseData::InitResponse(_) => {
-                println!("Handling STORE_INIT response...");
-                // TODO: handle STORE_INIT response
+        match (header.message_type, data) {
+            (ResponseMessageType::Nack, _) => {
+                tracing::warn!("Received NACK from peer: {}", peer);
             }
-            StoreMessageResponseData::RequestResponse(_) => {
-                println!("Handling STORE_REQUEST response...");
-                // TODO: handle STORE_REQUEST response
+            (ResponseMessageType::Busy, _) => {
+                tracing::debug!("Peer: {} is BUSY", peer);
+            }
+            (ResponseMessageType::Ack, StoreMessageResponseData::InitResponse(_)) => {
+                tracing::trace!(
+                    "Received ACK response from peer: {} to STORE INIT message",
+                    peer
+                );
+            }
+            (ResponseMessageType::Ack, StoreMessageResponseData::RequestResponse(_)) => {
+                tracing::trace!(
+                    "Received ACK response from peer: {} to STORE REQUEST message",
+                    peer
+                );
             }
         }
     }

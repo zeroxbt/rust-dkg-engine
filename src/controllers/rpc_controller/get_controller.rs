@@ -3,15 +3,18 @@ use std::sync::Arc;
 use crate::context::Context;
 use crate::controllers::rpc_controller::base_controller::BaseController;
 use async_trait::async_trait;
+use network::action::NetworkAction;
 use network::message::{
     GetInitResponseData, GetMessageRequestData, GetMessageResponseData, GetRequestResponseData,
-    MessageHeader, MessageType, RequestMessage, ResponseMessage,
+    RequestMessage, RequestMessageHeader, RequestMessageType, ResponseMessage,
+    ResponseMessageHeader, ResponseMessageType,
 };
 
 use network::{request_response, PeerId};
+use tokio::sync::mpsc;
 
 pub struct GetController {
-    context: Arc<Context>,
+    network_action_tx: mpsc::Sender<NetworkAction>,
 }
 
 #[async_trait]
@@ -20,7 +23,9 @@ impl BaseController for GetController {
     type ResponseData = GetMessageResponseData;
 
     fn new(context: Arc<Context>) -> Self {
-        Self { context }
+        Self {
+            network_action_tx: context.network_action_tx().clone(),
+        }
     }
 
     async fn handle_request(
@@ -46,17 +51,16 @@ impl BaseController for GetController {
         };
 
         let message = ResponseMessage {
-            header: MessageHeader {
+            header: ResponseMessageHeader {
                 operation_id: header.operation_id,
                 keyword_uuid: header.keyword_uuid,
-                message_type: MessageType::Ack,
+                message_type: ResponseMessageType::Ack,
             },
             data: response_data,
         };
 
-        self.context
-            .network_action_tx()
-            .send(network::action::NetworkAction::GetResponse { channel, message })
+        self.network_action_tx
+            .send(NetworkAction::GetResponse { channel, message })
             .await
             .unwrap();
     }

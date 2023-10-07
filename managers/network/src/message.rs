@@ -8,30 +8,41 @@ pub enum ErrorMessage {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum MessageType {
+pub enum RequestMessageType {
     ProtocolInit,
     ProtocolRequest,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ResponseMessageType {
     Ack,
     Nack,
     Busy,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct MessageHeader {
+pub struct RequestMessageHeader {
     pub operation_id: String,
     pub keyword_uuid: String,
-    pub message_type: MessageType,
+    pub message_type: RequestMessageType,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResponseMessageHeader {
+    pub operation_id: String,
+    pub keyword_uuid: String,
+    pub message_type: ResponseMessageType,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RequestMessage<T> {
-    pub header: MessageHeader,
+    pub header: RequestMessageHeader,
     pub data: T,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResponseMessage<T> {
-    pub header: MessageHeader,
+    pub header: ResponseMessageHeader,
     pub data: T,
 }
 

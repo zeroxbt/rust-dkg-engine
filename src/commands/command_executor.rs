@@ -1,25 +1,27 @@
 use super::{
-    command::{AbstractCommand, CommandExecutionResult, CommandStatus},
+    command::{Command, CommandStatus},
+    command_handler::CommandExecutionResult,
+    command_resolver::CommandResolver,
     constants::{
         COMMAND_QUEUE_PARALLELISM, DEFAULT_COMMAND_DELAY_MS, DEFAULT_COMMAND_REPEAT_INTERVAL_MS,
         MAX_COMMAND_DELAY_MS, PERMANENT_COMMANDS,
     },
 };
-use crate::{commands::command::ToCommand, context::Context};
+use crate::context::Context;
 use futures::stream::{FuturesUnordered, StreamExt};
 use std::{cmp::min, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, Mutex, Semaphore};
 
 pub struct CommandExecutor {
     pub context: Arc<Context>,
-    pub process_command_tx: mpsc::Sender<Box<dyn AbstractCommand>>,
-    pub process_command_rx: Arc<Mutex<mpsc::Receiver<Box<dyn AbstractCommand>>>>,
+    pub process_command_tx: mpsc::Sender<Command>,
+    pub process_command_rx: Arc<Mutex<mpsc::Receiver<Command>>>,
     pub semaphore: Arc<Semaphore>,
 }
 
 impl CommandExecutor {
     pub async fn new(context: Arc<Context>) -> Self {
-        let (tx, rx) = mpsc::channel::<Box<dyn AbstractCommand>>(COMMAND_QUEUE_PARALLELISM);
+        let (tx, rx) = mpsc::channel::<Command>(COMMAND_QUEUE_PARALLELISM);
 
         Self {
             context,
@@ -68,11 +70,11 @@ impl CommandExecutor {
 
     pub async fn listen_and_schedule_commands(
         &self,
-        mut schedule_command_rx: mpsc::Receiver<Box<dyn AbstractCommand>>,
+        mut schedule_command_rx: mpsc::Receiver<Command>,
     ) {
         loop {
             if let Some(command) = schedule_command_rx.recv().await {
-                let delay = command.core().delay;
+                let delay = command.delay;
 
                 self.add(command, delay, true).await.unwrap();
             }
@@ -81,14 +83,14 @@ impl CommandExecutor {
 
     async fn add(
         &self,
-        command: Box<dyn AbstractCommand>,
+        command: Command,
         delay: i64,
         insert: bool,
-    ) -> Result<(), mpsc::error::SendError<Box<dyn AbstractCommand>>> {
+    ) -> Result<(), mpsc::error::SendError<Command>> {
         let delay = min(delay as u64, MAX_COMMAND_DELAY_MS as u64);
 
         if insert {
-            self.insert(command.as_ref()).await;
+            self.insert(&command).await;
         }
 
         if delay > 0 {
@@ -105,24 +107,22 @@ impl CommandExecutor {
         }
     }
 
-    async fn execute(&self, command: Box<dyn AbstractCommand>) {
+    async fn execute(&self, command: Command) {
         let _ = self.semaphore.acquire().await.unwrap();
 
         let now = chrono::Utc::now().timestamp_millis();
 
-        let command_core = command.core();
-
-        if let Some(deadline_at) = command_core.deadline_at {
+        if let Some(deadline_at) = command.deadline_at {
             if deadline_at <= now {
                 tracing::warn!(
                     "Command ${:?} and ID ${} is too late...",
-                    command_core.name,
-                    command_core.id
+                    command.name,
+                    command.id
                 )
             }
 
             self.update(
-                command.as_ref(),
+                &command,
                 Some(CommandStatus::Expired.to_string()),
                 None,
                 None,
@@ -132,7 +132,7 @@ impl CommandExecutor {
             return;
         }
 
-        let delay = command_core.ready_at + command_core.delay - now;
+        let delay = command.ready_at + command.delay - now;
 
         if delay > 0 {
             self.add(command, delay, false).await.unwrap();
@@ -141,69 +141,68 @@ impl CommandExecutor {
         }
 
         self.update(
-            command.as_ref(),
+            &command,
             Some(CommandStatus::Started.to_string()),
             Some(now),
             None,
         )
         .await;
 
-        let result = command.execute(&self.context).await;
+        let command_handler = CommandResolver::resolve(&command.name, Arc::clone(&self.context));
+
+        let result = command_handler.execute(&command).await;
 
         match result {
             CommandExecutionResult::Retry => {
-                let retries = command_core.retries;
+                let retries = command.retries;
 
                 if retries < 1 {
-                    self.handle_retry(command).await;
+                    self.handle_retry(&command).await;
                     return;
                 }
 
-                command.retry_finished().await;
+                command_handler.retry_finished().await;
             }
             CommandExecutionResult::Repeat => {
-                self.handle_repeat(command).await;
+                self.handle_repeat(&command).await;
             }
             CommandExecutionResult::Completed => {
-                self.handle_completed(command).await;
+                self.handle_completed(&command).await;
             }
         }
     }
 
-    async fn handle_retry(&self, command: Box<dyn AbstractCommand>) {
+    async fn handle_retry(&self, command: &Command) {
         self.update(
-            command.as_ref(),
+            command,
             Some(CommandStatus::Repeating.to_string()),
             None,
-            Some(command.core().retries - 1),
+            Some(command.retries - 1),
         )
         .await;
 
-        let delay = command.core().period.unwrap_or_default();
+        let delay = command.period.unwrap_or_default();
 
-        self.add(command, delay, false).await.unwrap();
+        self.add(command.clone(), delay, false).await.unwrap();
     }
 
-    async fn handle_repeat(&self, command: Box<dyn AbstractCommand>) {
+    async fn handle_repeat(&self, command: &Command) {
         self.update(
-            command.as_ref(),
+            command,
             Some(CommandStatus::Repeating.to_string()),
             None,
             None,
         )
         .await;
 
-        let period = command
-            .core()
-            .period
-            .unwrap_or(DEFAULT_COMMAND_REPEAT_INTERVAL_MS);
+        let period = command.period.unwrap_or(DEFAULT_COMMAND_REPEAT_INTERVAL_MS);
 
-        self.add(command, period, false).await.unwrap();
+        self.add(command.clone(), period, false).await.unwrap();
     }
 
-    async fn handle_completed(&self, command: Box<dyn AbstractCommand>) {
+    async fn handle_completed(&self, command: &Command) {
         self.update(
-            command.as_ref(),
+            command,
             Some(CommandStatus::Completed.to_string()),
             None,
             None,
@@ -211,7 +210,7 @@ impl CommandExecutor {
         .await;
     }
 
-    async fn insert(&self, command: &dyn AbstractCommand) {
+    async fn insert(&self, command: &Command) {
         self.context
             .repository_manager()
             .command_repository()
@@ -222,7 +221,7 @@ impl CommandExecutor {
 
     async fn update(
         &self,
-        command: &dyn AbstractCommand,
+        command: &Command,
         new_status: Option<String>,
         new_started_at: Option<i64>,
         new_retries: Option<i32>,
@@ -251,9 +250,7 @@ impl CommandExecutor {
             .unwrap();
 
         for model in pending_commands {
-            if let Some(command) = model.to_command() {
-                self.add(command, 0, false).await.unwrap();
-            };
+            self.add(Command::from(model), 0, false).await.unwrap();
         }
     }
 }

@@ -72,7 +72,7 @@ pub enum BlockchainName {
 impl BlockchainName {
     pub fn as_str(&self) -> &str {
         match self {
-            BlockchainName::Hardhat => "Hardhat",
+            BlockchainName::Hardhat => "hardhat",
         }
     }
 }
