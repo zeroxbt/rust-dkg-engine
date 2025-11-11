@@ -1,25 +1,41 @@
+/// Provides an implementation of the URDNA2015 algorithm for RDF graph canonicalization.
+/// This module includes functions and structures necessary to perform canonicalization of RDF datasets,
+/// which is often required for tasks such as graph isomorphism checks and digital signatures.
+///
+/// The canonicalization process involves assigning new identifiers to blank nodes while preserving
+/// the semantic structure of the RDF graph, ensuring consistent serialization across different
+/// instances of equivalent graphs.
 use async_recursion::async_recursion;
 use std::collections::{HashMap, HashSet};
 
 use crate::{
+    error::URDNAError,
     identifier_issuer::IdentifierIssuer,
     message_digest::MessageDigest,
     n_quad::{NQuads, Quad, Term, TermType},
     permuter::Permuter,
 };
 
+/// Stores information related to a particular blank node during the canonicalization process.
 pub struct Info {
+    /// A set of quads that include this blank node.
     pub quads: HashSet<Quad>,
+    /// The hash value associated with this blank node, if it has been computed.
     pub hash: Option<String>,
 }
 
+/// The main structure for the URDNA2015 algorithm, handling the state and operations required for canonicalization.
 pub struct URDNA2015 {
+    /// A special identifier issuer for managing canonical identifiers for blank nodes.
     canonical_issuer: IdentifierIssuer,
+    /// A map of blank node identifiers to their associated information and state.
     blank_node_info: HashMap<String, Info>,
+    /// Tracks the depth of recursive hashing operations to prevent infinite recursion.
     deep_iterations: HashMap<String, i32>,
 }
 
 impl URDNA2015 {
+    /// Constructs a new instance of the `URDNA2015` canonicalizer.
     pub fn new() -> Self {
         Self {
             canonical_issuer: IdentifierIssuer::new("_:c14n".to_string(), None, 0),
@@ -27,7 +43,17 @@ impl URDNA2015 {
             deep_iterations: HashMap::new(),
         }
     }
-    pub async fn main(&mut self, dataset: Vec<Quad>) -> Result<String, String> {
+
+    /// The main function to process the dataset and return a canonicalized string of N-Quads.
+    /// It processes each quad in the dataset, updating state for blank nodes and recursively hashing
+    /// to resolve complex blank node structures.
+    ///
+    /// # Arguments
+    /// * `dataset` - A vector of `Quad` structures representing the RDF dataset.
+    ///
+    /// # Returns
+    /// Returns a `Result` containing the canonicalized string or an `URDNAError` on failure.
+    pub async fn main(&mut self, dataset: Vec<Quad>) -> Result<String, URDNAError> {
         let quads = dataset.clone();
 
         for quad in dataset {
@@ -38,15 +64,9 @@ impl URDNA2015 {
 
         let mut hash_to_blank_nodes = HashMap::new();
         let non_normalized = self.blank_node_info.keys().cloned().collect::<Vec<_>>();
-        let mut i = 0;
         for id in non_normalized {
-            i += 1;
-            if i % 100 == 0 {
-                self._yield().await;
-            }
-
             self.hash_and_track_blank_node(&id, &mut hash_to_blank_nodes)
-                .await;
+                .await?;
         }
 
         let mut hashes = hash_to_blank_nodes.keys().clone().collect::<Vec<_>>();
@@ -113,6 +133,16 @@ impl URDNA2015 {
         Ok(normalized.join(""))
     }
 
+    /// Performs recursive hashing of N-degree quads associated with a specific blank node.
+    /// This method is crucial for ensuring that blank nodes are canonicalized accurately by considering
+    /// all related quads and their semantic structure.
+    ///
+    /// # Arguments
+    /// * `id` - The identifier of the blank node being processed.
+    /// * `issuer` - An `IdentifierIssuer` instance managing the issuance of new identifiers.
+    ///
+    /// # Returns
+    /// Returns a tuple containing the resulting hash and a possibly updated `IdentifierIssuer`.
     #[async_recursion]
     async fn hash_ndegree_quads(
         &mut self,
@@ -142,15 +172,8 @@ impl URDNA2015 {
             let mut chosen_issuer = result_issuer.clone();
 
             let mut permuter = Permuter::new(hash_to_related.get(hash).unwrap().clone());
-            let mut i = 0;
-            while permuter.has_next() {
-                let permutation = permuter.next().unwrap();
 
-                i += 1;
-                if i % 3 == 0 {
-                    self._yield().await;
-                }
-
+            while let Some(permutation) = permuter.next() {
                 let mut issuer_clone = issuer.clone();
 
                 let mut path = String::from("");
@@ -216,14 +239,21 @@ impl URDNA2015 {
         &mut self,
         id: &str,
         hash_to_blank_nodes: &mut HashMap<String, Vec<String>>,
-    ) {
-        let hash = self.hash_first_degree_quads(id).await.unwrap();
+    ) -> Result<(), URDNAError> {
+        let hash = self.hash_first_degree_quads(id).await.ok_or_else(|| {
+            URDNAError::Hashing(format!(
+                "No hash available for first-degree quads of ID: {}",
+                id
+            ))
+        })?;
 
         if let Some(id_list) = hash_to_blank_nodes.get_mut(&hash) {
             id_list.push(id.to_owned());
         } else {
             hash_to_blank_nodes.insert(hash, vec![id.to_owned()]);
         }
+
+        Ok(())
     }
 
     async fn hash_first_degree_quads(&mut self, id: &str) -> Option<String> {
@@ -266,13 +296,7 @@ impl URDNA2015 {
 
         let quads = self.blank_node_info.get_mut(id).unwrap().quads.clone();
 
-        let mut i = 0;
         for quad in quads {
-            i += 1;
-            if i % 100 == 0 {
-                self._yield().await;
-            }
-
             self.add_related_blank_node_hash(
                 &quad,
                 &quad.subject,
@@ -365,10 +389,7 @@ impl URDNA2015 {
         MessageDigest::new()
     }
 
-    async fn _yield(&self) {
-        tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
-    }
-
+    /// Adds quad information to the blank node tracking structure, used in the canonicalization process.
     fn add_blank_node_quad_info(&mut self, quad: &Quad, term: &Term) {
         if term.term_type != TermType::BlankNode {
             return;
@@ -401,6 +422,7 @@ impl URDNA2015 {
         term
     }
 
+    /// Modifies a term representing a first-degree connection to adjust its identifier if necessary.
     fn modify_first_degree_term(&self, id: &str, term: &Term) -> Term {
         if term.term_type != TermType::BlankNode {
             return term.clone();
@@ -416,6 +438,7 @@ impl URDNA2015 {
         }
     }
 
+    /// Retrieves the predicate as a string from a given quad, formatted for use in hash inputs.
     fn get_related_predicate(&self, quad: &Quad) -> String {
         format!("<{}>", quad.predicate.value)
     }

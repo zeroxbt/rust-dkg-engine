@@ -34,7 +34,7 @@ impl DialPeersCommandHandler {
 
 #[async_trait]
 impl CommandHandler for DialPeersCommandHandler {
-    async fn execute(&self, _command: &Command) -> CommandExecutionResult {
+    async fn execute(&self, _: &Command) -> CommandExecutionResult {
         let peer_id = self.context.network_manager().get_peer_id().to_base58();
 
         let potential_peer_ids = self

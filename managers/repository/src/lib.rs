@@ -9,7 +9,7 @@ use repositories::{
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::Deserialize;
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{error::Error, sync::Arc};
 
 use self::migrations::Migrator;
 

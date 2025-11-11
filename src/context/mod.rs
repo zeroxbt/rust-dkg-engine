@@ -6,7 +6,14 @@ use repository::RepositoryManager;
 use tokio::sync::mpsc::Sender;
 use validation::ValidationManager;
 
-use crate::{commands::command::Command, config::Config};
+use crate::{
+    commands::command::Command,
+    config::Config,
+    services::{
+        publish_service::PublishService, sharding_table_service::ShardingTableService,
+        ual_service::UalService,
+    },
+};
 
 pub struct Context {
     config: Arc<Config>,
@@ -16,6 +23,9 @@ pub struct Context {
     network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
     validation_manager: Arc<ValidationManager>,
+    ual_service: Arc<UalService>,
+    sharding_table_service: Arc<ShardingTableService>,
+    publish_service: Arc<PublishService>,
 }
 
 impl Context {
@@ -27,6 +37,9 @@ impl Context {
         network_manager: Arc<NetworkManager>,
         blockchain_manager: Arc<BlockchainManager>,
         validation_manager: Arc<ValidationManager>,
+        ual_service: Arc<UalService>,
+        sharding_table_service: Arc<ShardingTableService>,
+        publish_service: Arc<PublishService>,
     ) -> Self {
         Self {
             config,
@@ -36,6 +49,9 @@ impl Context {
             network_manager,
             blockchain_manager,
             validation_manager,
+            ual_service,
+            sharding_table_service,
+            publish_service,
         }
     }
 
@@ -57,6 +73,18 @@ impl Context {
 
     pub fn validation_manager(&self) -> &Arc<ValidationManager> {
         &self.validation_manager
+    }
+
+    pub fn ual_service(&self) -> &Arc<UalService> {
+        &self.ual_service
+    }
+
+    pub fn sharding_table_service(&self) -> &Arc<ShardingTableService> {
+        &self.sharding_table_service
+    }
+
+    pub fn publish_service(&self) -> &Arc<PublishService> {
+        &self.publish_service
     }
 
     pub fn network_action_tx(&self) -> &Sender<NetworkAction> {

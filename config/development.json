@@ -3,7 +3,7 @@
     "network": {
       "port": 9000,
       "bootstrap": [
-        "/ip4/127.0.0.1/tcp/9000/p2p/QmVeKAmtT74Tg9TWpcnaJBDnUzQB1YSFpZWc1Xn2eMNcaA"
+        "/ip4/127.0.0.1/tcp/9102/p2p/12D3KooWF1nhFmNp4F1ni6aL3EHcayULrrEBAuutsgPLVr2poadQ"
       ],
       "data_folder_path": "data"
     },

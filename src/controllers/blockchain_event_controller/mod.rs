@@ -213,6 +213,9 @@ impl BlockchainEventController {
         let node_added_filter = blockchain::utils::decode_event_log::<NodeAddedFilter>(event_log);
         let peer_id_bytes = node_added_filter.node_id.into_iter().collect::<Vec<u8>>();
         let peer_id = String::from_utf8(peer_id_bytes.clone()).unwrap();
+        let sha256 = self
+            .validation_manager
+            .call_hash_function(&HashFunction::Sha256, peer_id_bytes);
         tracing::debug!("Adding peer id: {} to sharding table.", peer_id);
 
         self.repository_manager
@@ -224,10 +227,7 @@ impl BlockchainEventController {
                 stake: blockchain::utils::from_wei(&node_added_filter.stake.to_string()),
                 last_seen: DateTime::from_timestamp(0, 0).unwrap(),
                 last_dialed: DateTime::from_timestamp(0, 0).unwrap(),
-                sha256: self
-                    .validation_manager
-                    .call_hash_function(HashFunction::Sha256, peer_id_bytes)
-                    .await,
+                sha256: blockchain::utils::to_hex_string(sha256),
             })
             .await
             .unwrap();

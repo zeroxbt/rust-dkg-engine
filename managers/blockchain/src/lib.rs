@@ -13,7 +13,7 @@ pub use blockchains::{
         StakeWithdrawalStartedFilter,
     },
 };
-use ethers::types::Address;
+pub use ethers::types::Address;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -185,6 +185,20 @@ impl BlockchainManager {
             .get(blockchain)
             .unwrap()
             .re_initialize_contract(contract_name, contract_address)
+            .await
+    }
+
+    pub async fn get_assertion_id_by_index(
+        &self,
+        blockchain: &BlockchainName,
+        contract: &Address,
+        token_id: u64,
+        index: u64,
+    ) -> Result<[u8; 32], BlockchainError> {
+        self.blockchains
+            .get(blockchain)
+            .unwrap()
+            .get_assertion_id_by_index(contract, token_id, index)
             .await
     }
 }

@@ -1,11 +1,17 @@
-use std::collections::HashMap;
-
+//! This module provides tools for parsing and serializing RDF data as N-Quads.
+//! It supports parsing from strings to structured data (`Quad`), handling various
+//! RDF-related formats and datatypes. It includes utilities for canonicalization
+//! of RDF datasets according to the URDNA2015 algorithm.
+//!
+use crate::error::URDNAError;
 use regex::Regex;
+use std::collections::HashMap;
 
 const RDF_LANGSTRING: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
 const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
 
-// Use lazy_static for regular expressions as they are only compiled once
+// Regular expressions used to parse N-Quads from textual representations.
+// These are compiled once using `lazy_static` for efficiency.
 lazy_static::lazy_static! {
     static ref EOLN: Regex = Regex::new(r"(?:\r\n)|(?:\n)|(?:\r)").unwrap();
     static ref EMPTY: Regex = Regex::new(r"^[ \t]*$").unwrap();
@@ -46,19 +52,21 @@ pub enum TermType {
     Literal,
     DefaultGraph,
 }
-
+/// Represents a term within an RDF Quad.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Term {
     pub term_type: TermType,
     pub value: String,
 }
 
+/// Represents a literal value in RDF, including optional datatype and language annotations.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Literal {
     pub datatype: Term,
     pub language: String,
 }
 
+/// Represents an RDF Quad, consisting of subject, predicate, object, and graph components.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Quad {
     pub subject: Term,
@@ -69,6 +77,7 @@ pub struct Quad {
 }
 
 impl Quad {
+    /// Compares this quad with another for equality, considering potential language and datatype differences.
     fn compare(&self, other: &Self) -> bool {
         if self.subject != other.subject || self.object != other.object {
             return false;
@@ -88,10 +97,12 @@ impl Quad {
     }
 }
 
+/// Provides functionality to parse and serialize N-Quads, handling RDF data according to specified patterns.
 pub struct NQuads;
 
 impl NQuads {
-    pub fn parse(input: &str) -> Result<Vec<Quad>, String> {
+    /// Parses a string input into a vector of `Quad` structures, handling errors via the `URDNAError` type.
+    pub fn parse(input: &str) -> Result<Vec<Quad>, URDNAError> {
         let mut dataset = Vec::new();
         let mut graphs: HashMap<String, Vec<Quad>> = HashMap::new();
 
@@ -100,9 +111,12 @@ impl NQuads {
                 continue;
             }
 
-            let captures = QUAD
-                .captures(line)
-                .ok_or_else(|| format!("N-Quads parse error on line {}.", line_number + 1))?;
+            let captures = QUAD.captures(line).ok_or_else(|| {
+                URDNAError::Parsing(format!(
+                    "Failed to match N-Quad pattern on line {}.",
+                    line_number + 1
+                ))
+            })?;
 
             let subject = if let Some(iri) = captures.get(1) {
                 Term {
@@ -191,9 +205,7 @@ impl NQuads {
             };
 
             // only add quad if it is unique in its graph
-            let entry = graphs
-                .entry(quad.graph.value.clone())
-                .or_insert_with(Vec::new);
+            let entry = graphs.entry(quad.graph.value.clone()).or_default();
             if !entry.iter().any(|existing| quad.compare(existing)) {
                 entry.push(quad.clone());
                 dataset.push(quad);
@@ -203,27 +215,34 @@ impl NQuads {
         Ok(dataset)
     }
 
+    /// Serializes components of a quad into a single string following the N-Quad serialization format.
     pub fn serialize_quad_components(
         s: &Term,
         p: &Term,
         o: &Term,
         g: &Term,
         o_l: &Option<Literal>,
-    ) -> Result<String, String> {
+    ) -> Result<String, URDNAError> {
         let mut nquad = String::new();
 
         // subject can only be NamedNode or BlankNode
         match s.term_type {
             TermType::NamedNode => nquad.push_str(&format!("<{}>", s.value)),
             TermType::BlankNode => nquad.push_str(&s.value),
-            _ => return Err("Subject must be a NamedNode or BlankNode".into()),
+            _ => {
+                return Err(URDNAError::Serializing(
+                    "Subject must be a NamedNode or BlankNode".to_string(),
+                ))
+            }
         }
 
         // predicate can only be NamedNode
         if p.term_type == TermType::NamedNode {
             nquad.push_str(&format!(" <{}> ", p.value));
         } else {
-            return Err("Predicate must be a NamedNode".into());
+            return Err(URDNAError::Serializing(
+                "Predicate must be a NamedNode".to_string(),
+            ));
         }
 
         // object is NamedNode, BlankNode, or Literal
@@ -245,7 +264,9 @@ impl NQuads {
                 }
             }
             TermType::DefaultGraph => {
-                return Err("Object must be a NamedNode, BlankNode, or Literal".into())
+                return Err(URDNAError::Serializing(
+                    "Object must be a NamedNode, BlankNode, or Literal".to_string(),
+                ));
             }
         }
 
@@ -255,13 +276,18 @@ impl NQuads {
             TermType::NamedNode => nquad.push_str(&format!(" <{}>", g.value)),
             TermType::BlankNode => nquad.push_str(&format!(" {}", g.value)),
             TermType::DefaultGraph => {}
-            _ => return Err("Graph must be a NamedNode, BlankNode, or DefaultGraph".into()),
+            _ => {
+                return Err(URDNAError::Serializing(
+                    "Graph must be a NamedNode, BlankNode, or DefaultGraph".to_string(),
+                ))
+            }
         }
 
         nquad.push_str(" .\n");
         Ok(nquad)
     }
 
+    /// Escapes special characters in a string to ensure valid N-Quad serialization.
     fn escape(s: &str) -> String {
         // Check if the string has any characters that need to be escaped; if not, return it as is
         if !["\"", "\\", "\n", "\r"].iter().any(|&c| s.contains(c)) {
@@ -282,6 +308,7 @@ impl NQuads {
         escaped
     }
 
+    /// Unescapes special characters from a string, typically used when parsing N-Quad data.
     fn unescape(s: &str) -> String {
         // Define regular expression
         let unescape_regex =

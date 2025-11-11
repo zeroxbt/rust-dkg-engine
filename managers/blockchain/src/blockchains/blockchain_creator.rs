@@ -90,6 +90,13 @@ impl Contracts {
         }
     }
 
+    pub fn get_content_asset_storage(
+        &self,
+        address: &Address,
+    ) -> Option<&ContentAssetStorage<BlockchainProvider>> {
+        self.content_asset_storages.get(address)
+    }
+
     pub async fn replace_contract(
         &mut self,
         provider: &Arc<BlockchainProvider>,

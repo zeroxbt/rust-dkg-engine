@@ -31,17 +31,15 @@ impl ValidationManager {
         Self
     }
 
-    pub async fn call_hash_function(&self, hash_function: HashFunction, data: Vec<u8>) -> String {
+    pub fn call_hash_function(&self, hash_function: &HashFunction, data: Vec<u8>) -> Vec<u8> {
         match hash_function {
-            HashFunction::Sha256 => self.sha256(data).await,
+            HashFunction::Sha256 => self.sha256(data),
         }
     }
 
-    async fn sha256(&self, data: Vec<u8>) -> String {
+    fn sha256(&self, data: Vec<u8>) -> Vec<u8> {
         let mut hasher = Sha256::new();
         hasher.update(data);
-        let result = hasher.finalize();
-
-        hex::encode(result)
+        hasher.finalize().to_vec()
     }
 }

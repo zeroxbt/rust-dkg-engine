@@ -137,15 +137,13 @@ async fn main() {
     local_blockchain::LocalBlockchain::run().await.unwrap();
 
     for i in 0..=nodes - 1 {
-        // ... [your previous code]
-
         // Drop the database for this config
         let database_name = format!("operationaldb{}", i);
         drop_database(&database_name);
 
         let config_path = format!("tools/local_network/.node{}_config.json", i);
         open_terminal_with_command(&format!(
-            "cd {} && cargo run --release -- --config {}",
+            "cd {} && cargo run -- --config {}",
             current_dir_str, config_path
         ));
     }

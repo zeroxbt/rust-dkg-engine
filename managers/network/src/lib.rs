@@ -4,16 +4,16 @@ pub mod message;
 
 use action::NetworkAction;
 use key_manager::KeyManager;
-use libp2p::core::upgrade::Version;
 use libp2p::futures::StreamExt;
 pub use libp2p::identify;
-use libp2p::kad::record::store::MemoryStore;
-use libp2p::kad::{Kademlia, KademliaBucketInserts, KademliaConfig, Mode};
+use libp2p::kad::store::MemoryStore;
+use libp2p::kad::{BucketInserts, Config as KademliaConfig, Mode};
 use libp2p::request_response::ProtocolSupport;
+pub use libp2p::swarm::SwarmEvent;
 use libp2p::swarm::{derive_prelude::Either, NetworkBehaviour};
-pub use libp2p::swarm::{SwarmBuilder, SwarmEvent};
-use libp2p::{noise, tcp, yamux, StreamProtocol, Transport};
+use libp2p::{noise, tcp, StreamProtocol, SwarmBuilder};
 pub use libp2p::{request_response, PeerId, Swarm};
+use libp2p_mplex::MplexConfig;
 use message::{
     GetMessageRequestData, GetMessageResponseData, RequestMessage, ResponseMessage,
     StoreMessageRequestData, StoreMessageResponseData,
@@ -26,7 +26,7 @@ use void::Void;
 
 pub type NestedError = Either<Either<Either<std::io::Error, std::io::Error>, Void>, Void>;
 pub type SwarmError = Either<NestedError, Void>;
-pub type NetworkEvent = SwarmEvent<BehaviourEvent, SwarmError>;
+pub type NetworkEvent = SwarmEvent<BehaviourEvent>;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct NetworkManagerConfig {
@@ -52,12 +52,6 @@ impl NetworkManager {
 
         info!("Network ID is {}", local_peer_id.to_base58());
 
-        let transport = tcp::tokio::Transport::default()
-            .upgrade(Version::V1Lazy)
-            .authenticate(noise::Config::new(&key).expect("unable to create config"))
-            .multiplex(yamux::Config::default())
-            .boxed();
-
         let store_behaviour = request_response::json::Behaviour::<
             RequestMessage<StoreMessageRequestData>,
             ResponseMessage<StoreMessageResponseData>,
@@ -77,11 +71,11 @@ impl NetworkManager {
         let swarm = {
             // Create a Kademlia behaviour.
             let mut cfg = KademliaConfig::default();
-            cfg.set_kbucket_inserts(KademliaBucketInserts::OnConnected);
+            cfg.set_kbucket_inserts(BucketInserts::OnConnected);
             let store = MemoryStore::new(local_peer_id);
 
             let mut behaviour = Behaviour {
-                kad: Kademlia::with_config(local_peer_id, store, cfg),
+                kad: libp2p::kad::Behaviour::with_config(local_peer_id, store, cfg),
                 identify: identify::Behaviour::new(identify::Config::new(
                     "/ipfs/id/1.0.0".to_string(),
                     public_key,
@@ -102,7 +96,17 @@ impl NetworkManager {
                     .add_address(&bootstrap_peer_id, bootstrap_address);
             });
 
-            SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id).build()
+            SwarmBuilder::with_existing_identity(key.clone())
+                .with_tokio()
+                .with_tcp(
+                    tcp::Config::default(),
+                    noise::Config::new,
+                    MplexConfig::default,
+                )
+                .unwrap()
+                .with_behaviour(|_| behaviour)
+                .unwrap()
+                .build()
         };
 
         Self {
@@ -136,7 +140,7 @@ impl NetworkManager {
         let mut locked_swarm = self.swarm.lock().await;
         loop {
             tokio::select! {
-                    Some(command) = command_rx.recv() => {
+                Some(command) = command_rx.recv() => {
                         match command {
                 NetworkAction::StoreRequest { peer, message } => {
                     locked_swarm
@@ -171,7 +175,6 @@ impl NetworkManager {
                     addresses.iter().for_each(|addr| {
                         locked_swarm.behaviour_mut().kad.add_address(&peer_id, addr.to_owned());
                     })
-
                 }
             }
                     },
@@ -191,7 +194,7 @@ impl NetworkManager {
 
 #[derive(NetworkBehaviour)]
 pub struct Behaviour {
-    kad: Kademlia<MemoryStore>,
+    kad: libp2p::kad::Behaviour<MemoryStore>,
     identify: identify::Behaviour,
     ping: libp2p::ping::Behaviour,
     store: libp2p::request_response::json::Behaviour<

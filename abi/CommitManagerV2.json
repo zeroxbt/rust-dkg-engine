@@ -23,9 +23,40 @@
         "type": "uint16"
       },
       {
+        "internalType": "uint72",
+        "name": "closestNodeIndex",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint72",
+        "name": "leftEdgeNodeIndex",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint72",
+        "name": "rightEdgeNodeIndex",
+        "type": "uint72"
+      },
+      {
         "internalType": "uint256",
-        "name": "stateIndex",
+        "name": "timeNow",
         "type": "uint256"
+      }
+    ],
+    "name": "ClosestNodeNotInNeighborhood",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "agreementId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint16",
+        "name": "epoch",
+        "type": "uint16"
       },
       {
         "internalType": "uint256",
@@ -59,6 +90,201 @@
         "type": "uint16"
       },
       {
+        "internalType": "uint72",
+        "name": "closestNodeIndex",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "closestNodeDistance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "leftAdjacentDistance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "rightAdjacentDistance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timeNow",
+        "type": "uint256"
+      }
+    ],
+    "name": "InvalidClosestNode",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "agreementId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint16",
+        "name": "epoch",
+        "type": "uint16"
+      },
+      {
+        "internalType": "uint72",
+        "name": "leftEdgeNodeIndex",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint72",
+        "name": "rightEdgeNodeAdjacentIndex",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "leftEdgeNodeDistance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "rightEdgeNodeAdjacentDistance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timeNow",
+        "type": "uint256"
+      }
+    ],
+    "name": "InvalidLeftEdgeNode",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "agreementId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint16",
+        "name": "epoch",
+        "type": "uint16"
+      },
+      {
+        "internalType": "uint72",
+        "name": "leftEdgeNodeIndex",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint72",
+        "name": "rightEdgeNodeIndex",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint72",
+        "name": "numberOfNodes",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "neighborhoodExpectedSize",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "neighborhoodActualSize",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timeNow",
+        "type": "uint256"
+      }
+    ],
+    "name": "InvalidNeighborhoodSize",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "agreementId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint16",
+        "name": "epoch",
+        "type": "uint16"
+      },
+      {
+        "internalType": "uint8",
+        "name": "agreementScoreFunctionId",
+        "type": "uint8"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timeNow",
+        "type": "uint256"
+      }
+    ],
+    "name": "InvalidProximityScoreFunctionsPairId",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "agreementId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint16",
+        "name": "epoch",
+        "type": "uint16"
+      },
+      {
+        "internalType": "uint72",
+        "name": "rightEdgeNodeIndex",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint72",
+        "name": "leftEdgeNodeAdjacentIndex",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "rightEdgeNodeDistance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "leftEdgeNodeAdjacentDistance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timeNow",
+        "type": "uint256"
+      }
+    ],
+    "name": "InvalidRightEdgeNode",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "agreementId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint16",
+        "name": "epoch",
+        "type": "uint16"
+      },
+      {
         "internalType": "uint8",
         "name": "agreementScoreFunctionId",
         "type": "uint8"
@@ -75,22 +301,6 @@
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "assetStorage",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "tokenId",
-        "type": "uint256"
-      }
-    ],
-    "name": "NoPendingUpdate",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
         "internalType": "bytes32",
         "name": "agreementId",
         "type": "bytes32"
@@ -99,11 +309,6 @@
         "internalType": "uint16",
         "name": "epoch",
         "type": "uint16"
-      },
-      {
-        "internalType": "uint256",
-        "name": "stateIndex",
-        "type": "uint256"
       },
       {
         "internalType": "uint72",
@@ -130,11 +335,6 @@
         "internalType": "uint16",
         "name": "epoch",
         "type": "uint16"
-      },
-      {
-        "internalType": "uint256",
-        "name": "stateIndex",
-        "type": "uint256"
       },
       {
         "internalType": "uint72",
@@ -253,12 +453,6 @@
       },
       {
         "indexed": false,
-        "internalType": "uint256",
-        "name": "stateIndex",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
         "internalType": "uint72",
         "name": "identityId",
         "type": "uint72"
@@ -274,68 +468,6 @@
     "type": "event"
   },
   {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "assetContract",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "tokenId",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "bytes",
-        "name": "keyword",
-        "type": "bytes"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint8",
-        "name": "hashFunctionId",
-        "type": "uint8"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint16",
-        "name": "epoch",
-        "type": "uint16"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "stateIndex",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "bytes32",
-        "name": "state",
-        "type": "bytes32"
-      }
-    ],
-    "name": "StateFinalized",
-    "type": "event"
-  },
-  {
-    "inputs": [],
-    "name": "contentAssetStorage",
-    "outputs": [
-      {
-        "internalType": "contract ContentAssetStorage",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
         "internalType": "bytes32",
@@ -346,11 +478,6 @@
         "internalType": "uint16",
         "name": "epoch",
         "type": "uint16"
-      },
-      {
-        "internalType": "uint256",
-        "name": "stateIndex",
-        "type": "uint256"
       }
     ],
     "name": "getTopCommitSubmissions",
@@ -388,19 +515,6 @@
   },
   {
     "inputs": [],
-    "name": "hashingProxy",
-    "outputs": [
-      {
-        "internalType": "contract HashingProxy",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "hub",
     "outputs": [
       {
@@ -417,7 +531,7 @@
     "name": "identityStorage",
     "outputs": [
       {
-        "internalType": "contract IdentityStorage",
+        "internalType": "contract IdentityStorageV2",
         "name": "",
         "type": "address"
       }
@@ -457,29 +571,26 @@
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "bytes32",
-        "name": "agreementId",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "uint16",
-        "name": "epoch",
-        "type": "uint16"
-      },
-      {
-        "internalType": "uint256",
-        "name": "stateIndex",
-        "type": "uint256"
-      }
-    ],
-    "name": "isUpdateCommitWindowOpen",
+    "inputs": [],
+    "name": "linearSum",
     "outputs": [
       {
-        "internalType": "bool",
+        "internalType": "contract LinearSum",
         "name": "",
-        "type": "bool"
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "log2pldsf",
+    "outputs": [
+      {
+        "internalType": "contract Log2PLDSF",
+        "name": "",
+        "type": "address"
       }
     ],
     "stateMutability": "view",
@@ -545,19 +656,6 @@
   },
   {
     "inputs": [],
-    "name": "scoringProxy",
-    "outputs": [
-      {
-        "internalType": "contract ScoringProxy",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "serviceAgreementStorageProxy",
     "outputs": [
       {
@@ -605,20 +703,7 @@
     "name": "shardingTableStorage",
     "outputs": [
       {
-        "internalType": "contract ShardingTableStorage",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "stakingContract",
-    "outputs": [
-      {
-        "internalType": "contract Staking",
+        "internalType": "contract ShardingTableStorageV2",
         "name": "",
         "type": "address"
       }
@@ -720,29 +805,31 @@
             "internalType": "uint16",
             "name": "epoch",
             "type": "uint16"
+          },
+          {
+            "internalType": "uint72",
+            "name": "closestNodeIndex",
+            "type": "uint72"
+          },
+          {
+            "internalType": "uint72",
+            "name": "leftEdgeNodeIndex",
+            "type": "uint72"
+          },
+          {
+            "internalType": "uint72",
+            "name": "rightEdgeNodeIndex",
+            "type": "uint72"
           }
         ],
-        "internalType": "struct ServiceAgreementStructsV1.CommitInputArgs",
+        "internalType": "struct ServiceAgreementStructsV2.CommitInputArgs",
         "name": "args",
         "type": "tuple"
       }
     ],
-    "name": "submitUpdateCommit",
+    "name": "submitCommit",
     "outputs": [],
     "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "unfinalizedStateStorage",
-    "outputs": [
-      {
-        "internalType": "contract UnfinalizedStateStorage",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
     "type": "function"
   },
   {

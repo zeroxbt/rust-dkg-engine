@@ -7,9 +7,12 @@ edition = "2021"
 tokio = {version = "1.32.0", features = ["full"]}
 tracing = "0.1.37"
 rsa = "0.9.2"
+ed25519-dalek = { version = "2.1", optional = true }
 rand = "0.8.5"
 serde = "1.0.188"
 serde_derive = "1.0.188"
-libp2p = { version = "0.52.3", features = ["tokio", "dns", "macros", "noise", "ping", "tcp", "websocket", "yamux", "rsa", "json", "request-response", "kad", "identify"] }
+libp2p = { version = "0.53.2", features = ["tokio", "dns", "macros", "noise", "ping", "tcp", "websocket", "yamux", "rsa", "json", "request-response", "kad", "identify"] }
+libp2p-mplex = "0.41.0"
 void = "1.0.2"
 base64= "0.21.4"
+uuid = {version = "1.4.1", features = ["v4", "v5"]}

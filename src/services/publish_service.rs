@@ -1,75 +1,58 @@
-use std::{collections::HashMap, sync::Arc};
+use network::{
+    action::NetworkAction,
+    message::{RequestMessage, StoreMessageRequestData},
+    PeerId,
+};
+use repository::RepositoryManager;
+use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 
-use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
-use uuid::Uuid;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ProtocolOperation {
-    Publish,
-    Get,
-    Update,
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct OperationStatus {
-    pub failed_number: usize,
-    pub completed_number: usize,
-}
-
-#[derive(Default)]
-pub struct OperationResponseTracker {
-    operation_statuses: Arc<Mutex<HashMap<Uuid, OperationStatus>>>,
-}
-
-impl OperationResponseTracker {
-    async fn get_or_create_status(&self, operation_id: Uuid) -> OperationStatus {
-        let mut operation_statuses = self.operation_statuses.lock().await;
-
-        // Ensure atomic get-or-create behavior without keeping the lock
-        operation_statuses
-            .entry(operation_id)
-            .or_insert_with(OperationStatus::default)
-            .clone()
-    }
-
-    async fn update_status(&self, operation_id: Uuid, is_successful: bool) {
-        let mut operation_statuses = self.operation_statuses.lock().await;
-        let status = operation_statuses
-            .entry(operation_id)
-            .or_insert_with(OperationStatus::default);
-
-        if is_successful {
-            status.completed_number += 1;
-        } else {
-            status.failed_number += 1;
-        }
-    }
-}
+use super::{
+    operation_service::{OperationResponseTracker, OperationService},
+    sharding_table_service::ShardingTableService,
+};
 
 pub struct PublishService {
-    response_tracker: OperationResponseTracker,
+    network_action_tx: Sender<NetworkAction>,
+    repository_manager: Arc<RepositoryManager>,
+    response_tracker: OperationResponseTracker<StoreMessageRequestData>,
+    sharding_table_service: Arc<ShardingTableService>,
 }
 
-impl PublishService {
-    async fn handle_response(&self, operation_id: Uuid) {
-        self.response_tracker
-            .update_status(operation_id, true)
-            .await;
+impl OperationService for PublishService {
+    type OperationRequestMessageData = StoreMessageRequestData;
+    const BATCH_SIZE: usize = 20;
+    const MIN_ACK_RESPONSES: usize = 8;
 
-        let operation_status = self
-            .response_tracker
-            .get_or_create_status(operation_id)
-            .await;
-        if operation_status.completed_number >= 5 {
-            println!("Operation {} is completed", operation_id);
-        } else if operation_status.failed_number >= 15 {
-            println!("Operation {} has failed", operation_id);
-        } else {
-            tracing::debug!(
-            "Processing publish response for operation id: {}, number of responses: {}, Completed: {}, Failed: {}, minimum replication factor: {}",
-            operation_id, operation_status.completed_number + operation_status.failed_number, operation_status.completed_number, operation_status.failed_number, 5
-        )
+    fn new(
+        network_action_tx: Sender<NetworkAction>,
+        repository_manager: Arc<RepositoryManager>,
+        sharding_table_service: Arc<ShardingTableService>,
+    ) -> Self {
+        Self {
+            network_action_tx,
+            repository_manager,
+            response_tracker: OperationResponseTracker::<Self::OperationRequestMessageData>::new(),
+            sharding_table_service,
         }
+    }
+    fn repository_manager(&self) -> &Arc<RepositoryManager> {
+        &self.repository_manager
+    }
+    fn sharding_table_service(&self) -> &Arc<ShardingTableService> {
+        &self.sharding_table_service
+    }
+    fn network_action_tx(&self) -> &Sender<NetworkAction> {
+        &self.network_action_tx
+    }
+    fn response_tracker(&self) -> &OperationResponseTracker<Self::OperationRequestMessageData> {
+        &self.response_tracker
+    }
+    fn create_network_action(
+        &self,
+        peer: PeerId,
+        message: RequestMessage<Self::OperationRequestMessageData>,
+    ) -> NetworkAction {
+        NetworkAction::StoreRequest { peer, message }
     }
 }

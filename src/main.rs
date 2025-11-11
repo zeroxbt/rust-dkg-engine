@@ -18,6 +18,10 @@ use network::action::NetworkAction;
 use network::NetworkEvent;
 use network::NetworkManager;
 use repository::RepositoryManager;
+use services::operation_service::OperationService;
+use services::publish_service::PublishService;
+use services::sharding_table_service::ShardingTableService;
+use services::ual_service::UalService;
 use std::process::Command as ProcessCommand;
 use std::sync::Arc;
 use tokio::join;
@@ -42,6 +46,12 @@ async fn main() {
 
     let (network_manager, repository_manager, blockchain_manager, validation_manager) =
         initialize_managers(&config.managers).await;
+    let (ual_service, sharding_table_service, publish_service) = initialize_services(
+        &blockchain_manager,
+        &repository_manager,
+        &validation_manager,
+        &network_action_tx,
+    );
 
     let context = Arc::new(Context::new(
         config.clone(),
@@ -51,6 +61,9 @@ async fn main() {
         Arc::clone(&network_manager),
         Arc::clone(&blockchain_manager),
         Arc::clone(&validation_manager),
+        Arc::clone(&ual_service),
+        Arc::clone(&sharding_table_service),
+        Arc::clone(&publish_service),
     ));
 
     if config.is_dev_env {
@@ -110,7 +123,7 @@ async fn main() {
 
 fn initialize_logger() {
     let filter =
-        tracing_subscriber::EnvFilter::new("off,blockchain=trace,network=trace,rust_ot_node=trace");
+        tracing_subscriber::EnvFilter::new("blockchain=trace,network=trace,rust_ot_node=trace");
     tracing_subscriber::fmt().with_env_filter(filter).init();
 }
 
@@ -182,6 +195,31 @@ async fn initialize_managers(
         blockchain_manager,
         validation_manager,
     )
+}
+
+fn initialize_services(
+    blockchain_manager: &Arc<BlockchainManager>,
+    repository_manager: &Arc<RepositoryManager>,
+    validation_manager: &Arc<ValidationManager>,
+    network_action_tx: &Sender<NetworkAction>,
+) -> (
+    Arc<UalService>,
+    Arc<ShardingTableService>,
+    Arc<PublishService>,
+) {
+    let ual_service = Arc::new(UalService::new(Arc::clone(blockchain_manager)));
+    let sharding_table_service = Arc::new(ShardingTableService::new(
+        Arc::clone(repository_manager),
+        Arc::clone(blockchain_manager),
+        Arc::clone(validation_manager),
+    ));
+    let publish_service = Arc::new(PublishService::new(
+        network_action_tx.clone(),
+        Arc::clone(repository_manager),
+        Arc::clone(&sharding_table_service),
+    ));
+
+    (ual_service, sharding_table_service, publish_service)
 }
 
 fn initialize_controllers(

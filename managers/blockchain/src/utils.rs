@@ -3,11 +3,13 @@ use crate::blockchains::{
     blockchain_creator::BlockchainProvider,
 };
 use ethers::{
+    abi::{Address, EncodePackedError, Token},
     contract::{parse_log, EthLogDecode},
     prelude::{ContractError, TransactionReceipt},
     providers::{Http, PendingTransaction},
     types::U256,
 };
+use hex::FromHexError;
 
 pub fn decode_event_log<D: EthLogDecode>(event_log: EventLog) -> D {
     parse_log::<D>(event_log.log().to_owned()).unwrap()
@@ -19,6 +21,24 @@ pub fn from_wei(wei: &str) -> String {
 
 pub fn to_wei(ethers: &str) -> U256 {
     ethers::utils::parse_ether(ethers).unwrap()
+}
+
+pub fn encode_packed_keyword(
+    address: Address,
+    assertion_id: [u8; 32],
+) -> Result<Vec<u8>, EncodePackedError> {
+    ethers::abi::encode_packed(&[
+        Token::Address(address),
+        Token::FixedBytes(assertion_id.to_vec()),
+    ])
+}
+
+pub fn to_hex_string(data: Vec<u8>) -> String {
+    hex::encode(data)
+}
+
+pub fn from_hex_string(data: String) -> Result<Vec<u8>, FromHexError> {
+    hex::decode(data)
 }
 
 pub(super) async fn handle_contract_call(

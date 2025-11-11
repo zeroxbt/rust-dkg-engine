@@ -84,7 +84,7 @@ impl FromStr for ContractName {
             "Profile" => Ok(ContractName::Profile),
             "CommitManagerV1U1" => Ok(ContractName::CommitManagerV1U1),
             "ServiceAgreementV1" => Ok(ContractName::ServiceAgreementV1),
-            // ... other match arms for your variants
+            "ContentAssetStorage" => Ok(ContractName::ContentAssetStorage),
             _ => Err(format!("'{}' is not a valid contract name", s)),
         }
     }
@@ -281,9 +281,11 @@ pub trait AbstractBlockchain: Send + Sync {
 
         let create_profile_call = contracts.profile().create_profile(
             admin_wallet,
+            vec![],
             peer_id_bytes,
             shares_token_name.clone(),
             shares_token_symbol.clone(),
+            0,
         );
 
         let result = create_profile_call.send().await;
@@ -320,5 +322,25 @@ pub trait AbstractBlockchain: Send + Sync {
         } else {
             panic!("Identity not found");
         }
+    }
+
+    async fn get_assertion_id_by_index(
+        &self,
+        contract: &Address,
+        token_id: u64,
+        index: u64,
+    ) -> Result<[u8; 32], BlockchainError> {
+        let contracts = self.contracts().await;
+        let Some(content_asset_storage) = contracts.get_content_asset_storage(contract) else {
+            return Err(BlockchainError::Custom(format!(
+                "Unable to find asset storage for address: {} ",
+                contract
+            )));
+        };
+
+        content_asset_storage
+            .get_assertion_id_by_index(token_id.into(), index.into())
+            .await
+            .map_err(|_| BlockchainError::Custom(format!("Unable to get assertion id for asset state with index: {}, content asset storage with address: {}", index, contract)))
     }
 }

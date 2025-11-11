@@ -1,4 +1,5 @@
 use serde_derive::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ErrorMessage {
@@ -7,34 +8,34 @@ pub enum ErrorMessage {
     Custom(String),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum RequestMessageType {
     ProtocolInit,
     ProtocolRequest,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum ResponseMessageType {
     Ack,
     Nack,
     Busy,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RequestMessageHeader {
-    pub operation_id: String,
-    pub keyword_uuid: String,
+    pub operation_id: Uuid,
+    pub keyword_uuid: Uuid,
     pub message_type: RequestMessageType,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResponseMessageHeader {
-    pub operation_id: String,
-    pub keyword_uuid: String,
+    pub operation_id: Uuid,
+    pub keyword_uuid: Uuid,
     pub message_type: ResponseMessageType,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RequestMessage<T> {
     pub header: RequestMessageHeader,
     pub data: T,
@@ -48,7 +49,7 @@ pub struct ResponseMessage<T> {
 
 // STORE
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StoreInitRequestData {
     assertion_id: String,
     blockchain: String,
@@ -78,9 +79,15 @@ impl StoreInitRequestData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StoreRequestData {
     assertion: Vec<String>,
+}
+
+impl StoreRequestData {
+    pub fn new(assertion: Vec<String>) -> Self {
+        Self { assertion }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -105,7 +112,7 @@ impl StoreRequestResponseData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum StoreMessageRequestData {
     Init(StoreInitRequestData),
     Request(StoreRequestData),

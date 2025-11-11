@@ -1,7 +1,7 @@
 use super::command::{Command, CommandData};
 use super::command_handler::{CommandExecutionResult, CommandHandler};
 use crate::context::Context;
-use crate::services::publish_service::ProtocolOperation;
+use crate::services::operation_service::ProtocolOperation;
 use async_trait::async_trait;
 use blockchain::BlockchainName;
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,7 @@ use uuid::Uuid;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct FindNodesCommandData {
     operation_id: Uuid,
-    keyword: String,
+    keyword: Vec<u8>,
     blockchain: BlockchainName,
     operation: ProtocolOperation,
     hash_function_id: i32,
@@ -20,7 +20,7 @@ pub struct FindNodesCommandData {
 impl FindNodesCommandData {
     pub fn new(
         operation_id: Uuid,
-        keyword: String,
+        keyword: Vec<u8>,
         blockchain: BlockchainName,
         operation: ProtocolOperation,
         hash_function_id: i32,
@@ -53,7 +53,12 @@ impl CommandHandler for FindNodesCommandHandler {
             _ => panic!("Unable to handle command data."),
         };
 
-        tracing::info!("Searching for closest nodes for keyword: {}", data.keyword);
+        let keyword_string = String::from_utf8(data.keyword.clone()).unwrap();
+
+        tracing::info!(
+            "Searching for closest nodes for keyword: {}",
+            keyword_string
+        );
 
         let peers = self
             .context
@@ -64,9 +69,9 @@ impl CommandHandler for FindNodesCommandHandler {
             .unwrap();
 
         tracing::info!(
-            "Found ${} node(s) for keyword ${}",
+            "Found {} node(s) for keyword {}",
             peers.len(),
-            data.keyword
+            keyword_string
         );
 
         CommandExecutionResult::Completed
