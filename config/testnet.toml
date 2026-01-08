@@ -1,0 +1,57 @@
+# ============================================
+# Testnet Configuration
+# ============================================
+# This configuration is used for testnet deployment
+# Override specific values in .origintrail_noderc.toml
+
+is_dev_env = false
+
+# ============================================
+# HTTP API Configuration
+# ============================================
+[http_api]
+port = 8900
+
+# ============================================
+# Network Manager Configuration
+# ============================================
+[managers.network]
+port = 9000
+data_folder_path = "data"
+
+# Testnet bootstrap nodes
+# Add your bootstrap nodes here or override in .origintrail_noderc.toml
+bootstrap = [
+    # "/ip4/164.92.138.30/tcp/9000/p2p/QmbiZQm18JefDizrQwbRhPgkaLykTLyrUEpeMWuKJHXuUM",
+    # "/ip4/139.59.145.152/tcp/9000/p2p/Qme2oF6afixBjLYjF5CYeC73d5dygsTq8P7BPQp31NVkye"
+]
+
+# ============================================
+# Repository Manager Configuration
+# ============================================
+[managers.repository]
+# Configure these values in .origintrail_noderc.toml or via environment variables
+database = ""
+host = "localhost"
+port = 3306
+user = ""
+password = ""  # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
+
+# ============================================
+# Validation Manager Configuration
+# ============================================
+[managers.validation]
+# Validation settings here
+
+# ============================================
+# Blockchain Configuration
+# ============================================
+# Configure your testnet blockchain networks in .origintrail_noderc.toml
+
+# Example testnet configuration:
+# [[managers.blockchain]]
+# [managers.blockchain.GnosisChiado]
+# chain_id = 10200
+# hub_contract_address = "0x2c08AC4B630c009F709521e56Ac385A6af70650f"
+# rpc_endpoints = ["https://rpc.chiadochain.net"]
+# initial_stake_amount = 50_000

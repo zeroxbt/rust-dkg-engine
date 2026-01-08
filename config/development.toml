@@ -1,0 +1,73 @@
+# ============================================
+# Development Environment Configuration
+# ============================================
+# This configuration is used for local development and testing.
+# For production deployments, see config/mainnet.toml
+
+is_dev_env = true
+
+# ============================================
+# HTTP API Configuration
+# ============================================
+[http_api]
+port = 8900
+
+# ============================================
+# Network Manager Configuration
+# ============================================
+[managers.network]
+port = 9000
+data_folder_path = "data"
+
+# Bootstrap nodes for local development network
+bootstrap = [
+    "/ip4/127.0.0.1/tcp/9102/p2p/12D3KooWF1nhFmNp4F1ni6aL3EHcayULrrEBAuutsgPLVr2poadQ"
+]
+
+# ============================================
+# Repository Manager Configuration
+# ============================================
+[managers.repository]
+database = "operationaldb"
+host = "localhost"
+port = 3306
+user = "rust-ot-node"
+password = "rust-ot-node"
+max_connections = 10
+min_connections = 1
+
+# ============================================
+# Validation Manager Configuration
+# ============================================
+[managers.validation]
+# Validation settings here
+
+# ============================================
+# Blockchain Configuration - Hardhat (Local)
+# ============================================
+# Note: This configuration uses Hardhat's default test accounts
+# WARNING: NEVER use these private keys in production!
+
+[[managers.blockchain]]
+[managers.blockchain.Hardhat]
+chain_id = 31337
+hub_contract_address = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+
+# RPC endpoints
+rpc_endpoints = ["http://127.0.0.1:8545"]
+
+# Staking configuration
+initial_stake_amount = 50_000  # 50,000 tokens
+initial_ask_amount = 0.2
+
+# Operational wallet (used for transactions)
+evm_operational_wallet_public_key = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+evm_operational_wallet_private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+
+# Management wallet (used for admin operations)
+evm_management_wallet_public_key = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199"
+evm_management_wallet_private_key = "0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e"
+
+# Node identity tokens
+shares_token_name = "LocalNode0"
+shares_token_symbol = "LN0"

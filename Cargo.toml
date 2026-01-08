@@ -38,5 +38,5 @@ dotenvy = "0.15.7"
 clap = "4.4.5"
 validator = "0.16.1"
 validator_derive = "0.16.0"
-config = { version = "0.13.3", features = ["json"]}
+figment = { version = "0.10", features = ["toml", "env"] }
 thiserror = "1.0.49"

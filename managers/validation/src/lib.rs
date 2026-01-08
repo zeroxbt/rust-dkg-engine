@@ -21,7 +21,7 @@ impl HashFunction {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ValidationManagerConfig {}
 
 pub struct ValidationManager;

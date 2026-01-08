@@ -77,7 +77,7 @@ impl BlockchainName {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub enum Blockchain {
     Hardhat(BlockchainConfig),
 }
@@ -90,7 +90,7 @@ impl Blockchain {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct BlockchainManagerConfig(pub Vec<Blockchain>);
 
 pub struct BlockchainManager {

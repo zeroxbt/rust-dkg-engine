@@ -1,0 +1,64 @@
+# ============================================
+# Mainnet Production Configuration
+# ============================================
+# IMPORTANT: This is a template for production deployment
+# You MUST override these values using .origintrail_noderc.toml or environment variables
+# NEVER commit real credentials to version control!
+
+is_dev_env = false
+
+# ============================================
+# HTTP API Configuration
+# ============================================
+[http_api]
+port = 8900
+
+# ============================================
+# Network Manager Configuration
+# ============================================
+[managers.network]
+port = 9000
+data_folder_path = "data"
+
+# Production bootstrap nodes (OriginTrail mainnet)
+# Add your bootstrap nodes here or override in .origintrail_noderc.toml
+bootstrap = [
+    # "/ip4/157.230.96.194/tcp/9000/p2p/QmZFcns6eGUosD96beHyevKu1jGJ1bA56Reg2f1J4q59Jt",
+    # "/ip4/18.132.135.102/tcp/9000/p2p/QmemqyXyvrTAm7PwrcTcFiEEFx69efdR92GSZ1oQprbdja"
+]
+
+# ============================================
+# Repository Manager Configuration
+# ============================================
+[managers.repository]
+# REQUIRED: Set these values in .origintrail_noderc.toml or via environment variables:
+# - OT_MANAGERS__REPOSITORY__DATABASE
+# - OT_MANAGERS__REPOSITORY__USER
+# - OT_MANAGERS__REPOSITORY__PASSWORD (recommended: use env var for security)
+# - OT_MANAGERS__REPOSITORY__HOST
+
+database = ""
+host = ""
+port = 3306
+user = ""
+password = ""  # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
+
+# ============================================
+# Validation Manager Configuration
+# ============================================
+[managers.validation]
+# Validation settings here
+
+# ============================================
+# Blockchain Configuration
+# ============================================
+# REQUIRED: Configure your blockchain networks in .origintrail_noderc.toml
+# See config/development.toml for example structure
+
+# Example:
+# [[managers.blockchain]]
+# [managers.blockchain.OriginTrailParachain]
+# chain_id = 2043
+# hub_contract_address = "0x..."
+# rpc_endpoints = ["https://..."]
+# initial_stake_amount = 50_000

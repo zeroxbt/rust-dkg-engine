@@ -52,83 +52,52 @@ async fn main() {
 
     let nodes: usize = *matches.get_one("nodes").unwrap_or(&NUM_CONFIGS);
 
-    let template_path = "tools/local_network/.node_config_template.json";
-    let template_str = fs::read_to_string(template_path).expect("Failed to read the template file");
-    let original_template_value: Value =
-        serde_json::from_str(&template_str).expect("Failed to parse the template");
+    // Read TOML template
+    let toml_template_path = "tools/local_network/.node_config_template.toml";
+    let toml_template_str = fs::read_to_string(toml_template_path)
+        .expect("Failed to read the TOML template file");
 
     for i in 0..=nodes - 1 {
-        let mut template_value = original_template_value.clone();
+        // Calculate ports and names
+        let network_port = 9000 + i;
+        let http_port = 8900 + i;
+        let database_name = format!("operationaldb{}", i);
+        let data_folder = format!("data{}", i);
+        let node_name = format!("LocalNode{}", i);
+        let node_symbol = format!("LN{}", i);
 
-        {
-            let managers = template_value
-                .get_mut("managers")
-                .expect("Template format error");
-            let network = managers.get_mut("network").expect("Template format error");
+        // Generate TOML config by replacing placeholders
+        let toml_config = toml_template_str
+            .replace("{{HTTP_PORT}}", &http_port.to_string())
+            .replace("{{NETWORK_PORT}}", &network_port.to_string())
+            .replace("{{DATA_FOLDER}}", &data_folder)
+            .replace(
+                "{{BOOTSTRAP_NODES}}",
+                "\"/ip4/127.0.0.1/tcp/9102/p2p/12D3KooWF1nhFmNp4F1ni6aL3EHcayULrrEBAuutsgPLVr2poadQ\"",
+            )
+            .replace("{{DATABASE_NAME}}", &database_name)
+            .replace(
+                "{{OPERATIONAL_WALLET_PUBLIC}}",
+                public_keys.get(i).unwrap(),
+            )
+            .replace(
+                "{{OPERATIONAL_WALLET_PRIVATE}}",
+                private_keys.get(i).unwrap(),
+            )
+            .replace(
+                "{{MANAGEMENT_WALLET_PUBLIC}}",
+                public_keys.get(public_keys.len() - 1 - i).unwrap(),
+            )
+            .replace(
+                "{{MANAGEMENT_WALLET_PRIVATE}}",
+                private_keys.get(private_keys.len() - 1 - i).unwrap(),
+            )
+            .replace("{{NODE_NAME}}", &node_name)
+            .replace("{{NODE_SYMBOL}}", &node_symbol);
 
-            let port = network["port"].as_u64().unwrap() + i as u64;
-            let data_folder_path = format!("data{}", i);
-
-            network["port"] = Value::from(port);
-            network["data_folder_path"] = Value::from(data_folder_path);
-        }
-
-        {
-            let managers = template_value
-                .get_mut("managers")
-                .expect("Template format error");
-            let repository = managers
-                .get_mut("repository")
-                .expect("Template format error");
-
-            let database = format!("operationaldb{}", i);
-
-            repository["database"] = Value::from(database);
-        }
-
-        {
-            let managers = template_value
-                .get_mut("managers")
-                .expect("Template format error");
-            let blockchain = managers
-                .get_mut("blockchain")
-                .expect("Template format error");
-            let config = blockchain
-                .get_mut(0)
-                .expect("Template format error")
-                .get_mut("Hardhat")
-                .expect("Template format error");
-
-            config["evm_operational_wallet_public_key"] =
-                Value::from(public_keys.get(i).unwrap().to_string());
-            config["evm_operational_wallet_private_key"] =
-                Value::from(private_keys.get(i).unwrap().to_string());
-            config["evm_management_wallet_public_key"] = Value::from(
-                public_keys
-                    .get(public_keys.len() - 1 - i)
-                    .unwrap()
-                    .to_string(),
-            );
-            config["evm_management_wallet_private_key"] = Value::from(
-                private_keys
-                    .get(private_keys.len() - 1 - i)
-                    .unwrap()
-                    .to_string(),
-            );
-            config["shares_token_name"] = Value::from(format!("LocalNode{}", i));
-            config["shares_token_symbol"] = Value::from(format!("LN{}", i));
-        }
-
-        let http_port = template_value["http_api"]["port"].as_u64().unwrap() + i as u64;
-        template_value["http_api"]["port"] = Value::from(http_port);
-
-        // Serialize the modified configuration and write it to a new file
-        let new_config_str =
-            serde_json::to_string_pretty(&template_value).expect("Failed to serialize the config");
-        let file_name = format!("tools/local_network/.node{}_config.json", i);
-        fs::write(&file_name, new_config_str).expect("Failed to write the new config file");
-
-        println!("Generated {}", file_name);
+        let toml_file_name = format!("tools/local_network/.node{}_config.toml", i);
+        fs::write(&toml_file_name, toml_config).expect("Failed to write the TOML config file");
+        println!("Generated {}", toml_file_name);
     }
 
     let current_dir = std::env::current_dir().expect("Failed to get current directory");
@@ -141,7 +110,7 @@ async fn main() {
         let database_name = format!("operationaldb{}", i);
         drop_database(&database_name);
 
-        let config_path = format!("tools/local_network/.node{}_config.json", i);
+        let config_path = format!("tools/local_network/.node{}_config.toml", i);
         open_terminal_with_command(&format!(
             "cd {} && cargo run -- --config {}",
             current_dir_str, config_path

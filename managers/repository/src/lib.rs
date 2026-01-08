@@ -73,7 +73,7 @@ impl RepositoryManager {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct RepositoryManagerConfig {
     user: String,
     password: String,

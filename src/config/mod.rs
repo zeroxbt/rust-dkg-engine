@@ -1,21 +1,35 @@
 use blockchain::BlockchainManagerConfig;
-use config::{Environment, File};
+use figment::{
+    providers::{Env, Format, Toml},
+    Figment,
+};
 use network::NetworkManagerConfig;
 use repository::RepositoryManagerConfig;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use std::env;
+use thiserror::Error;
 use validation::ValidationManagerConfig;
 
 use crate::controllers::http_api_controller::http_api_router::HttpApiConfig;
 
-#[derive(Debug, Deserialize)]
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("Configuration loading failed: {0}")]
+    LoadError(#[from] figment::Error),
+
+    #[error("Configuration validation failed: {0}")]
+    ValidationError(String),
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Config {
+    #[serde(default)]
     pub is_dev_env: bool,
     pub managers: ManagersConfig,
     pub http_api: HttpApiConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ManagersConfig {
     pub network: NetworkManagerConfig,
     pub repository: RepositoryManagerConfig,
@@ -24,39 +38,44 @@ pub struct ManagersConfig {
 }
 
 pub fn initialize_configuration() -> Config {
-    // Start building the configuration
-    let mut builder = config::Config::builder();
+    load_configuration().expect("Failed to load configuration")
+}
 
-    // Load the default configuration from config.json
+fn load_configuration() -> Result<Config, ConfigError> {
     let node_env = env::var("NODE_ENV").unwrap_or_else(|_| "development".to_string());
-    let default_config_path = format!("./config/{}.json", node_env);
-    builder = builder.add_source(File::with_name(&default_config_path));
 
-    // Parse CLI arguments for a custom config file
-    let matches = clap::Command::new("Your Application Name")
+    tracing::info!("Loading configuration for environment: {}", node_env);
+
+    // Build configuration with layered sources (priority: lowest to highest)
+    let mut figment = Figment::new()
+        // 1. Base configuration from TOML
+        .merge(Toml::file(format!("config/{}.toml", node_env)))
+        // 2. User overrides from .origintrail_noderc.toml
+        .merge(Toml::file(".origintrail_noderc.toml").nested())
+        // 3. Environment variables (highest priority, format: OT_MANAGERS__NETWORK__PORT=9001)
+        .merge(Env::prefixed("OT_").split("__"));
+
+    // Parse CLI arguments for custom config file
+    let matches = clap::Command::new("OriginTrail Rust Node")
         .arg(
             clap::Arg::new("config")
                 .short('c')
                 .long("config")
                 .value_name("FILE")
-                .help("Sets a custom config file"),
+                .help("Sets a custom config file (.toml format)"),
         )
         .get_matches();
 
-    let config_file_path: Option<&String> = matches.get_one("config");
-
-    if let Some(config_path) = config_file_path {
-        // If user provides a custom config file, add it as a source
-        builder = builder.add_source(File::with_name(config_path));
-    } else if let Ok(ot_noderc_data) = std::fs::read_to_string(".origintrail_noderc") {
-        // If user has a .origintrail_noderc file, add it as a source
-        builder = builder.add_source(File::from_str(&ot_noderc_data, config::FileFormat::Json));
+    if let Some(config_path) = matches.get_one::<String>("config") {
+        tracing::info!("Loading custom config file: {}", config_path);
+        figment = figment.merge(Toml::file(config_path));
     }
 
-    // Convert it into your Config type
-    builder
-        .build()
-        .expect("Unable to build Config")
-        .try_deserialize::<Config>()
-        .expect("Error deserializing config")
+    // Extract and validate configuration
+    let config: Config = figment.extract()?;
+
+    tracing::info!("Configuration loaded successfully");
+    tracing::debug!("Configuration: {:?}", config);
+
+    Ok(config)
 }
