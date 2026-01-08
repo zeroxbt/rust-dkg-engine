@@ -1,3 +1,4 @@
+pub mod file_service;
 pub mod operation_service;
 pub mod publish_service;
 pub mod sharding_table_service;
