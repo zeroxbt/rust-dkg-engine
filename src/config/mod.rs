@@ -48,12 +48,10 @@ fn load_configuration() -> Result<Config, ConfigError> {
 
     // Build configuration with layered sources (priority: lowest to highest)
     let mut figment = Figment::new()
-        // 1. Base configuration from TOML
+        // Base configuration from TOML
         .merge(Toml::file(format!("config/{}.toml", node_env)))
-        // 2. User overrides from .origintrail_noderc.toml
+        // User overrides from .origintrail_noderc.toml
         .merge(Toml::file(".origintrail_noderc.toml").nested())
-        // 3. Environment variables (highest priority, format: OT_MANAGERS__NETWORK__PORT=9001)
-        .merge(Env::prefixed("OT_").split("__"));
 
     // Parse CLI arguments for custom config file
     let matches = clap::Command::new("OriginTrail Rust Node")
