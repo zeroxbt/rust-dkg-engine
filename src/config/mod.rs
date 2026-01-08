@@ -51,7 +51,7 @@ fn load_configuration() -> Result<Config, ConfigError> {
         // Base configuration from TOML
         .merge(Toml::file(format!("config/{}.toml", node_env)))
         // User overrides from .origintrail_noderc.toml
-        .merge(Toml::file(".origintrail_noderc.toml").nested())
+        .merge(Toml::file(".origintrail_noderc.toml").nested());
 
     // Parse CLI arguments for custom config file
     let matches = clap::Command::new("OriginTrail Rust Node")

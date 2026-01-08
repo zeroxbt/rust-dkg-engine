@@ -108,7 +108,7 @@ impl CommandExecutor {
     }
 
     async fn execute(&self, command: Command) {
-        let _ = self.semaphore.acquire().await.unwrap();
+        let _permit = self.semaphore.acquire().await.unwrap();
 
         let now = chrono::Utc::now().timestamp_millis();
 

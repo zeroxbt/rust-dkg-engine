@@ -26,11 +26,11 @@ impl AbstractBlockchain for HardhatBlockchain {
         &self.provider
     }
 
-    async fn contracts(&self) -> RwLockReadGuard<'_, Contracts> {
+    async fn contracts(&self) -> RwLockReadGuard<'life0, Contracts> {
         self.contracts.read().await
     }
 
-    async fn contracts_mut(&self) -> RwLockWriteGuard<'_, Contracts> {
+    async fn contracts_mut(&self) -> RwLockWriteGuard<'life0, Contracts> {
         self.contracts.write().await
     }
 

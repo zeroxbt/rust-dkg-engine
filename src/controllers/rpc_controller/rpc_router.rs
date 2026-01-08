@@ -53,7 +53,7 @@ impl RpcRouter {
     }
 
     async fn handle_network_event(&self, event: NetworkEvent) {
-        let _ = self.semaphore.acquire().await.unwrap();
+        let _permit = self.semaphore.acquire().await.unwrap();
 
         match event {
             SwarmEvent::Behaviour(BehaviourEvent::Store(inner_event)) => match inner_event {
