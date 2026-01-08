@@ -6,6 +6,10 @@ pub enum RepositoryError {
     /// Database error - wraps all SeaORM errors
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
+
+    /// Record not found error
+    #[error("Record not found: {0}")]
+    NotFound(String),
 }
 
 /// Convenient Result type alias for RepositoryError

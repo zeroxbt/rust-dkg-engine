@@ -6,7 +6,7 @@ mod repositories;
 use error::RepositoryError;
 use repositories::{
     blockchain_repository::BlockchainRepository, command_repository::CommandRepository,
-    shard_repository::ShardRepository,
+    operation_id_repository::OperationIdRepository, shard_repository::ShardRepository,
 };
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
@@ -19,6 +19,7 @@ pub struct RepositoryManager {
     command_repository: CommandRepository,
     shard_repository: ShardRepository,
     blockchain_repository: BlockchainRepository,
+    operation_id_repository: OperationIdRepository,
 }
 
 impl RepositoryManager {
@@ -57,6 +58,7 @@ impl RepositoryManager {
             command_repository: CommandRepository::new(Arc::clone(&conn)),
             shard_repository: ShardRepository::new(Arc::clone(&conn)),
             blockchain_repository: BlockchainRepository::new(Arc::clone(&conn)),
+            operation_id_repository: OperationIdRepository::new(Arc::clone(&conn)),
         })
     }
 
@@ -70,6 +72,10 @@ impl RepositoryManager {
 
     pub fn blockchain_repository(&self) -> &BlockchainRepository {
         &self.blockchain_repository
+    }
+
+    pub fn operation_id_repository(&self) -> &OperationIdRepository {
+        &self.operation_id_repository
     }
 }
 

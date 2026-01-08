@@ -102,6 +102,17 @@ impl FileService {
         Ok(serde_json::from_slice(&data)?)
     }
 
+    pub async fn metadata(&self, path: impl AsRef<Path>) -> Result<std::fs::Metadata> {
+        let path = path.as_ref();
+        tokio::fs::metadata(path).await.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                FileServiceError::FileNotFound(path.to_path_buf())
+            } else {
+                FileServiceError::Io(e)
+            }
+        })
+    }
+
     /// Write JSON data to a file
     pub async fn write_json<T: serde::Serialize>(
         &self,
