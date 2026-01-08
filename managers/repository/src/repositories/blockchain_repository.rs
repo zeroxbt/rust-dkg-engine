@@ -1,6 +1,6 @@
-use crate::models::blockchain::{ActiveModel, Column, Entity};
+use crate::{error::Result, models::blockchain::{ActiveModel, Column, Entity}};
 use sea_orm::{
-    error::DbErr, prelude::DateTimeUtc, sea_query::OnConflict, ActiveValue, DatabaseConnection,
+    prelude::DateTimeUtc, sea_query::OnConflict, ActiveValue, DatabaseConnection,
     EntityTrait,
 };
 use std::sync::Arc;
@@ -18,7 +18,7 @@ impl BlockchainRepository {
         &self,
         blockchain_id: &str,
         contract: &str,
-    ) -> Result<u64, DbErr> {
+    ) -> Result<u64> {
         let model = Entity::find_by_id((blockchain_id.to_owned(), contract.to_owned()))
             .one(self.conn.as_ref())
             .await?;
@@ -36,7 +36,7 @@ impl BlockchainRepository {
         contract: &str,
         last_checked_block: u64,
         last_checked_timestamp: DateTimeUtc,
-    ) -> Result<(), DbErr> {
+    ) -> Result<()> {
         let model = ActiveModel {
             blockchain_id: ActiveValue::Set(blockchain_id.to_owned()),
             contract: ActiveValue::Set(contract.to_owned()),

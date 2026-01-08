@@ -11,7 +11,7 @@ use ethers::{
 use std::sync::Arc;
 use std::{collections::HashMap, str::FromStr};
 
-use super::abstract_blockchain::BlockchainError;
+use crate::error::BlockchainError;
 
 abigen!(Hub, "../../abi/Hub.json");
 abigen!(ContentAssetStorage, "../../abi/ContentAssetStorage.json");
@@ -78,15 +78,21 @@ impl Contracts {
         &self.profile
     }
 
-    pub fn get(&self, contract_name: &ContractName) -> &Contract<BlockchainProvider> {
+    pub fn get(
+        &self,
+        contract_name: &ContractName,
+    ) -> Result<&Contract<BlockchainProvider>, BlockchainError> {
         match contract_name {
-            ContractName::Hub => &self.hub,
-            ContractName::ShardingTable => &self.sharding_table,
-            ContractName::Staking => &self.staking,
-            ContractName::CommitManagerV1U1 => &self.commit_manager_v1_u1,
-            ContractName::Profile => &self.profile,
-            ContractName::ServiceAgreementV1 => &self.service_agreement_v1,
-            _ => panic!("Unexpected contract"),
+            ContractName::Hub => Ok(&self.hub),
+            ContractName::ShardingTable => Ok(&self.sharding_table),
+            ContractName::Staking => Ok(&self.staking),
+            ContractName::CommitManagerV1U1 => Ok(&self.commit_manager_v1_u1),
+            ContractName::Profile => Ok(&self.profile),
+            ContractName::ServiceAgreementV1 => Ok(&self.service_agreement_v1),
+            ContractName::ContentAssetStorage => Err(BlockchainError::Custom(
+                "ContentAssetStorage contracts must be accessed via get_content_asset_storage"
+                    .to_string(),
+            )),
         }
     }
 
@@ -142,14 +148,17 @@ pub trait BlockchainCreator {
 
     async fn initialize_ethers_provider(
         config: &BlockchainConfig,
-    ) -> Result<Arc<BlockchainProvider>, Box<dyn std::error::Error>> {
+    ) -> Result<Arc<BlockchainProvider>, BlockchainError> {
         let mut tries = 0;
         let mut rpc_number = 0;
 
         let signer = config
             .evm_operational_wallet_private_key
             .parse::<LocalWallet>()
-            .unwrap()
+            .map_err(|e| BlockchainError::InvalidPrivateKey {
+                key_length: config.evm_operational_wallet_private_key.len(),
+                source: e,
+            })?
             .with_chain_id(config.chain_id);
         let signer_address = signer.address();
 
@@ -158,9 +167,16 @@ pub trait BlockchainCreator {
             let endpoint = &config.rpc_endpoints[rpc_number];
 
             let current_provider = if endpoint.starts_with("ws") {
-                panic!("websocket RPCs not supported yet");
+                return Err(BlockchainError::Custom(
+                    "websocket RPCs not supported yet".to_string(),
+                ));
             } else {
-                let http = Http::from_str(endpoint)?;
+                let http = Http::from_str(endpoint).map_err(|e| {
+                    BlockchainError::HttpProviderCreation {
+                        endpoint: endpoint.clone(),
+                        source: Box::new(e),
+                    }
+                })?;
                 Arc::new(
                     Provider::new(http)
                         .with_signer(cloned_signer)
@@ -179,20 +195,24 @@ pub trait BlockchainCreator {
             }
         }
 
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "RPC initialization failed",
-        )))
+        Err(BlockchainError::RpcConnectionFailed {
+            attempts: config.rpc_endpoints.len(),
+        })
     }
 
     async fn initialize_contracts(
         config: &BlockchainConfig,
         provider: &Arc<BlockchainProvider>,
-    ) -> Contracts {
-        let address = config.hub_contract_address.parse::<Address>().unwrap();
+    ) -> Result<Contracts, BlockchainError> {
+        let address = config
+            .hub_contract_address
+            .parse::<Address>()
+            .map_err(|_| BlockchainError::InvalidAddress {
+                address: config.hub_contract_address.clone(),
+            })?;
         let hub = Hub::new(address, provider.clone());
 
-        let asset_storages_addresses = hub.get_all_asset_storages().call().await.unwrap();
+        let asset_storages_addresses = hub.get_all_asset_storages().call().await?;
 
         let content_asset_storages: HashMap<Address, ContentAssetStorage<BlockchainProvider>> =
             asset_storages_addresses
@@ -206,150 +226,130 @@ pub trait BlockchainCreator {
                 })
                 .collect();
 
-        Contracts {
+        Ok(Contracts {
             hub: hub.clone(),
             content_asset_storages,
             /*
             assertion_storage: AssertionStorage::new(
                 hub.get_contract_address("AssertionStorage".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ), */
             staking: Staking::new(
                 hub.get_contract_address("Staking".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             /* staking_storage: StakingStorage::new(
                 hub.get_contract_address("StakingStorage".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             token: Token::new(
                 hub.get_contract_address("Token".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             hashing_proxy: HashingProxy::new(
                 hub.get_contract_address("HashingProxy".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ), */
             identity_storage: IdentityStorage::new(
                 hub.get_contract_address("IdentityStorage".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             /*  log2_pldsf: Log2PLDSF::new(
                 hub.get_contract_address("Log2PLDSF".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             parameters_storage: ParametersStorage::new(
                 hub.get_contract_address("ParametersStorage".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ), */
             profile: Profile::new(
                 hub.get_contract_address("Profile".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             /*  profile_storage: ProfileStorage::new(
                 hub.get_contract_address("ProfileStorage".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             scoring_proxy: ScoringProxy::new(
                 hub.get_contract_address("ScoringProxy".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ), */
             service_agreement_v1: ServiceAgreementV1::new(
                 hub.get_contract_address("ServiceAgreementV1".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             /*  commit_manager_v1: CommitManagerV1::new(
                 hub.get_contract_address("CommitManagerV1".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ), */
             commit_manager_v1_u1: CommitManagerV1U1::new(
                 hub.get_contract_address("CommitManagerV1U1".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             /*   proof_manager_v1: ProofManagerV1::new(
                 hub.get_contract_address("ProofManagerV1".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             proof_manager_v1_u1: ProofManagerV1U1::new(
                 hub.get_contract_address("ProofManagerV1U1".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),*/
             sharding_table: ShardingTable::new(
                 hub.get_contract_address("ShardingTable".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             /*    sharding_table_storage: ShardingTableStorage::new(
                 hub.get_contract_address("ShardingTableStorage".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             service_agreement_storage_proxy: ServiceAgreementStorageProxy::new(
                 hub.get_contract_address("ServiceAgreementStorageProxy".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ),
             unfinalized_state_storage: UnfinalizedStateStorage::new(
                 hub.get_contract_address("UnfinalizedStateStorage".to_string())
                     .call()
-                    .await
-                    .unwrap(),
+                    .await?,
                 Arc::clone(provider),
             ), */
-        }
+        })
     }
 }

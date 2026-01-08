@@ -1,5 +1,6 @@
 use crate::{
     blockchains::blockchain_creator::{BlockchainProvider, Contracts},
+    error::BlockchainError,
     utils::handle_contract_call,
     BlockchainConfig, BlockchainName,
 };
@@ -14,23 +15,6 @@ use std::{str::FromStr, sync::Arc};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
-
-#[derive(Debug, thiserror::Error)]
-pub enum BlockchainError {
-    #[error("Contract error: {0}")]
-    Contract(#[from] ethers::contract::ContractError<BlockchainProvider>),
-
-    #[error("Failed to decode message")]
-    Decode,
-    #[error("Failed to parse address")]
-    Parse,
-    #[error("Failed to get logs")]
-    GetLogs,
-    #[error("Failed to get block number")]
-    GetBlockNumber,
-    #[error("Error: {0}")]
-    Custom(String),
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ContractName {
@@ -142,8 +126,8 @@ pub trait AbstractBlockchain: Send + Sync {
     fn name(&self) -> &BlockchainName;
     fn config(&self) -> &BlockchainConfig;
     fn provider(&self) -> &Arc<BlockchainProvider>;
-    async fn contracts(&self) -> RwLockReadGuard<'_, Contracts>;
-    async fn contracts_mut(&self) -> RwLockWriteGuard<'_, Contracts>;
+    async fn contracts(&self) -> RwLockReadGuard<'life0, Contracts>;
+    async fn contracts_mut(&self) -> RwLockWriteGuard<'life0, Contracts>;
     fn set_identity_id(&mut self, id: u128);
 
     async fn re_initialize_contract(
@@ -180,7 +164,7 @@ pub trait AbstractBlockchain: Send + Sync {
         current_block: u64,
     ) -> Result<Vec<EventLog>, BlockchainError> {
         let contracts = self.contracts().await;
-        let contract = contracts.get(contract_name);
+        let contract = contracts.get(contract_name)?;
 
         let mut events = Vec::new();
         let mut from_block = from_block;
@@ -218,7 +202,9 @@ pub trait AbstractBlockchain: Send + Sync {
         for event_name in events_to_filter {
             let filter = contract
                 .event_for_name::<Filter>(event_name.as_str())
-                .unwrap()
+                .map_err(|_| BlockchainError::EventNotFound {
+                    event_name: event_name.as_str().to_string(),
+                })?
                 .filter;
             let logs = self
                 .provider()
@@ -272,7 +258,9 @@ pub trait AbstractBlockchain: Send + Sync {
         let admin_wallet = config
             .evm_management_wallet_public_key
             .parse::<Address>()
-            .map_err(|_| BlockchainError::Parse)?;
+            .map_err(|_| BlockchainError::InvalidAddress {
+                address: config.evm_management_wallet_public_key.clone(),
+            })?;
         let peer_id_bytes = Bytes::from(peer_id.as_bytes().to_vec());
         let shares_token_name = config.shares_token_name.to_string();
         let shares_token_symbol = config.shares_token_symbol.to_string();
@@ -305,11 +293,9 @@ pub trait AbstractBlockchain: Send + Sync {
 
     async fn initialize_identity(&mut self, peer_id: &str) -> Result<(), BlockchainError> {
         if !self.identity_id_exists().await {
-            let result = self.create_profile(peer_id).await;
-
-            if result.is_err() {
-                panic!("Unable to create profile");
-            }
+            self.create_profile(peer_id)
+                .await
+                .map_err(|_| BlockchainError::ProfileCreation)?;
         }
 
         let identity_id = self.get_identity_id().await;
@@ -320,7 +306,7 @@ pub trait AbstractBlockchain: Send + Sync {
             self.set_identity_id(id);
             Ok(())
         } else {
-            panic!("Identity not found");
+            Err(BlockchainError::IdentityNotFound)
         }
     }
 

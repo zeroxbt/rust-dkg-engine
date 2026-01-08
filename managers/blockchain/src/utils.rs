@@ -1,6 +1,6 @@
-use crate::blockchains::{
-    abstract_blockchain::{BlockchainError, EventLog},
-    blockchain_creator::BlockchainProvider,
+use crate::{
+    blockchains::{abstract_blockchain::EventLog, blockchain_creator::BlockchainProvider},
+    error::BlockchainError,
 };
 use ethers::{
     abi::{Address, EncodePackedError, Token},

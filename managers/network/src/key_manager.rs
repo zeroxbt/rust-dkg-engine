@@ -1,6 +1,7 @@
 /* use base64::{engine::general_purpose, Engine as _};
 use rand::rngs::OsRng;
 use rsa::{pkcs8::EncodePrivateKey, RsaPrivateKey}; */
+use crate::error::{NetworkError, Result};
 use libp2p::identity;
 use std::path::PathBuf;
 use tokio::fs;
@@ -19,6 +20,7 @@ impl KeyManager {
         if let Some(parent) = key_path.parent() {
             fs::create_dir_all(parent).await?;
         }
+
         Ok(())
     }
 
@@ -46,29 +48,27 @@ impl KeyManager {
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?; */
         println!("Creating keypair...");
         libp2p::identity::ed25519::Keypair::try_from_bytes(&mut key_bytes)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+            .map_err(|e| io::Error::other(e.to_string()))
     }
 
     pub(super) async fn generate_or_load_key(
         data_folder_path: &str,
-    ) -> io::Result<libp2p::identity::Keypair> {
+    ) -> Result<libp2p::identity::Keypair> {
         match Self::read_private_key_from_file(data_folder_path).await {
             Ok(pk) => Ok(pk.into()),
             Err(error) => {
-                println!("error {:?}", error);
-                /* let new_key = RsaPrivateKey::new(&mut OsRng, 2048)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?; */
+                tracing::debug!("No existing key found ({}), generating new key", error);
+
                 let new_key = identity::Keypair::generate_ed25519();
-                /* let mut key_der = EncodePrivateKey::to_pkcs8_der(&new_key)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-                    .to_bytes();
-                let key = libp2p::identity::Keypair::rsa_from_pkcs8(&mut key_der)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?; */
-                Self::save_private_key_to_file(
-                    &new_key.clone().try_into_ed25519().unwrap(),
-                    data_folder_path,
-                )
-                .await?;
+
+                // Extract ed25519 keypair for saving
+                let ed25519_key = new_key
+                    .clone()
+                    .try_into_ed25519()
+                    .map_err(NetworkError::KeyConversion)?;
+
+                Self::save_private_key_to_file(&ed25519_key, data_folder_path).await?;
+
                 Ok(new_key)
             }
         }

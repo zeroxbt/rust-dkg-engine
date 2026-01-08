@@ -1,7 +1,9 @@
+pub mod error;
 mod migrations;
 pub mod models;
 mod repositories;
 
+use error::RepositoryError;
 use repositories::{
     blockchain_repository::BlockchainRepository, command_repository::CommandRepository,
     shard_repository::ShardRepository,
@@ -9,7 +11,7 @@ use repositories::{
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::Deserialize;
-use std::{error::Error, sync::Arc};
+use std::sync::Arc;
 
 use self::migrations::Migrator;
 
@@ -20,7 +22,15 @@ pub struct RepositoryManager {
 }
 
 impl RepositoryManager {
-    pub async fn new(config: &RepositoryManagerConfig) -> Result<Self, Box<dyn Error>> {
+    /// Creates a new RepositoryManager instance
+    ///
+    /// # Errors
+    ///
+    /// Returns `RepositoryError` if:
+    /// - Database connection fails
+    /// - Database creation fails
+    /// - Migrations fail
+    pub async fn new(config: &RepositoryManagerConfig) -> Result<Self, RepositoryError> {
         // Connect to MySQL server
         let conn = Database::connect(config.root_connection_string()).await?;
 

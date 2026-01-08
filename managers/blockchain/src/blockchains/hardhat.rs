@@ -42,8 +42,12 @@ impl AbstractBlockchain for HardhatBlockchain {
 #[async_trait]
 impl BlockchainCreator for HardhatBlockchain {
     async fn new(config: BlockchainConfig) -> Self {
-        let provider = Self::initialize_ethers_provider(&config).await.unwrap();
-        let contracts = Self::initialize_contracts(&config, &provider).await;
+        let provider = Self::initialize_ethers_provider(&config)
+            .await
+            .expect("Failed to initialize blockchain provider");
+        let contracts = Self::initialize_contracts(&config, &provider)
+            .await
+            .expect("Failed to initialize blockchain contracts");
 
         Self {
             provider,

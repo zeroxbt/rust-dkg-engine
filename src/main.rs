@@ -2,6 +2,7 @@ mod commands;
 mod config;
 mod context;
 mod controllers;
+mod error;
 mod services;
 
 use blockchain::BlockchainManager;
@@ -106,9 +107,13 @@ async fn main() {
         tokio::task::spawn(async move { http_api_router.listen_and_handle_http_requests().await });
 
     let handle_swarm_events_task = tokio::task::spawn(async move {
-        network_manager
+        // listen_and_handle_swarm_events now returns Result
+        if let Err(e) = network_manager
             .listen_and_handle_swarm_events(network_action_rx, network_event_tx)
-            .await;
+            .await
+        {
+            tracing::error!("Network swarm event handler failed: {}", e);
+        }
     });
 
     let _ = join!(
@@ -178,11 +183,17 @@ async fn initialize_managers(
     Arc<BlockchainManager>,
     Arc<ValidationManager>,
 ) {
-    let network_manager = Arc::new(NetworkManager::new(&config.network).await);
+    // NetworkManager now returns Result - handle it properly
+    let network_manager = Arc::new(
+        NetworkManager::new(&config.network)
+            .await
+            .expect("Failed to initialize network manager"),
+    );
+
     let repository_manager = Arc::new(RepositoryManager::new(&config.repository).await.unwrap());
     let mut blockchain_manager = BlockchainManager::new(&config.blockchain).await;
     blockchain_manager
-        .initialize_identities(&network_manager.get_peer_id().to_base58())
+        .initialize_identities(&network_manager.peer_id().to_base58())
         .await
         .unwrap();
 
@@ -235,7 +246,9 @@ fn initialize_controllers(
 
 async fn initialize_dev_environment(blockchain_manager: &Arc<BlockchainManager>) {
     for blockchain in blockchain_manager.get_blockchain_names() {
-        let config = blockchain_manager.get_blockchain_config(blockchain);
+        let config = blockchain_manager
+            .get_blockchain_config(blockchain)
+            .unwrap();
         let stake_command = format!(
                 "cargo run -p scripts -- set-stake --rpcEndpoint={} --stake={} --operationalWalletPrivateKey={} --managementWalletPrivateKey={} --hubContractAddress={}",
                 config.rpc_endpoints()[0],

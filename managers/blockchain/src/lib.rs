@@ -1,10 +1,8 @@
-mod blockchains;
+pub mod blockchains;
+pub mod error;
 pub mod utils;
 
-use blockchains::{
-    abstract_blockchain::{AbstractBlockchain, BlockchainError},
-    blockchain_creator::BlockchainCreator,
-};
+use blockchains::{abstract_blockchain::AbstractBlockchain, blockchain_creator::BlockchainCreator};
 pub use blockchains::{
     abstract_blockchain::{ContractName, EventLog, EventName},
     blockchain_creator::{
@@ -16,6 +14,8 @@ pub use blockchains::{
 pub use ethers::types::Address;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use crate::error::BlockchainError;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct BlockchainConfig {
@@ -121,24 +121,40 @@ impl BlockchainManager {
         self.blockchains.keys().collect()
     }
 
-    pub fn get_blockchain_config(&self, blockchain: &BlockchainName) -> &BlockchainConfig {
-        self.blockchains.get(blockchain).unwrap().config()
-    }
-
-    pub async fn identity_id_exists(&self, blockchain: &BlockchainName) -> bool {
+    pub fn get_blockchain_config(
+        &self,
+        blockchain: &BlockchainName,
+    ) -> Result<&BlockchainConfig, BlockchainError> {
         self.blockchains
             .get(blockchain)
-            .unwrap()
-            .identity_id_exists()
-            .await
+            .map(|b| b.config())
+            .ok_or_else(|| BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            })
     }
 
-    pub async fn get_identity_id(&self, blockchain: &BlockchainName) -> Option<u128> {
-        self.blockchains
-            .get(blockchain)
-            .unwrap()
-            .get_identity_id()
-            .await
+    pub async fn identity_id_exists(
+        &self,
+        blockchain: &BlockchainName,
+    ) -> Result<bool, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+        Ok(blockchain_impl.identity_id_exists().await)
+    }
+
+    pub async fn get_identity_id(
+        &self,
+        blockchain: &BlockchainName,
+    ) -> Result<Option<u128>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+        Ok(blockchain_impl.get_identity_id().await)
     }
 
     pub async fn initialize_identities(&mut self, peer_id: &str) -> Result<(), BlockchainError> {
@@ -157,9 +173,12 @@ impl BlockchainManager {
         from_block: u64,
         current_block: u64,
     ) -> Result<Vec<EventLog>, BlockchainError> {
-        self.blockchains
-            .get(blockchain)
-            .unwrap()
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
             .get_event_logs(contract_name, events_to_filter, from_block, current_block)
             .await
     }
@@ -168,11 +187,12 @@ impl BlockchainManager {
         &self,
         blockchain: &BlockchainName,
     ) -> Result<u64, BlockchainError> {
-        self.blockchains
-            .get(blockchain)
-            .unwrap()
-            .get_block_number()
-            .await
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl.get_block_number().await
     }
 
     pub async fn re_initialize_contract(
@@ -181,9 +201,12 @@ impl BlockchainManager {
         contract_name: String,
         contract_address: Address,
     ) -> Result<(), BlockchainError> {
-        self.blockchains
-            .get(blockchain)
-            .unwrap()
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
             .re_initialize_contract(contract_name, contract_address)
             .await
     }
@@ -195,9 +218,12 @@ impl BlockchainManager {
         token_id: u64,
         index: u64,
     ) -> Result<[u8; 32], BlockchainError> {
-        self.blockchains
-            .get(blockchain)
-            .unwrap()
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
             .get_assertion_id_by_index(contract, token_id, index)
             .await
     }
