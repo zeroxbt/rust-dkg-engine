@@ -1,12 +1,12 @@
-use crate::{context::Context, services::operation_service::OperationService};
+use crate::context::Context;
+use crate::services::operation_id_service::OperationId;
 use axum::Json;
 use axum::{extract::State, response::IntoResponse};
-use blockchain::{Address, BlockchainName};
+use blockchain::BlockchainName;
 use hyper::StatusCode;
 use network::message::{RequestMessage, RequestMessageHeader, StoreRequestData};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use uuid::Uuid;
 use validator::Validate;
 use validator_derive::Validate;
 
@@ -14,30 +14,34 @@ const DEFAULT_HASH_FUNCTION_ID: u8 = 1;
 
 pub struct PublishController;
 
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct Assertion {
+    #[validate(length(min = 1))]
+    pub public: Vec<String>,
+    pub private: Option<Vec<String>>,
+}
+
 #[derive(Deserialize, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishRequest {
     #[validate(length(equal = 66))]
-    pub assertion_id: String,
+    pub dataset_root: String,
 
-    #[validate(length(min = 1))]
-    pub assertion: Vec<String>,
+    pub dataset: Assertion,
 
     pub blockchain: BlockchainName,
 
-    pub contract: Address,
-
-    #[validate(range(min = 0))]
-    pub token_id: u64,
-
     #[validate(range(min = 1))]
     pub hash_function_id: Option<u8>,
+
+    #[validate(range(min = 1))]
+    pub minimum_number_of_node_replications: Option<u8>,
 }
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishResponse {
-    operation_id: Uuid,
+    operation_id: OperationId,
 }
 
 impl PublishController {
@@ -47,7 +51,7 @@ impl PublishController {
     ) -> impl IntoResponse {
         match req.validate() {
             Ok(_) => {
-                let operation_id = Uuid::new_v4();
+                let operation_id = OperationId::new();
 
                 tokio::spawn(async move {
                     Self::execute_publish_operation(Arc::clone(&context), req, operation_id).await
@@ -66,37 +70,37 @@ impl PublishController {
     async fn execute_publish_operation(
         context: Arc<Context>,
         request: PublishRequest,
-        operation_id: Uuid,
+        operation_id: OperationId,
     ) {
-        tracing::info!("Scheduling dial peers command...");
-        let keyword = context
-            .ual_service()
-            .calculate_location_keyword(&request.blockchain, &request.contract, request.token_id)
-            .await;
+        tracing::info!(
+            "Received asset with dataset root: {}, blockchain: {}",
+            request.dataset_root,
+            request.blockchain
+        );
 
         let hash_function_id = request.hash_function_id.unwrap_or(DEFAULT_HASH_FUNCTION_ID);
 
         let request_message = RequestMessage {
             header: RequestMessageHeader {
-                operation_id,
+                operation_id: operation_id.into_inner(),
                 message_type: network::message::RequestMessageType::ProtocolRequest,
             },
             data: StoreRequestData::new(
-                request.assertion,
-                request.assertion_id,
+                request.dataset.public,
+                request.dataset_root,
                 request.blockchain.as_str().to_string(),
             ),
         };
 
-        context
-            .publish_service()
-            .start_operation(
-                operation_id,
-                request.blockchain,
-                keyword,
-                hash_function_id,
-                request_message,
-            )
-            .await;
+        /*  context
+        .publish_service()
+        .start_operation(
+            operation_id,
+            request.blockchain,
+            keyword,
+            hash_function_id,
+            request_message,
+        )
+        .await; */
     }
 }

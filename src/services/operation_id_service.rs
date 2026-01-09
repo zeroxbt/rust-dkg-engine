@@ -30,11 +30,6 @@ impl OperationId {
     pub fn into_inner(self) -> Uuid {
         self.0
     }
-
-    /// Get a reference to the inner UUID
-    pub fn as_uuid(&self) -> &Uuid {
-        &self.0
-    }
 }
 
 impl Default for OperationId {

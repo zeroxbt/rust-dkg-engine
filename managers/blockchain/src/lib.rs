@@ -13,7 +13,7 @@ pub use blockchains::{
 };
 pub use ethers::types::Address;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use crate::error::BlockchainError;
 
@@ -74,6 +74,12 @@ impl BlockchainName {
         match self {
             BlockchainName::Hardhat => "hardhat",
         }
+    }
+}
+
+impl Display for BlockchainName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
