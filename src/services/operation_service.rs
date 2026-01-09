@@ -27,7 +27,6 @@ pub struct OperationState<OperationRequestMessageData: Clone> {
     pub last_contacted_index: usize,
     pub failed_number: usize,
     pub completed_number: usize,
-    pub init_message: RequestMessage<OperationRequestMessageData>,
     pub request_message: RequestMessage<OperationRequestMessageData>,
 }
 
@@ -107,7 +106,6 @@ pub trait OperationService {
         blockchain: BlockchainName,
         keyword: Vec<u8>,
         hash_function_id: u8,
-        init_message: RequestMessage<Self::OperationRequestMessageData>,
         request_message: RequestMessage<Self::OperationRequestMessageData>,
     ) {
         let peers = self
@@ -123,7 +121,6 @@ pub trait OperationService {
             last_contacted_index: 0,
             failed_number: 0,
             completed_number: 0,
-            init_message,
             request_message,
         };
         self.response_tracker()
@@ -192,21 +189,9 @@ pub trait OperationService {
 
         for peer in peers_to_contact {
             self.network_action_tx()
-                .send(self.create_network_action(peer, operation_state.init_message.clone()))
+                .send(self.create_network_action(peer, operation_state.request_message.clone()))
                 .await
                 .unwrap();
         }
-    }
-
-    async fn handle_init_response(&self, operation_id: Uuid, peer: PeerId) {
-        let operation_state = self
-            .response_tracker()
-            .get_or_create_state(&operation_id)
-            .await;
-
-        self.network_action_tx()
-            .send(self.create_network_action(peer, operation_state.request_message))
-            .await
-            .unwrap();
     }
 }

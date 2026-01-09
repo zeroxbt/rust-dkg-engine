@@ -3,10 +3,7 @@ use axum::Json;
 use axum::{extract::State, response::IntoResponse};
 use blockchain::{Address, BlockchainName};
 use hyper::StatusCode;
-use network::message::{
-    RequestMessage, RequestMessageHeader, StoreInitRequestData, StoreMessageRequestData,
-    StoreRequestData,
-};
+use network::message::{RequestMessage, RequestMessageHeader, StoreRequestData};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -79,29 +76,16 @@ impl PublishController {
 
         let hash_function_id = request.hash_function_id.unwrap_or(DEFAULT_HASH_FUNCTION_ID);
 
-        let init_message = RequestMessage {
-            header: RequestMessageHeader {
-                operation_id,
-                keyword_uuid: Uuid::new_v5(&Uuid::NAMESPACE_URL, &keyword),
-                message_type: network::message::RequestMessageType::ProtocolInit,
-            },
-            data: StoreMessageRequestData::Init(StoreInitRequestData::new(
-                request.assertion_id,
-                request.blockchain.as_str().to_string(),
-                request.contract.to_string(),
-                request.token_id,
-                blockchain::utils::to_hex_string(keyword.clone()),
-                hash_function_id,
-            )),
-        };
-
         let request_message = RequestMessage {
             header: RequestMessageHeader {
                 operation_id,
-                keyword_uuid: Uuid::new_v5(&Uuid::NAMESPACE_URL, &keyword),
                 message_type: network::message::RequestMessageType::ProtocolRequest,
             },
-            data: StoreMessageRequestData::Request(StoreRequestData::new(request.assertion)),
+            data: StoreRequestData::new(
+                request.assertion,
+                request.assertion_id,
+                request.blockchain.as_str().to_string(),
+            ),
         };
 
         context
@@ -111,7 +95,6 @@ impl PublishController {
                 request.blockchain,
                 keyword,
                 hash_function_id,
-                init_message,
                 request_message,
             )
             .await;

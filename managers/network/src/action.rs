@@ -1,6 +1,6 @@
 use crate::message::{
-    GetMessageRequestData, GetMessageResponseData, RequestMessage, ResponseMessage,
-    StoreMessageRequestData, StoreMessageResponseData,
+    GetRequestData, GetResponseData, RequestMessage, ResponseMessage, StoreRequestData,
+    StoreResponseData,
 };
 use libp2p::request_response::ResponseChannel;
 use libp2p::{Multiaddr, PeerId};
@@ -8,19 +8,19 @@ use libp2p::{Multiaddr, PeerId};
 pub enum NetworkAction {
     StoreRequest {
         peer: PeerId,
-        message: RequestMessage<StoreMessageRequestData>,
+        message: RequestMessage<StoreRequestData>,
     },
     StoreResponse {
-        channel: ResponseChannel<ResponseMessage<StoreMessageResponseData>>,
-        message: ResponseMessage<StoreMessageResponseData>,
+        channel: ResponseChannel<ResponseMessage<StoreResponseData>>,
+        message: ResponseMessage<StoreResponseData>,
     },
     GetRequest {
         peer: PeerId,
-        message: RequestMessage<GetMessageRequestData>,
+        message: RequestMessage<GetRequestData>,
     },
     GetResponse {
-        channel: ResponseChannel<ResponseMessage<GetMessageResponseData>>,
-        message: ResponseMessage<GetMessageResponseData>,
+        channel: ResponseChannel<ResponseMessage<GetResponseData>>,
+        message: ResponseMessage<GetResponseData>,
     },
     GetClosestPeers {
         peer: PeerId,

@@ -10,7 +10,6 @@ pub enum ErrorMessage {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum RequestMessageType {
-    ProtocolInit,
     ProtocolRequest,
 }
 
@@ -24,14 +23,12 @@ pub enum ResponseMessageType {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RequestMessageHeader {
     pub operation_id: Uuid,
-    pub keyword_uuid: Uuid,
     pub message_type: RequestMessageType,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResponseMessageHeader {
     pub operation_id: Uuid,
-    pub keyword_uuid: Uuid,
     pub message_type: ResponseMessageType,
 }
 
@@ -50,91 +47,53 @@ pub struct ResponseMessage<T> {
 // STORE
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StoreInitRequestData {
-    assertion_id: String,
+pub struct StoreRequestData {
+    dataset: Vec<String>,
+    dataset_root: String,
     blockchain: String,
-    contract: String,
-    token_id: u64,
-    keyword: String,
-    hash_function_id: u8,
 }
 
-impl StoreInitRequestData {
-    pub fn new(
-        assertion_id: String,
-        blockchain: String,
-        contract: String,
-        token_id: u64,
-        keyword: String,
-        hash_function_id: u8,
-    ) -> Self {
+impl StoreRequestData {
+    pub fn new(dataset: Vec<String>, dataset_root: String, blockchain: String) -> Self {
         Self {
-            assertion_id,
+            dataset,
+            dataset_root,
             blockchain,
-            contract,
-            token_id,
-            keyword,
-            hash_function_id,
         }
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StoreRequestData {
-    assertion: Vec<String>,
-}
-
-impl StoreRequestData {
-    pub fn new(assertion: Vec<String>) -> Self {
-        Self { assertion }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize)]
-pub struct StoreInitResponseData {
+pub struct StoreResponseData {
+    identity_id: String,
+    v: u64,
+    r: String,
+    s: String,
+    vs: String,
     error_message: Option<ErrorMessage>,
 }
 
-impl StoreInitResponseData {
-    pub fn new(error_message: Option<ErrorMessage>) -> Self {
-        Self { error_message }
+impl StoreResponseData {
+    pub fn new(
+        identity_id: String,
+        v: u64,
+        r: String,
+        s: String,
+        vs: String,
+        error_message: Option<ErrorMessage>,
+    ) -> Self {
+        Self {
+            identity_id,
+            v,
+            r,
+            s,
+            vs,
+            error_message,
+        }
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StoreRequestResponseData {
-    error_message: Option<ErrorMessage>,
-}
-
-impl StoreRequestResponseData {
-    pub fn new(error_message: Option<ErrorMessage>) -> Self {
-        Self { error_message }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum StoreMessageRequestData {
-    Init(StoreInitRequestData),
-    Request(StoreRequestData),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum StoreMessageResponseData {
-    InitResponse(StoreInitResponseData),
-    RequestResponse(StoreRequestResponseData),
 }
 
 // GET
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GetInitRequestData {
-    assertion_id: String,
-    blockchain: String,
-    contract: String,
-    token_id: u64,
-    keyword: String,
-    state: String,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetRequestData {
@@ -148,39 +107,16 @@ pub struct GetRequestData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GetInitResponseData {
-    error_message: Option<ErrorMessage>,
-}
-
-impl GetInitResponseData {
-    pub fn new(error_message: Option<ErrorMessage>) -> Self {
-        Self { error_message }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GetRequestResponseData {
+pub struct GetResponseData {
     error_message: Option<ErrorMessage>,
     nquads: Vec<String>,
 }
 
-impl GetRequestResponseData {
+impl GetResponseData {
     pub fn new(nquads: Vec<String>, error_message: Option<ErrorMessage>) -> Self {
         Self {
             error_message,
             nquads,
         }
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum GetMessageRequestData {
-    Init(GetInitRequestData),
-    Request(GetRequestData),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum GetMessageResponseData {
-    InitResponse(GetInitResponseData),
-    RequestResponse(GetRequestResponseData),
 }

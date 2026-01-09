@@ -1,6 +1,6 @@
 use network::{
     action::NetworkAction,
-    message::{RequestMessage, StoreMessageRequestData},
+    message::{RequestMessage, StoreRequestData},
     PeerId,
 };
 use repository::RepositoryManager;
@@ -15,12 +15,12 @@ use super::{
 pub struct PublishService {
     network_action_tx: Sender<NetworkAction>,
     repository_manager: Arc<RepositoryManager>,
-    response_tracker: OperationResponseTracker<StoreMessageRequestData>,
+    response_tracker: OperationResponseTracker<StoreRequestData>,
     sharding_table_service: Arc<ShardingTableService>,
 }
 
 impl OperationService for PublishService {
-    type OperationRequestMessageData = StoreMessageRequestData;
+    type OperationRequestMessageData = StoreRequestData;
     const BATCH_SIZE: usize = 20;
     const MIN_ACK_RESPONSES: usize = 8;
 

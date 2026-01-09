@@ -16,15 +16,14 @@ use libp2p::swarm::{derive_prelude::Either, NetworkBehaviour};
 use libp2p::{noise, tcp, StreamProtocol, SwarmBuilder};
 pub use libp2p::{request_response, PeerId, Swarm};
 use libp2p_mplex::MplexConfig;
-use message::{
-    GetMessageRequestData, GetMessageResponseData, RequestMessage, ResponseMessage,
-    StoreMessageRequestData, StoreMessageResponseData,
-};
+use message::{RequestMessage, ResponseMessage};
 use serde::Deserialize;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tracing::info;
 use void::Void;
+
+use crate::message::{GetRequestData, GetResponseData, StoreRequestData, StoreResponseData};
 
 pub type NestedError = Either<Either<Either<std::io::Error, std::io::Error>, Void>, Void>;
 pub type SwarmError = Either<NestedError, Void>;
@@ -64,8 +63,8 @@ impl NetworkManager {
 
         // Create request-response behaviors for Store protocol
         let store_behaviour = request_response::json::Behaviour::<
-            RequestMessage<StoreMessageRequestData>,
-            ResponseMessage<StoreMessageResponseData>,
+            RequestMessage<StoreRequestData>,
+            ResponseMessage<StoreResponseData>,
         >::new(
             [(StreamProtocol::new("/store/1.0.0"), ProtocolSupport::Full)],
             request_response::Config::default(),
@@ -73,8 +72,8 @@ impl NetworkManager {
 
         // Create request-response behaviors for Get protocol
         let get_behaviour = request_response::json::Behaviour::<
-            RequestMessage<GetMessageRequestData>,
-            ResponseMessage<GetMessageResponseData>,
+            RequestMessage<GetRequestData>,
+            ResponseMessage<GetResponseData>,
         >::new(
             [(StreamProtocol::new("/get/1.0.0"), ProtocolSupport::Full)],
             request_response::Config::default(),
@@ -263,11 +262,11 @@ pub struct Behaviour {
     identify: identify::Behaviour,
     ping: libp2p::ping::Behaviour,
     store: libp2p::request_response::json::Behaviour<
-        RequestMessage<StoreMessageRequestData>,
-        ResponseMessage<StoreMessageResponseData>,
+        RequestMessage<StoreRequestData>,
+        ResponseMessage<StoreResponseData>,
     >,
     get: libp2p::request_response::json::Behaviour<
-        RequestMessage<GetMessageRequestData>,
-        ResponseMessage<GetMessageResponseData>,
+        RequestMessage<GetRequestData>,
+        ResponseMessage<GetResponseData>,
     >,
 }
