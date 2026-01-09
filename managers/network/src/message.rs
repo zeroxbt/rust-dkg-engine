@@ -96,27 +96,47 @@ impl StoreResponseData {
 // GET
 
 #[derive(Debug, Serialize, Deserialize)]
+struct TokenIds {
+    start_token_id: u64,
+    ent_token_id: u64,
+    burned: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GetRequestData {
-    assertion_id: String,
-    blockchain: String,
-    contract: String,
-    token_id: u64,
-    keyword: String,
-    state: String,
-    hash_function_id: u8,
+    ual: String,
+    token_ids: TokenIds,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Assertion {
+    public: Vec<String>,
+    private: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetResponseData {
     error_message: Option<ErrorMessage>,
-    nquads: Vec<String>,
+    data: Option<Assertion>,
 }
 
 impl GetResponseData {
-    pub fn new(nquads: Vec<String>, error_message: Option<ErrorMessage>) -> Self {
+    pub fn new(error_message: Option<ErrorMessage>, data: Option<Assertion>) -> Self {
         Self {
             error_message,
-            nquads,
+            data,
         }
     }
 }
+
+// FINALITY
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FinalityRequestData {
+    ual: String,
+    publish_operation_id: String,
+    operation_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FinalityResponseData {}

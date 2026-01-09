@@ -5,8 +5,8 @@ use crate::controllers::rpc_controller::base_controller::BaseController;
 use async_trait::async_trait;
 use network::action::NetworkAction;
 use network::message::{
-    GetRequestData, GetResponseData, RequestMessage, ResponseMessage, ResponseMessageHeader,
-    ResponseMessageType,
+    ErrorMessage, GetRequestData, GetResponseData, RequestMessage, ResponseMessage,
+    ResponseMessageHeader, ResponseMessageType,
 };
 
 use network::{request_response, PeerId};
@@ -38,8 +38,7 @@ impl BaseController for GetController {
         let response_data = {
             println!("Handling GET request...");
             // TODO: handle GET request
-            let nquads = vec![];
-            GetResponseData::new(nquads, None)
+            GetResponseData::new(Some(ErrorMessage::InvalidData), None)
         };
 
         let message = ResponseMessage {
