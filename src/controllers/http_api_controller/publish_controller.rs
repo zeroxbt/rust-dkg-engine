@@ -1,5 +1,5 @@
 use crate::context::Context;
-use crate::services::operation_id_service::OperationId;
+use crate::services::operation_service::OperationId;
 use axum::Json;
 use axum::{extract::State, response::IntoResponse};
 use blockchain::BlockchainName;

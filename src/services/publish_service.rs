@@ -4,41 +4,57 @@ use network::{
     PeerId,
 };
 use repository::RepositoryManager;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 
+use crate::services::file_service::FileService;
+
 use super::{
-    operation_service::{OperationResponseTracker, OperationService},
+    operation_cache_service::OperationCacheService,
+    operation_service::{NetworkOperationProtocol, OperationLifecycle, OperationResponseTracker},
     sharding_table_service::ShardingTableService,
 };
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublishResponse {
+    pub success: bool,
+    pub replications: usize,
+}
 
 pub struct PublishService {
     network_action_tx: Sender<NetworkAction>,
     repository_manager: Arc<RepositoryManager>,
+    operation_cache: Arc<OperationCacheService>,
     response_tracker: OperationResponseTracker<StoreRequestData>,
     sharding_table_service: Arc<ShardingTableService>,
+    file_service: Arc<FileService>,
 }
 
-impl OperationService for PublishService {
-    type OperationRequestMessageData = StoreRequestData;
-    const BATCH_SIZE: usize = 20;
-    const MIN_ACK_RESPONSES: usize = 8;
-
-    fn new(
+impl PublishService {
+    pub fn new(
         network_action_tx: Sender<NetworkAction>,
         repository_manager: Arc<RepositoryManager>,
+        operation_cache: Arc<OperationCacheService>,
         sharding_table_service: Arc<ShardingTableService>,
+        file_service: Arc<FileService>,
     ) -> Self {
         Self {
             network_action_tx,
             repository_manager,
-            response_tracker: OperationResponseTracker::<Self::OperationRequestMessageData>::new(),
+            operation_cache,
+            response_tracker: OperationResponseTracker::new(),
             sharding_table_service,
+            file_service,
         }
     }
-    fn repository_manager(&self) -> &Arc<RepositoryManager> {
-        &self.repository_manager
-    }
+}
+
+impl NetworkOperationProtocol for PublishService {
+    type OperationRequestMessageData = StoreRequestData;
+    const BATCH_SIZE: usize = 20;
+    const MIN_ACK_RESPONSES: usize = 8;
+
     fn sharding_table_service(&self) -> &Arc<ShardingTableService> {
         &self.sharding_table_service
     }
@@ -54,5 +70,18 @@ impl OperationService for PublishService {
         message: RequestMessage<Self::OperationRequestMessageData>,
     ) -> NetworkAction {
         NetworkAction::StoreRequest { peer, message }
+    }
+}
+
+impl OperationLifecycle for PublishService {
+    type RequestData = StoreRequestData;
+    type ResponseData = PublishResponse;
+
+    fn repository_manager(&self) -> &Arc<RepositoryManager> {
+        &self.repository_manager
+    }
+
+    fn operation_cache(&self) -> &Arc<OperationCacheService> {
+        &self.operation_cache
     }
 }

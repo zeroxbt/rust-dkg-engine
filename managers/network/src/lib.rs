@@ -3,6 +3,8 @@ pub mod error;
 mod key_manager;
 pub mod message;
 
+use std::path::PathBuf;
+
 use action::NetworkAction;
 use error::NetworkError;
 use key_manager::KeyManager;
@@ -32,7 +34,7 @@ pub type NetworkEvent = SwarmEvent<BehaviourEvent>;
 #[derive(Debug, Clone, Deserialize)]
 pub struct NetworkManagerConfig {
     port: u32,
-    data_folder_path: String,
+    data_folder_path: PathBuf,
     bootstrap: Vec<String>,
 }
 
@@ -54,7 +56,7 @@ impl NetworkManager {
     /// - Swarm building fails
     pub async fn new(config: &NetworkManagerConfig) -> Result<Self, NetworkError> {
         // Load or generate keypair
-        let key = KeyManager::generate_or_load_key(config.data_folder_path.as_str()).await?;
+        let key = KeyManager::generate_or_load_key(&config.data_folder_path).await?;
 
         let public_key = key.public();
         let local_peer_id = PeerId::from(&public_key);

@@ -1,5 +1,10 @@
 use async_trait::async_trait;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display},
+    str::FromStr,
+    sync::Arc,
+};
 
 use blockchain::BlockchainName;
 use network::{
@@ -8,11 +13,63 @@ use network::{
     PeerId,
 };
 use repository::RepositoryManager;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::{mpsc::Sender, Mutex};
 use uuid::Uuid;
 
-use super::sharding_table_service::ShardingTableService;
+use super::{
+    operation_cache_service::OperationCacheService, sharding_table_service::ShardingTableService,
+};
+
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct OperationId(Uuid);
+
+impl OperationId {
+    /// Generate a new operation ID
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// Get the inner UUID (useful for database operations)
+    pub fn into_inner(self) -> Uuid {
+        self.0
+    }
+}
+
+impl Default for OperationId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Display for OperationId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+impl FromStr for OperationId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Uuid::parse_str(s).map(Self)
+    }
+}
+
+impl From<Uuid> for OperationId {
+    fn from(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+}
+
+impl From<OperationId> for Uuid {
+    fn from(id: OperationId) -> Self {
+        id.0
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ProtocolOperation {
@@ -79,18 +136,13 @@ impl<OperationRequestMessageData: Clone> OperationResponseTracker<OperationReque
     }
 }
 
+/// Trait for network operation protocol - handles batch sending and response tracking
 #[async_trait]
-pub trait OperationService {
+pub trait NetworkOperationProtocol {
     type OperationRequestMessageData: Send + Sync + Clone;
     const BATCH_SIZE: usize;
     const MIN_ACK_RESPONSES: usize;
 
-    fn new(
-        network_action_tx: Sender<NetworkAction>,
-        repository_manager: Arc<RepositoryManager>,
-        sharding_table_service: Arc<ShardingTableService>,
-    ) -> Self;
-    fn repository_manager(&self) -> &Arc<RepositoryManager>;
     fn sharding_table_service(&self) -> &Arc<ShardingTableService>;
     fn network_action_tx(&self) -> &Sender<NetworkAction>;
     fn response_tracker(&self) -> &OperationResponseTracker<Self::OperationRequestMessageData>;
@@ -193,5 +245,91 @@ pub trait OperationService {
                 .await
                 .unwrap();
         }
+    }
+}
+
+/// Trait for operation lifecycle management - handles caching and operation state
+#[async_trait]
+pub trait OperationLifecycle {
+    type RequestData: Serialize + DeserializeOwned + Send + Sync;
+    type ResponseData: Serialize + DeserializeOwned + Send + Sync;
+
+    fn repository_manager(&self) -> &Arc<RepositoryManager>;
+    fn operation_cache(&self) -> &Arc<OperationCacheService>;
+
+    /// Cache request data (memory + file)
+    async fn cache_request(&self, op_id: Uuid, data: &Self::RequestData) -> Result<()> {
+        let json = serde_json::to_string(data)?;
+        self.operation_cache()
+            .cache_to_memory(op_id.into(), json.clone())
+            .await?;
+        self.operation_cache()
+            .cache_to_file(op_id.into(), json)
+            .await?;
+        Ok(())
+    }
+
+    /// Cache response data (memory + file)
+    async fn cache_response(&self, op_id: Uuid, data: &Self::ResponseData) -> Result<()> {
+        let json = serde_json::to_string(data)?;
+        self.operation_cache()
+            .cache_to_memory(op_id.into(), json.clone())
+            .await?;
+        self.operation_cache()
+            .cache_to_file(op_id.into(), json)
+            .await?;
+        Ok(())
+    }
+
+    /// Get cached data (tries memory first, then file)
+    async fn get_cached(&self, op_id: Uuid) -> Result<Option<Self::ResponseData>> {
+        match self.operation_cache().get_cached(op_id.into()).await? {
+            Some(json) => Ok(Some(serde_json::from_str(&json)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Mark operation as completed and cache response data
+    async fn mark_completed(&self, op_id: Uuid, response: Self::ResponseData) -> Result<()> {
+        let json = serde_json::to_string(&response)?;
+
+        self.repository_manager()
+            .operation_repository()
+            .update(
+                op_id,
+                None,
+                Some("completed"),
+                None,
+                Some(json),
+                None,
+                None,
+                None,
+            )
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
+        self.cache_response(op_id, &response).await?;
+        Ok(())
+    }
+
+    /// Mark operation as failed and remove cache
+    async fn mark_failed(&self, op_id: Uuid, error_msg: String) -> Result<()> {
+        self.repository_manager()
+            .operation_repository()
+            .update(
+                op_id,
+                None,
+                Some("failed"),
+                None,
+                None,
+                Some(error_msg),
+                None,
+                None,
+            )
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
+        self.operation_cache().remove_cache(op_id.into()).await?;
+        Ok(())
     }
 }

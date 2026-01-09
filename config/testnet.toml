@@ -5,6 +5,7 @@
 # Override specific values in .origintrail_noderc.toml
 
 is_dev_env = false
+app_data_path = "data"
 
 # ============================================
 # HTTP API Configuration
@@ -17,7 +18,6 @@ port = 8900
 # ============================================
 [managers.network]
 port = 9000
-data_folder_path = "data"
 
 # Testnet bootstrap nodes
 # Add your bootstrap nodes here or override in .origintrail_noderc.toml
@@ -35,7 +35,7 @@ database = ""
 host = "localhost"
 port = 3306
 user = ""
-password = ""  # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
+password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 
 # ============================================
 # Validation Manager Configuration

@@ -19,7 +19,6 @@ use network::action::NetworkAction;
 use network::NetworkEvent;
 use network::NetworkManager;
 use repository::RepositoryManager;
-use services::operation_service::OperationService;
 use services::publish_service::PublishService;
 use services::sharding_table_service::ShardingTableService;
 use services::ual_service::UalService;
@@ -28,6 +27,10 @@ use std::sync::Arc;
 use tokio::join;
 use tokio::sync::mpsc::{Receiver, Sender};
 use validation::ValidationManager;
+
+use crate::config::Config;
+use crate::services::file_service::FileService;
+use crate::services::operation_cache_service::OperationCacheService;
 
 #[tokio::main]
 async fn main() {
@@ -48,6 +51,7 @@ async fn main() {
     let (network_manager, repository_manager, blockchain_manager, validation_manager) =
         initialize_managers(&config.managers).await;
     let (ual_service, sharding_table_service, publish_service) = initialize_services(
+        &config,
         &blockchain_manager,
         &repository_manager,
         &validation_manager,
@@ -209,6 +213,7 @@ async fn initialize_managers(
 }
 
 fn initialize_services(
+    config: &Config,
     blockchain_manager: &Arc<BlockchainManager>,
     repository_manager: &Arc<RepositoryManager>,
     validation_manager: &Arc<ValidationManager>,
@@ -218,6 +223,8 @@ fn initialize_services(
     Arc<ShardingTableService>,
     Arc<PublishService>,
 ) {
+    let file_service = Arc::new(FileService::new(config.app_data_path.clone()));
+    let operation_cache_service = Arc::new(OperationCacheService::new(Arc::clone(&file_service)));
     let ual_service = Arc::new(UalService::new(Arc::clone(blockchain_manager)));
     let sharding_table_service = Arc::new(ShardingTableService::new(
         Arc::clone(repository_manager),
@@ -227,7 +234,9 @@ fn initialize_services(
     let publish_service = Arc::new(PublishService::new(
         network_action_tx.clone(),
         Arc::clone(repository_manager),
+        Arc::clone(&operation_cache_service),
         Arc::clone(&sharding_table_service),
+        Arc::clone(&file_service),
     ));
 
     (ual_service, sharding_table_service, publish_service)

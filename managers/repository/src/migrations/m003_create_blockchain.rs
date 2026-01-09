@@ -2,7 +2,8 @@ use crate::models::blockchain;
 use sea_orm::DeriveMigrationName;
 use sea_orm_migration::{
     async_trait::async_trait,
-    prelude::{ColumnDef, DbErr, Index, MigrationTrait, SchemaManager, Table},
+    prelude::{DbErr, Index, MigrationTrait, SchemaManager, Table},
+    schema::*,
 };
 
 #[derive(DeriveMigrationName)]
@@ -16,20 +17,16 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(blockchain::Entity)
                     .if_not_exists()
-                    .col(ColumnDef::new(blockchain::Column::BlockchainId).string())
-                    .col(ColumnDef::new(blockchain::Column::Contract).string_len(42))
+                    .col(string(blockchain::Column::BlockchainId))
+                    .col(string_len(blockchain::Column::Contract, 42))
                     .col(
-                        ColumnDef::new(blockchain::Column::LastCheckedBlock)
+                        unsigned(blockchain::Column::LastCheckedBlock)
                             .big_integer()
-                            .unsigned()
-                            .not_null()
-                            .default("0"),
+                            .default("0")
                     )
                     .col(
-                        ColumnDef::new(blockchain::Column::LastCheckedTimestamp)
-                            .date_time()
-                            .not_null()
-                            .default("1970-01-01 00:00:00"),
+                        date_time(blockchain::Column::LastCheckedTimestamp)
+                            .default("1970-01-01 00:00:00")
                     )
                     .primary_key(
                         Index::create()

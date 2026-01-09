@@ -1,7 +1,7 @@
 use sea_orm::{
     entity::prelude::{DeriveRelation, EnumIter, Json},
     prelude::{
-        ActiveModelBehavior, DateTimeUtc, DeriveEntityModel, DerivePrimaryKey, EntityTrait,
+        ActiveModelBehavior, DateTimeUtc, DeriveEntityModel, DerivePrimaryKey,
         PrimaryKeyTrait,
     },
 };

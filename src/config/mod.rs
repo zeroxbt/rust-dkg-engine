@@ -1,12 +1,12 @@
 use blockchain::BlockchainManagerConfig;
 use figment::{
-    providers::{Env, Format, Toml},
+    providers::{Format, Toml},
     Figment,
 };
 use network::NetworkManagerConfig;
 use repository::RepositoryManagerConfig;
 use serde::Deserialize;
-use std::env;
+use std::{env, path::PathBuf};
 use thiserror::Error;
 use validation::ValidationManagerConfig;
 
@@ -25,8 +25,14 @@ pub enum ConfigError {
 pub struct Config {
     #[serde(default)]
     pub is_dev_env: bool,
+    #[serde(default = "default_app_data_path")]
+    pub app_data_path: PathBuf,
     pub managers: ManagersConfig,
     pub http_api: HttpApiConfig,
+}
+
+fn default_app_data_path() -> PathBuf {
+    PathBuf::from("data".to_string())
 }
 
 #[derive(Debug, Deserialize, Clone)]

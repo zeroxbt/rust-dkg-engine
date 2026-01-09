@@ -2,7 +2,8 @@ use crate::models::shard;
 use sea_orm::DeriveMigrationName;
 use sea_orm_migration::{
     async_trait::async_trait,
-    prelude::{ColumnDef, DbErr, Index, MigrationTrait, SchemaManager, Table},
+    prelude::{DbErr, Index, MigrationTrait, SchemaManager, Table},
+    schema::*,
 };
 
 #[derive(DeriveMigrationName)]
@@ -16,21 +17,13 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(shard::Entity)
                     .if_not_exists()
-                    .col(ColumnDef::new(shard::Column::PeerId).string())
-                    .col(ColumnDef::new(shard::Column::BlockchainId).string())
-                    .col(ColumnDef::new(shard::Column::Ask).string().not_null())
-                    .col(ColumnDef::new(shard::Column::Stake).string().not_null())
-                    .col(
-                        ColumnDef::new(shard::Column::LastSeen)
-                            .date_time()
-                            .default("1970-01-01 00:00:00"),
-                    )
-                    .col(
-                        ColumnDef::new(shard::Column::LastDialed)
-                            .date_time()
-                            .default("1970-01-01 00:00:00"),
-                    )
-                    .col(ColumnDef::new(shard::Column::Sha256).string().not_null())
+                    .col(string(shard::Column::PeerId))
+                    .col(string(shard::Column::BlockchainId))
+                    .col(string(shard::Column::Ask))
+                    .col(string(shard::Column::Stake))
+                    .col(date_time(shard::Column::LastSeen).default("1970-01-01 00:00:00"))
+                    .col(date_time(shard::Column::LastDialed).default("1970-01-01 00:00:00"))
+                    .col(string(shard::Column::Sha256))
                     .primary_key(
                         Index::create()
                             .col(shard::Column::PeerId)

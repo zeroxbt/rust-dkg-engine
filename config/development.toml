@@ -5,6 +5,7 @@
 # For production deployments, see config/mainnet.toml
 
 is_dev_env = true
+app_data_path = "data"
 
 # ============================================
 # HTTP API Configuration
@@ -17,7 +18,6 @@ port = 8900
 # ============================================
 [managers.network]
 port = 9000
-data_folder_path = "data"
 
 # Bootstrap nodes for local development network
 bootstrap = [
