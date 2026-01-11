@@ -36,10 +36,6 @@ impl ScheduleConfig {
 pub trait CommandHandler: Send + Sync {
     fn name(&self) -> &'static str;
 
-    fn build_command(&self, data: serde_json::Value) -> Command {
-        Command::new(self.name().to_string(), data, 0, None)
-    }
-
     fn schedule_config(&self) -> ScheduleConfig {
         ScheduleConfig::OneShot
     }

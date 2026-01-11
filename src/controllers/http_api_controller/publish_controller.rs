@@ -1,11 +1,11 @@
-use crate::commands::dial_peers_command::DialPeersCommandHandler;
+use crate::commands::command::CommandData;
+use crate::commands::publish_replication_command::PublishReplicationCommandData;
 use crate::context::Context;
 use crate::services::operation_service::{OperationId, OperationLifecycle};
 use axum::Json;
 use axum::{extract::State, response::IntoResponse};
 use blockchain::BlockchainName;
 use hyper::StatusCode;
-use network::message::{RequestMessage, RequestMessageHeader, StoreRequestData};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use validator::Validate;
@@ -88,11 +88,24 @@ impl PublishController {
 
         let _peer_id = context.network_manager().peer_id();
 
-        // TODO: store in pending storage
+        // TODO: store in pending storage before scheduling command
 
-        // schedule publish command
+        let command = PublishReplicationCommandData::new(
+            operation_id,
+            request.blockchain.clone(),
+            request.dataset_root.clone(),
+            request.minimum_number_of_node_replications.unwrap_or(3),
+        )
+        .into_command();
 
-        // if err
-        // mark op failed
+        let schedule_result = context.schedule_command_tx().send(command).await;
+
+        if let Err(e) = schedule_result {
+            context
+                .publish_service()
+                .mark_failed("publish", operation_id, Box::new(e))
+                .await
+                .unwrap();
+        }
     }
 }

@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use repository::models::command::{self, Model};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fmt, str::FromStr};
 use uuid::Uuid;
@@ -112,6 +113,100 @@ impl Command {
         }
     }
 
+    pub fn builder(name: impl Into<String>) -> CommandBuilder {
+        CommandBuilder::new(name.into())
+    }
+}
+
+pub struct CommandBuilder {
+    name: String,
+    data: Option<Value>,
+    delay: i64,
+    retries: i32,
+    period: Option<i64>,
+    deadline_at: Option<i64>,
+    sequence: Option<Value>,
+    transactional: bool,
+}
+
+impl CommandBuilder {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            data: None,
+            delay: 0,
+            retries: 0,
+            period: None,
+            deadline_at: None,
+            sequence: None,
+            transactional: false,
+        }
+    }
+
+    pub fn data<T: serde::Serialize>(mut self, data: T) -> Self {
+        self.data = Some(serde_json::to_value(data).expect("Failed to serialize data"));
+        self
+    }
+
+    pub fn data_json(mut self, data: Value) -> Self {
+        self.data = Some(data);
+        self
+    }
+
+    pub fn delay(mut self, delay: i64) -> Self {
+        self.delay = delay;
+        self
+    }
+
+    pub fn retries(mut self, retries: i32) -> Self {
+        self.retries = retries;
+        self
+    }
+
+    pub fn period(mut self, period: i64) -> Self {
+        self.period = Some(period);
+        self
+    }
+
+    pub fn deadline_at(mut self, deadline_at: i64) -> Self {
+        self.deadline_at = Some(deadline_at);
+        self
+    }
+
+    pub fn sequence(mut self, sequence: Value) -> Self {
+        self.sequence = Some(sequence);
+        self
+    }
+
+    pub fn transactional(mut self, transactional: bool) -> Self {
+        self.transactional = transactional;
+        self
+    }
+
+    pub fn build(self) -> Command {
+        let now = Utc::now();
+        Command {
+            id: Uuid::new_v4(),
+            name: self.name,
+            data: self.data.unwrap_or(serde_json::json!({})),
+            ready_at: now.timestamp_millis(),
+            delay: self.delay,
+            started_at: None,
+            deadline_at: self.deadline_at,
+            period: self.period,
+            status: CommandStatus::Pending,
+            message: None,
+            parent_id: None,
+            retries: self.retries,
+            sequence: self.sequence,
+            transactional: self.transactional,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+}
+
+impl Command {
     pub fn to_model(&self) -> Model {
         Model {
             id: self.id.hyphenated().to_string(),
@@ -133,5 +228,19 @@ impl Command {
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
+    }
+}
+
+/// Trait for command data types that can be converted into Commands.
+/// Provides a standard way to associate a command name with its data structure.
+pub trait CommandData: Serialize + Sized {
+    const COMMAND_NAME: &'static str;
+
+    fn into_command(self) -> Command {
+        Command::builder(Self::COMMAND_NAME).data(self).build()
+    }
+
+    fn to_command_builder(self) -> CommandBuilder {
+        Command::builder(Self::COMMAND_NAME).data(self)
     }
 }

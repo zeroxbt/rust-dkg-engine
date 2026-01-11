@@ -1,18 +1,11 @@
+use super::command::{Command, CommandData};
 use super::command_handler::{CommandExecutionResult, CommandHandler};
+use crate::context::Context;
 use crate::services::operation_service::OperationId;
-use crate::{commands::command::Command, context::Context};
 use async_trait::async_trait;
 use blockchain::BlockchainName;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-
-/* {
-    datasetRoot,
-    blockchain,
-    operationId,
-    storeType: LOCAL_STORE_TYPES.TRIPLE,
-    minimumNumberOfNodeReplications,
-} */
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PublishReplicationCommandData {
@@ -20,6 +13,10 @@ pub struct PublishReplicationCommandData {
     blockchain: BlockchainName,
     dataset_root: String,
     minimum_number_of_node_replications: u8,
+}
+
+impl CommandData for PublishReplicationCommandData {
+    const COMMAND_NAME: &'static str = "publishReplicationCommand";
 }
 
 impl PublishReplicationCommandData {
@@ -51,10 +48,15 @@ impl PublishReplicationCommandHandler {
 #[async_trait]
 impl CommandHandler for PublishReplicationCommandHandler {
     fn name(&self) -> &'static str {
-        "publishReplicationCommand"
+        PublishReplicationCommandData::COMMAND_NAME
     }
 
-    async fn execute(&self, data: &Command) -> CommandExecutionResult {
+    async fn execute(&self, command: &Command) -> CommandExecutionResult {
+        let _data: PublishReplicationCommandData = serde_json::from_value(command.data.clone())
+            .expect("Invalid command data for publishReplicationCommand");
+
+        // TODO: Implement publish replication logic
+
         CommandExecutionResult::Completed
     }
 }
