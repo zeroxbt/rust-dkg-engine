@@ -296,40 +296,6 @@ pub trait OperationLifecycle {
         Ok(operation_id)
     }
 
-    /* /// Cache request data
-    async fn cache_request(
-        &self,
-        operation_id: OperationId,
-        data: &Self::RequestData,
-    ) -> Result<()> {
-        tracing::debug!("Caching data for operation id {} in file", operation_id);
-
-        let cache_dir = self.file_service().operation_request_cache_dir();
-
-        self.file_service()
-            .write_json(&cache_dir, &operation_id.to_string(), &data)
-            .await
-            .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
-
-        Ok(())
-    } */
-
-    /* /// Get cached request data
-    async fn get_cached_request(
-        &self,
-        operation_id: OperationId,
-    ) -> Result<Option<Self::RequestData>> {
-        let file_path = self
-            .file_service()
-            .operation_request_cache_path(&operation_id.to_string());
-
-        match self.file_service().read_json(&file_path).await {
-            Ok(request_data) => Ok(Some(request_data)),
-            Err(FileServiceError::FileNotFound(_)) => Ok(None),
-            Err(e) => Err(NodeError::Service(ServiceError::Other(e.to_string()))),
-        }
-    } */
-
     /// Get cached result data
     async fn get_cached_result(
         &self,
