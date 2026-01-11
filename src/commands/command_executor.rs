@@ -7,7 +7,7 @@ use super::{
         MAX_COMMAND_DELAY_MS, PERMANENT_COMMANDS,
     },
 };
-use crate::context::Context;
+use crate::{commands::command_handler::CommandHandler, context::Context};
 use futures::stream::{FuturesUnordered, StreamExt};
 use std::{cmp::min, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, Mutex, Semaphore};

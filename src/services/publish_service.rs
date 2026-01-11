@@ -15,12 +15,6 @@ use super::{
     sharding_table_service::ShardingTableService,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PublishResponse {
-    pub success: bool,
-    pub replications: usize,
-}
-
 pub struct PublishService {
     network_action_tx: Sender<NetworkAction>,
     repository_manager: Arc<RepositoryManager>,
@@ -70,8 +64,7 @@ impl NetworkOperationProtocol for PublishService {
 }
 
 impl OperationLifecycle for PublishService {
-    type RequestData = StoreRequestData;
-    type ResponseData = PublishResponse;
+    type ResultData = ();
 
     fn repository_manager(&self) -> &Arc<RepositoryManager> {
         &self.repository_manager

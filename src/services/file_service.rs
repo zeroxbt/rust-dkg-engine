@@ -174,24 +174,28 @@ impl FileService {
     // Path construction helpers - these are cheap and don't need to be methods,
     // but keeping them for API consistency with the JS version
 
-    fn operation_cache_dir(&self) -> PathBuf {
-        self.data_path.join("operation_id_cache")
+    pub fn operation_result_cache_dir(&self) -> PathBuf {
+        self.data_path.join("operation_result_cache")
     }
 
-    pub fn operation_request_cache_dir(&self) -> PathBuf {
+    /*  pub fn operation_request_cache_dir(&self) -> PathBuf {
         self.operation_cache_dir().join("request")
-    }
+    } */
 
-    pub fn operation_response_cache_dir(&self) -> PathBuf {
+    /* pub fn operation_response_cache_dir(&self) -> PathBuf {
         self.operation_cache_dir().join("response")
-    }
+    } */
 
-    pub fn operation_request_cache_path(&self, operation_id: &str) -> PathBuf {
+    /* pub fn operation_request_cache_path(&self, operation_id: &str) -> PathBuf {
         self.operation_request_cache_dir().join(operation_id)
-    }
+    } */
 
-    pub fn operation_response_cache_path(&self, operation_id: &str) -> PathBuf {
+    /* pub fn operation_response_cache_path(&self, operation_id: &str) -> PathBuf {
         self.operation_response_cache_dir().join(operation_id)
+    } */
+
+    pub fn operation_result_cache_path(&self, operation_id: &str) -> PathBuf {
+        self.operation_result_cache_dir().join(operation_id)
     }
 
     pub fn pending_storage_cache_dir(&self) -> PathBuf {

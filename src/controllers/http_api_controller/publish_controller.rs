@@ -1,3 +1,4 @@
+use crate::commands::dial_peers_command::DialPeersCommandHandler;
 use crate::context::Context;
 use crate::services::operation_service::{OperationId, OperationLifecycle};
 use axum::Json;
@@ -85,10 +86,12 @@ impl PublishController {
             request.blockchain
         );
 
-        // cache request data
-        // get peer id
-        // store in pending storage
+        let _peer_id = context.network_manager().peer_id();
+
+        // TODO: store in pending storage
+
         // schedule publish command
+
         // if err
         // mark op failed
     }

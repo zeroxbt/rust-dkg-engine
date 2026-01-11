@@ -5,16 +5,12 @@ use serde_json::Value;
 use std::{fmt, str::FromStr};
 use uuid::Uuid;
 
-use super::{
-    dial_peers_command::{DialPeersCommandData, DialPeersCommandHandler},
-    find_nodes_command::FindNodesCommandData,
-};
+use super::dial_peers_command::{DialPeersCommandData, DialPeersCommandHandler};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CommandName {
     Default,
     DialPeers,
-    FindNodes,
 }
 
 impl CommandName {
@@ -33,7 +29,6 @@ impl fmt::Display for CommandName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             CommandName::DialPeers => write!(f, "dialPeersCommand"),
-            CommandName::FindNodes => write!(f, "findNodesCommand"),
             CommandName::Default => panic!("Should never use default name"),
         }
     }
@@ -45,7 +40,6 @@ impl FromStr for CommandName {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "dialPeersCommand" => Ok(CommandName::DialPeers),
-            "findNodesCommand" => Ok(CommandName::FindNodes),
             _ => Err(()),
         }
     }
@@ -93,7 +87,6 @@ impl FromStr for CommandStatus {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum CommandData {
-    FindNodes(FindNodesCommandData),
     DialPeers(DialPeersCommandData),
     Empty,
 }

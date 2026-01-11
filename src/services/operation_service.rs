@@ -272,8 +272,7 @@ impl OperationStatus {
 /// Trait for operation lifecycle management - handles caching and operation state
 #[async_trait]
 pub trait OperationLifecycle {
-    type RequestData: Serialize + DeserializeOwned + Send + Sync;
-    type ResponseData: Serialize + DeserializeOwned + Send + Sync;
+    type ResultData: Serialize + DeserializeOwned + Send + Sync;
 
     fn repository_manager(&self) -> &Arc<RepositoryManager>;
     fn file_service(&self) -> &Arc<FileService>;
@@ -301,7 +300,7 @@ pub trait OperationLifecycle {
         Ok(operation_id)
     }
 
-    /// Cache request data
+    /* /// Cache request data
     async fn cache_request(
         &self,
         operation_id: OperationId,
@@ -317,26 +316,9 @@ pub trait OperationLifecycle {
             .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
 
         Ok(())
-    }
+    } */
 
-    /// Cache response data
-    async fn cache_response(
-        &self,
-        operation_id: OperationId,
-        data: &Self::ResponseData,
-    ) -> Result<()> {
-        tracing::debug!("Caching data for operation id {} in file", operation_id);
-
-        let cache_dir = self.file_service().operation_response_cache_dir();
-
-        self.file_service()
-            .write_json(&cache_dir, &operation_id.to_string(), &data)
-            .await
-            .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
-        Ok(())
-    }
-
-    /// Get cached request data
+    /* /// Get cached request data
     async fn get_cached_request(
         &self,
         operation_id: OperationId,
@@ -350,27 +332,32 @@ pub trait OperationLifecycle {
             Err(FileServiceError::FileNotFound(_)) => Ok(None),
             Err(e) => Err(NodeError::Service(ServiceError::Other(e.to_string()))),
         }
-    }
+    } */
 
-    /// Get cached response data
-    async fn get_cached_response(
+    /// Get cached result data
+    async fn get_cached_result(
         &self,
         operation_id: OperationId,
-    ) -> Result<Option<Self::ResponseData>> {
+    ) -> Result<Option<Self::ResultData>> {
         let file_path = self
             .file_service()
-            .operation_response_cache_path(&operation_id.to_string());
+            .operation_result_cache_path(&operation_id.to_string());
 
         match self.file_service().read_json(&file_path).await {
-            Ok(response_data) => Ok(Some(response_data)),
+            Ok(result_data) => Ok(Some(result_data)),
             Err(FileServiceError::FileNotFound(_)) => Ok(None),
             Err(e) => Err(NodeError::Service(ServiceError::Other(e.to_string()))),
         }
     }
 
-    /// Mark operation as completed and cache response data
-    async fn mark_completed(&self, operation_id: OperationId) -> Result<()> {
-        // TODO: add proper statuses
+    /// Mark operation as completed
+    async fn mark_completed(
+        &self,
+        operation_name: &str,
+        operation_id: OperationId,
+        data: &Self::ResultData,
+    ) -> Result<()> {
+        tracing::info!("Finalizing {operation_name} for operationId: {operation_id}");
         self.repository_manager()
             .operation_repository()
             .update(
@@ -382,36 +369,47 @@ pub trait OperationLifecycle {
             )
             .await?;
 
+        tracing::debug!(
+            "Caching result data for operation with id {} in file",
+            operation_id
+        );
+
+        let cache_dir = self.file_service().operation_result_cache_dir();
+
+        self.file_service()
+            .write_json(&cache_dir, &operation_id.to_string(), &data)
+            .await
+            .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
+
         Ok(())
     }
 
-    /// Mark operation as failed and remove cache
-    async fn mark_failed(&self, operation_id: OperationId, error_msg: String) -> Result<()> {
+    /// Mark operation as failed
+    async fn mark_failed(
+        &self,
+        operation_name: &str,
+        operation_id: OperationId,
+        error: Box<dyn std::error::Error + Send + Sync>,
+    ) -> Result<()> {
+        tracing::warn!("{operation_name} for operationId: ${operation_id} failed.");
         self.repository_manager()
             .operation_repository()
             .update(
                 operation_id.into_inner(),
                 Some(OperationStatus::Failed.as_str()),
-                Some(error_msg),
+                Some(error.to_string()),
                 None,
                 None,
             )
             .await?;
 
-        // Remove cache files on failure
+        let cache_dir = self.file_service().operation_result_cache_dir();
+
         self.file_service()
-            .remove_file(
-                &self
-                    .file_service()
-                    .operation_request_cache_path(&operation_id.to_string()),
-            )
-            .await
-            .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
-        self.file_service()
-            .remove_file(
-                &self
-                    .file_service()
-                    .operation_response_cache_path(&operation_id.to_string()),
+            .write(
+                &cache_dir,
+                &operation_id.to_string(),
+                error.to_string().into_bytes().as_slice(),
             )
             .await
             .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
