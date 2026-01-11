@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use super::command::{Command, CommandData, CommandName};
-use super::command_handler::{CommandExecutionResult, CommandHandler};
+use super::command::Command;
+use super::command_handler::{CommandExecutionResult, CommandHandler, ScheduleConfig};
+use crate::commands::constants::DEFAULT_COMMAND_DELAY_MS;
 use crate::context::Context;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -21,19 +22,18 @@ impl DialPeersCommandHandler {
     pub fn new(context: Arc<Context>) -> Self {
         Self { context }
     }
-
-    pub fn create_default_command() -> Command {
-        Command::new(
-            CommandName::DialPeers,
-            CommandData::DialPeers(DialPeersCommandData),
-            0,
-            Some(DIAL_PEERS_COMMAND_PERIOD_MS),
-        )
-    }
 }
 
 #[async_trait]
 impl CommandHandler for DialPeersCommandHandler {
+    fn name(&self) -> &'static str {
+        "dialPeersCommand"
+    }
+
+    fn schedule_config(&self) -> ScheduleConfig {
+        ScheduleConfig::periodic_with_delay(DIAL_PEERS_COMMAND_PERIOD_MS, DEFAULT_COMMAND_DELAY_MS)
+    }
+
     async fn execute(&self, _: &Command) -> CommandExecutionResult {
         let peer_id = self.context.network_manager().peer_id().to_base58();
 

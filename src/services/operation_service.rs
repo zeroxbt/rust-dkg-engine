@@ -1,10 +1,10 @@
 use async_trait::async_trait;
+use chrono::Utc;
 use std::{
     collections::HashMap,
     fmt::{self, Display},
     str::FromStr,
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use blockchain::BlockchainName;
@@ -278,11 +278,6 @@ pub trait OperationLifecycle {
     fn file_service(&self) -> &Arc<FileService>;
 
     async fn create_operation_record(&self, operation_name: &str) -> Result<OperationId> {
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i64;
-
         let operation_id = OperationId::new();
         // TODO: add proper statuses
         self.repository_manager()
@@ -291,7 +286,7 @@ pub trait OperationLifecycle {
                 operation_id.into_inner(),
                 operation_name,
                 OperationStatus::InProgress.as_str(),
-                now_ms,
+                Utc::now().timestamp_millis(),
             )
             .await?;
 

@@ -50,6 +50,10 @@ impl PublishReplicationCommandHandler {
 
 #[async_trait]
 impl CommandHandler for PublishReplicationCommandHandler {
+    fn name(&self) -> &'static str {
+        "publishReplicationCommand"
+    }
+
     async fn execute(&self, data: &Command) -> CommandExecutionResult {
         CommandExecutionResult::Completed
     }

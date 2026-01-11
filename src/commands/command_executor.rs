@@ -3,17 +3,17 @@ use super::{
     command_handler::CommandExecutionResult,
     command_resolver::CommandResolver,
     constants::{
-        COMMAND_QUEUE_PARALLELISM, DEFAULT_COMMAND_DELAY_MS, DEFAULT_COMMAND_REPEAT_INTERVAL_MS,
-        MAX_COMMAND_DELAY_MS, PERMANENT_COMMANDS,
+        COMMAND_QUEUE_PARALLELISM, DEFAULT_COMMAND_REPEAT_INTERVAL_MS, MAX_COMMAND_DELAY_MS,
     },
 };
-use crate::{commands::command_handler::CommandHandler, context::Context};
+use crate::context::Context;
 use futures::stream::{FuturesUnordered, StreamExt};
 use std::{cmp::min, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, Mutex, Semaphore};
 
 pub struct CommandExecutor {
     pub context: Arc<Context>,
+    pub command_resolver: CommandResolver,
     pub process_command_tx: mpsc::Sender<Command>,
     pub process_command_rx: Arc<Mutex<mpsc::Receiver<Command>>>,
     pub semaphore: Arc<Semaphore>,
@@ -24,6 +24,7 @@ impl CommandExecutor {
         let (tx, rx) = mpsc::channel::<Command>(COMMAND_QUEUE_PARALLELISM);
 
         Self {
+            command_resolver: CommandResolver::new(context.clone()),
             context,
             process_command_tx: tx,
             process_command_rx: Arc::new(Mutex::new(rx)),
@@ -54,17 +55,8 @@ impl CommandExecutor {
     }
 
     async fn schedule_default_commands(&self) {
-        for command_name in PERMANENT_COMMANDS {
-            let Some(command) = command_name.to_command() else {
-                tracing::warn!(
-                    "Permanent command: {} has no default implementation!",
-                    command_name
-                );
-                continue;
-            };
-            self.add(command, DEFAULT_COMMAND_DELAY_MS, true)
-                .await
-                .unwrap();
+        for command in self.command_resolver.periodic_commands() {
+            self.add(command, 0, true).await.unwrap();
         }
     }
 
@@ -148,7 +140,10 @@ impl CommandExecutor {
         )
         .await;
 
-        let command_handler = CommandResolver::resolve(&command.name, Arc::clone(&self.context));
+        let Some(command_handler) = self.command_resolver.resolve(&command.name.to_string()) else {
+            tracing::error!("Unknown command: {}", command.name);
+            return;
+        };
 
         let result = command_handler.execute(&command).await;
 

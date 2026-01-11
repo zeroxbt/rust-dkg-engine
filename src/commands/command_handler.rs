@@ -7,8 +7,43 @@ pub enum CommandExecutionResult {
     Retry,
 }
 
+#[derive(Clone, Debug)]
+pub enum ScheduleConfig {
+    OneShot,
+    Periodic {
+        period_ms: i64,
+        initial_delay_ms: i64,
+    },
+}
+
+impl ScheduleConfig {
+    pub fn periodic(period_ms: i64) -> Self {
+        Self::Periodic {
+            period_ms,
+            initial_delay_ms: 0,
+        }
+    }
+
+    pub fn periodic_with_delay(period_ms: i64, initial_delay_ms: i64) -> Self {
+        Self::Periodic {
+            period_ms,
+            initial_delay_ms,
+        }
+    }
+}
+
 #[async_trait]
 pub trait CommandHandler: Send + Sync {
+    fn name(&self) -> &'static str;
+
+    fn build_command(&self, data: serde_json::Value) -> Command {
+        Command::new(self.name().to_string(), data, 0, None)
+    }
+
+    fn schedule_config(&self) -> ScheduleConfig {
+        ScheduleConfig::OneShot
+    }
+
     async fn execute(&self, command: &Command) -> CommandExecutionResult;
 
     async fn recover(&self) -> CommandExecutionResult {

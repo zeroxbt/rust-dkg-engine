@@ -1,49 +1,8 @@
 use chrono::{DateTime, Utc};
 use repository::models::command::{self, Model};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fmt, str::FromStr};
 use uuid::Uuid;
-
-use super::dial_peers_command::{DialPeersCommandData, DialPeersCommandHandler};
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CommandName {
-    Default,
-    DialPeers,
-}
-
-impl CommandName {
-    pub fn to_command(&self) -> Option<Command> {
-        match self {
-            CommandName::DialPeers => Some(DialPeersCommandHandler::create_default_command()),
-            _ => panic!(
-                "Default trait not implemented for command with name {}",
-                self
-            ),
-        }
-    }
-}
-
-impl fmt::Display for CommandName {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            CommandName::DialPeers => write!(f, "dialPeersCommand"),
-            CommandName::Default => panic!("Should never use default name"),
-        }
-    }
-}
-
-impl FromStr for CommandName {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "dialPeersCommand" => Ok(CommandName::DialPeers),
-            _ => Err(()),
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum CommandStatus {
@@ -85,16 +44,10 @@ impl FromStr for CommandStatus {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub enum CommandData {
-    DialPeers(DialPeersCommandData),
-    Empty,
-}
-
 #[derive(Clone)]
 pub struct Command {
     pub id: Uuid,
-    pub name: CommandName,
+    pub name: String,
     pub sequence: Option<Value>,
     pub ready_at: i64,
     pub delay: i64,
@@ -108,7 +61,7 @@ pub struct Command {
     pub transactional: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub data: CommandData,
+    pub data: serde_json::Value,
 }
 
 impl From<Model> for Command {
@@ -137,15 +90,28 @@ impl From<Model> for Command {
 }
 
 impl Command {
-    pub fn new(name: CommandName, data: CommandData, retries: i32, period: Option<i64>) -> Self {
+    pub fn new(name: String, data: serde_json::Value, retries: i32, period: Option<i64>) -> Self {
+        let now = Utc::now();
         Self {
+            id: Uuid::new_v4(),
             name,
-            period,
-            retries,
             data,
-            ..Self::default()
+            ready_at: now.timestamp_millis(),
+            delay: 0,
+            started_at: None,
+            deadline_at: None,
+            period,
+            status: CommandStatus::Pending,
+            message: None,
+            parent_id: None,
+            retries,
+            sequence: None,
+            transactional: false,
+            created_at: now,
+            updated_at: now,
         }
     }
+
     pub fn to_model(&self) -> Model {
         Model {
             id: self.id.hyphenated().to_string(),
@@ -166,30 +132,6 @@ impl Command {
             retries: self.retries,
             created_at: self.created_at,
             updated_at: self.updated_at,
-        }
-    }
-}
-
-impl Default for Command {
-    fn default() -> Self {
-        let now = Utc::now();
-        Self {
-            id: Uuid::new_v4(),
-            name: CommandName::Default,
-            sequence: None,
-            ready_at: now.timestamp_millis(),
-            delay: 0,
-            started_at: None,
-            deadline_at: None,
-            period: None,
-            status: CommandStatus::Pending,
-            message: None,
-            parent_id: None,
-            retries: 0,
-            transactional: false,
-            created_at: now,
-            updated_at: now,
-            data: CommandData::Empty,
         }
     }
 }
