@@ -1,8 +1,7 @@
 use sea_orm::{
     entity::prelude::{DeriveRelation, EnumIter},
     prelude::{
-        ActiveModelBehavior, DateTimeUtc, DeriveEntityModel, DerivePrimaryKey,
-        PrimaryKeyTrait,
+        ActiveModelBehavior, DateTimeUtc, DeriveEntityModel, DerivePrimaryKey, PrimaryKeyTrait,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -15,11 +14,6 @@ pub struct Model {
     pub operation_id: Uuid,
     pub operation_name: String,
     pub status: String,
-    pub final_status: Option<String>,
-    #[sea_orm(column_type = "Text", nullable)]
-    pub request_data: Option<String>,
-    #[sea_orm(column_type = "Text", nullable)]
-    pub response_data: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub error_message: Option<String>,
     pub min_acks_reached: bool,

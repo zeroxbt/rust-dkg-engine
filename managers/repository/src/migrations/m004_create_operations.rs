@@ -14,25 +14,18 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .create_table(
-                timestamps(
-                    Table::create()
-                        .table(operations::Entity)
-                        .if_not_exists()
-                        .col(pk_uuid(operations::Column::OperationId))
-                        .col(string(operations::Column::OperationName))
-                        .col(string(operations::Column::Status))
-                        .col(string_null(operations::Column::FinalStatus))
-                        .col(text_null(operations::Column::RequestData))
-                        .col(text_null(operations::Column::ResponseData))
-                        .col(text_null(operations::Column::ErrorMessage))
-                        .col(
-                            boolean(operations::Column::MinAcksReached).default(false),
-                        )
-                        .col(big_integer(operations::Column::Timestamp))
-                        .to_owned()
-                ),
-            )
+            .create_table(timestamps(
+                Table::create()
+                    .table(operations::Entity)
+                    .if_not_exists()
+                    .col(pk_uuid(operations::Column::OperationId))
+                    .col(string(operations::Column::OperationName))
+                    .col(string_null(operations::Column::Status))
+                    .col(text_null(operations::Column::ErrorMessage))
+                    .col(boolean(operations::Column::MinAcksReached).default(false))
+                    .col(big_integer(operations::Column::Timestamp))
+                    .to_owned(),
+            ))
             .await?;
 
         Ok(())

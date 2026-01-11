@@ -4,6 +4,7 @@ use std::{
     fmt::{self, Display},
     str::FromStr,
     sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use blockchain::BlockchainName;
@@ -17,11 +18,14 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::{mpsc::Sender, Mutex};
 use uuid::Uuid;
 
-use super::{
-    operation_cache_service::OperationCacheService, sharding_table_service::ShardingTableService,
+use crate::{
+    error::{NodeError, ServiceError},
+    services::file_service::{FileService, FileServiceError},
 };
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+use super::sharding_table_service::ShardingTableService;
+
+type Result<T> = std::result::Result<T, NodeError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -248,6 +252,23 @@ pub trait NetworkOperationProtocol {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum OperationStatus {
+    InProgress,
+    Completed,
+    Failed,
+}
+
+impl OperationStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::InProgress => "IN_PROGRESS",
+            Self::Completed => "COMPLETED",
+            Self::Failed => "FAILED",
+        }
+    }
+}
+
 /// Trait for operation lifecycle management - handles caching and operation state
 #[async_trait]
 pub trait OperationLifecycle {
@@ -255,81 +276,215 @@ pub trait OperationLifecycle {
     type ResponseData: Serialize + DeserializeOwned + Send + Sync;
 
     fn repository_manager(&self) -> &Arc<RepositoryManager>;
-    fn operation_cache(&self) -> &Arc<OperationCacheService>;
+    fn file_service(&self) -> &Arc<FileService>;
 
-    /// Cache request data (memory + file)
-    async fn cache_request(&self, op_id: Uuid, data: &Self::RequestData) -> Result<()> {
-        let json = serde_json::to_string(data)?;
-        self.operation_cache()
-            .cache_to_memory(op_id.into(), json.clone())
+    async fn create_operation_record(&self, operation_name: &str) -> Result<OperationId> {
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        let operation_id = OperationId::new();
+        // TODO: add proper statuses
+        self.repository_manager()
+            .operation_repository()
+            .create(
+                operation_id.into_inner(),
+                operation_name,
+                OperationStatus::InProgress.as_str(),
+                now_ms,
+            )
             .await?;
-        self.operation_cache()
-            .cache_to_file(op_id.into(), json)
-            .await?;
+
+        tracing::debug!("Generated operation id for request {operation_id}");
+
+        Ok(operation_id)
+    }
+
+    /// Cache request data
+    async fn cache_request(
+        &self,
+        operation_id: OperationId,
+        data: &Self::RequestData,
+    ) -> Result<()> {
+        tracing::debug!("Caching data for operation id {} in file", operation_id);
+
+        let cache_dir = self.file_service().operation_request_cache_dir();
+
+        self.file_service()
+            .write_json(&cache_dir, &operation_id.to_string(), &data)
+            .await
+            .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
+
         Ok(())
     }
 
-    /// Cache response data (memory + file)
-    async fn cache_response(&self, op_id: Uuid, data: &Self::ResponseData) -> Result<()> {
-        let json = serde_json::to_string(data)?;
-        self.operation_cache()
-            .cache_to_memory(op_id.into(), json.clone())
-            .await?;
-        self.operation_cache()
-            .cache_to_file(op_id.into(), json)
-            .await?;
+    /// Cache response data
+    async fn cache_response(
+        &self,
+        operation_id: OperationId,
+        data: &Self::ResponseData,
+    ) -> Result<()> {
+        tracing::debug!("Caching data for operation id {} in file", operation_id);
+
+        let cache_dir = self.file_service().operation_response_cache_dir();
+
+        self.file_service()
+            .write_json(&cache_dir, &operation_id.to_string(), &data)
+            .await
+            .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
         Ok(())
     }
 
-    /// Get cached data (tries memory first, then file)
-    async fn get_cached(&self, op_id: Uuid) -> Result<Option<Self::ResponseData>> {
-        match self.operation_cache().get_cached(op_id.into()).await? {
-            Some(json) => Ok(Some(serde_json::from_str(&json)?)),
-            None => Ok(None),
+    /// Get cached request data
+    async fn get_cached_request(
+        &self,
+        operation_id: OperationId,
+    ) -> Result<Option<Self::RequestData>> {
+        let file_path = self
+            .file_service()
+            .operation_request_cache_path(&operation_id.to_string());
+
+        match self.file_service().read_json(&file_path).await {
+            Ok(request_data) => Ok(Some(request_data)),
+            Err(FileServiceError::FileNotFound(_)) => Ok(None),
+            Err(e) => Err(NodeError::Service(ServiceError::Other(e.to_string()))),
+        }
+    }
+
+    /// Get cached response data
+    async fn get_cached_response(
+        &self,
+        operation_id: OperationId,
+    ) -> Result<Option<Self::ResponseData>> {
+        let file_path = self
+            .file_service()
+            .operation_response_cache_path(&operation_id.to_string());
+
+        match self.file_service().read_json(&file_path).await {
+            Ok(response_data) => Ok(Some(response_data)),
+            Err(FileServiceError::FileNotFound(_)) => Ok(None),
+            Err(e) => Err(NodeError::Service(ServiceError::Other(e.to_string()))),
         }
     }
 
     /// Mark operation as completed and cache response data
-    async fn mark_completed(&self, op_id: Uuid, response: Self::ResponseData) -> Result<()> {
-        let json = serde_json::to_string(&response)?;
-
+    async fn mark_completed(&self, operation_id: OperationId) -> Result<()> {
+        // TODO: add proper statuses
         self.repository_manager()
             .operation_repository()
             .update(
-                op_id,
-                None,
-                Some("completed"),
-                None,
-                Some(json),
+                operation_id.into_inner(),
+                Some(OperationStatus::Completed.as_str()),
                 None,
                 None,
                 None,
             )
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+            .await?;
 
-        self.cache_response(op_id, &response).await?;
         Ok(())
     }
 
     /// Mark operation as failed and remove cache
-    async fn mark_failed(&self, op_id: Uuid, error_msg: String) -> Result<()> {
+    async fn mark_failed(&self, operation_id: OperationId, error_msg: String) -> Result<()> {
         self.repository_manager()
             .operation_repository()
             .update(
-                op_id,
-                None,
-                Some("failed"),
-                None,
-                None,
+                operation_id.into_inner(),
+                Some(OperationStatus::Failed.as_str()),
                 Some(error_msg),
                 None,
                 None,
             )
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+            .await?;
 
-        self.operation_cache().remove_cache(op_id.into()).await?;
+        // Remove cache files on failure
+        self.file_service()
+            .remove_file(
+                &self
+                    .file_service()
+                    .operation_request_cache_path(&operation_id.to_string()),
+            )
+            .await
+            .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
+        self.file_service()
+            .remove_file(
+                &self
+                    .file_service()
+                    .operation_response_cache_path(&operation_id.to_string()),
+            )
+            .await
+            .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
+
         Ok(())
     }
+
+    /*  /// Remove expired operation data from file cache
+    /// Returns the number of files deleted
+    async fn remove_expired_file_cache(
+        &self,
+        cache_dir_path: &PathBuf,
+        expired_timeout_ms: u128,
+        batch_size: usize,
+    ) -> Result<usize> {
+        // Check if cache directory exists
+        let entries = match self.file_service().read_dir(&cache_dir_path).await {
+            Ok(e) => e,
+            Err(_) => return Ok(0), // Directory doesn't exist, nothing to clean
+        };
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let mut total_deleted = 0;
+
+        // Process files in batches
+        for chunk in entries.chunks(batch_size) {
+            let mut tasks = Vec::new();
+
+            for filename in chunk {
+                let file_path = cache_dir_path.join(filename);
+                let file_service = self.file_service().clone();
+
+                let metadata = self.file_service().metadata(&file_path).await;
+                let task = tokio::spawn(async move {
+                    match metadata {
+                        Ok(metadata) => {
+                            if let Ok(modified) = metadata.modified() {
+                                let modified_timestamp = modified
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis();
+
+                                if modified_timestamp + expired_timeout_ms < now {
+                                    return file_service
+                                        .remove_file(&file_path)
+                                        .await
+                                        .unwrap_or(false);
+                                }
+                            }
+                        }
+                        Err(_) => return false,
+                    }
+                    false
+                });
+
+                tasks.push(task);
+            }
+
+            // Wait for batch to complete
+            let results = futures::future::join_all(tasks).await;
+            total_deleted += results
+                .iter()
+                .filter(|r| *r.as_ref().unwrap_or(&false))
+                .count();
+        }
+
+        if total_deleted > 0 {
+            tracing::debug!("Removed {} expired files from cache", total_deleted);
+        }
+
+        Ok(total_deleted)
+    } */
 }

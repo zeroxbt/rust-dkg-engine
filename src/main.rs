@@ -30,7 +30,6 @@ use validation::ValidationManager;
 
 use crate::config::Config;
 use crate::services::file_service::FileService;
-use crate::services::operation_cache_service::OperationCacheService;
 
 #[tokio::main]
 async fn main() {
@@ -224,7 +223,6 @@ fn initialize_services(
     Arc<PublishService>,
 ) {
     let file_service = Arc::new(FileService::new(config.app_data_path.clone()));
-    let operation_cache_service = Arc::new(OperationCacheService::new(Arc::clone(&file_service)));
     let ual_service = Arc::new(UalService::new(Arc::clone(blockchain_manager)));
     let sharding_table_service = Arc::new(ShardingTableService::new(
         Arc::clone(repository_manager),
@@ -234,7 +232,6 @@ fn initialize_services(
     let publish_service = Arc::new(PublishService::new(
         network_action_tx.clone(),
         Arc::clone(repository_manager),
-        Arc::clone(&operation_cache_service),
         Arc::clone(&sharding_table_service),
         Arc::clone(&file_service),
     ));

@@ -1,5 +1,5 @@
 use crate::context::Context;
-use crate::services::operation_service::OperationId;
+use crate::services::operation_service::{OperationId, OperationLifecycle};
 use axum::Json;
 use axum::{extract::State, response::IntoResponse};
 use blockchain::BlockchainName;
@@ -51,12 +51,19 @@ impl PublishController {
     ) -> impl IntoResponse {
         match req.validate() {
             Ok(_) => {
-                let operation_id = OperationId::new();
+                // Generate operation ID
+                let operation_id = context
+                    .publish_service()
+                    .create_operation_record("publish")
+                    .await
+                    .unwrap();
 
+                // Spawn async task to execute the operation
                 tokio::spawn(async move {
                     Self::execute_publish_operation(Arc::clone(&context), req, operation_id).await
                 });
 
+                // Return operation ID immediately
                 Json(PublishResponse { operation_id }).into_response()
             }
             Err(e) => (
@@ -78,29 +85,11 @@ impl PublishController {
             request.blockchain
         );
 
-        let hash_function_id = request.hash_function_id.unwrap_or(DEFAULT_HASH_FUNCTION_ID);
-
-        let request_message = RequestMessage {
-            header: RequestMessageHeader {
-                operation_id: operation_id.into_inner(),
-                message_type: network::message::RequestMessageType::ProtocolRequest,
-            },
-            data: StoreRequestData::new(
-                request.dataset.public,
-                request.dataset_root,
-                request.blockchain.as_str().to_string(),
-            ),
-        };
-
-        /*  context
-        .publish_service()
-        .start_operation(
-            operation_id,
-            request.blockchain,
-            keyword,
-            hash_function_id,
-            request_message,
-        )
-        .await; */
+        // cache request data
+        // get peer id
+        // store in pending storage
+        // schedule publish command
+        // if err
+        // mark op failed
     }
 }

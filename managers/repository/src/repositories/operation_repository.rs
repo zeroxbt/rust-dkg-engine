@@ -31,9 +31,6 @@ impl OperationRepository {
             operation_id: Set(operation_id),
             operation_name: Set(operation_name.to_string()),
             status: Set(status.to_string()),
-            final_status: Set(None),
-            request_data: Set(None),
-            response_data: Set(None),
             error_message: Set(None),
             min_acks_reached: Set(false),
             timestamp: Set(timestamp),
@@ -62,9 +59,6 @@ impl OperationRepository {
         &self,
         operation_id: Uuid,
         status: Option<&str>,
-        final_status: Option<&str>,
-        request_data: Option<String>,
-        response_data: Option<String>,
         error_message: Option<String>,
         min_acks_reached: Option<bool>,
         timestamp: Option<i64>,
@@ -80,17 +74,8 @@ impl OperationRepository {
         let mut active_model: operations::ActiveModel = existing.into();
 
         // Update fields if provided
-        if let Some(s) = status {
-            active_model.status = Set(s.to_string());
-        }
-        if let Some(fs) = final_status {
-            active_model.final_status = Set(Some(fs.to_string()));
-        }
-        if let Some(rd) = request_data {
-            active_model.request_data = Set(Some(rd));
-        }
-        if let Some(rd) = response_data {
-            active_model.response_data = Set(Some(rd));
+        if let Some(fs) = status {
+            active_model.status = Set(fs.to_string());
         }
         if let Some(em) = error_message {
             active_model.error_message = Set(Some(em));
@@ -115,17 +100,8 @@ impl OperationRepository {
         operation_id: Uuid,
         status: &str,
     ) -> Result<Model, RepositoryError> {
-        self.update(
-            operation_id,
-            Some(status),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        .await
+        self.update(operation_id, Some(status), None, None, None)
+            .await
     }
 
     /// Update min_acks_reached flag
@@ -134,17 +110,8 @@ impl OperationRepository {
         operation_id: Uuid,
         min_acks_reached: bool,
     ) -> Result<Model, RepositoryError> {
-        self.update(
-            operation_id,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(min_acks_reached),
-            None,
-        )
-        .await
+        self.update(operation_id, None, None, Some(min_acks_reached), None)
+            .await
     }
 
     /// Delete an operation record by ID
@@ -257,23 +224,10 @@ impl OperationRepository {
         Ok(records)
     }
 
-    /// Get operations by final_status (for filtering completed/failed operations)
-    pub async fn find_by_final_status(
-        &self,
-        final_status: &str,
-    ) -> Result<Vec<Model>, RepositoryError> {
+    /// Get operations by status (for filtering completed/failed operations)
+    pub async fn find_by_status(&self, status: &str) -> Result<Vec<Model>, RepositoryError> {
         let records = Entity::find()
-            .filter(Column::FinalStatus.eq(final_status))
-            .all(self.conn.as_ref())
-            .await?;
-
-        Ok(records)
-    }
-
-    /// Get all in-progress operations (where final_status is NULL)
-    pub async fn find_in_progress(&self) -> Result<Vec<Model>, RepositoryError> {
-        let records = Entity::find()
-            .filter(Column::FinalStatus.is_null())
+            .filter(Column::Status.eq(status))
             .all(self.conn.as_ref())
             .await?;
 

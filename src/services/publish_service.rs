@@ -11,7 +11,6 @@ use tokio::sync::mpsc::Sender;
 use crate::services::file_service::FileService;
 
 use super::{
-    operation_cache_service::OperationCacheService,
     operation_service::{NetworkOperationProtocol, OperationLifecycle, OperationResponseTracker},
     sharding_table_service::ShardingTableService,
 };
@@ -25,7 +24,6 @@ pub struct PublishResponse {
 pub struct PublishService {
     network_action_tx: Sender<NetworkAction>,
     repository_manager: Arc<RepositoryManager>,
-    operation_cache: Arc<OperationCacheService>,
     response_tracker: OperationResponseTracker<StoreRequestData>,
     sharding_table_service: Arc<ShardingTableService>,
     file_service: Arc<FileService>,
@@ -35,14 +33,12 @@ impl PublishService {
     pub fn new(
         network_action_tx: Sender<NetworkAction>,
         repository_manager: Arc<RepositoryManager>,
-        operation_cache: Arc<OperationCacheService>,
         sharding_table_service: Arc<ShardingTableService>,
         file_service: Arc<FileService>,
     ) -> Self {
         Self {
             network_action_tx,
             repository_manager,
-            operation_cache,
             response_tracker: OperationResponseTracker::new(),
             sharding_table_service,
             file_service,
@@ -81,7 +77,7 @@ impl OperationLifecycle for PublishService {
         &self.repository_manager
     }
 
-    fn operation_cache(&self) -> &Arc<OperationCacheService> {
-        &self.operation_cache
+    fn file_service(&self) -> &Arc<FileService> {
+        &self.file_service
     }
 }
