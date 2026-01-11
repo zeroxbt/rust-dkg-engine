@@ -65,6 +65,7 @@ impl NetworkOperationProtocol for PublishService {
 
 impl OperationLifecycle for PublishService {
     type ResultData = ();
+    const OPERATION_NAME: &'static str = "publish";
 
     fn repository_manager(&self) -> &Arc<RepositoryManager> {
         &self.repository_manager

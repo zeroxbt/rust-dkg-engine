@@ -273,18 +273,19 @@ impl OperationStatus {
 #[async_trait]
 pub trait OperationLifecycle {
     type ResultData: Serialize + DeserializeOwned + Send + Sync;
+    const OPERATION_NAME: &'static str;
 
     fn repository_manager(&self) -> &Arc<RepositoryManager>;
     fn file_service(&self) -> &Arc<FileService>;
 
-    async fn create_operation_record(&self, operation_name: &str) -> Result<OperationId> {
+    async fn create_operation_record(&self) -> Result<OperationId> {
         let operation_id = OperationId::new();
         // TODO: add proper statuses
         self.repository_manager()
             .operation_repository()
             .create(
                 operation_id.into_inner(),
-                operation_name,
+                Self::OPERATION_NAME,
                 OperationStatus::InProgress.as_str(),
                 Utc::now().timestamp_millis(),
             )
@@ -348,11 +349,13 @@ pub trait OperationLifecycle {
     /// Mark operation as completed
     async fn mark_completed(
         &self,
-        operation_name: &str,
         operation_id: OperationId,
         data: &Self::ResultData,
     ) -> Result<()> {
-        tracing::info!("Finalizing {operation_name} for operationId: {operation_id}");
+        tracing::info!(
+            "Finalizing {} for operationId: {operation_id}",
+            Self::OPERATION_NAME
+        );
         self.repository_manager()
             .operation_repository()
             .update(
@@ -382,11 +385,13 @@ pub trait OperationLifecycle {
     /// Mark operation as failed
     async fn mark_failed(
         &self,
-        operation_name: &str,
         operation_id: OperationId,
         error: Box<dyn std::error::Error + Send + Sync>,
     ) -> Result<()> {
-        tracing::warn!("{operation_name} for operationId: ${operation_id} failed.");
+        tracing::warn!(
+            "{} for operationId: ${operation_id} failed.",
+            Self::OPERATION_NAME
+        );
         self.repository_manager()
             .operation_repository()
             .update(

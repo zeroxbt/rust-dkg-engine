@@ -12,7 +12,7 @@ pub struct PublishReplicationCommandData {
     operation_id: OperationId,
     blockchain: BlockchainName,
     dataset_root: String,
-    minimum_number_of_node_replications: u8,
+    minimum_number_of_node_replications: Option<u8>,
 }
 
 impl CommandData for PublishReplicationCommandData {
@@ -24,7 +24,7 @@ impl PublishReplicationCommandData {
         operation_id: OperationId,
         blockchain: BlockchainName,
         dataset_root: String,
-        minimum_number_of_node_replications: u8,
+        minimum_number_of_node_replications: Option<u8>,
     ) -> Self {
         Self {
             operation_id,

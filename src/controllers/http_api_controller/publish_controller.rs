@@ -11,8 +11,6 @@ use std::sync::Arc;
 use validator::Validate;
 use validator_derive::Validate;
 
-const DEFAULT_HASH_FUNCTION_ID: u8 = 1;
-
 pub struct PublishController;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -27,14 +25,10 @@ pub struct Assertion {
 pub struct PublishRequest {
     #[validate(length(equal = 66))]
     pub dataset_root: String,
-
     pub dataset: Assertion,
-
     pub blockchain: BlockchainName,
-
     #[validate(range(min = 1))]
     pub hash_function_id: Option<u8>,
-
     #[validate(range(min = 1))]
     pub minimum_number_of_node_replications: Option<u8>,
 }
@@ -55,7 +49,7 @@ impl PublishController {
                 // Generate operation ID
                 let operation_id = context
                     .publish_service()
-                    .create_operation_record("publish")
+                    .create_operation_record()
                     .await
                     .unwrap();
 
@@ -94,18 +88,22 @@ impl PublishController {
             operation_id,
             request.blockchain.clone(),
             request.dataset_root.clone(),
-            request.minimum_number_of_node_replications.unwrap_or(3),
+            request.minimum_number_of_node_replications,
         )
         .into_command();
 
         let schedule_result = context.schedule_command_tx().send(command).await;
 
         if let Err(e) = schedule_result {
-            context
+            let mark_result = context
                 .publish_service()
-                .mark_failed("publish", operation_id, Box::new(e))
-                .await
-                .unwrap();
+                .mark_failed(operation_id, Box::new(e))
+                .await;
+            if let Err(e) = mark_result {
+                tracing::error!(
+                    "Unable to mark operation with id: {operation_id} as failed. Error: {e}"
+                );
+            }
         }
     }
 }
