@@ -20,11 +20,21 @@ impl PublishController {
         match req.validate() {
             Ok(_) => {
                 // Generate operation ID
-                let operation_id = context
+                let operation_id = match context
                     .publish_service()
                     .create_operation_record()
                     .await
-                    .unwrap();
+                {
+                    Ok(id) => id,
+                    Err(e) => {
+                        tracing::error!("Failed to create operation record: {}", e);
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Failed to create operation: {}", e),
+                        )
+                            .into_response();
+                    }
+                };
 
                 // Spawn async task to execute the operation
                 tokio::spawn(async move {
@@ -34,11 +44,25 @@ impl PublishController {
                 // Return operation ID immediately
                 Json(PublishResponse::new(operation_id)).into_response()
             }
-            Err(e) => (
-                StatusCode::BAD_REQUEST,
-                format!("Validation error: {:?}", e),
-            )
-                .into_response(),
+            Err(e) => {
+                let error_messages: Vec<String> = e
+                    .field_errors()
+                    .iter()
+                    .map(|(field, errors)| {
+                        let messages: Vec<String> = errors
+                            .iter()
+                            .filter_map(|err| err.message.as_ref().map(|m| m.to_string()))
+                            .collect();
+                        format!("{}: {}", field, messages.join(", "))
+                    })
+                    .collect();
+
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Validation error: {}", error_messages.join("; ")),
+                )
+                    .into_response()
+            }
         }
     }
 
@@ -47,37 +71,97 @@ impl PublishController {
         request: PublishRequest,
         operation_id: OperationId,
     ) {
+        // Destructure request early to take ownership and avoid clones later
+        let PublishRequest {
+            blockchain,
+            dataset_root,
+            dataset,
+            minimum_number_of_node_replications,
+            ..
+        } = request;
+
         tracing::info!(
-            "Received asset with dataset root: {}, blockchain: {}",
-            request.dataset_root,
-            request.blockchain
+            "Starting publish operation - operation_id: {}, dataset_root: {}, blockchain: {}",
+            operation_id,
+            dataset_root,
+            blockchain
         );
 
-        let res = context
+        if let Err(e) = context
             .pending_storage_service()
-            .store_dataset(operation_id, &request.dataset_root, &request.dataset)
+            .store_dataset(operation_id, &dataset_root, &dataset)
+            .await
+        {
+            tracing::error!(
+                "Failed to store dataset for operation {}: {}",
+                operation_id,
+                e
+            );
+            Self::handle_operation_failure(
+                &context,
+                operation_id,
+                Box::new(e),
+                "store dataset",
+            )
             .await;
+            return;
+        }
+
+        tracing::debug!(
+            "Dataset stored successfully for operation {} (dataset_root: {})",
+            operation_id,
+            dataset_root
+        );
 
         let command = PublishReplicationCommandData::new(
             operation_id,
-            request.blockchain.clone(),
-            request.dataset_root.clone(),
-            request.minimum_number_of_node_replications,
+            blockchain.clone(),
+            dataset_root.clone(),
+            minimum_number_of_node_replications,
         )
         .into_command();
 
-        let schedule_result = context.schedule_command_tx().send(command).await;
+        if let Err(e) = context.schedule_command_tx().send(command).await {
+            tracing::error!(
+                "Failed to schedule publish command for operation {}: {}",
+                operation_id,
+                e
+            );
+            Self::handle_operation_failure(
+                &context,
+                operation_id,
+                Box::new(e),
+                "schedule command",
+            )
+            .await;
+            return;
+        }
 
-        if let Err(e) = schedule_result {
-            let mark_result = context
-                .publish_service()
-                .mark_failed(operation_id, Box::new(e))
-                .await;
-            if let Err(e) = mark_result {
-                tracing::error!(
-                    "Unable to mark operation with id: {operation_id} as failed. Error: {e}"
-                );
-            }
+        tracing::info!(
+            "Publish command scheduled successfully for operation {} (dataset_root: {}, blockchain: {})",
+            operation_id,
+            dataset_root,
+            blockchain
+        );
+    }
+
+    async fn handle_operation_failure(
+        context: &Arc<Context>,
+        operation_id: OperationId,
+        error: Box<dyn std::error::Error + Send + Sync>,
+        stage: &str,
+    ) {
+        if let Err(mark_error) = context
+            .publish_service()
+            .mark_failed(operation_id, error)
+            .await
+        {
+            tracing::error!(
+                "Unable to mark operation {} as failed (stage: {}): {}",
+                operation_id,
+                stage,
+                mark_error
+            );
         }
     }
 }
