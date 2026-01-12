@@ -1,15 +1,17 @@
 use std::sync::Arc;
 
-use crate::context::Context;
-use crate::types::traits::controller::BaseController;
-use network::action::NetworkAction;
-use network::message::{
-    ErrorMessage, GetRequestData, GetResponseData, RequestMessage, ResponseMessage,
-    ResponseMessageHeader, ResponseMessageType,
+use network::{
+    PeerId,
+    action::NetworkAction,
+    message::{
+        ErrorMessage, GetRequestData, GetResponseData, RequestMessage, ResponseMessage,
+        ResponseMessageHeader, ResponseMessageType,
+    },
+    request_response,
 };
-
-use network::{request_response, PeerId};
 use tokio::sync::mpsc;
+
+use crate::{context::Context, types::traits::controller::BaseController};
 
 pub struct GetController {
     network_action_tx: mpsc::Sender<NetworkAction>,

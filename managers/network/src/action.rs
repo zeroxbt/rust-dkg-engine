@@ -1,9 +1,9 @@
+use libp2p::{Multiaddr, PeerId, request_response::ResponseChannel};
+
 use crate::message::{
     GetRequestData, GetResponseData, RequestMessage, ResponseMessage, StoreRequestData,
     StoreResponseData,
 };
-use libp2p::request_response::ResponseChannel;
-use libp2p::{Multiaddr, PeerId};
 
 pub enum NetworkAction {
     StoreRequest {

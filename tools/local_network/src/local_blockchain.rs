@@ -1,12 +1,13 @@
-use ethers::abi::{Abi, Token};
-use ethers::core::types::Address;
-use ethers::prelude::*;
-use ethers::providers::{Http, Provider};
-use ethers::signers::LocalWallet;
+use std::{convert::TryFrom, fs::read_to_string, sync::Arc};
+
+use ethers::{
+    abi::{Abi, Token},
+    core::types::Address,
+    prelude::*,
+    providers::{Http, Provider},
+    signers::LocalWallet,
+};
 use k256::ecdsa::SigningKey;
-use std::convert::TryFrom;
-use std::fs::read_to_string;
-use std::sync::Arc;
 
 const HUB_CONTRACT_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";

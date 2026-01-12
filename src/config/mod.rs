@@ -1,12 +1,13 @@
+use std::{env, path::PathBuf};
+
 use blockchain::BlockchainManagerConfig;
 use figment::{
-    providers::{Format, Toml},
     Figment,
+    providers::{Format, Toml},
 };
 use network::NetworkManagerConfig;
 use repository::RepositoryManagerConfig;
 use serde::Deserialize;
-use std::{env, path::PathBuf};
 use thiserror::Error;
 use validation::ValidationManagerConfig;
 

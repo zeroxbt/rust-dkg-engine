@@ -1,18 +1,22 @@
-use axum::http::Method;
-use axum::routing::{get, post};
-use axum::Router;
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
+
+use axum::{
+    Router,
+    http::Method,
+    routing::{get, post},
+};
 use serde::Deserialize;
-use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::Arc;
-use tokio::net::TcpListener;
-use tokio::sync::Mutex;
+use tokio::{net::TcpListener, sync::Mutex};
 use tower_http::cors::*;
 
+use super::{
+    get_controller::GetController, info_controller::InfoController,
+    publish_controller::PublishController,
+};
 use crate::context::Context;
-
-use super::get_controller::GetController;
-use super::info_controller::InfoController;
-use super::publish_controller::PublishController;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct HttpApiConfig {

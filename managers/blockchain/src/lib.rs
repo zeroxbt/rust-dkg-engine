@@ -2,6 +2,8 @@ pub mod blockchains;
 pub mod error;
 pub mod utils;
 
+use std::{collections::HashMap, fmt::Display};
+
 use blockchains::{abstract_blockchain::AbstractBlockchain, blockchain_creator::BlockchainCreator};
 pub use blockchains::{
     abstract_blockchain::{ContractName, EventLog, EventName},
@@ -13,7 +15,6 @@ pub use blockchains::{
 };
 pub use ethers::types::Address;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Display};
 
 use crate::error::BlockchainError;
 

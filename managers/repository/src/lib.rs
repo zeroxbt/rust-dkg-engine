@@ -3,6 +3,8 @@ mod migrations;
 pub mod models;
 mod repositories;
 
+use std::sync::Arc;
+
 use error::RepositoryError;
 use repositories::{
     blockchain_repository::BlockchainRepository, command_repository::CommandRepository,
@@ -11,7 +13,6 @@ use repositories::{
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::Deserialize;
-use std::sync::Arc;
 
 use self::migrations::Migrator;
 

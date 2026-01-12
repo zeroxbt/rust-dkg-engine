@@ -15,6 +15,7 @@ resolver = "2"
 [package]
 name = "rust-ot-node"
 version = "0.1.0"
+rust-version = "1.92.0"
 edition = "2024"
 
 [workspace.dependencies]
@@ -81,3 +82,13 @@ async-trait.workspace = true
 
 [dev-dependencies]
 tempfile = "3.24.0"
+
+[workspace.lints]
+rust.unreachable_pub = "warn"
+clippy.used_underscore_binding = "warn"
+clippy.pedantic = { level = "allow", priority = -1 }
+clippy.type_complexity = "allow"
+clippy.unnecessary_wraps = "warn"
+clippy.manual_let_else = "warn"
+clippy.dbg_macro = "warn"
+clippy.unwrap_used = "warn"

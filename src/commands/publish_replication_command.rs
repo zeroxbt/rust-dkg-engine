@@ -1,15 +1,20 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
-use super::command::Command;
-use crate::types::models::OperationId;
-use crate::types::traits::command::{CommandData, CommandExecutionResult};
-use crate::{context::Context, types::traits::command::CommandHandler};
 use blockchain::BlockchainName;
-use network::action::NetworkAction;
-use network::NetworkManager;
+use network::{NetworkManager, action::NetworkAction};
 use repository::RepositoryManager;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tokio::sync::mpsc;
+
+use super::command::Command;
+use crate::{
+    context::Context,
+    types::{
+        models::OperationId,
+        traits::command::{CommandData, CommandExecutionResult, CommandHandler},
+    },
+};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PublishReplicationCommandData {

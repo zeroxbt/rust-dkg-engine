@@ -1,19 +1,19 @@
+use std::sync::Arc;
+
 use network::{
+    PeerId,
     action::NetworkAction,
     message::{RequestMessage, StoreRequestData},
-    PeerId,
 };
 use repository::RepositoryManager;
-use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-
-use crate::{
-    services::file_service::FileService,
-    types::traits::service::{NetworkOperationProtocol, OperationLifecycle},
-};
 
 use super::{
     operation_service::OperationResponseTracker, sharding_table_service::ShardingTableService,
+};
+use crate::{
+    services::file_service::FileService,
+    types::traits::service::{NetworkOperationProtocol, OperationLifecycle},
 };
 
 pub struct PublishService {

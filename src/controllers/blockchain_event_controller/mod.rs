@@ -1,3 +1,5 @@
+use std::{collections::HashMap, sync::Arc, vec};
+
 use blockchain::{
     AskUpdatedFilter, AssetStorageChangedFilter, BlockchainManager, BlockchainName,
     ContractChangedFilter, ContractName, EventLog, EventName, NewAssetStorageFilter,
@@ -7,7 +9,6 @@ use blockchain::{
 use chrono::DateTime;
 use futures::stream::{FuturesUnordered, StreamExt};
 use repository::RepositoryManager;
-use std::{collections::HashMap, sync::Arc, vec};
 use validation::{HashFunction, ValidationManager};
 
 use crate::{config::Config, context::Context};

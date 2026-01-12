@@ -5,7 +5,6 @@
 ///
 /// # Type Parameters
 /// * `T`: The type of the elements being permuted. Must implement `Ord` and `Clone`.
-///
 pub struct Permuter<T> {
     current: Vec<T>,
     done: bool,
@@ -33,7 +32,8 @@ impl<T: Ord + Clone> Permuter<T> {
     /// Generates the next permutation of the list if available.
     ///
     /// # Returns
-    /// Returns `Some(Vec<T>)` containing the next permutation if available, `None` if all permutations have been generated.
+    /// Returns `Some(Vec<T>)` containing the next permutation if available, `None` if all
+    /// permutations have been generated.
     pub fn next(&mut self) -> Option<Vec<T>> {
         if self.done {
             return None; // No more permutations to generate

@@ -1,17 +1,17 @@
-use async_trait::async_trait;
 use std::sync::Arc;
 
-use super::command::Command;
-use crate::context::Context;
-use crate::types::traits::command::{CommandExecutionResult, ScheduleConfig};
-use crate::{
-    commands::constants::DEFAULT_COMMAND_DELAY_MS, types::traits::command::CommandHandler,
-};
-use network::action::NetworkAction;
-use network::NetworkManager;
+use async_trait::async_trait;
+use network::{NetworkManager, action::NetworkAction};
 use repository::RepositoryManager;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
+
+use super::command::Command;
+use crate::{
+    commands::constants::DEFAULT_COMMAND_DELAY_MS,
+    context::Context,
+    types::traits::command::{CommandExecutionResult, CommandHandler, ScheduleConfig},
+};
 
 const DIAL_PEERS_COMMAND_PERIOD_MS: i64 = 30_000;
 const DIAL_CONCURRENCY: usize = 5;

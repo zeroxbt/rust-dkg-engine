@@ -1,13 +1,14 @@
+use std::sync::Arc;
+
 use blockchain::BlockchainName;
 use chrono::Utc;
 use network::{
+    PeerId,
     action::NetworkAction,
     message::{RequestMessage, ResponseMessageType},
-    PeerId,
 };
 use repository::RepositoryManager;
-use serde::{de::DeserializeOwned, Serialize};
-use std::sync::Arc;
+use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
@@ -87,7 +88,11 @@ pub trait NetworkOperationProtocol {
 
         tracing::debug!(
             "Processing response for operation id: {}, number of responses: {}, Completed: {}, Failed: {}, minimum replication factor: {}",
-            operation_id, total_responses, operation_state.completed_number, operation_state.failed_number, Self::MIN_ACK_RESPONSES
+            operation_id,
+            total_responses,
+            operation_state.completed_number,
+            operation_state.failed_number,
+            Self::MIN_ACK_RESPONSES
         );
 
         if operation_state.completed_number == Self::MIN_ACK_RESPONSES

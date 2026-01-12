@@ -1,16 +1,14 @@
-use crate::{BlockchainConfig, ContractName};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
+
 use ethers::{
     abi::Address,
-    contract::abigen,
-    contract::Contract,
+    contract::{Contract, abigen},
     middleware::{Middleware, MiddlewareBuilder, NonceManagerMiddleware, SignerMiddleware},
     providers::{Http, Provider},
     signers::{LocalWallet, Signer},
 };
-use std::sync::Arc;
-use std::{collections::HashMap, str::FromStr};
 
-use crate::error::BlockchainError;
+use crate::{BlockchainConfig, ContractName, error::BlockchainError};
 
 abigen!(Hub, "../../abi/Hub.json");
 abigen!(ContentAssetStorage, "../../abi/ContentAssetStorage.json");
@@ -31,15 +29,15 @@ abigen!(CommitManagerV1U1, "../../abi/CommitManagerV1U1.json");
 // abigen!(ProofManagerV1, "../../abi/ProofManagerV1.json");
 // abigen!(ProofManagerV1U1, "../../abi/ProofManagerV1U1.json");
 abigen!(ShardingTable, "../../abi/ShardingTable.json");
-/* abigen!(ShardingTableStorage, "../../abi/ShardingTableStorage.json");
-abigen!(
-    ServiceAgreementStorageProxy,
-    "../../abi/ServiceAgreementStorageProxy.json"
-);
-abigen!(
-    UnfinalizedStateStorage,
-    "../../abi/UnfinalizedStateStorage.json"
-); */
+// abigen!(ShardingTableStorage, "../../abi/ShardingTableStorage.json");
+// abigen!(
+// ServiceAgreementStorageProxy,
+// "../../abi/ServiceAgreementStorageProxy.json"
+// );
+// abigen!(
+// UnfinalizedStateStorage,
+// "../../abi/UnfinalizedStateStorage.json"
+// );
 
 pub type BlockchainProvider = NonceManagerMiddleware<SignerMiddleware<Provider<Http>, LocalWallet>>;
 
@@ -228,127 +226,126 @@ pub trait BlockchainCreator {
         Ok(Contracts {
             hub: hub.clone(),
             content_asset_storages,
-            /*
-            assertion_storage: AssertionStorage::new(
-                hub.get_contract_address("AssertionStorage".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ), */
+            // assertion_storage: AssertionStorage::new(
+            // hub.get_contract_address("AssertionStorage".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
             staking: Staking::new(
                 hub.get_contract_address("Staking".to_string())
                     .call()
                     .await?,
                 Arc::clone(provider),
             ),
-            /* staking_storage: StakingStorage::new(
-                hub.get_contract_address("StakingStorage".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ),
-            token: Token::new(
-                hub.get_contract_address("Token".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ),
-            hashing_proxy: HashingProxy::new(
-                hub.get_contract_address("HashingProxy".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ), */
+            // staking_storage: StakingStorage::new(
+            // hub.get_contract_address("StakingStorage".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
+            // token: Token::new(
+            // hub.get_contract_address("Token".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
+            // hashing_proxy: HashingProxy::new(
+            // hub.get_contract_address("HashingProxy".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
             identity_storage: IdentityStorage::new(
                 hub.get_contract_address("IdentityStorage".to_string())
                     .call()
                     .await?,
                 Arc::clone(provider),
             ),
-            /*  log2_pldsf: Log2PLDSF::new(
-                hub.get_contract_address("Log2PLDSF".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ),
-            parameters_storage: ParametersStorage::new(
-                hub.get_contract_address("ParametersStorage".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ), */
+            //  log2_pldsf: Log2PLDSF::new(
+            // hub.get_contract_address("Log2PLDSF".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
+            // parameters_storage: ParametersStorage::new(
+            // hub.get_contract_address("ParametersStorage".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
             profile: Profile::new(
                 hub.get_contract_address("Profile".to_string())
                     .call()
                     .await?,
                 Arc::clone(provider),
             ),
-            /*  profile_storage: ProfileStorage::new(
-                hub.get_contract_address("ProfileStorage".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ),
-            scoring_proxy: ScoringProxy::new(
-                hub.get_contract_address("ScoringProxy".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ), */
+            //  profile_storage: ProfileStorage::new(
+            // hub.get_contract_address("ProfileStorage".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
+            // scoring_proxy: ScoringProxy::new(
+            // hub.get_contract_address("ScoringProxy".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
             service_agreement_v1: ServiceAgreementV1::new(
                 hub.get_contract_address("ServiceAgreementV1".to_string())
                     .call()
                     .await?,
                 Arc::clone(provider),
             ),
-            /*  commit_manager_v1: CommitManagerV1::new(
-                hub.get_contract_address("CommitManagerV1".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ), */
+            //  commit_manager_v1: CommitManagerV1::new(
+            // hub.get_contract_address("CommitManagerV1".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
             commit_manager_v1_u1: CommitManagerV1U1::new(
                 hub.get_contract_address("CommitManagerV1U1".to_string())
                     .call()
                     .await?,
                 Arc::clone(provider),
             ),
-            /*   proof_manager_v1: ProofManagerV1::new(
-                hub.get_contract_address("ProofManagerV1".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ),
-            proof_manager_v1_u1: ProofManagerV1U1::new(
-                hub.get_contract_address("ProofManagerV1U1".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ),*/
+            //   proof_manager_v1: ProofManagerV1::new(
+            // hub.get_contract_address("ProofManagerV1".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
+            // proof_manager_v1_u1: ProofManagerV1U1::new(
+            // hub.get_contract_address("ProofManagerV1U1".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
             sharding_table: ShardingTable::new(
                 hub.get_contract_address("ShardingTable".to_string())
                     .call()
                     .await?,
                 Arc::clone(provider),
             ),
-            /*    sharding_table_storage: ShardingTableStorage::new(
-                hub.get_contract_address("ShardingTableStorage".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ),
-            service_agreement_storage_proxy: ServiceAgreementStorageProxy::new(
-                hub.get_contract_address("ServiceAgreementStorageProxy".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ),
-            unfinalized_state_storage: UnfinalizedStateStorage::new(
-                hub.get_contract_address("UnfinalizedStateStorage".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
-            ), */
+            //    sharding_table_storage: ShardingTableStorage::new(
+            // hub.get_contract_address("ShardingTableStorage".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
+            // service_agreement_storage_proxy: ServiceAgreementStorageProxy::new(
+            // hub.get_contract_address("ServiceAgreementStorageProxy".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
+            // unfinalized_state_storage: UnfinalizedStateStorage::new(
+            // hub.get_contract_address("UnfinalizedStateStorage".to_string())
+            // .call()
+            // .await?,
+            // Arc::clone(provider),
+            // ),
         })
     }
 }

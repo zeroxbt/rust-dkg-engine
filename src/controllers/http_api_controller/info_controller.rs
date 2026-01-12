@@ -1,5 +1,6 @@
-use crate::types::dto::info::InfoResponse;
 use axum::Json;
+
+use crate::types::dto::info::InfoResponse;
 
 pub struct InfoController;
 

@@ -1,8 +1,11 @@
-use crate::models::command::{self, Entity, Model};
-use sea_orm::entity::prelude::*;
-use sea_orm::{error::DbErr, DatabaseConnection};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
 use std::sync::Arc;
+
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    entity::prelude::*, error::DbErr,
+};
+
+use crate::models::command::{self, Entity, Model};
 
 pub struct CommandRepository {
     conn: Arc<DatabaseConnection>,
@@ -73,26 +76,26 @@ impl CommandRepository {
             .await
     }
 
-    /* pub async fn find_finalized_commands(
-        &self,
-        timestamp: i64,
-        limit: i32,
-    ) -> Result<Vec<Model>, DbErr> {
-        let statuses = [
-            CommandStatus::Completed.to_string(),
-            CommandStatus::Failed.to_string(),
-            CommandStatus::Expired.to_string(),
-            CommandStatus::Unknown.to_string(),
-        ];
-
-        Entity::find(&self.conn)
-            .filter(
-                Entity::Column::Status
-                    .in_iter(statuses.iter().cloned())
-                    .and(Entity::Column::StartedAt.le(timestamp)),
-            )
-            .limit(limit)
-            .all()
-            .await
-    } */
+    // pub async fn find_finalized_commands(
+    // &self,
+    // timestamp: i64,
+    // limit: i32,
+    // ) -> Result<Vec<Model>, DbErr> {
+    // let statuses = [
+    // CommandStatus::Completed.to_string(),
+    // CommandStatus::Failed.to_string(),
+    // CommandStatus::Expired.to_string(),
+    // CommandStatus::Unknown.to_string(),
+    // ];
+    //
+    // Entity::find(&self.conn)
+    // .filter(
+    // Entity::Column::Status
+    // .in_iter(statuses.iter().cloned())
+    // .and(Entity::Column::StartedAt.le(timestamp)),
+    // )
+    // .limit(limit)
+    // .all()
+    // .await
+    // }
 }

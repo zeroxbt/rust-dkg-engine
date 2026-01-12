@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use blockchain::BlockchainManager;
-use network::{action::NetworkAction, NetworkManager};
+use network::{NetworkManager, action::NetworkAction};
 use repository::RepositoryManager;
 use tokio::sync::mpsc::Sender;
 use validation::ValidationManager;

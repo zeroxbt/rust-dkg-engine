@@ -6,32 +6,34 @@ mod error;
 mod services;
 mod types;
 
+use std::{process::Command as ProcessCommand, sync::Arc};
+
 use blockchain::BlockchainManager;
-use commands::command::Command;
-use commands::command_executor::CommandExecutor;
+use commands::{command::Command, command_executor::CommandExecutor};
 use config::ManagersConfig;
 use context::Context;
-use controllers::blockchain_event_controller::BlockchainEventController;
-use controllers::http_api_controller::http_api_router::HttpApiConfig;
-use controllers::http_api_controller::http_api_router::HttpApiRouter;
-use controllers::rpc_controller::rpc_router::RpcRouter;
+use controllers::{
+    blockchain_event_controller::BlockchainEventController,
+    http_api_controller::http_api_router::{HttpApiConfig, HttpApiRouter},
+    rpc_controller::rpc_router::RpcRouter,
+};
 use dotenvy::dotenv;
-use network::action::NetworkAction;
-use network::NetworkEvent;
-use network::NetworkManager;
+use network::{NetworkEvent, NetworkManager, action::NetworkAction};
 use repository::RepositoryManager;
-use services::publish_service::PublishService;
-use services::sharding_table_service::ShardingTableService;
-use services::ual_service::UalService;
-use std::process::Command as ProcessCommand;
-use std::sync::Arc;
-use tokio::join;
-use tokio::sync::mpsc::{Receiver, Sender};
+use services::{
+    publish_service::PublishService, sharding_table_service::ShardingTableService,
+    ual_service::UalService,
+};
+use tokio::{
+    join,
+    sync::mpsc::{Receiver, Sender},
+};
 use validation::ValidationManager;
 
-use crate::config::Config;
-use crate::services::file_service::FileService;
-use crate::services::pending_storage_service::PendingStorageService;
+use crate::{
+    config::Config,
+    services::{file_service::FileService, pending_storage_service::PendingStorageService},
+};
 
 #[tokio::main]
 async fn main() {
@@ -267,21 +269,21 @@ async fn initialize_dev_environment(blockchain_manager: &Arc<BlockchainManager>)
             .get_blockchain_config(blockchain)
             .unwrap();
         let stake_command = format!(
-                "cargo run -p scripts -- set-stake --rpcEndpoint={} --stake={} --operationalWalletPrivateKey={} --managementWalletPrivateKey={} --hubContractAddress={}",
-                config.rpc_endpoints()[0],
-                50_000,
-                config.evm_operational_wallet_private_key(),
-                config.evm_management_wallet_private_key().unwrap(),
-                config.hub_contract_address()
-            );
+            "cargo run -p scripts -- set-stake --rpcEndpoint={} --stake={} --operationalWalletPrivateKey={} --managementWalletPrivateKey={} --hubContractAddress={}",
+            config.rpc_endpoints()[0],
+            50_000,
+            config.evm_operational_wallet_private_key(),
+            config.evm_management_wallet_private_key().unwrap(),
+            config.hub_contract_address()
+        );
 
         let ask_command = format!(
-                "cargo run -p scripts -- set-ask --rpcEndpoint={} --ask={} --privateKey={} --hubContractAddress={}",
-                config.rpc_endpoints()[0],
-                0.2,
-                config.evm_operational_wallet_private_key(),
-                config.hub_contract_address()
-            );
+            "cargo run -p scripts -- set-ask --rpcEndpoint={} --ask={} --privateKey={} --hubContractAddress={}",
+            config.rpc_endpoints()[0],
+            0.2,
+            config.evm_operational_wallet_private_key(),
+            config.hub_contract_address()
+        );
 
         let status = ProcessCommand::new("sh")
             .arg("-c")

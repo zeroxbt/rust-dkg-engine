@@ -1,5 +1,6 @@
-use blockchain::{Address, BlockchainManager, BlockchainName};
 use std::sync::Arc;
+
+use blockchain::{Address, BlockchainManager, BlockchainName};
 
 pub struct UalService {
     blockchain_manager: Arc<BlockchainManager>,

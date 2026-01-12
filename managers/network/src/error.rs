@@ -1,4 +1,5 @@
 use std::convert::Infallible;
+
 use thiserror::Error;
 
 /// Error types for network operations

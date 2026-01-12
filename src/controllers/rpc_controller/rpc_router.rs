@@ -1,3 +1,17 @@
+use std::sync::Arc;
+
+use futures::stream::{FuturesUnordered, StreamExt};
+use network::{
+    BehaviourEvent, NetworkEvent, SwarmEvent, action::NetworkAction, identify, request_response,
+};
+use repository::RepositoryManager;
+use tokio::sync::{
+    Semaphore,
+    mpsc::{self, Receiver},
+};
+use tracing::{error, info};
+
+use super::constants::NETWORK_EVENT_QUEUE_PARALLELISM;
 use crate::{
     context::Context,
     controllers::rpc_controller::{
@@ -5,19 +19,6 @@ use crate::{
     },
     types::traits::controller::BaseController,
 };
-use futures::stream::{FuturesUnordered, StreamExt};
-use network::{
-    action::NetworkAction, identify, request_response, BehaviourEvent, NetworkEvent, SwarmEvent,
-};
-use repository::RepositoryManager;
-use std::sync::Arc;
-use tokio::sync::{
-    mpsc::{self, Receiver},
-    Semaphore,
-};
-use tracing::{error, info};
-
-use super::constants::NETWORK_EVENT_QUEUE_PARALLELISM;
 
 pub struct RpcRouter {
     repository_manager: Arc<RepositoryManager>,

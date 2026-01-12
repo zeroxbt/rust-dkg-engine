@@ -1,10 +1,13 @@
-use clap::{Arg, Command};
-use ethers::core::types::Address;
-use ethers::middleware::MiddlewareBuilder;
-use ethers::providers::{Http, Provider};
-use ethers::signers::{LocalWallet, Signer};
-use ethers::utils::parse_ether;
 use std::sync::Arc;
+
+use clap::{Arg, Command};
+use ethers::{
+    core::types::Address,
+    middleware::MiddlewareBuilder,
+    providers::{Http, Provider},
+    signers::{LocalWallet, Signer},
+    utils::parse_ether,
+};
 
 ethers::contract::abigen!(Hub, "./../abi/Hub.json");
 ethers::contract::abigen!(Profile, "./../abi/Profile.json");

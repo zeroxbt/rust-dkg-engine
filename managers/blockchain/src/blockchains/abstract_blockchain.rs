@@ -1,9 +1,5 @@
-use crate::{
-    blockchains::blockchain_creator::{BlockchainProvider, Contracts},
-    error::BlockchainError,
-    utils::handle_contract_call,
-    BlockchainConfig, BlockchainName,
-};
+use std::{str::FromStr, sync::Arc};
+
 use async_trait::async_trait;
 use ethers::{
     abi::Address,
@@ -11,9 +7,14 @@ use ethers::{
     prelude::Contract,
     types::{Bytes, Filter, Log},
 };
-use std::{str::FromStr, sync::Arc};
-
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
+
+use crate::{
+    BlockchainConfig, BlockchainName,
+    blockchains::blockchain_creator::{BlockchainProvider, Contracts},
+    error::BlockchainError,
+    utils::handle_contract_call,
+};
 
 const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
 
@@ -122,8 +123,8 @@ impl EventLog {
     }
 }
 
-// Note: Must use async-trait here because this trait is used with trait objects (Box<dyn AbstractBlockchain>)
-// Native async traits are not dyn-compatible yet
+// Note: Must use async-trait here because this trait is used with trait objects (Box<dyn
+// AbstractBlockchain>) Native async traits are not dyn-compatible yet
 #[async_trait]
 pub trait AbstractBlockchain: Send + Sync {
     fn name(&self) -> &BlockchainName;

@@ -1,14 +1,18 @@
-use crate::commands::publish_replication_command::PublishReplicationCommandData;
-use crate::context::Context;
-use crate::types::dto::publish::{PublishRequest, PublishResponse};
-use crate::types::models::OperationId;
-use crate::types::traits::command::CommandData;
-use crate::types::traits::service::OperationLifecycle;
-use axum::Json;
-use axum::{extract::State, response::IntoResponse};
-use hyper::StatusCode;
 use std::sync::Arc;
+
+use axum::{Json, extract::State, response::IntoResponse};
+use hyper::StatusCode;
 use validator::Validate;
+
+use crate::{
+    commands::publish_replication_command::PublishReplicationCommandData,
+    context::Context,
+    types::{
+        dto::publish::{PublishRequest, PublishResponse},
+        models::OperationId,
+        traits::{command::CommandData, service::OperationLifecycle},
+    },
+};
 
 pub struct PublishController;
 

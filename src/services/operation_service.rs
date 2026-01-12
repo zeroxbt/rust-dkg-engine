@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use network::{message::RequestMessage, PeerId};
+use network::{PeerId, message::RequestMessage};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 

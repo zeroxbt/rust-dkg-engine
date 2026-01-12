@@ -16,7 +16,8 @@ impl IdentifierIssuer {
     ///
     /// # Arguments
     /// * `prefix` - A string to prefix identifiers with, ensuring they are unique within the scope.
-    /// * `existing` - An optional map from existing identifiers to new identifiers, allowing continuation from previous state.
+    /// * `existing` - An optional map from existing identifiers to new identifiers, allowing
+    ///   continuation from previous state.
     /// * `counter` - The starting point for counting new identifiers.
     pub fn new(prefix: String, existing: Option<HashMap<String, String>>, counter: usize) -> Self {
         IdentifierIssuer {
@@ -29,10 +30,12 @@ impl IdentifierIssuer {
     /// Gets or creates a new identifier based on the old identifier if provided.
     ///
     /// # Arguments
-    /// * `old` - An optional reference to an old identifier that might already have a new identifier mapped.
+    /// * `old` - An optional reference to an old identifier that might already have a new
+    ///   identifier mapped.
     ///
     /// # Returns
-    /// Returns a new identifier if one is created, or the existing identifier if one was already mapped.
+    /// Returns a new identifier if one is created, or the existing identifier if one was already
+    /// mapped.
     pub fn get_id(&mut self, old: Option<&str>) -> String {
         if let Some(old) = old {
             if let Some(existing) = self.existing.get(old) {

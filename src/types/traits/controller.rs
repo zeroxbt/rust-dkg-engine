@@ -1,7 +1,10 @@
-use network::message::{RequestMessage, ResponseMessage};
-use network::{request_response, PeerId};
-use std::fmt::Debug;
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
+
+use network::{
+    PeerId,
+    message::{RequestMessage, ResponseMessage},
+    request_response,
+};
 use tracing::info;
 
 use crate::context::Context;

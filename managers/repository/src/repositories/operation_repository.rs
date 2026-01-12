@@ -1,12 +1,16 @@
-use crate::error::RepositoryError;
-use crate::models::operations::{self, Column, Entity, Model};
+use std::sync::Arc;
+
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set,
 };
-use std::sync::Arc;
 use uuid::Uuid;
+
+use crate::{
+    error::RepositoryError,
+    models::operations::{self, Column, Entity, Model},
+};
 
 pub struct OperationRepository {
     conn: Arc<DatabaseConnection>,

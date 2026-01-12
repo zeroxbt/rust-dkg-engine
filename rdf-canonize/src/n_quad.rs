@@ -2,10 +2,11 @@
 //! It supports parsing from strings to structured data (`Quad`), handling various
 //! RDF-related formats and datatypes. It includes utilities for canonicalization
 //! of RDF datasets according to the URDNA2015 algorithm.
-//!
-use crate::error::URDNAError;
-use regex::Regex;
 use std::collections::HashMap;
+
+use regex::Regex;
+
+use crate::error::URDNAError;
 
 const RDF_LANGSTRING: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
 const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
@@ -77,7 +78,8 @@ pub struct Quad {
 }
 
 impl Quad {
-    /// Compares this quad with another for equality, considering potential language and datatype differences.
+    /// Compares this quad with another for equality, considering potential language and datatype
+    /// differences.
     fn compare(&self, other: &Self) -> bool {
         if self.subject != other.subject || self.object != other.object {
             return false;
@@ -97,11 +99,13 @@ impl Quad {
     }
 }
 
-/// Provides functionality to parse and serialize N-Quads, handling RDF data according to specified patterns.
+/// Provides functionality to parse and serialize N-Quads, handling RDF data according to specified
+/// patterns.
 pub struct NQuads;
 
 impl NQuads {
-    /// Parses a string input into a vector of `Quad` structures, handling errors via the `URDNAError` type.
+    /// Parses a string input into a vector of `Quad` structures, handling errors via the
+    /// `URDNAError` type.
     pub fn parse(input: &str) -> Result<Vec<Quad>, URDNAError> {
         let mut dataset = Vec::new();
         let mut graphs: HashMap<String, Vec<Quad>> = HashMap::new();
@@ -215,7 +219,8 @@ impl NQuads {
         Ok(dataset)
     }
 
-    /// Serializes components of a quad into a single string following the N-Quad serialization format.
+    /// Serializes components of a quad into a single string following the N-Quad serialization
+    /// format.
     pub fn serialize_quad_components(
         s: &Term,
         p: &Term,
@@ -232,7 +237,7 @@ impl NQuads {
             _ => {
                 return Err(URDNAError::Serializing(
                     "Subject must be a NamedNode or BlankNode".to_string(),
-                ))
+                ));
             }
         }
 
@@ -279,7 +284,7 @@ impl NQuads {
             _ => {
                 return Err(URDNAError::Serializing(
                     "Graph must be a NamedNode, BlankNode, or DefaultGraph".to_string(),
-                ))
+                ));
             }
         }
 

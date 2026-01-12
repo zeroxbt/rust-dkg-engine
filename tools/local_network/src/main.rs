@@ -1,7 +1,8 @@
 mod local_blockchain;
-use clap::{value_parser, Arg, Command};
-use serde_json::Value;
 use std::fs;
+
+use clap::{Arg, Command, value_parser};
+use serde_json::Value;
 
 const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";
 const PUBLIC_KEYS_PATH: &str = "./tools/local_network/src/public_keys.json";
@@ -54,8 +55,8 @@ async fn main() {
 
     // Read TOML template
     let toml_template_path = "tools/local_network/.node_config_template.toml";
-    let toml_template_str = fs::read_to_string(toml_template_path)
-        .expect("Failed to read the TOML template file");
+    let toml_template_str =
+        fs::read_to_string(toml_template_path).expect("Failed to read the TOML template file");
 
     for i in 0..=nodes - 1 {
         // Calculate ports and names

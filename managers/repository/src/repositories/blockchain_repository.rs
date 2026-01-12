@@ -1,9 +1,13 @@
-use crate::{error::Result, models::blockchain::{ActiveModel, Column, Entity}};
-use sea_orm::{
-    prelude::DateTimeUtc, sea_query::OnConflict, ActiveValue, DatabaseConnection,
-    EntityTrait,
-};
 use std::sync::Arc;
+
+use sea_orm::{
+    ActiveValue, DatabaseConnection, EntityTrait, prelude::DateTimeUtc, sea_query::OnConflict,
+};
+
+use crate::{
+    error::Result,
+    models::blockchain::{ActiveModel, Column, Entity},
+};
 
 pub struct BlockchainRepository {
     conn: Arc<DatabaseConnection>,
@@ -14,11 +18,7 @@ impl BlockchainRepository {
         Self { conn }
     }
 
-    pub async fn get_last_checked_block(
-        &self,
-        blockchain_id: &str,
-        contract: &str,
-    ) -> Result<u64> {
+    pub async fn get_last_checked_block(&self, blockchain_id: &str, contract: &str) -> Result<u64> {
         let model = Entity::find_by_id((blockchain_id.to_owned(), contract.to_owned()))
             .one(self.conn.as_ref())
             .await?;

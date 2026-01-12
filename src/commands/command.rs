@@ -1,7 +1,8 @@
+use std::{fmt, str::FromStr};
+
 use chrono::{DateTime, Utc};
 use repository::models::command::{self, Model};
 use serde_json::Value;
-use std::{fmt, str::FromStr};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]

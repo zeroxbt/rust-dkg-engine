@@ -1,12 +1,14 @@
-use crate::context::Context;
-use crate::types::dto::get::{GetRequest, GetResponse};
-use axum::extract::State;
-use axum::response::IntoResponse;
-use axum::Json;
-use hyper::StatusCode;
 use std::sync::Arc;
+
+use axum::{Json, extract::State, response::IntoResponse};
+use hyper::StatusCode;
 use uuid::Uuid;
 use validator::Validate;
+
+use crate::{
+    context::Context,
+    types::dto::get::{GetRequest, GetResponse},
+};
 
 pub struct GetController;
 

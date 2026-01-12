@@ -1,15 +1,16 @@
-use crate::{
-    blockchains::{abstract_blockchain::EventLog, blockchain_creator::BlockchainProvider},
-    error::BlockchainError,
-};
 use ethers::{
     abi::{Address, EncodePackedError, Token},
-    contract::{parse_log, EthLogDecode},
+    contract::{EthLogDecode, parse_log},
     prelude::{ContractError, TransactionReceipt},
     providers::{Http, PendingTransaction},
     types::U256,
 };
 use hex::FromHexError;
+
+use crate::{
+    blockchains::{abstract_blockchain::EventLog, blockchain_creator::BlockchainProvider},
+    error::BlockchainError,
+};
 
 pub fn decode_event_log<D: EthLogDecode>(event_log: EventLog) -> D {
     parse_log::<D>(event_log.log().to_owned()).unwrap()

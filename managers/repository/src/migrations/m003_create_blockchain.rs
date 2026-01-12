@@ -1,10 +1,11 @@
-use crate::models::blockchain;
 use sea_orm::DeriveMigrationName;
 use sea_orm_migration::{
     async_trait::async_trait,
     prelude::{DbErr, Index, MigrationTrait, SchemaManager, Table},
     schema::*,
 };
+
+use crate::models::blockchain;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -22,11 +23,11 @@ impl MigrationTrait for Migration {
                     .col(
                         unsigned(blockchain::Column::LastCheckedBlock)
                             .big_integer()
-                            .default("0")
+                            .default("0"),
                     )
                     .col(
                         date_time(blockchain::Column::LastCheckedTimestamp)
-                            .default("1970-01-01 00:00:00")
+                            .default("1970-01-01 00:00:00"),
                     )
                     .primary_key(
                         Index::create()

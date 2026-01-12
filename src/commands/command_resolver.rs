@@ -1,14 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
+use chrono::Utc;
+use uuid::Uuid;
+
+use super::{command::Command, dial_peers_command::DialPeersCommandHandler};
 use crate::{
     commands::publish_replication_command::PublishReplicationCommandHandler,
     context::Context,
     types::traits::command::{CommandHandler, ScheduleConfig},
 };
-
-use super::{command::Command, dial_peers_command::DialPeersCommandHandler};
-use chrono::Utc;
-use uuid::Uuid;
 
 pub struct CommandResolver {
     handlers: HashMap<&'static str, Arc<dyn CommandHandler>>,

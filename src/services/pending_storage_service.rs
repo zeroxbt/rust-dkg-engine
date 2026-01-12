@@ -43,21 +43,21 @@ impl PendingStorageService {
 }
 
 impl PendingStorageService {
-    /* async cacheDataset(operationId, datasetRoot, dataset, remotePeerId) {
-        this.logger.debug(
-            `Caching ${datasetRoot} dataset root, operation id: ${operationId} in file in pending storage`,
-        );
-
-        await this.fileService.writeContentsToFile(
-            this.fileService.getPendingStorageCachePath(),
-            operationId,
-            JSON.stringify({
-                merkleRoot: datasetRoot,
-                assertion: dataset,
-                remotePeerId,
-            }),
-        );
-    } */
+    // async cacheDataset(operationId, datasetRoot, dataset, remotePeerId) {
+    // this.logger.debug(
+    // `Caching ${datasetRoot} dataset root, operation id: ${operationId} in file in pending
+    // storage`, );
+    //
+    // await this.fileService.writeContentsToFile(
+    // this.fileService.getPendingStorageCachePath(),
+    // operationId,
+    // JSON.stringify({
+    // merkleRoot: datasetRoot,
+    // assertion: dataset,
+    // remotePeerId,
+    // }),
+    // );
+    // }
 
     pub async fn store_dataset(
         &self,
@@ -65,7 +65,9 @@ impl PendingStorageService {
         dataset_root: &str,
         dataset: &Assertion,
     ) -> Result<(), NodeError> {
-        tracing::debug!("Storing dataset with root: {dataset_root}, operation id: {operation_id} in pending storage");
+        tracing::debug!(
+            "Storing dataset with root: {dataset_root}, operation id: {operation_id} in pending storage"
+        );
 
         let dir = self.file_service.pending_storage_cache_dir();
         self.file_service
@@ -80,22 +82,21 @@ impl PendingStorageService {
         Ok(())
     }
 
-    /*
-    async getCachedDataset(operationId) {
-        this.logger.debug(`Retrieving cached dataset for ${operationId} from pending storage`);
-
-        const filePath = this.fileService.getPendingStorageDocumentPath(operationId);
-
-        try {
-            const fileContents = await this.fileService.readFile(filePath, true);
-            return fileContents.assertion;
-        } catch (error) {
-            this.logger.error(
-                `Failed to retrieve or parse cached dataset for ${operationId}: ${error.message}`,
-            );
-            throw error;
-        }
-    } */
+    // async getCachedDataset(operationId) {
+    // this.logger.debug(`Retrieving cached dataset for ${operationId} from pending storage`);
+    //
+    // const filePath = this.fileService.getPendingStorageDocumentPath(operationId);
+    //
+    // try {
+    // const fileContents = await this.fileService.readFile(filePath, true);
+    // return fileContents.assertion;
+    // } catch (error) {
+    // this.logger.error(
+    // `Failed to retrieve or parse cached dataset for ${operationId}: ${error.message}`,
+    // );
+    // throw error;
+    // }
+    // }
 
     pub async fn get_dataset(
         &self,

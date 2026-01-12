@@ -1,11 +1,12 @@
-/* use base64::{engine::general_purpose, Engine as _};
-use rand::rngs::OsRng;
-use rsa::{pkcs8::EncodePrivateKey, RsaPrivateKey}; */
-use crate::error::{NetworkError, Result};
-use libp2p::identity;
+// use base64::{engine::general_purpose, Engine as _};
+// use rand::rngs::OsRng;
+// use rsa::{pkcs8::EncodePrivateKey, RsaPrivateKey};
 use std::path::PathBuf;
-use tokio::fs;
-use tokio::io;
+
+use libp2p::identity;
+use tokio::{fs, io};
+
+use crate::error::{NetworkError, Result};
 
 const LIBP2P_KEY_FILENAME: &str = "private_key";
 pub(super) struct KeyManager;
@@ -29,12 +30,12 @@ impl KeyManager {
         data_folder_path: &PathBuf,
     ) -> io::Result<()> {
         Self::ensure_key_directory_exists(data_folder_path).await?;
-        /* let der_format = key
-        .to_pkcs8_der()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-        .to_bytes();
-
-        let base64_encoded = general_purpose::STANDARD.encode(&der_format);*/
+        // let der_format = key
+        // .to_pkcs8_der()
+        // .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+        // .to_bytes();
+        //
+        // let base64_encoded = general_purpose::STANDARD.encode(&der_format);
         fs::write(Self::get_key_path(data_folder_path), key.to_bytes()).await
     }
 
@@ -43,9 +44,9 @@ impl KeyManager {
     ) -> io::Result<libp2p::identity::ed25519::Keypair> {
         println!("reading private key from file...");
         let mut key_bytes = fs::read(Self::get_key_path(data_folder_path)).await?;
-        /* let mut der_format = general_purpose::STANDARD
-        .decode(base64_encoded)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?; */
+        // let mut der_format = general_purpose::STANDARD
+        // .decode(base64_encoded)
+        // .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         println!("Creating keypair...");
         libp2p::identity::ed25519::Keypair::try_from_bytes(&mut key_bytes)
             .map_err(|e| io::Error::other(e.to_string()))

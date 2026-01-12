@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
+
 use thiserror::Error;
-use tokio::fs;
-use tokio::io::AsyncWriteExt;
+use tokio::{fs, io::AsyncWriteExt};
 
 #[derive(Error, Debug)]
 pub enum FileServiceError {
@@ -178,21 +178,21 @@ impl FileService {
         self.data_path.join("operation_result_cache")
     }
 
-    /*  pub fn operation_request_cache_dir(&self) -> PathBuf {
-        self.operation_cache_dir().join("request")
-    } */
+    //  pub fn operation_request_cache_dir(&self) -> PathBuf {
+    // self.operation_cache_dir().join("request")
+    // }
 
-    /* pub fn operation_response_cache_dir(&self) -> PathBuf {
-        self.operation_cache_dir().join("response")
-    } */
+    // pub fn operation_response_cache_dir(&self) -> PathBuf {
+    // self.operation_cache_dir().join("response")
+    // }
 
-    /* pub fn operation_request_cache_path(&self, operation_id: &str) -> PathBuf {
-        self.operation_request_cache_dir().join(operation_id)
-    } */
+    // pub fn operation_request_cache_path(&self, operation_id: &str) -> PathBuf {
+    // self.operation_request_cache_dir().join(operation_id)
+    // }
 
-    /* pub fn operation_response_cache_path(&self, operation_id: &str) -> PathBuf {
-        self.operation_response_cache_dir().join(operation_id)
-    } */
+    // pub fn operation_response_cache_path(&self, operation_id: &str) -> PathBuf {
+    // self.operation_response_cache_dir().join(operation_id)
+    // }
 
     pub fn operation_result_cache_path(&self, operation_id: &str) -> PathBuf {
         self.operation_result_cache_dir().join(operation_id)
@@ -230,9 +230,10 @@ impl FileService {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde::{Deserialize, Serialize};
     use tempfile::TempDir;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_write_and_read() {

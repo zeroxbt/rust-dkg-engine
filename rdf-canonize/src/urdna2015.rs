@@ -1,12 +1,14 @@
-/// Provides an implementation of the URDNA2015 algorithm for RDF graph canonicalization.
-/// This module includes functions and structures necessary to perform canonicalization of RDF datasets,
-/// which is often required for tasks such as graph isomorphism checks and digital signatures.
-///
-/// The canonicalization process involves assigning new identifiers to blank nodes while preserving
-/// the semantic structure of the RDF graph, ensuring consistent serialization across different
-/// instances of equivalent graphs.
-use async_recursion::async_recursion;
 use std::collections::{HashMap, HashSet};
+
+/// Provides an implementation of the URDNA2015 algorithm for RDF graph canonicalization.
+/// This module includes functions and structures necessary to perform canonicalization of RDF
+/// datasets, which is often required for tasks such as graph isomorphism checks and digital
+/// signatures.
+///
+/// The canonicalization process involves assigning new identifiers to blank nodes while
+/// preserving the semantic structure of the RDF graph, ensuring consistent serialization
+/// across different instances of equivalent graphs.
+use async_recursion::async_recursion;
 
 use crate::{
     error::URDNAError,
@@ -24,7 +26,8 @@ pub struct Info {
     pub hash: Option<String>,
 }
 
-/// The main structure for the URDNA2015 algorithm, handling the state and operations required for canonicalization.
+/// The main structure for the URDNA2015 algorithm, handling the state and operations required for
+/// canonicalization.
 pub struct URDNA2015 {
     /// A special identifier issuer for managing canonical identifiers for blank nodes.
     canonical_issuer: IdentifierIssuer,
@@ -45,8 +48,8 @@ impl URDNA2015 {
     }
 
     /// The main function to process the dataset and return a canonicalized string of N-Quads.
-    /// It processes each quad in the dataset, updating state for blank nodes and recursively hashing
-    /// to resolve complex blank node structures.
+    /// It processes each quad in the dataset, updating state for blank nodes and recursively
+    /// hashing to resolve complex blank node structures.
     ///
     /// # Arguments
     /// * `dataset` - A vector of `Quad` structures representing the RDF dataset.
@@ -110,10 +113,10 @@ impl URDNA2015 {
             }
         }
 
-        /* Note: At this point all blank nodes in the set of RDF quads have been
-        assigned canonical identifiers, which have been stored in the canonical
-        issuer. Here each quad is updated by assigning each of its blank nodes
-        its new identifier. */
+        // Note: At this point all blank nodes in the set of RDF quads have been
+        // assigned canonical identifiers, which have been stored in the canonical
+        // issuer. Here each quad is updated by assigning each of its blank nodes
+        // its new identifier.
 
         let mut normalized = vec![];
         for quad in quads {
@@ -134,8 +137,8 @@ impl URDNA2015 {
     }
 
     /// Performs recursive hashing of N-degree quads associated with a specific blank node.
-    /// This method is crucial for ensuring that blank nodes are canonicalized accurately by considering
-    /// all related quads and their semantic structure.
+    /// This method is crucial for ensuring that blank nodes are canonicalized accurately by
+    /// considering all related quads and their semantic structure.
     ///
     /// # Arguments
     /// * `id` - The identifier of the blank node being processed.
@@ -389,7 +392,8 @@ impl URDNA2015 {
         MessageDigest::new()
     }
 
-    /// Adds quad information to the blank node tracking structure, used in the canonicalization process.
+    /// Adds quad information to the blank node tracking structure, used in the canonicalization
+    /// process.
     fn add_blank_node_quad_info(&mut self, quad: &Quad, term: &Term) {
         if term.term_type != TermType::BlankNode {
             return;
@@ -422,7 +426,8 @@ impl URDNA2015 {
         term
     }
 
-    /// Modifies a term representing a first-degree connection to adjust its identifier if necessary.
+    /// Modifies a term representing a first-degree connection to adjust its identifier if
+    /// necessary.
     fn modify_first_degree_term(&self, id: &str, term: &Term) -> Term {
         if term.term_type != TermType::BlankNode {
             return term.clone();

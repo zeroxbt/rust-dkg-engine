@@ -1,16 +1,21 @@
 use std::sync::Arc;
 
-use crate::context::Context;
-use crate::services::publish_service::PublishService;
-use crate::types::traits::controller::BaseController;
-use crate::types::traits::service::NetworkOperationProtocol;
-use network::action::NetworkAction;
-use network::message::{
-    RequestMessage, ResponseMessage, ResponseMessageHeader, ResponseMessageType, StoreRequestData,
-    StoreResponseData,
+use network::{
+    PeerId,
+    action::NetworkAction,
+    message::{
+        RequestMessage, ResponseMessage, ResponseMessageHeader, ResponseMessageType,
+        StoreRequestData, StoreResponseData,
+    },
+    request_response,
 };
-use network::{request_response, PeerId};
 use tokio::sync::mpsc;
+
+use crate::{
+    context::Context,
+    services::publish_service::PublishService,
+    types::traits::{controller::BaseController, service::NetworkOperationProtocol},
+};
 
 pub struct StoreController {
     network_action_tx: mpsc::Sender<NetworkAction>,

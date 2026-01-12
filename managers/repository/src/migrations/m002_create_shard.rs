@@ -1,10 +1,11 @@
-use crate::models::shard;
 use sea_orm::DeriveMigrationName;
 use sea_orm_migration::{
     async_trait::async_trait,
     prelude::{DbErr, Index, MigrationTrait, SchemaManager, Table},
     schema::*,
 };
+
+use crate::models::shard;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;

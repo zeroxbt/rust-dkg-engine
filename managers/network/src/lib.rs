@@ -8,20 +8,23 @@ use std::path::PathBuf;
 use action::NetworkAction;
 use error::NetworkError;
 use key_manager::KeyManager;
-use libp2p::futures::StreamExt;
-pub use libp2p::identify;
-use libp2p::kad::store::MemoryStore;
-use libp2p::kad::{BucketInserts, Config as KademliaConfig, Mode};
-use libp2p::request_response::ProtocolSupport;
-pub use libp2p::swarm::SwarmEvent;
-use libp2p::swarm::{derive_prelude::Either, NetworkBehaviour};
-use libp2p::{noise, tcp, StreamProtocol, SwarmBuilder};
-pub use libp2p::{request_response, PeerId, Swarm};
+pub use libp2p::{PeerId, Swarm, identify, request_response, swarm::SwarmEvent};
+use libp2p::{
+    StreamProtocol, SwarmBuilder,
+    futures::StreamExt,
+    kad::{BucketInserts, Config as KademliaConfig, Mode, store::MemoryStore},
+    noise,
+    request_response::ProtocolSupport,
+    swarm::{NetworkBehaviour, derive_prelude::Either},
+    tcp,
+};
 use libp2p_mplex::MplexConfig;
 use message::{RequestMessage, ResponseMessage};
 use serde::Deserialize;
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::Mutex;
+use tokio::sync::{
+    Mutex,
+    mpsc::{Receiver, Sender},
+};
 use tracing::info;
 use void::Void;
 

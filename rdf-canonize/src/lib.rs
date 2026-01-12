@@ -23,7 +23,8 @@ use urdna2015::URDNA2015;
 ///
 /// # Returns
 /// This function returns a `Result<String, URDNAError>`. On success, it provides the
-/// canonicalized N-Quads string. On failure, it returns an `URDNAError` enum indicating the type of error.
+/// canonicalized N-Quads string. On failure, it returns an `URDNAError` enum indicating the type of
+/// error.
 ///
 /// # Errors
 /// This function can return `Parsing` if the input document cannot be parsed correctly,

@@ -1,3 +1,9 @@
+use std::{cmp::min, sync::Arc, time::Duration};
+
+use futures::stream::{FuturesUnordered, StreamExt};
+use repository::RepositoryManager;
+use tokio::sync::{Mutex, Semaphore, mpsc};
+
 use super::{
     command::{Command, CommandStatus},
     command_resolver::CommandResolver,
@@ -6,10 +12,6 @@ use super::{
     },
 };
 use crate::{context::Context, types::traits::command::CommandExecutionResult};
-use futures::stream::{FuturesUnordered, StreamExt};
-use repository::RepositoryManager;
-use std::{cmp::min, sync::Arc, time::Duration};
-use tokio::sync::{mpsc, Mutex, Semaphore};
 
 pub struct CommandExecutor {
     pub repository_manager: Arc<RepositoryManager>,
