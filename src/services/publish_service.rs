@@ -7,11 +7,13 @@ use repository::RepositoryManager;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 
-use crate::services::file_service::FileService;
+use crate::{
+    services::file_service::FileService,
+    types::traits::service::{NetworkOperationProtocol, OperationLifecycle},
+};
 
 use super::{
-    operation_service::{NetworkOperationProtocol, OperationLifecycle, OperationResponseTracker},
-    sharding_table_service::ShardingTableService,
+    operation_service::OperationResponseTracker, sharding_table_service::ShardingTableService,
 };
 
 pub struct PublishService {

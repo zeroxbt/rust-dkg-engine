@@ -1,14 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    commands::publish_replication_command::PublishReplicationCommandHandler, context::Context,
+    commands::publish_replication_command::PublishReplicationCommandHandler,
+    context::Context,
+    types::traits::command::{CommandHandler, ScheduleConfig},
 };
 
-use super::{
-    command::Command,
-    command_handler::{CommandHandler, ScheduleConfig},
-    dial_peers_command::DialPeersCommandHandler,
-};
+use super::{command::Command, dial_peers_command::DialPeersCommandHandler};
 use chrono::Utc;
 use uuid::Uuid;
 

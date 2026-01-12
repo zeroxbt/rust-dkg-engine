@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::{NodeError, ServiceError},
-    services::{file_service::FileService, operation_service::OperationId},
-    types::models::Assertion,
+    services::file_service::FileService,
+    types::models::{Assertion, OperationId},
 };
 
 #[derive(Serialize, Deserialize, Clone)]

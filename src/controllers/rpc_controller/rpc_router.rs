@@ -1,9 +1,9 @@
 use crate::{
     context::Context,
     controllers::rpc_controller::{
-        base_controller::BaseController, get_controller::GetController,
-        store_controller::StoreController,
+        get_controller::GetController, store_controller::StoreController,
     },
+    types::traits::controller::BaseController,
 };
 use futures::stream::{FuturesUnordered, StreamExt};
 use network::{

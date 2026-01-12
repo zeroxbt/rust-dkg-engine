@@ -1,9 +1,9 @@
-use crate::commands::command::CommandData;
 use crate::commands::publish_replication_command::PublishReplicationCommandData;
 use crate::context::Context;
-use crate::services::operation_service::OperationLifecycle;
 use crate::types::dto::publish::{PublishRequest, PublishResponse};
 use crate::types::models::OperationId;
+use crate::types::traits::command::CommandData;
+use crate::types::traits::service::OperationLifecycle;
 use axum::Json;
 use axum::{extract::State, response::IntoResponse};
 use hyper::StatusCode;
@@ -20,11 +20,7 @@ impl PublishController {
         match req.validate() {
             Ok(_) => {
                 // Generate operation ID
-                let operation_id = match context
-                    .publish_service()
-                    .create_operation_record()
-                    .await
-                {
+                let operation_id = match context.publish_service().create_operation_record().await {
                     Ok(id) => id,
                     Err(e) => {
                         tracing::error!("Failed to create operation record: {}", e);
@@ -97,13 +93,8 @@ impl PublishController {
                 operation_id,
                 e
             );
-            Self::handle_operation_failure(
-                &context,
-                operation_id,
-                Box::new(e),
-                "store dataset",
-            )
-            .await;
+            Self::handle_operation_failure(&context, operation_id, Box::new(e), "store dataset")
+                .await;
             return;
         }
 
@@ -127,13 +118,8 @@ impl PublishController {
                 operation_id,
                 e
             );
-            Self::handle_operation_failure(
-                &context,
-                operation_id,
-                Box::new(e),
-                "schedule command",
-            )
-            .await;
+            Self::handle_operation_failure(&context, operation_id, Box::new(e), "schedule command")
+                .await;
             return;
         }
 

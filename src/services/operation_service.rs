@@ -8,10 +8,6 @@ use crate::error::NodeError;
 
 type Result<T> = std::result::Result<T, NodeError>;
 
-// Re-export types that were defined here but moved to types module
-pub use crate::types::models::{OperationId, ProtocolOperation};
-pub use crate::types::traits::service::{NetworkOperationProtocol, OperationLifecycle, OperationStatus};
-
 #[derive(Debug, Clone)]
 pub struct OperationState<OperationRequestMessageData: Clone> {
     pub nodes_found: Vec<PeerId>,
@@ -62,7 +58,11 @@ impl<OperationRequestMessageData: Clone> OperationResponseTracker<OperationReque
         }
     }
 
-    pub(crate) async fn update_state_last_contacted_index(&self, operation_id: &Uuid, new_index: usize) {
+    pub(crate) async fn update_state_last_contacted_index(
+        &self,
+        operation_id: &Uuid,
+        new_index: usize,
+    ) {
         let mut operation_states = self.operation_states.lock().await;
         let state = operation_states.get_mut(operation_id).unwrap();
 

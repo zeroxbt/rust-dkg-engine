@@ -1,12 +1,11 @@
 use super::{
     command::{Command, CommandStatus},
-    command_handler::CommandExecutionResult,
     command_resolver::CommandResolver,
     constants::{
         COMMAND_QUEUE_PARALLELISM, DEFAULT_COMMAND_REPEAT_INTERVAL_MS, MAX_COMMAND_DELAY_MS,
     },
 };
-use crate::context::Context;
+use crate::{context::Context, types::traits::command::CommandExecutionResult};
 use futures::stream::{FuturesUnordered, StreamExt};
 use repository::RepositoryManager;
 use std::{cmp::min, sync::Arc, time::Duration};
@@ -19,6 +18,11 @@ pub struct CommandExecutor {
     pub process_command_rx: Arc<Mutex<mpsc::Receiver<Command>>>,
     pub semaphore: Arc<Semaphore>,
 }
+
+// TODO:
+//   - add priority based scheduling
+//   - switch to redis based worker queues or something similar
+//   - add error handling
 
 impl CommandExecutor {
     pub async fn new(context: Arc<Context>) -> Self {
