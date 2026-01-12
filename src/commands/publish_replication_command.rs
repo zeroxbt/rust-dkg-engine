@@ -1,8 +1,8 @@
+use async_trait::async_trait;
 use super::command::Command;
 use crate::types::models::OperationId;
 use crate::types::traits::command::{CommandData, CommandExecutionResult};
 use crate::{context::Context, types::traits::command::CommandHandler};
-use async_trait::async_trait;
 use blockchain::BlockchainName;
 use network::action::NetworkAction;
 use network::NetworkManager;

@@ -1,5 +1,4 @@
 use crate::{BlockchainConfig, ContractName};
-use async_trait::async_trait;
 use ethers::{
     abi::Address,
     contract::abigen,
@@ -142,7 +141,7 @@ impl Contracts {
     }
 }
 
-#[async_trait]
+// Native async trait (Rust 1.75+)
 pub trait BlockchainCreator {
     async fn new(config: BlockchainConfig) -> Self;
 

@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use super::command::Command;
@@ -6,7 +7,6 @@ use crate::types::traits::command::{CommandExecutionResult, ScheduleConfig};
 use crate::{
     commands::constants::DEFAULT_COMMAND_DELAY_MS, types::traits::command::CommandHandler,
 };
-use async_trait::async_trait;
 use network::action::NetworkAction;
 use network::NetworkManager;
 use repository::RepositoryManager;

@@ -26,11 +26,11 @@ impl AbstractBlockchain for HardhatBlockchain {
         &self.provider
     }
 
-    async fn contracts(&self) -> RwLockReadGuard<'life0, Contracts> {
+    async fn contracts(&self) -> RwLockReadGuard<'_, Contracts> {
         self.contracts.read().await
     }
 
-    async fn contracts_mut(&self) -> RwLockWriteGuard<'life0, Contracts> {
+    async fn contracts_mut(&self) -> RwLockWriteGuard<'_, Contracts> {
         self.contracts.write().await
     }
 
@@ -39,7 +39,6 @@ impl AbstractBlockchain for HardhatBlockchain {
     }
 }
 
-#[async_trait]
 impl BlockchainCreator for HardhatBlockchain {
     async fn new(config: BlockchainConfig) -> Self {
         let provider = Self::initialize_ethers_provider(&config)

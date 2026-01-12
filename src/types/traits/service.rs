@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use blockchain::BlockchainName;
 use chrono::Utc;
 use network::{
@@ -24,7 +23,7 @@ use crate::{
 
 type Result<T> = std::result::Result<T, NodeError>;
 
-#[async_trait]
+// Native async trait (Rust 1.75+)
 pub trait NetworkOperationProtocol {
     type OperationRequestMessageData: Send + Sync + Clone;
     const BATCH_SIZE: usize;
@@ -153,7 +152,7 @@ impl OperationStatus {
 }
 
 /// Trait for operation lifecycle management - handles caching and operation state
-#[async_trait]
+// Native async trait (Rust 1.75+)
 pub trait OperationLifecycle {
     type ResultData: Serialize + DeserializeOwned + Send + Sync;
     const OPERATION_NAME: &'static str;

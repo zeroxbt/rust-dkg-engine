@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use network::message::{RequestMessage, ResponseMessage};
 use network::{request_response, PeerId};
 use std::fmt::Debug;
@@ -7,7 +6,7 @@ use tracing::info;
 
 use crate::context::Context;
 
-#[async_trait]
+// Native async trait (Rust 1.75+)
 pub trait BaseController {
     type RequestData: Send + Debug;
     type ResponseData: Send + Debug;

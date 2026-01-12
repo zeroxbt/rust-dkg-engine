@@ -1,8 +1,8 @@
+use async_trait::async_trait;
 /* use super::command::{Command, CommandData};
 use super::command_handler::{CommandExecutionResult, CommandHandler};
 use crate::context::Context;
 use crate::services::operation_service::ProtocolOperation;
-use async_trait::async_trait;
 use blockchain::BlockchainName;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

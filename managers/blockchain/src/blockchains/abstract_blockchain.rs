@@ -12,6 +12,7 @@ use ethers::{
     types::{Bytes, Filter, Log},
 };
 use std::{str::FromStr, sync::Arc};
+
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
@@ -121,13 +122,15 @@ impl EventLog {
     }
 }
 
+// Note: Must use async-trait here because this trait is used with trait objects (Box<dyn AbstractBlockchain>)
+// Native async traits are not dyn-compatible yet
 #[async_trait]
 pub trait AbstractBlockchain: Send + Sync {
     fn name(&self) -> &BlockchainName;
     fn config(&self) -> &BlockchainConfig;
     fn provider(&self) -> &Arc<BlockchainProvider>;
-    async fn contracts(&self) -> RwLockReadGuard<'life0, Contracts>;
-    async fn contracts_mut(&self) -> RwLockWriteGuard<'life0, Contracts>;
+    async fn contracts(&self) -> RwLockReadGuard<'_, Contracts>;
+    async fn contracts_mut(&self) -> RwLockWriteGuard<'_, Contracts>;
     fn set_identity_id(&mut self, id: u128);
 
     async fn re_initialize_contract(

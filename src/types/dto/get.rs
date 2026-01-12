@@ -38,7 +38,7 @@ pub enum GetStates {
 pub struct GetRequest {
     pub id: String,
 
-    #[validate]
+    #[validate(nested)]
     pub state: Option<StateField>,
 
     #[validate(range(min = 1))]

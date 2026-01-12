@@ -4,7 +4,6 @@ use crate::context::Context;
 use crate::services::publish_service::PublishService;
 use crate::types::traits::controller::BaseController;
 use crate::types::traits::service::NetworkOperationProtocol;
-use async_trait::async_trait;
 use network::action::NetworkAction;
 use network::message::{
     RequestMessage, ResponseMessage, ResponseMessageHeader, ResponseMessageType, StoreRequestData,
@@ -18,7 +17,6 @@ pub struct StoreController {
     publish_service: Arc<PublishService>,
 }
 
-#[async_trait]
 impl BaseController for StoreController {
     type RequestData = StoreRequestData;
     type ResponseData = StoreResponseData;

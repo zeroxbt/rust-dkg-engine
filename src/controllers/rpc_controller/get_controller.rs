@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use crate::context::Context;
 use crate::types::traits::controller::BaseController;
-use async_trait::async_trait;
 use network::action::NetworkAction;
 use network::message::{
     ErrorMessage, GetRequestData, GetResponseData, RequestMessage, ResponseMessage,
@@ -16,7 +15,6 @@ pub struct GetController {
     network_action_tx: mpsc::Sender<NetworkAction>,
 }
 
-#[async_trait]
 impl BaseController for GetController {
     type RequestData = GetRequestData;
     type ResponseData = GetResponseData;

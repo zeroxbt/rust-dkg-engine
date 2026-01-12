@@ -34,6 +34,8 @@ impl ScheduleConfig {
     }
 }
 
+// Note: Must use async-trait here because this trait is used with trait objects (Arc<dyn CommandHandler>)
+// Native async traits are not dyn-compatible yet
 #[async_trait]
 pub trait CommandHandler: Send + Sync {
     fn name(&self) -> &'static str;

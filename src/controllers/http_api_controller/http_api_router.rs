@@ -1,9 +1,10 @@
+use axum::http::Method;
 use axum::routing::{get, post};
 use axum::Router;
-use hyper;
-use hyper::Server;
 use serde::Deserialize;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tower_http::cors::*;
 
@@ -26,7 +27,7 @@ pub struct HttpApiRouter {
 impl HttpApiRouter {
     pub fn new(config: &HttpApiConfig, context: &Arc<Context>) -> Self {
         let cors_layer = CorsLayer::new()
-            .allow_methods(vec![hyper::Method::GET])
+            .allow_methods(vec![Method::GET])
             .allow_credentials(false);
 
         let router = Router::new()
@@ -43,12 +44,15 @@ impl HttpApiRouter {
     }
 
     pub async fn listen_and_handle_http_requests(&self) {
-        let addr = ([127, 0, 0, 1], self.config.port).into();
+        let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, self.config.port));
 
-        let cloned_router_for_serve = self.router.lock().await.clone(); // Clone it while locked
+        let cloned_router_for_serve = self.router.lock().await.clone();
 
-        Server::bind(&addr)
-            .serve(cloned_router_for_serve.into_make_service())
+        let listener = TcpListener::bind(addr)
+            .await
+            .expect("Failed to bind HTTP listener");
+
+        axum::serve(listener, cloned_router_for_serve)
             .await
             .expect("Server failed");
     }
