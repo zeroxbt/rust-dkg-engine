@@ -10,8 +10,8 @@ use crate::{
     commands::command::Command,
     config::Config,
     services::{
-        publish_service::PublishService, sharding_table_service::ShardingTableService,
-        ual_service::UalService,
+        pending_storage_service::PendingStorageService, publish_service::PublishService,
+        sharding_table_service::ShardingTableService, ual_service::UalService,
     },
 };
 
@@ -26,6 +26,7 @@ pub struct Context {
     ual_service: Arc<UalService>,
     sharding_table_service: Arc<ShardingTableService>,
     publish_service: Arc<PublishService>,
+    pending_storage_service: Arc<PendingStorageService>,
 }
 
 impl Context {
@@ -40,6 +41,7 @@ impl Context {
         ual_service: Arc<UalService>,
         sharding_table_service: Arc<ShardingTableService>,
         publish_service: Arc<PublishService>,
+        pending_storage_service: Arc<PendingStorageService>,
     ) -> Self {
         Self {
             config,
@@ -52,6 +54,7 @@ impl Context {
             ual_service,
             sharding_table_service,
             publish_service,
+            pending_storage_service,
         }
     }
 
@@ -85,6 +88,10 @@ impl Context {
 
     pub fn publish_service(&self) -> &Arc<PublishService> {
         &self.publish_service
+    }
+
+    pub fn pending_storage_service(&self) -> &Arc<PendingStorageService> {
+        &self.pending_storage_service
     }
 
     pub fn network_action_tx(&self) -> &Sender<NetworkAction> {

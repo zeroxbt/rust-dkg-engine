@@ -4,6 +4,7 @@ mod context;
 mod controllers;
 mod error;
 mod services;
+mod types;
 
 use blockchain::BlockchainManager;
 use commands::command::Command;
@@ -30,6 +31,7 @@ use validation::ValidationManager;
 
 use crate::config::Config;
 use crate::services::file_service::FileService;
+use crate::services::pending_storage_service::PendingStorageService;
 
 #[tokio::main]
 async fn main() {
@@ -49,13 +51,14 @@ async fn main() {
 
     let (network_manager, repository_manager, blockchain_manager, validation_manager) =
         initialize_managers(&config.managers).await;
-    let (ual_service, sharding_table_service, publish_service) = initialize_services(
-        &config,
-        &blockchain_manager,
-        &repository_manager,
-        &validation_manager,
-        &network_action_tx,
-    );
+    let (ual_service, sharding_table_service, publish_service, pending_storage_service) =
+        initialize_services(
+            &config,
+            &blockchain_manager,
+            &repository_manager,
+            &validation_manager,
+            &network_action_tx,
+        );
 
     let context = Arc::new(Context::new(
         config.clone(),
@@ -68,6 +71,7 @@ async fn main() {
         Arc::clone(&ual_service),
         Arc::clone(&sharding_table_service),
         Arc::clone(&publish_service),
+        Arc::clone(&pending_storage_service),
     ));
 
     if config.is_dev_env {
@@ -221,8 +225,10 @@ fn initialize_services(
     Arc<UalService>,
     Arc<ShardingTableService>,
     Arc<PublishService>,
+    Arc<PendingStorageService>,
 ) {
     let file_service = Arc::new(FileService::new(config.app_data_path.clone()));
+    let pending_storage_service = Arc::new(PendingStorageService::new(Arc::clone(&file_service)));
     let ual_service = Arc::new(UalService::new(Arc::clone(blockchain_manager)));
     let sharding_table_service = Arc::new(ShardingTableService::new(
         Arc::clone(repository_manager),
@@ -236,7 +242,12 @@ fn initialize_services(
         Arc::clone(&file_service),
     ));
 
-    (ual_service, sharding_table_service, publish_service)
+    (
+        ual_service,
+        sharding_table_service,
+        publish_service,
+        pending_storage_service,
+    )
 }
 
 fn initialize_controllers(

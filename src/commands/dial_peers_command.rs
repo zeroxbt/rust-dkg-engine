@@ -5,7 +5,11 @@ use super::command_handler::{CommandExecutionResult, CommandHandler, ScheduleCon
 use crate::commands::constants::DEFAULT_COMMAND_DELAY_MS;
 use crate::context::Context;
 use async_trait::async_trait;
+use network::action::NetworkAction;
+use network::NetworkManager;
+use repository::RepositoryManager;
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 
 const DIAL_PEERS_COMMAND_PERIOD_MS: i64 = 30_000;
 const DIAL_CONCURRENCY: usize = 5;
@@ -15,12 +19,18 @@ const MIN_DIAL_FREQUENCY_PER_PEER_MS: i64 = 60 * 60 * 1000;
 pub struct DialPeersCommandData;
 
 pub struct DialPeersCommandHandler {
-    context: Arc<Context>,
+    repository_manager: Arc<RepositoryManager>,
+    network_manager: Arc<NetworkManager>,
+    network_action_tx: mpsc::Sender<NetworkAction>,
 }
 
 impl DialPeersCommandHandler {
     pub fn new(context: Arc<Context>) -> Self {
-        Self { context }
+        Self {
+            repository_manager: Arc::clone(context.repository_manager()),
+            network_manager: Arc::clone(context.network_manager()),
+            network_action_tx: context.network_action_tx().clone(),
+        }
     }
 }
 
@@ -35,11 +45,10 @@ impl CommandHandler for DialPeersCommandHandler {
     }
 
     async fn execute(&self, _: &Command) -> CommandExecutionResult {
-        let peer_id = self.context.network_manager().peer_id().to_base58();
+        let peer_id = self.network_manager.peer_id().to_base58();
 
         let potential_peer_ids = self
-            .context
-            .repository_manager()
+            .repository_manager
             .shard_repository()
             .get_peers_to_dial(DIAL_CONCURRENCY, MIN_DIAL_FREQUENCY_PER_PEER_MS)
             .await
@@ -56,8 +65,7 @@ impl CommandHandler for DialPeersCommandHandler {
             for peer_id in peer_ids {
                 tracing::trace!("Dialing peer: {}...", peer_id);
 
-                self.context
-                    .network_action_tx()
+                self.network_action_tx
                     .send(network::action::NetworkAction::GetClosestPeers {
                         peer: peer_id.parse().unwrap(), // Note: Consider handling this unwrap.
                     })

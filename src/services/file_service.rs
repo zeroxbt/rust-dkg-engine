@@ -120,7 +120,7 @@ impl FileService {
         filename: &str,
         data: &T,
     ) -> Result<PathBuf> {
-        let json = serde_json::to_vec_pretty(data)?;
+        let json = serde_json::to_vec(data)?;
         self.write(dir, filename, &json).await
     }
 

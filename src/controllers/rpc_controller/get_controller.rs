@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::context::Context;
-use crate::controllers::rpc_controller::base_controller::BaseController;
+use crate::types::traits::controller::BaseController;
 use async_trait::async_trait;
 use network::action::NetworkAction;
 use network::message::{

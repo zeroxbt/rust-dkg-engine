@@ -8,11 +8,12 @@ use super::{
 };
 use crate::context::Context;
 use futures::stream::{FuturesUnordered, StreamExt};
+use repository::RepositoryManager;
 use std::{cmp::min, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, Mutex, Semaphore};
 
 pub struct CommandExecutor {
-    pub context: Arc<Context>,
+    pub repository_manager: Arc<RepositoryManager>,
     pub command_resolver: CommandResolver,
     pub process_command_tx: mpsc::Sender<Command>,
     pub process_command_rx: Arc<Mutex<mpsc::Receiver<Command>>>,
@@ -24,8 +25,8 @@ impl CommandExecutor {
         let (tx, rx) = mpsc::channel::<Command>(COMMAND_QUEUE_PARALLELISM);
 
         Self {
+            repository_manager: Arc::clone(context.repository_manager()),
             command_resolver: CommandResolver::new(context.clone()),
-            context,
             process_command_tx: tx,
             process_command_rx: Arc::new(Mutex::new(rx)),
             semaphore: Arc::new(Semaphore::new(COMMAND_QUEUE_PARALLELISM)),
@@ -206,8 +207,7 @@ impl CommandExecutor {
     }
 
     async fn insert(&self, command: &Command) {
-        self.context
-            .repository_manager()
+        self.repository_manager
             .command_repository()
             .create_command(&command.to_model())
             .await
@@ -221,8 +221,7 @@ impl CommandExecutor {
         new_started_at: Option<i64>,
         new_retries: Option<i32>,
     ) {
-        self.context
-            .repository_manager()
+        self.repository_manager
             .command_repository()
             .update_command(&command.to_model(), new_status, new_started_at, new_retries)
             .await
@@ -233,8 +232,7 @@ impl CommandExecutor {
         tracing::info!("Replaying pending/started commands from the repository...");
 
         let pending_commands = self
-            .context
-            .repository_manager()
+            .repository_manager
             .command_repository()
             .get_commands_with_status(vec![
                 CommandStatus::Pending.to_string(),

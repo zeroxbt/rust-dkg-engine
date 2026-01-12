@@ -4,8 +4,12 @@ use crate::context::Context;
 use crate::services::operation_service::OperationId;
 use async_trait::async_trait;
 use blockchain::BlockchainName;
+use network::action::NetworkAction;
+use network::NetworkManager;
+use repository::RepositoryManager;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PublishReplicationCommandData {
@@ -36,12 +40,18 @@ impl PublishReplicationCommandData {
 }
 
 pub struct PublishReplicationCommandHandler {
-    context: Arc<Context>,
+    repository_manager: Arc<RepositoryManager>,
+    network_manager: Arc<NetworkManager>,
+    network_action_tx: mpsc::Sender<NetworkAction>,
 }
 
 impl PublishReplicationCommandHandler {
     pub fn new(context: Arc<Context>) -> Self {
-        Self { context }
+        Self {
+            repository_manager: Arc::clone(context.repository_manager()),
+            network_manager: Arc::clone(context.network_manager()),
+            network_action_tx: context.network_action_tx().clone(),
+        }
     }
 }
 

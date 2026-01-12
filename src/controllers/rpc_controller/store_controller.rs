@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::context::Context;
 use crate::controllers::rpc_controller::base_controller::BaseController;
-use crate::services::operation_service::NetworkOperationProtocol;
 use crate::services::publish_service::PublishService;
+use crate::types::traits::service::NetworkOperationProtocol;
 use async_trait::async_trait;
 use network::action::NetworkAction;
 use network::message::{

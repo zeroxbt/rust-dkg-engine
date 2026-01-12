@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use repository::models::command::{self, Model};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fmt, str::FromStr};
 use uuid::Uuid;
@@ -231,16 +230,5 @@ impl Command {
     }
 }
 
-/// Trait for command data types that can be converted into Commands.
-/// Provides a standard way to associate a command name with its data structure.
-pub trait CommandData: Serialize + Sized {
-    const COMMAND_NAME: &'static str;
-
-    fn into_command(self) -> Command {
-        Command::builder(Self::COMMAND_NAME).data(self).build()
-    }
-
-    fn to_command_builder(self) -> CommandBuilder {
-        Command::builder(Self::COMMAND_NAME).data(self)
-    }
-}
+// Re-export trait that was defined here but moved to types module
+pub use crate::types::traits::command::CommandData;

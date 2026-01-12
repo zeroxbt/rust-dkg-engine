@@ -9,14 +9,19 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use network::{
     action::NetworkAction, identify, request_response, BehaviourEvent, NetworkEvent, SwarmEvent,
 };
+use repository::RepositoryManager;
 use std::sync::Arc;
-use tokio::sync::{mpsc::Receiver, Semaphore};
+use tokio::sync::{
+    mpsc::{self, Receiver},
+    Semaphore,
+};
 use tracing::{error, info};
 
 use super::constants::NETWORK_EVENT_QUEUE_PARALLELISM;
 
 pub struct RpcRouter {
-    context: Arc<Context>,
+    repository_manager: Arc<RepositoryManager>,
+    network_action_tx: mpsc::Sender<NetworkAction>,
     get_controller: Arc<GetController>,
     store_controller: Arc<StoreController>,
     pub semaphore: Arc<Semaphore>,
@@ -25,10 +30,11 @@ pub struct RpcRouter {
 impl RpcRouter {
     pub fn new(context: Arc<Context>) -> Self {
         RpcRouter {
+            repository_manager: Arc::clone(context.repository_manager()),
+            network_action_tx: context.network_action_tx().clone(),
             get_controller: Arc::new(GetController::new(Arc::clone(&context))),
             store_controller: Arc::new(StoreController::new(Arc::clone(&context))),
             semaphore: Arc::new(Semaphore::new(NETWORK_EVENT_QUEUE_PARALLELISM)),
-            context,
         }
     }
 
@@ -83,8 +89,7 @@ impl RpcRouter {
             })) => {
                 tracing::trace!("Adding peer to routing table: {}", peer_id);
 
-                self.context
-                    .network_action_tx()
+                self.network_action_tx
                     .send(NetworkAction::AddAddress {
                         peer_id,
                         addresses: info.listen_addrs,
@@ -92,8 +97,7 @@ impl RpcRouter {
                     .await
                     .unwrap();
 
-                self.context
-                    .repository_manager()
+                self.repository_manager
                     .shard_repository()
                     .update_peer_record_last_seen_and_last_dialed(
                         peer_id.to_base58(),

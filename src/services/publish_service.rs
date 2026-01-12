@@ -4,7 +4,6 @@ use network::{
     PeerId,
 };
 use repository::RepositoryManager;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 

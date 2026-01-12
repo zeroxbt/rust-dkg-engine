@@ -1,43 +1,16 @@
 use crate::commands::command::CommandData;
 use crate::commands::publish_replication_command::PublishReplicationCommandData;
 use crate::context::Context;
-use crate::services::operation_service::{OperationId, OperationLifecycle};
+use crate::services::operation_service::OperationLifecycle;
+use crate::types::dto::publish::{PublishRequest, PublishResponse};
+use crate::types::models::OperationId;
 use axum::Json;
 use axum::{extract::State, response::IntoResponse};
-use blockchain::BlockchainName;
 use hyper::StatusCode;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use validator::Validate;
-use validator_derive::Validate;
 
 pub struct PublishController;
-
-#[derive(Debug, Serialize, Deserialize, Validate)]
-pub struct Assertion {
-    #[validate(length(min = 1))]
-    pub public: Vec<String>,
-    pub private: Option<Vec<String>>,
-}
-
-#[derive(Deserialize, Debug, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct PublishRequest {
-    #[validate(length(equal = 66))]
-    pub dataset_root: String,
-    pub dataset: Assertion,
-    pub blockchain: BlockchainName,
-    #[validate(range(min = 1))]
-    pub hash_function_id: Option<u8>,
-    #[validate(range(min = 1))]
-    pub minimum_number_of_node_replications: Option<u8>,
-}
-
-#[derive(Serialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PublishResponse {
-    operation_id: OperationId,
-}
 
 impl PublishController {
     pub async fn handle_request(
@@ -59,7 +32,7 @@ impl PublishController {
                 });
 
                 // Return operation ID immediately
-                Json(PublishResponse { operation_id }).into_response()
+                Json(PublishResponse::new(operation_id)).into_response()
             }
             Err(e) => (
                 StatusCode::BAD_REQUEST,
@@ -80,9 +53,10 @@ impl PublishController {
             request.blockchain
         );
 
-        let _peer_id = context.network_manager().peer_id();
-
-        // TODO: store in pending storage before scheduling command
+        let res = context
+            .pending_storage_service()
+            .store_dataset(operation_id, &request.dataset_root, &request.dataset)
+            .await;
 
         let command = PublishReplicationCommandData::new(
             operation_id,
