@@ -67,7 +67,11 @@ impl RpcRouter {
                 request_response::Event::OutboundFailure { error, .. } => {
                     error!("Failed to store: {}", error);
                 }
-                request_response::Event::Message { message, peer } => {
+                request_response::Event::Message {
+                    message,
+                    peer,
+                    connection_id,
+                } => {
                     self.store_controller.handle_message(message, peer).await;
                 }
                 _ => {}
@@ -76,7 +80,11 @@ impl RpcRouter {
                 request_response::Event::OutboundFailure { error, .. } => {
                     error!("Failed to get: {}", error)
                 }
-                request_response::Event::Message { peer, message } => {
+                request_response::Event::Message {
+                    peer,
+                    message,
+                    connection_id,
+                } => {
                     self.get_controller.handle_message(message, peer).await;
                 }
                 _ => {}
@@ -87,6 +95,7 @@ impl RpcRouter {
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
                 peer_id,
                 info,
+                connection_id,
             })) => {
                 tracing::trace!("Adding peer to routing table: {}", peer_id);
 
