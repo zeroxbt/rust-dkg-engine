@@ -1,7 +1,7 @@
 // use base64::{engine::general_purpose, Engine as _};
 // use rand::rngs::OsRng;
 // use rsa::{pkcs8::EncodePrivateKey, RsaPrivateKey};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use libp2p::identity;
 use tokio::{fs, io};
@@ -12,11 +12,11 @@ const LIBP2P_KEY_FILENAME: &str = "private_key";
 pub(super) struct KeyManager;
 
 impl KeyManager {
-    fn get_key_path(data_folder_path: &PathBuf) -> PathBuf {
+    fn get_key_path(data_folder_path: &Path) -> PathBuf {
         data_folder_path.join(LIBP2P_KEY_FILENAME)
     }
 
-    async fn ensure_key_directory_exists(data_folder_path: &PathBuf) -> io::Result<()> {
+    async fn ensure_key_directory_exists(data_folder_path: &Path) -> io::Result<()> {
         let key_path = Self::get_key_path(data_folder_path);
         if let Some(parent) = key_path.parent() {
             fs::create_dir_all(parent).await?;
@@ -27,7 +27,7 @@ impl KeyManager {
 
     async fn save_private_key_to_file(
         key: &libp2p::identity::ed25519::Keypair,
-        data_folder_path: &PathBuf,
+        data_folder_path: &Path,
     ) -> io::Result<()> {
         Self::ensure_key_directory_exists(data_folder_path).await?;
         // let der_format = key
@@ -40,7 +40,7 @@ impl KeyManager {
     }
 
     async fn read_private_key_from_file(
-        data_folder_path: &PathBuf,
+        data_folder_path: &Path,
     ) -> io::Result<libp2p::identity::ed25519::Keypair> {
         println!("reading private key from file...");
         let mut key_bytes = fs::read(Self::get_key_path(data_folder_path)).await?;
@@ -53,7 +53,7 @@ impl KeyManager {
     }
 
     pub(super) async fn generate_or_load_key(
-        data_folder_path: &PathBuf,
+        data_folder_path: &Path,
     ) -> Result<libp2p::identity::Keypair> {
         match Self::read_private_key_from_file(data_folder_path).await {
             Ok(pk) => Ok(pk.into()),

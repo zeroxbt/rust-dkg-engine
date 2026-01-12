@@ -329,7 +329,7 @@ impl NQuads {
         unescape_regex
             .replace_all(s, |caps: &regex::Captures| {
                 if let Some(escaped) = caps.get(1) {
-                    let s = match escaped.as_str() {
+                    match escaped.as_str() {
                         "t" => "\t",
                         "b" => r"\b",
                         "n" => "\n",
@@ -340,9 +340,7 @@ impl NQuads {
                         "\\" => "\\",
                         _ => panic!("Unexpected escape sequence"),
                     }
-                    .to_owned();
-
-                    s
+                    .to_owned()
                 } else if let Some(hex) = caps.get(2) {
                     let u = u32::from_str_radix(hex.as_str(), 16).expect("Failed to parse hex");
                     char::from_u32(u).unwrap().to_string()

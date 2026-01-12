@@ -37,10 +37,10 @@ impl IdentifierIssuer {
     /// Returns a new identifier if one is created, or the existing identifier if one was already
     /// mapped.
     pub fn get_id(&mut self, old: Option<&str>) -> String {
-        if let Some(old) = old {
-            if let Some(existing) = self.existing.get(old) {
-                return existing.clone();
-            }
+        if let Some(old) = old
+            && let Some(existing) = self.existing.get(old)
+        {
+            return existing.clone();
         }
 
         let identifier = format!("{}{}", self.prefix, self.counter);

@@ -2,7 +2,7 @@ use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use ethers::{
     abi::Address,
-    contract::{Contract, abigen},
+    contract::{Contract as EthersContract, abigen},
     middleware::{Middleware, MiddlewareBuilder, NonceManagerMiddleware, SignerMiddleware},
     providers::{Http, Provider},
     signers::{LocalWallet, Signer},
@@ -78,7 +78,7 @@ impl Contracts {
     pub fn get(
         &self,
         contract_name: &ContractName,
-    ) -> Result<&Contract<BlockchainProvider>, BlockchainError> {
+    ) -> Result<&EthersContract<BlockchainProvider>, BlockchainError> {
         match contract_name {
             ContractName::Hub => Ok(&self.hub),
             ContractName::ShardingTable => Ok(&self.sharding_table),
@@ -140,7 +140,7 @@ impl Contracts {
 }
 
 // Native async trait (Rust 1.75+)
-pub trait BlockchainCreator {
+pub(crate) trait BlockchainCreator {
     async fn new(config: BlockchainConfig) -> Self;
 
     async fn initialize_ethers_provider(
