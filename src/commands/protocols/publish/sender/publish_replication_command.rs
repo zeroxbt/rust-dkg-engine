@@ -92,14 +92,27 @@ impl CommandHandler for PublishReplicationCommandHandler {
             "Searching for shard for operation: {operation_id}, dataset root: {dataset_root}"
         );
 
-        let Ok(shard_nodes) = self
+        let shard_nodes = match self
             .repository_manager
             .shard_repository()
             .get_all_peer_records(blockchain.as_str(), true)
             .await
-        else {
-            // TODO: handle error
-            return CommandExecutionResult::Completed;
+        {
+            Ok(shard_nodes) => shard_nodes,
+            Err(e) => {
+                let error_message = format!(
+                    "Faled to get shard nodes from repository for operation: {operation_id}. Error: {e}"
+                );
+
+                if let Err(e) = self
+                    .publish_service
+                    .mark_failed(operation_id, &error_message)
+                    .await
+                {
+                    tracing::error!("Unable to mark operation {} as failed: {}", operation_id, e)
+                }
+                return CommandExecutionResult::Completed;
+            }
         };
 
         tracing::debug!(
@@ -128,11 +141,21 @@ impl CommandHandler for PublishReplicationCommandHandler {
             return CommandExecutionResult::Completed;
         }
 
-        let Ok(data) = self.pending_storage_service.get_dataset(operation_id).await else {
-            // TODO: handle error
-            return CommandExecutionResult::Completed;
+        let dataset = match self.pending_storage_service.get_dataset(operation_id).await {
+            Ok(data) => data.dataset().clone(),
+            Err(e) => {
+                if let Err(e) = self
+                    .publish_service
+                    .mark_failed(operation_id, &e.to_string())
+                    .await
+                {
+                    tracing::error!("Unable to mark operation {} as failed: {}", operation_id, e)
+                }
+
+                return CommandExecutionResult::Completed;
+            }
         };
-        let dataset = data.dataset();
+
         let message = RequestMessage {
             header: RequestMessageHeader {
                 operation_id: operation_id.into_inner(),
@@ -166,7 +189,6 @@ impl CommandHandler for PublishReplicationCommandHandler {
                         })
                         .await
                     {
-                        // TODO: handle error
                         tracing::error!(
                             "Failed to send protocol request to {}: {}",
                             remote_peer_id,
