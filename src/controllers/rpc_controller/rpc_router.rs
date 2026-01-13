@@ -24,7 +24,7 @@ pub struct RpcRouter {
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     get_controller: Arc<GetController>,
     store_controller: Arc<StoreController>,
-    pub semaphore: Arc<Semaphore>,
+    semaphore: Arc<Semaphore>,
 }
 
 impl RpcRouter {
