@@ -4,7 +4,6 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use network::{NestedBehaviourEvent, NetworkManager, SwarmEvent, identify, request_response};
 use repository::RepositoryManager;
 use tokio::sync::{Semaphore, mpsc};
-use tracing::{error, info};
 
 use super::constants::NETWORK_EVENT_QUEUE_PARALLELISM;
 use crate::{
@@ -57,7 +56,7 @@ impl RpcRouter {
                             pending_tasks.push(self.handle_network_event(event, permit));
                         }
                         None => {
-                            error!("Network event channel closed, shutting down RPC router");
+                            tracing::error!("Network event channel closed, shutting down RPC router");
                             break;
                         }
                     }
@@ -76,16 +75,17 @@ impl RpcRouter {
                 NestedBehaviourEvent::Protocols(protocol_event) => match protocol_event {
                     NetworkProtocolsEvent::Store(inner_event) => match inner_event {
                         request_response::Event::OutboundFailure { error, .. } => {
-                            error!("Failed to store: {}", error);
+                            tracing::error!("Failed to store: {}", error);
                         }
                         request_response::Event::Message { message, peer, .. } => {
                             self.store_controller.handle_message(message, peer).await;
                         }
+
                         _ => {}
                     },
                     NetworkProtocolsEvent::Get(inner_event) => match inner_event {
                         request_response::Event::OutboundFailure { error, .. } => {
-                            error!("Failed to get: {}", error)
+                            tracing::error!("Failed to get: {}", error)
                         }
                         request_response::Event::Message { message, peer, .. } => {
                             self.get_controller.handle_message(message, peer).await;
@@ -103,7 +103,7 @@ impl RpcRouter {
                         .add_kad_addresses(peer_id, info.listen_addrs)
                         .await
                     {
-                        error!("Failed to enqueue kad addresses: {}", error);
+                        tracing::error!("Failed to enqueue kad addresses: {}", error);
                     }
 
                     self.repository_manager
@@ -118,7 +118,7 @@ impl RpcRouter {
                 _ => {}
             },
             SwarmEvent::NewListenAddr { address, .. } => {
-                info!("Listening on {}", address)
+                tracing::info!("Listening on {}", address)
             }
             _ => {}
         }

@@ -66,7 +66,6 @@ pub struct NetworkManagerConfig {
 pub struct NestedBehaviour<B: NetworkBehaviour> {
     pub kad: kad::Behaviour<MemoryStore>,
     pub identify: identify::Behaviour,
-    pub ping: ping::Behaviour,
     pub protocols: B,
 }
 
@@ -153,16 +152,12 @@ where
             public_key.clone(),
         ));
 
-        // 3. Ping protocol
-        let ping = ping::Behaviour::new(ping::Config::default());
-
         // Application creates its Behaviour with base protocols + app-specific protocols
         // let behaviour = Builder::build(kad, identify, ping);
 
         let custom_behaviour = NestedBehaviour::<B> {
             kad,
             identify,
-            ping,
             protocols: behaviour,
         };
 
