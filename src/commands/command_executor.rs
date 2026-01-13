@@ -52,9 +52,17 @@ impl CommandExecutor {
                 _ = pending_tasks.select_next_some(), if !pending_tasks.is_empty() => {
                     // Continue the loop when a task completes.
                 }
-                command = locked_rx.recv(), if self.semaphore.available_permits() > 0 => {
-                    if let Some(command) = command {
-                        pending_tasks.push(self.execute(command));
+                command = locked_rx.recv() => {
+                    match command {
+                        Some(command) => {
+                            drop(locked_rx);
+                            let permit = self.semaphore.clone().acquire_owned().await.unwrap();
+                            pending_tasks.push(self.execute(command, permit));
+                        }
+                        None => {
+                            tracing::error!("Command channel closed, shutting down executor");
+                            break;
+                        }
                     }
                 }
             }
@@ -106,9 +114,7 @@ impl CommandExecutor {
         }
     }
 
-    async fn execute(&self, command: Command) {
-        let _permit = self.semaphore.acquire().await.unwrap();
-
+    async fn execute(&self, command: Command, _permit: tokio::sync::OwnedSemaphorePermit) {
         let now = chrono::Utc::now().timestamp_millis();
 
         if let Some(deadline_at) = command.deadline_at {

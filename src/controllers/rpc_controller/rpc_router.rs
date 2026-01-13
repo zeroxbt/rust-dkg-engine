@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
-use network::{NetworkManager, SwarmEvent, identify, request_response};
+use network::{NestedBehaviourEvent, SwarmEvent, identify, request_response};
 use repository::RepositoryManager;
 use tokio::sync::{Semaphore, mpsc};
 use tracing::{error, info};
@@ -12,7 +12,7 @@ use crate::{
     controllers::rpc_controller::{
         get_controller::GetController, store_controller::StoreController,
     },
-    network::{NetworkHandle, NetworkProtocols},
+    network::{NetworkHandle, NetworkProtocols, NetworkProtocolsEvent},
     types::traits::controller::BaseController,
 };
 
@@ -22,7 +22,6 @@ type BehaviourEvent = <Behaviour as network::NetworkBehaviour>::ToSwarm;
 
 pub struct RpcRouter {
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
     network_handle: Arc<NetworkHandle>,
     get_controller: Arc<GetController>,
     store_controller: Arc<StoreController>,
@@ -33,7 +32,6 @@ impl RpcRouter {
     pub fn new(context: Arc<Context>) -> Self {
         RpcRouter {
             repository_manager: Arc::clone(context.repository_manager()),
-            network_manager: Arc::clone(context.network_manager()),
             network_handle: Arc::clone(context.network_handle()),
             get_controller: Arc::new(GetController::new(Arc::clone(&context))),
             store_controller: Arc::new(StoreController::new(Arc::clone(&context))),
@@ -54,12 +52,9 @@ impl RpcRouter {
                 }
                 event = event_rx.recv() => {
                     match event {
-                        Some(event) if self.semaphore.available_permits() > 0 => {
-                            pending_tasks.push(self.handle_network_event(event));
-                        }
-                        Some(_) => {
-                            // No permits available, skip this event (or could buffer it)
-                            // This maintains backpressure
+                        Some(event) => {
+                            let permit = self.semaphore.clone().acquire_owned().await.unwrap();
+                            pending_tasks.push(self.handle_network_event(event, permit));
                         }
                         None => {
                             error!("Network event channel closed, shutting down RPC router");
@@ -71,22 +66,57 @@ impl RpcRouter {
         }
     }
 
-    async fn handle_network_event(&self, event: SwarmEvent<BehaviourEvent>) {
-        let _permit = self.semaphore.acquire().await.unwrap();
-
-        // We need to import the generated event enum types
-        // NestedBehaviour<NetworkProtocols> generates NestedBehaviourEvent with variants:
-        // - Kad, Identify, Ping (from base protocols)
-        // - Protocols(NetworkProtocolsEvent) - which has Store and Get variants
-
+    async fn handle_network_event(
+        &self,
+        event: SwarmEvent<BehaviourEvent>,
+        _permit: tokio::sync::OwnedSemaphorePermit,
+    ) {
         match event {
-            SwarmEvent::Behaviour(ref behaviour_event) => {
-                // Try to access as a debug string first to understand the structure
-                tracing::debug!("Received behaviour event: {:?}", behaviour_event);
+            SwarmEvent::Behaviour(behaviour_event) => match behaviour_event {
+                NestedBehaviourEvent::Protocols(protocol_event) => match protocol_event {
+                    NetworkProtocolsEvent::Store(inner_event) => match inner_event {
+                        request_response::Event::OutboundFailure { error, .. } => {
+                            error!("Failed to store: {}", error);
+                        }
+                        request_response::Event::Message { message, peer, .. } => {
+                            self.store_controller.handle_message(message, peer).await;
+                        }
+                        _ => {}
+                    },
+                    NetworkProtocolsEvent::Get(inner_event) => match inner_event {
+                        request_response::Event::OutboundFailure { error, .. } => {
+                            error!("Failed to get: {}", error)
+                        }
+                        request_response::Event::Message { message, peer, .. } => {
+                            self.get_controller.handle_message(message, peer).await;
+                        }
+                        _ => {}
+                    },
+                },
+                NestedBehaviourEvent::Identify(identify::Event::Received {
+                    peer_id, info, ..
+                }) => {
+                    tracing::trace!("Adding peer to routing table: {}", peer_id);
 
-                // TODO: Properly match on the generated enum variants
-                // For now, let's just log it
-            }
+                    if let Err(error) = self
+                        .network_handle
+                        .add_kad_addresses(peer_id, info.listen_addrs)
+                        .await
+                    {
+                        error!("Failed to enqueue kad addresses: {}", error);
+                    }
+
+                    self.repository_manager
+                        .shard_repository()
+                        .update_peer_record_last_seen_and_last_dialed(
+                            peer_id.to_base58(),
+                            chrono::Utc::now(),
+                        )
+                        .await
+                        .unwrap();
+                }
+                _ => {}
+            },
             SwarmEvent::NewListenAddr { address, .. } => {
                 info!("Listening on {}", address)
             }
