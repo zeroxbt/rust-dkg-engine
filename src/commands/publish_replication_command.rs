@@ -2,14 +2,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use blockchain::BlockchainName;
-use network::{NetworkManager, action::NetworkAction};
+use network::NetworkManager;
 use repository::RepositoryManager;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
 
 use super::command::Command;
 use crate::{
     context::Context,
+    network::NetworkProtocols,
     types::{
         models::OperationId,
         traits::command::{CommandData, CommandExecutionResult, CommandHandler},
@@ -46,8 +46,7 @@ impl PublishReplicationCommandData {
 
 pub struct PublishReplicationCommandHandler {
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager>,
-    network_action_tx: mpsc::Sender<NetworkAction>,
+    network_manager: Arc<NetworkManager<NetworkProtocols>>,
 }
 
 impl PublishReplicationCommandHandler {
@@ -55,7 +54,6 @@ impl PublishReplicationCommandHandler {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            network_action_tx: context.network_action_tx().clone(),
         }
     }
 }

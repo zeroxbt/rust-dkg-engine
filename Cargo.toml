@@ -41,6 +41,7 @@ clap = "4.5.54"
 ethers = { version = "2.0.14", features = ["openssl", "ws"] }
 hex = "0.4.3"
 sha2 = "0.10.9"
+libp2p = { version = "0.56.0", features = ["macros"] }
 
 # Main binary specific (can be referenced by others if needed)
 futures = "0.3.31"
@@ -79,6 +80,7 @@ validator_derive.workspace = true
 figment.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
+libp2p.workspace = true
 
 [dev-dependencies]
 tempfile = "3.24.0"

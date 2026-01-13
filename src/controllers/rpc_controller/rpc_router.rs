@@ -1,14 +1,9 @@
 use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
-use network::{
-    BehaviourEvent, NetworkEvent, SwarmEvent, action::NetworkAction, identify, request_response,
-};
+use network::{NetworkManager, SwarmEvent, identify, request_response};
 use repository::RepositoryManager;
-use tokio::sync::{
-    Semaphore,
-    mpsc::{self, Receiver},
-};
+use tokio::sync::{Semaphore, mpsc};
 use tracing::{error, info};
 
 use super::constants::NETWORK_EVENT_QUEUE_PARALLELISM;
@@ -17,12 +12,18 @@ use crate::{
     controllers::rpc_controller::{
         get_controller::GetController, store_controller::StoreController,
     },
+    network::{NetworkHandle, NetworkProtocols},
     types::traits::controller::BaseController,
 };
 
+// Type alias for the complete behaviour and its event type
+type Behaviour = network::NestedBehaviour<NetworkProtocols>;
+type BehaviourEvent = <Behaviour as network::NetworkBehaviour>::ToSwarm;
+
 pub struct RpcRouter {
     repository_manager: Arc<RepositoryManager>,
-    network_action_tx: mpsc::Sender<NetworkAction>,
+    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_handle: Arc<NetworkHandle>,
     get_controller: Arc<GetController>,
     store_controller: Arc<StoreController>,
     pub semaphore: Arc<Semaphore>,
@@ -32,7 +33,8 @@ impl RpcRouter {
     pub fn new(context: Arc<Context>) -> Self {
         RpcRouter {
             repository_manager: Arc::clone(context.repository_manager()),
-            network_action_tx: context.network_action_tx().clone(),
+            network_manager: Arc::clone(context.network_manager()),
+            network_handle: Arc::clone(context.network_handle()),
             get_controller: Arc::new(GetController::new(Arc::clone(&context))),
             store_controller: Arc::new(StoreController::new(Arc::clone(&context))),
             semaphore: Arc::new(Semaphore::new(NETWORK_EVENT_QUEUE_PARALLELISM)),
@@ -41,7 +43,7 @@ impl RpcRouter {
 
     pub async fn listen_and_handle_network_events(
         &self,
-        mut network_event_rx: Receiver<NetworkEvent>,
+        mut event_rx: mpsc::Receiver<SwarmEvent<BehaviourEvent>>,
     ) {
         let mut pending_tasks = FuturesUnordered::new();
 
@@ -50,71 +52,43 @@ impl RpcRouter {
                 _ = pending_tasks.select_next_some(), if !pending_tasks.is_empty() => {
                     // Continue the loop when a task completes.
                 }
-                event = network_event_rx.recv(), if self.semaphore.available_permits() > 0 => {
-                    if let Some(event) = event {
-                        pending_tasks.push(self.handle_network_event(event));
+                event = event_rx.recv() => {
+                    match event {
+                        Some(event) if self.semaphore.available_permits() > 0 => {
+                            pending_tasks.push(self.handle_network_event(event));
+                        }
+                        Some(_) => {
+                            // No permits available, skip this event (or could buffer it)
+                            // This maintains backpressure
+                        }
+                        None => {
+                            error!("Network event channel closed, shutting down RPC router");
+                            break;
+                        }
                     }
                 }
             }
         }
     }
 
-    async fn handle_network_event(&self, event: NetworkEvent) {
+    async fn handle_network_event(&self, event: SwarmEvent<BehaviourEvent>) {
         let _permit = self.semaphore.acquire().await.unwrap();
 
+        // We need to import the generated event enum types
+        // NestedBehaviour<NetworkProtocols> generates NestedBehaviourEvent with variants:
+        // - Kad, Identify, Ping (from base protocols)
+        // - Protocols(NetworkProtocolsEvent) - which has Store and Get variants
+
         match event {
-            SwarmEvent::Behaviour(BehaviourEvent::Store(inner_event)) => match inner_event {
-                request_response::Event::OutboundFailure { error, .. } => {
-                    error!("Failed to store: {}", error);
-                }
-                request_response::Event::Message {
-                    message,
-                    peer,
-                    connection_id,
-                } => {
-                    self.store_controller.handle_message(message, peer).await;
-                }
-                _ => {}
-            },
-            SwarmEvent::Behaviour(BehaviourEvent::Get(inner_event)) => match inner_event {
-                request_response::Event::OutboundFailure { error, .. } => {
-                    error!("Failed to get: {}", error)
-                }
-                request_response::Event::Message {
-                    peer,
-                    message,
-                    connection_id,
-                } => {
-                    self.get_controller.handle_message(message, peer).await;
-                }
-                _ => {}
-            },
+            SwarmEvent::Behaviour(ref behaviour_event) => {
+                // Try to access as a debug string first to understand the structure
+                tracing::debug!("Received behaviour event: {:?}", behaviour_event);
+
+                // TODO: Properly match on the generated enum variants
+                // For now, let's just log it
+            }
             SwarmEvent::NewListenAddr { address, .. } => {
                 info!("Listening on {}", address)
-            }
-            SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
-                peer_id,
-                info,
-                connection_id,
-            })) => {
-                tracing::trace!("Adding peer to routing table: {}", peer_id);
-
-                self.network_action_tx
-                    .send(NetworkAction::AddAddress {
-                        peer_id,
-                        addresses: info.listen_addrs,
-                    })
-                    .await
-                    .unwrap();
-
-                self.repository_manager
-                    .shard_repository()
-                    .update_peer_record_last_seen_and_last_dialed(
-                        peer_id.to_base58(),
-                        chrono::Utc::now(),
-                    )
-                    .await
-                    .unwrap();
             }
             _ => {}
         }

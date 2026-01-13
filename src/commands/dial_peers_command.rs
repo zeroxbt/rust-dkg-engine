@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use network::{NetworkManager, action::NetworkAction};
+use libp2p::PeerId;
+use network::NetworkManager;
 use repository::RepositoryManager;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
 
 use super::command::Command;
 use crate::{
     commands::constants::DEFAULT_COMMAND_DELAY_MS,
     context::Context,
+    network::{NetworkProtocols, NetworkHandle},
     types::traits::command::{CommandExecutionResult, CommandHandler, ScheduleConfig},
 };
 
@@ -22,8 +23,8 @@ pub struct DialPeersCommandData;
 
 pub struct DialPeersCommandHandler {
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager>,
-    network_action_tx: mpsc::Sender<NetworkAction>,
+    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_handle: Arc<NetworkHandle>,
 }
 
 impl DialPeersCommandHandler {
@@ -31,7 +32,7 @@ impl DialPeersCommandHandler {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            network_action_tx: context.network_action_tx().clone(),
+            network_handle: Arc::clone(context.network_handle()),
         }
     }
 }
@@ -57,27 +58,22 @@ impl CommandHandler for DialPeersCommandHandler {
             .unwrap();
 
         let peer_ids: Vec<_> = potential_peer_ids
-            .iter()
-            .filter(|p| **p != peer_id)
+            .into_iter()
+            .filter(|p| p != &peer_id)
             .collect();
 
         if !peer_ids.is_empty() {
             tracing::info!("Dialing {} remote peers", peer_ids.len());
 
-            for peer_id in peer_ids {
+            for peer_id in &peer_ids {
                 tracing::trace!("Dialing peer: {}...", peer_id);
-
-                self.network_action_tx
-                    .send(network::action::NetworkAction::GetClosestPeers {
-                        peer: peer_id.parse().unwrap(), // Note: Consider handling this unwrap.
-                    })
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Failed to send network action: {:?}", e);
-                        e
-                    })
-                    .unwrap();
             }
+
+            let peers: Vec<PeerId> = peer_ids
+                .iter()
+                .map(|peer_id| peer_id.parse::<PeerId>().unwrap()) // Note: Consider handling this unwrap.
+                .collect();
+            let _ = self.network_handle.dial_peers(peers).await;
         }
 
         CommandExecutionResult::Repeat

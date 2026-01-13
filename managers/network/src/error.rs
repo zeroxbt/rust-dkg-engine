@@ -52,6 +52,10 @@ pub enum NetworkError {
     #[error("Failed to dial peer {peer_id}: {reason}")]
     DialFailed { peer_id: String, reason: String },
 
+    /// Swarm already taken for event loop
+    #[error("Swarm already taken for event loop.")]
+    SwarmAlreadyTaken,
+
     /// Key management error
     #[error("Key conversion failed: {0}")]
     KeyConversion(#[from] libp2p::identity::OtherVariantError),

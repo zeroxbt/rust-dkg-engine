@@ -1,20 +1,22 @@
 use std::sync::Arc;
 
 use network::{
-    PeerId,
-    action::NetworkAction,
-    message::{
-        ErrorMessage, GetRequestData, GetResponseData, RequestMessage, ResponseMessage,
-        ResponseMessageHeader, ResponseMessageType,
-    },
+    ErrorMessage, PeerId,
+    message::{RequestMessage, ResponseMessage, ResponseMessageHeader, ResponseMessageType},
     request_response,
 };
-use tokio::sync::mpsc;
 
-use crate::{context::Context, types::traits::controller::BaseController};
+use crate::{
+    context::Context,
+    network::NetworkHandle,
+    types::{
+        protocol::{GetRequestData, GetResponseData},
+        traits::controller::BaseController,
+    },
+};
 
 pub struct GetController {
-    network_action_tx: mpsc::Sender<NetworkAction>,
+    network_handle: Arc<NetworkHandle>,
 }
 
 impl BaseController for GetController {
@@ -23,7 +25,7 @@ impl BaseController for GetController {
 
     fn new(context: Arc<Context>) -> Self {
         Self {
-            network_action_tx: context.network_action_tx().clone(),
+            network_handle: Arc::clone(context.network_handle()),
         }
     }
 
@@ -49,10 +51,11 @@ impl BaseController for GetController {
             data: response_data,
         };
 
-        self.network_action_tx
-            .send(NetworkAction::GetResponse { channel, message })
-            .await
-            .unwrap();
+        // Send response directly through swarm
+        let _ = self
+            .network_handle
+            .send_get_response(channel, message)
+            .await;
     }
 
     async fn handle_response(&self, response: ResponseMessage<Self::ResponseData>, peer: PeerId) {

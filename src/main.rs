@@ -3,11 +3,13 @@ mod config;
 mod context;
 mod controllers;
 mod error;
+mod network;
 mod services;
 mod types;
 
 use std::{process::Command as ProcessCommand, sync::Arc};
 
+use ::network::NetworkManager;
 use blockchain::BlockchainManager;
 use commands::{command::Command, command_executor::CommandExecutor};
 use config::ManagersConfig;
@@ -18,7 +20,6 @@ use controllers::{
     rpc_controller::rpc_router::RpcRouter,
 };
 use dotenvy::dotenv;
-use network::{NetworkEvent, NetworkManager, action::NetworkAction};
 use repository::RepositoryManager;
 use services::{
     publish_service::PublishService, sharding_table_service::ShardingTableService,
@@ -32,6 +33,7 @@ use validation::ValidationManager;
 
 use crate::{
     config::Config,
+    network::{NetworkHandle, NetworkProtocols},
     services::{file_service::FileService, pending_storage_service::PendingStorageService},
 };
 
@@ -42,14 +44,12 @@ async fn main() {
     display_ot_node_ascii_art();
     let config = Arc::new(config::initialize_configuration());
 
-    let (
-        network_action_tx,
-        network_action_rx,
-        network_event_tx,
-        network_event_rx,
-        schedule_command_tx,
-        schedule_command_rx,
-    ) = initialize_channels();
+    let (schedule_command_tx, schedule_command_rx) = initialize_channels();
+
+    // Channels for network manager event loop
+    let (network_action_tx, network_action_rx) = tokio::sync::mpsc::channel(1024);
+    let (network_event_tx, network_event_rx) = tokio::sync::mpsc::channel(1024);
+    let network_handle = Arc::new(NetworkHandle::new(network_action_tx));
 
     let (network_manager, repository_manager, blockchain_manager, validation_manager) =
         initialize_managers(&config.managers).await;
@@ -59,15 +59,15 @@ async fn main() {
             &blockchain_manager,
             &repository_manager,
             &validation_manager,
-            &network_action_tx,
+            &network_handle,
         );
 
     let context = Arc::new(Context::new(
         config.clone(),
-        network_action_tx.clone(),
         schedule_command_tx,
         Arc::clone(&repository_manager),
         Arc::clone(&network_manager),
+        Arc::clone(&network_handle),
         Arc::clone(&blockchain_manager),
         Arc::clone(&validation_manager),
         Arc::clone(&ual_service),
@@ -107,6 +107,20 @@ async fn main() {
             async move { blockchain_event_controller.listen_and_handle_events().await },
         );
 
+    // Spawn network manager event loop task
+    let network_event_loop_task = tokio::task::spawn(async move {
+        if let Err(error) = network_manager.start_listening().await {
+            tracing::error!("Failed to start swarm listener: {}", error);
+            return;
+        }
+
+        // Run the network manager event loop
+        network_manager
+            .run(network_action_rx, network_event_tx)
+            .await;
+    });
+
+    // Spawn RPC router task to handle network events
     let handle_network_events_task = tokio::task::spawn(async move {
         rpc_router
             .listen_and_handle_network_events(network_event_rx)
@@ -115,23 +129,13 @@ async fn main() {
     let handle_http_events_task =
         tokio::task::spawn(async move { http_api_router.listen_and_handle_http_requests().await });
 
-    let handle_swarm_events_task = tokio::task::spawn(async move {
-        // listen_and_handle_swarm_events now returns Result
-        if let Err(e) = network_manager
-            .listen_and_handle_swarm_events(network_action_rx, network_event_tx)
-            .await
-        {
-            tracing::error!("Network swarm event handler failed: {}", e);
-        }
-    });
-
     let _ = join!(
         handle_http_events_task,
+        network_event_loop_task,
         handle_network_events_task,
         handle_blockchain_events_task,
         schedule_commands_task,
         execute_commands_task,
-        handle_swarm_events_task
     );
 }
 
@@ -162,39 +166,25 @@ fn display_ot_node_ascii_art() {
     }
 }
 
-fn initialize_channels() -> (
-    Sender<NetworkAction>,
-    Receiver<NetworkAction>,
-    Sender<NetworkEvent>,
-    Receiver<NetworkEvent>,
-    Sender<Command>,
-    Receiver<Command>,
-) {
-    let (network_action_tx, network_action_rx) = tokio::sync::mpsc::channel::<NetworkAction>(1000);
-    let (network_event_tx, network_event_rx) = tokio::sync::mpsc::channel::<NetworkEvent>(1000);
+fn initialize_channels() -> (Sender<Command>, Receiver<Command>) {
     let (schedule_command_tx, schedule_command_rx) = tokio::sync::mpsc::channel::<Command>(1000);
 
-    (
-        network_action_tx,
-        network_action_rx,
-        network_event_tx,
-        network_event_rx,
-        schedule_command_tx,
-        schedule_command_rx,
-    )
+    (schedule_command_tx, schedule_command_rx)
 }
 
 async fn initialize_managers(
     config: &ManagersConfig,
 ) -> (
-    Arc<NetworkManager>,
+    Arc<NetworkManager<NetworkProtocols>>,
     Arc<RepositoryManager>,
     Arc<BlockchainManager>,
     Arc<ValidationManager>,
 ) {
-    // NetworkManager now returns Result - handle it properly
+    // NetworkManager creates base protocols (kad, identify, ping) and handles bootstraps
+    // Application creates its own protocol behaviours
+    let app_protocols = NetworkProtocols::new();
     let network_manager = Arc::new(
-        NetworkManager::new(&config.network)
+        NetworkManager::new(&config.network, app_protocols)
             .await
             .expect("Failed to initialize network manager"),
     );
@@ -222,7 +212,7 @@ fn initialize_services(
     blockchain_manager: &Arc<BlockchainManager>,
     repository_manager: &Arc<RepositoryManager>,
     validation_manager: &Arc<ValidationManager>,
-    network_action_tx: &Sender<NetworkAction>,
+    network_handle: &Arc<NetworkHandle>,
 ) -> (
     Arc<UalService>,
     Arc<ShardingTableService>,
@@ -238,7 +228,7 @@ fn initialize_services(
         Arc::clone(validation_manager),
     ));
     let publish_service = Arc::new(PublishService::new(
-        network_action_tx.clone(),
+        Arc::clone(network_handle),
         Arc::clone(repository_manager),
         Arc::clone(&sharding_table_service),
         Arc::clone(&file_service),

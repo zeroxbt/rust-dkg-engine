@@ -4,16 +4,15 @@ use blockchain::BlockchainName;
 use chrono::Utc;
 use network::{
     PeerId,
-    action::NetworkAction,
     message::{RequestMessage, ResponseMessageType},
 };
 use repository::RepositoryManager;
 use serde::{Serialize, de::DeserializeOwned};
-use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
 use crate::{
     error::{NodeError, ServiceError},
+    network::NetworkHandle,
     services::{
         file_service::{FileService, FileServiceError},
         operation_service::{OperationResponseTracker, OperationState},
@@ -31,13 +30,16 @@ pub trait NetworkOperationProtocol {
     const MIN_ACK_RESPONSES: usize;
 
     fn sharding_table_service(&self) -> &Arc<ShardingTableService>;
-    fn network_action_tx(&self) -> &Sender<NetworkAction>;
+    fn network_handle(&self) -> &Arc<NetworkHandle>;
     fn response_tracker(&self) -> &OperationResponseTracker<Self::OperationRequestMessageData>;
-    fn create_network_action(
+
+    /// Send a request message to a peer
+    /// Implementors should use `NetworkHandle` to enqueue swarm actions.
+    async fn send_request(
         &self,
         peer: PeerId,
         message: RequestMessage<Self::OperationRequestMessageData>,
-    ) -> NetworkAction;
+    );
 
     async fn start_operation(
         &self,
@@ -131,10 +133,8 @@ pub trait NetworkOperationProtocol {
             .await;
 
         for peer in peers_to_contact {
-            self.network_action_tx()
-                .send(self.create_network_action(peer, operation_state.request_message.clone()))
-                .await
-                .unwrap();
+            self.send_request(peer, operation_state.request_message.clone())
+                .await;
         }
     }
 }

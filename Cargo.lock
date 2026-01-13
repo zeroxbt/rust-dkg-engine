@@ -5171,6 +5171,7 @@ dependencies = [
  "figment",
  "futures",
  "hyper 1.8.1",
+ "libp2p",
  "network",
  "rdf-canonize",
  "repository",

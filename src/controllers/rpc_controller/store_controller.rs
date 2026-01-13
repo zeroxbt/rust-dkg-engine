@@ -2,23 +2,22 @@ use std::sync::Arc;
 
 use network::{
     PeerId,
-    action::NetworkAction,
-    message::{
-        RequestMessage, ResponseMessage, ResponseMessageHeader, ResponseMessageType,
-        StoreRequestData, StoreResponseData,
-    },
+    message::{RequestMessage, ResponseMessage, ResponseMessageHeader, ResponseMessageType},
     request_response,
 };
-use tokio::sync::mpsc;
 
 use crate::{
     context::Context,
+    network::NetworkHandle,
     services::publish_service::PublishService,
-    types::traits::{controller::BaseController, service::NetworkOperationProtocol},
+    types::{
+        protocol::{StoreRequestData, StoreResponseData},
+        traits::{controller::BaseController, service::NetworkOperationProtocol},
+    },
 };
 
 pub struct StoreController {
-    network_action_tx: mpsc::Sender<NetworkAction>,
+    network_handle: Arc<NetworkHandle>,
     publish_service: Arc<PublishService>,
 }
 
@@ -28,7 +27,7 @@ impl BaseController for StoreController {
 
     fn new(context: Arc<Context>) -> Self {
         Self {
-            network_action_tx: context.network_action_tx().clone(),
+            network_handle: Arc::clone(context.network_handle()),
             publish_service: Arc::clone(context.publish_service()),
         }
     }
@@ -56,10 +55,11 @@ impl BaseController for StoreController {
             data: response_data,
         };
 
-        self.network_action_tx
-            .send(NetworkAction::StoreResponse { channel, message })
-            .await
-            .unwrap();
+        // Send response directly through swarm
+        let _ = self
+            .network_handle
+            .send_store_response(channel, message)
+            .await;
     }
 
     async fn handle_response(&self, response: ResponseMessage<Self::ResponseData>, peer: PeerId) {

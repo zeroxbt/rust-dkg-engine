@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use blockchain::BlockchainManager;
-use network::{NetworkManager, action::NetworkAction};
+use network::NetworkManager;
 use repository::RepositoryManager;
 use tokio::sync::mpsc::Sender;
 use validation::ValidationManager;
@@ -9,6 +9,7 @@ use validation::ValidationManager;
 use crate::{
     commands::command::Command,
     config::Config,
+    network::{NetworkProtocols, NetworkHandle},
     services::{
         pending_storage_service::PendingStorageService, publish_service::PublishService,
         sharding_table_service::ShardingTableService, ual_service::UalService,
@@ -17,10 +18,10 @@ use crate::{
 
 pub struct Context {
     config: Arc<Config>,
-    network_action_tx: Sender<NetworkAction>,
     schedule_command_tx: Sender<Command>,
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager>,
+    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_handle: Arc<NetworkHandle>,
     blockchain_manager: Arc<BlockchainManager>,
     validation_manager: Arc<ValidationManager>,
     ual_service: Arc<UalService>,
@@ -32,10 +33,10 @@ pub struct Context {
 impl Context {
     pub fn new(
         config: Arc<Config>,
-        network_action_tx: Sender<NetworkAction>,
         schedule_command_tx: Sender<Command>,
         repository_manager: Arc<RepositoryManager>,
-        network_manager: Arc<NetworkManager>,
+        network_manager: Arc<NetworkManager<NetworkProtocols>>,
+        network_handle: Arc<NetworkHandle>,
         blockchain_manager: Arc<BlockchainManager>,
         validation_manager: Arc<ValidationManager>,
         ual_service: Arc<UalService>,
@@ -45,10 +46,10 @@ impl Context {
     ) -> Self {
         Self {
             config,
-            network_action_tx,
             schedule_command_tx,
             repository_manager,
             network_manager,
+            network_handle,
             blockchain_manager,
             validation_manager,
             ual_service,
@@ -66,8 +67,12 @@ impl Context {
         &self.repository_manager
     }
 
-    pub fn network_manager(&self) -> &Arc<NetworkManager> {
+    pub fn network_manager(&self) -> &Arc<NetworkManager<NetworkProtocols>> {
         &self.network_manager
+    }
+
+    pub fn network_handle(&self) -> &Arc<NetworkHandle> {
+        &self.network_handle
     }
 
     pub fn blockchain_manager(&self) -> &Arc<BlockchainManager> {
@@ -92,10 +97,6 @@ impl Context {
 
     pub fn pending_storage_service(&self) -> &Arc<PendingStorageService> {
         &self.pending_storage_service
-    }
-
-    pub fn network_action_tx(&self) -> &Sender<NetworkAction> {
-        &self.network_action_tx
     }
 
     pub fn schedule_command_tx(&self) -> &Sender<Command> {

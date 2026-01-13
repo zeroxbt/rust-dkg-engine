@@ -1,23 +1,22 @@
 use std::sync::Arc;
 
-use network::{
-    PeerId,
-    action::NetworkAction,
-    message::{RequestMessage, StoreRequestData},
-};
+use network::{PeerId, message::RequestMessage};
 use repository::RepositoryManager;
-use tokio::sync::mpsc::Sender;
 
 use super::{
     operation_service::OperationResponseTracker, sharding_table_service::ShardingTableService,
 };
 use crate::{
+    network::NetworkHandle,
     services::file_service::FileService,
-    types::traits::service::{NetworkOperationProtocol, OperationLifecycle},
+    types::{
+        protocol::StoreRequestData,
+        traits::service::{NetworkOperationProtocol, OperationLifecycle},
+    },
 };
 
 pub struct PublishService {
-    network_action_tx: Sender<NetworkAction>,
+    network_handle: Arc<NetworkHandle>,
     repository_manager: Arc<RepositoryManager>,
     response_tracker: OperationResponseTracker<StoreRequestData>,
     sharding_table_service: Arc<ShardingTableService>,
@@ -26,13 +25,13 @@ pub struct PublishService {
 
 impl PublishService {
     pub fn new(
-        network_action_tx: Sender<NetworkAction>,
+        network_handle: Arc<NetworkHandle>,
         repository_manager: Arc<RepositoryManager>,
         sharding_table_service: Arc<ShardingTableService>,
         file_service: Arc<FileService>,
     ) -> Self {
         Self {
-            network_action_tx,
+            network_handle,
             repository_manager,
             response_tracker: OperationResponseTracker::new(),
             sharding_table_service,
@@ -49,18 +48,21 @@ impl NetworkOperationProtocol for PublishService {
     fn sharding_table_service(&self) -> &Arc<ShardingTableService> {
         &self.sharding_table_service
     }
-    fn network_action_tx(&self) -> &Sender<NetworkAction> {
-        &self.network_action_tx
+
+    fn network_handle(&self) -> &Arc<NetworkHandle> {
+        &self.network_handle
     }
+
     fn response_tracker(&self) -> &OperationResponseTracker<Self::OperationRequestMessageData> {
         &self.response_tracker
     }
-    fn create_network_action(
+
+    async fn send_request(
         &self,
         peer: PeerId,
         message: RequestMessage<Self::OperationRequestMessageData>,
-    ) -> NetworkAction {
-        NetworkAction::StoreRequest { peer, message }
+    ) {
+        let _ = self.network_handle.send_store_request(peer, message).await;
     }
 }
 
