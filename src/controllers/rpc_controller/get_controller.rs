@@ -40,7 +40,9 @@ impl BaseController for GetController {
         let response_data = {
             println!("Handling GET request...");
             // TODO: handle GET request
-            GetResponseData::new(Some(ErrorMessage::InvalidData), None)
+            GetResponseData::Error {
+                error_message: "unimplemented".to_string(),
+            }
         };
 
         let message = ResponseMessage {

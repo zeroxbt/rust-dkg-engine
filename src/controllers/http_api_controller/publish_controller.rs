@@ -5,7 +5,7 @@ use hyper::StatusCode;
 use validator::Validate;
 
 use crate::{
-    commands::protocols::publish::sender::send_publish_requests_command::SendPublishRequestsCommandData,
+    commands::protocols::publish::send_publish_requests_command::SendPublishRequestsCommandData,
     context::Context,
     types::{
         dto::publish::{PublishRequest, PublishResponse},

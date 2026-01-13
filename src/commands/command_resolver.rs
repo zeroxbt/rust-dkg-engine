@@ -5,7 +5,10 @@ use uuid::Uuid;
 
 use super::{command::Command, dial_peers_command::DialPeersCommandHandler};
 use crate::{
-    commands::protocols::publish::sender::send_publish_requests_command::SendPublishRequestsCommandHandler,
+    commands::protocols::publish::{
+        handle_publish_request_command::HandlePublishRequestCommandHandler,
+        send_publish_requests_command::SendPublishRequestsCommandHandler,
+    },
     context::Context,
     types::traits::command::{CommandHandler, ScheduleConfig},
 };
@@ -17,8 +20,11 @@ pub struct CommandResolver {
 impl CommandResolver {
     pub fn new(context: Arc<Context>) -> Self {
         let handlers: Vec<Arc<dyn CommandHandler>> = vec![
-            Arc::new(DialPeersCommandHandler::new(context.clone())),
-            Arc::new(SendPublishRequestsCommandHandler::new(context.clone())),
+            Arc::new(DialPeersCommandHandler::new(Arc::clone(&context))),
+            Arc::new(SendPublishRequestsCommandHandler::new(Arc::clone(&context))),
+            Arc::new(HandlePublishRequestCommandHandler::new(Arc::clone(
+                &context,
+            ))),
         ];
 
         let mut map = HashMap::new();

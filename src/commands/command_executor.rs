@@ -32,7 +32,7 @@ impl CommandExecutor {
 
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
-            command_resolver: CommandResolver::new(context.clone()),
+            command_resolver: CommandResolver::new(context),
             process_command_tx: tx,
             process_command_rx: Arc::new(Mutex::new(rx)),
             semaphore: Arc::new(Semaphore::new(COMMAND_QUEUE_PARALLELISM)),

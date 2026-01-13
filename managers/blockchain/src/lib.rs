@@ -2,7 +2,7 @@ pub mod blockchains;
 pub mod error;
 pub mod utils;
 
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, str::FromStr};
 
 use blockchains::{abstract_blockchain::AbstractBlockchain, blockchain_creator::BlockchainCreator};
 pub use blockchains::{
@@ -65,7 +65,8 @@ impl BlockchainConfig {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum BlockchainName {
     Hardhat,
 }
@@ -81,6 +82,17 @@ impl BlockchainName {
 impl Display for BlockchainName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for BlockchainName {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "hardhat" => Ok(BlockchainName::Hardhat),
+            other => Err(format!("Unknown blockchain: {}", other)),
+        }
     }
 }
 

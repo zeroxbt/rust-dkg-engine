@@ -91,28 +91,6 @@ impl From<Model> for Command {
 }
 
 impl Command {
-    pub fn new(name: String, data: serde_json::Value, retries: i32, period: Option<i64>) -> Self {
-        let now = Utc::now();
-        Self {
-            id: Uuid::new_v4(),
-            name,
-            data,
-            ready_at: now.timestamp_millis(),
-            delay: 0,
-            started_at: None,
-            deadline_at: None,
-            period,
-            status: CommandStatus::Pending,
-            message: None,
-            parent_id: None,
-            retries,
-            sequence: None,
-            transactional: false,
-            created_at: now,
-            updated_at: now,
-        }
-    }
-
     pub fn builder(name: impl Into<String>) -> CommandBuilder {
         CommandBuilder::new(name.into())
     }

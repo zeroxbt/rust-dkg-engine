@@ -60,6 +60,9 @@ async fn main() {
             &network_manager,
         );
 
+    let store_session_manager = Arc::new(network::SessionManager::new());
+    let get_session_manager = Arc::new(network::SessionManager::new());
+
     let context = Arc::new(Context::new(
         config.clone(),
         schedule_command_tx,
@@ -71,6 +74,8 @@ async fn main() {
         Arc::clone(&sharding_table_service),
         Arc::clone(&publish_service),
         Arc::clone(&pending_storage_service),
+        Arc::clone(&store_session_manager),
+        Arc::clone(&get_session_manager),
     ));
 
     if config.is_dev_env {

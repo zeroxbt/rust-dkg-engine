@@ -1,3 +1,4 @@
+use blockchain::BlockchainName;
 use network::ErrorMessage;
 use serde::{Deserialize, Serialize};
 
@@ -5,45 +6,41 @@ use serde::{Deserialize, Serialize};
 pub struct StoreRequestData {
     dataset: Vec<String>,
     dataset_root: String,
-    blockchain: String,
+    blockchain: BlockchainName,
 }
 
 impl StoreRequestData {
-    pub fn new(dataset: Vec<String>, dataset_root: String, blockchain: String) -> Self {
+    pub fn new(dataset: Vec<String>, dataset_root: String, blockchain: BlockchainName) -> Self {
         Self {
             dataset,
             dataset_root,
             blockchain,
         }
     }
+
+    pub fn dataset(&self) -> &Vec<String> {
+        &self.dataset
+    }
+
+    pub fn dataset_root(&self) -> &str {
+        &self.dataset_root
+    }
+
+    pub fn blockchain(&self) -> BlockchainName {
+        self.blockchain
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct StoreResponseData {
-    identity_id: String,
-    v: u64,
-    r: String,
-    s: String,
-    vs: String,
-    error_message: Option<ErrorMessage>,
-}
-
-impl StoreResponseData {
-    pub fn new(
+pub enum StoreResponseData {
+    Error {
+        error_message: String,
+    },
+    Data {
         identity_id: String,
         v: u64,
         r: String,
         s: String,
         vs: String,
-        error_message: Option<ErrorMessage>,
-    ) -> Self {
-        Self {
-            identity_id,
-            v,
-            r,
-            s,
-            vs,
-            error_message,
-        }
-    }
+    },
 }

@@ -9,11 +9,12 @@ use validation::ValidationManager;
 use crate::{
     commands::command::Command,
     config::Config,
-    network::NetworkProtocols,
+    network::{NetworkProtocols, SessionManager},
     services::{
         pending_storage_service::PendingStorageService, publish_service::PublishService,
         sharding_table_service::ShardingTableService, ual_service::UalService,
     },
+    types::protocol::{GetResponseData, StoreResponseData},
 };
 
 pub struct Context {
@@ -27,6 +28,8 @@ pub struct Context {
     sharding_table_service: Arc<ShardingTableService>,
     publish_service: Arc<PublishService>,
     pending_storage_service: Arc<PendingStorageService>,
+    store_session_manager: Arc<SessionManager<StoreResponseData>>,
+    get_session_manager: Arc<SessionManager<GetResponseData>>,
 }
 
 impl Context {
@@ -41,6 +44,8 @@ impl Context {
         sharding_table_service: Arc<ShardingTableService>,
         publish_service: Arc<PublishService>,
         pending_storage_service: Arc<PendingStorageService>,
+        store_session_manager: Arc<SessionManager<StoreResponseData>>,
+        get_session_manager: Arc<SessionManager<GetResponseData>>,
     ) -> Self {
         Self {
             config,
@@ -53,6 +58,8 @@ impl Context {
             sharding_table_service,
             publish_service,
             pending_storage_service,
+            store_session_manager,
+            get_session_manager,
         }
     }
 
@@ -94,5 +101,13 @@ impl Context {
 
     pub fn schedule_command_tx(&self) -> &Sender<Command> {
         &self.schedule_command_tx
+    }
+
+    pub fn store_session_manager(&self) -> &Arc<SessionManager<StoreResponseData>> {
+        &self.store_session_manager
+    }
+
+    pub fn get_session_manager(&self) -> &Arc<SessionManager<GetResponseData>> {
+        &self.get_session_manager
     }
 }

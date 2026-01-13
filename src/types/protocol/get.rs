@@ -21,16 +21,7 @@ pub struct Assertion {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GetResponseData {
-    error_message: Option<ErrorMessage>,
-    data: Option<Assertion>,
-}
-
-impl GetResponseData {
-    pub fn new(error_message: Option<ErrorMessage>, data: Option<Assertion>) -> Self {
-        Self {
-            error_message,
-            data,
-        }
-    }
+pub enum GetResponseData {
+    Error { error_message: String },
+    Data { data: Assertion },
 }

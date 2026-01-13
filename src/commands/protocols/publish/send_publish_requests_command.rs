@@ -101,7 +101,7 @@ impl CommandHandler for SendPublishRequestsCommandHandler {
             Ok(shard_nodes) => shard_nodes,
             Err(e) => {
                 let error_message = format!(
-                    "Faled to get shard nodes from repository for operation: {operation_id}. Error: {e}"
+                    "Failed to get shard nodes from repository for operation: {operation_id}. Error: {e}"
                 );
 
                 if let Err(e) = self
@@ -161,11 +161,7 @@ impl CommandHandler for SendPublishRequestsCommandHandler {
                 operation_id: operation_id.into_inner(),
                 message_type: RequestMessageType::ProtocolRequest,
             },
-            data: StoreRequestData::new(
-                dataset.public.clone(),
-                dataset_root.clone(),
-                blockchain.to_string(),
-            ),
+            data: StoreRequestData::new(dataset.public.clone(), dataset_root.clone(), blockchain),
         };
 
         let my_peer_id = *self.network_manager.peer_id();
