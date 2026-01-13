@@ -2,12 +2,12 @@ use std::{convert::TryFrom, fs::read_to_string, sync::Arc};
 
 use ethers::{
     abi::{Abi, Token},
-    core::types::Address,
-    prelude::*,
+    core::{k256::ecdsa::SigningKey, types::Address},
+    middleware::{MiddlewareBuilder, SignerMiddleware},
     providers::{Http, Provider},
-    signers::LocalWallet,
+    signers::{LocalWallet, Wallet},
+    types::{Bytes, U256},
 };
-use k256::ecdsa::SigningKey;
 
 const HUB_CONTRACT_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";
@@ -33,7 +33,7 @@ impl LocalBlockchain {
         let private_keys: Vec<String> = serde_json::from_str(&read_to_string(PRIVATE_KEYS_PATH)?)?;
 
         let signer = private_keys
-            .get(0)
+            .first()
             .ok_or("No private keys found")?
             .parse::<LocalWallet>()?;
         let provider =

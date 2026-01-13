@@ -10,7 +10,7 @@ use super::command::Command;
 use crate::{
     commands::constants::DEFAULT_COMMAND_DELAY_MS,
     context::Context,
-    network::{NetworkProtocols, NetworkHandle},
+    network::{NetworkHandle, NetworkProtocols},
     types::traits::command::{CommandExecutionResult, CommandHandler, ScheduleConfig},
 };
 

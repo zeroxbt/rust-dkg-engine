@@ -1,5 +1,4 @@
-use sea_orm_migration::async_trait::async_trait;
-pub use sea_orm_migration::prelude::*;
+use sea_orm_migration::{MigrationTrait, MigratorTrait, async_trait::async_trait};
 
 mod m001_create_command;
 mod m002_create_shard;

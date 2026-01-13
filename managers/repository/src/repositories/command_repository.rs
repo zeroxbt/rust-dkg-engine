@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    entity::prelude::*, error::DbErr,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, error::DbErr,
 };
+use uuid::Uuid;
 
 use crate::models::command::{self, Entity, Model};
 

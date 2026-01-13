@@ -9,7 +9,7 @@ use validation::ValidationManager;
 use crate::{
     commands::command::Command,
     config::Config,
-    network::{NetworkProtocols, NetworkHandle},
+    network::{NetworkHandle, NetworkProtocols},
     services::{
         pending_storage_service::PendingStorageService, publish_service::PublishService,
         sharding_table_service::ShardingTableService, ual_service::UalService,
