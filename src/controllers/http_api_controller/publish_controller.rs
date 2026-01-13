@@ -5,7 +5,7 @@ use hyper::StatusCode;
 use validator::Validate;
 
 use crate::{
-    commands::protocols::publish::sender::publish_replication_command::PublishReplicationCommandData,
+    commands::protocols::publish::sender::send_publish_requests_command::SendPublishRequestsCommandData,
     context::Context,
     types::{
         dto::publish::{PublishRequest, PublishResponse},
@@ -108,7 +108,7 @@ impl PublishController {
             dataset_root
         );
 
-        let command = PublishReplicationCommandData::new(
+        let command = SendPublishRequestsCommandData::new(
             operation_id,
             blockchain.clone(),
             dataset_root.clone(),

@@ -1,1 +1,1 @@
-pub mod publish_replication_command;
+pub mod send_publish_requests_command;

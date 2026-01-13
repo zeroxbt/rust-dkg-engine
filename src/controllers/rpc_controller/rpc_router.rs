@@ -80,7 +80,6 @@ impl RpcRouter {
                         request_response::Event::Message { message, peer, .. } => {
                             self.store_controller.handle_message(message, peer).await;
                         }
-
                         _ => {}
                     },
                     NetworkProtocolsEvent::Get(inner_event) => match inner_event {
