@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use super::{command::Command, dial_peers_command::DialPeersCommandHandler};
 use crate::{
-    commands::publish_replication_command::PublishReplicationCommandHandler,
+    commands::protocols::publish::sender::publish_replication_command::PublishReplicationCommandHandler,
     context::Context,
     types::traits::command::{CommandHandler, ScheduleConfig},
 };

@@ -43,22 +43,6 @@ impl PendingStorageService {
 }
 
 impl PendingStorageService {
-    // async cacheDataset(operationId, datasetRoot, dataset, remotePeerId) {
-    // this.logger.debug(
-    // `Caching ${datasetRoot} dataset root, operation id: ${operationId} in file in pending
-    // storage`, );
-    //
-    // await this.fileService.writeContentsToFile(
-    // this.fileService.getPendingStorageCachePath(),
-    // operationId,
-    // JSON.stringify({
-    // merkleRoot: datasetRoot,
-    // assertion: dataset,
-    // remotePeerId,
-    // }),
-    // );
-    // }
-
     pub async fn store_dataset(
         &self,
         operation_id: OperationId,
@@ -81,22 +65,6 @@ impl PendingStorageService {
 
         Ok(())
     }
-
-    // async getCachedDataset(operationId) {
-    // this.logger.debug(`Retrieving cached dataset for ${operationId} from pending storage`);
-    //
-    // const filePath = this.fileService.getPendingStorageDocumentPath(operationId);
-    //
-    // try {
-    // const fileContents = await this.fileService.readFile(filePath, true);
-    // return fileContents.assertion;
-    // } catch (error) {
-    // this.logger.error(
-    // `Failed to retrieve or parse cached dataset for ${operationId}: ${error.message}`,
-    // );
-    // throw error;
-    // }
-    // }
 
     pub async fn get_dataset(
         &self,

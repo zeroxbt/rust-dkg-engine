@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use network::{
-    PeerId,
+    NetworkManager, PeerId,
     message::{RequestMessage, ResponseMessage, ResponseMessageHeader, ResponseMessageType},
     request_response,
 };
 
 use crate::{
     context::Context,
-    network::NetworkHandle,
+    network::{NetworkProtocols, ProtocolResponse},
     services::publish_service::PublishService,
     types::{
         protocol::{StoreRequestData, StoreResponseData},
@@ -17,7 +17,7 @@ use crate::{
 };
 
 pub struct StoreController {
-    network_handle: Arc<NetworkHandle>,
+    network_manager: Arc<NetworkManager<NetworkProtocols>>,
     publish_service: Arc<PublishService>,
 }
 
@@ -27,7 +27,7 @@ impl BaseController for StoreController {
 
     fn new(context: Arc<Context>) -> Self {
         Self {
-            network_handle: Arc::clone(context.network_handle()),
+            network_manager: Arc::clone(context.network_manager()),
             publish_service: Arc::clone(context.publish_service()),
         }
     }
@@ -57,8 +57,8 @@ impl BaseController for StoreController {
 
         // Send response directly through swarm
         let _ = self
-            .network_handle
-            .send_store_response(channel, message)
+            .network_manager
+            .send_protocol_response(ProtocolResponse::store(channel, message))
             .await;
     }
 

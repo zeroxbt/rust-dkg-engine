@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
-use network::{NestedBehaviourEvent, SwarmEvent, identify, request_response};
+use network::{NestedBehaviourEvent, NetworkManager, SwarmEvent, identify, request_response};
 use repository::RepositoryManager;
 use tokio::sync::{Semaphore, mpsc};
 use tracing::{error, info};
@@ -12,7 +12,7 @@ use crate::{
     controllers::rpc_controller::{
         get_controller::GetController, store_controller::StoreController,
     },
-    network::{NetworkHandle, NetworkProtocols, NetworkProtocolsEvent},
+    network::{NetworkProtocols, NetworkProtocolsEvent},
     types::traits::controller::BaseController,
 };
 
@@ -22,7 +22,7 @@ type BehaviourEvent = <Behaviour as network::NetworkBehaviour>::ToSwarm;
 
 pub struct RpcRouter {
     repository_manager: Arc<RepositoryManager>,
-    network_handle: Arc<NetworkHandle>,
+    network_manager: Arc<NetworkManager<NetworkProtocols>>,
     get_controller: Arc<GetController>,
     store_controller: Arc<StoreController>,
     pub semaphore: Arc<Semaphore>,
@@ -32,7 +32,7 @@ impl RpcRouter {
     pub fn new(context: Arc<Context>) -> Self {
         RpcRouter {
             repository_manager: Arc::clone(context.repository_manager()),
-            network_handle: Arc::clone(context.network_handle()),
+            network_manager: Arc::clone(context.network_manager()),
             get_controller: Arc::new(GetController::new(Arc::clone(&context))),
             store_controller: Arc::new(StoreController::new(Arc::clone(&context))),
             semaphore: Arc::new(Semaphore::new(NETWORK_EVENT_QUEUE_PARALLELISM)),
@@ -99,7 +99,7 @@ impl RpcRouter {
                     tracing::trace!("Adding peer to routing table: {}", peer_id);
 
                     if let Err(error) = self
-                        .network_handle
+                        .network_manager
                         .add_kad_addresses(peer_id, info.listen_addrs)
                         .await
                     {

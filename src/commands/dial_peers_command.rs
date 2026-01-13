@@ -10,7 +10,7 @@ use super::command::Command;
 use crate::{
     commands::constants::DEFAULT_COMMAND_DELAY_MS,
     context::Context,
-    network::{NetworkHandle, NetworkProtocols},
+    network::NetworkProtocols,
     types::traits::command::{CommandExecutionResult, CommandHandler, ScheduleConfig},
 };
 
@@ -24,7 +24,6 @@ pub struct DialPeersCommandData;
 pub struct DialPeersCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    network_handle: Arc<NetworkHandle>,
 }
 
 impl DialPeersCommandHandler {
@@ -32,7 +31,6 @@ impl DialPeersCommandHandler {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            network_handle: Arc::clone(context.network_handle()),
         }
     }
 }
@@ -73,7 +71,7 @@ impl CommandHandler for DialPeersCommandHandler {
                 .iter()
                 .map(|peer_id| peer_id.parse::<PeerId>().unwrap()) // Note: Consider handling this unwrap.
                 .collect();
-            let _ = self.network_handle.dial_peers(peers).await;
+            let _ = self.network_manager.dial_peers(peers).await;
         }
 
         CommandExecutionResult::Repeat

@@ -9,7 +9,7 @@ use key_manager::KeyManager;
 pub use libp2p::request_response::ProtocolSupport;
 // Re-export libp2p types and identity for application use
 pub use libp2p::{
-    PeerId, StreamProtocol, Swarm, identify, identity,
+    Multiaddr, PeerId, StreamProtocol, Swarm, identify, identity,
     kad::{self, BucketInserts, Config as KademliaConfig, Mode, store::MemoryStore},
     ping, request_response,
     swarm::{NetworkBehaviour, SwarmEvent},
@@ -23,18 +23,31 @@ use tokio::sync::{Mutex, mpsc};
 use tracing::info;
 use void::Void;
 
-/// Trait for actions that can be applied to a swarm
-///
-/// The application layer implements this trait for its action types,
-/// allowing the network manager to remain generic over message types.
-pub trait SwarmAction<B>: Send
-where
-    B: NetworkBehaviour,
-{
-    /// Apply this action to the swarm
-    fn apply(self, swarm: &mut Swarm<B>);
+/// Trait for dispatching application protocol messages through the network manager.
+pub trait ProtocolDispatch {
+    type Request: Send;
+    type Response: Send;
+
+    fn send_request(&mut self, request: Self::Request);
+    fn send_response(&mut self, response: Self::Response);
 }
 
+enum NetworkAction<B>
+where
+    B: ProtocolDispatch,
+{
+    DialClosestPeers(Vec<PeerId>),
+    AddKadAddresses {
+        peer_id: PeerId,
+        listen_addrs: Vec<Multiaddr>,
+    },
+    SendProtocolRequest {
+        request: B::Request,
+    },
+    SendProtocolResponse {
+        response: B::Response,
+    },
+}
 pub type NestedError = Either<Either<Either<std::io::Error, std::io::Error>, Void>, Void>;
 pub type SwarmError = Either<NestedError, Void>;
 
@@ -63,16 +76,18 @@ pub struct NestedBehaviour<B: NetworkBehaviour> {
 /// including whatever protocols it needs (store, get, custom protocols, etc.)
 pub struct NetworkManager<B>
 where
-    B: NetworkBehaviour,
+    B: NetworkBehaviour + ProtocolDispatch,
 {
     config: NetworkManagerConfig,
     swarm: Mutex<Swarm<NestedBehaviour<B>>>,
+    action_tx: mpsc::Sender<NetworkAction<B>>,
+    action_rx: Mutex<Option<mpsc::Receiver<NetworkAction<B>>>>,
     peer_id: PeerId,
 }
 
 impl<B> NetworkManager<B>
 where
-    B: NetworkBehaviour,
+    B: NetworkBehaviour + ProtocolDispatch,
 {
     /// Creates a new NetworkManager instance with application-defined behaviour
     ///
@@ -163,9 +178,13 @@ where
             .with_behaviour(|_| custom_behaviour)?
             .build();
 
+        let (action_tx, action_rx) = mpsc::channel(1024);
+
         Ok(Self {
             config: config.to_owned(),
             swarm: tokio::sync::Mutex::new(swarm),
+            action_tx,
+            action_rx: Mutex::new(Some(action_rx)),
             peer_id: local_peer_id,
         })
     }
@@ -206,23 +225,25 @@ where
 
     /// Runs the network event loop, processing swarm events and actions
     ///
-    /// This method consumes the NetworkManager and runs the event loop.
-    /// It receives actions from the action_rx channel and sends events to the event_tx channel.
+    /// This method runs the event loop using the internal swarm and action channel.
+    /// It receives actions from the internal action channel and sends events to the event_tx
+    /// channel.
     ///
     /// # Parameters
-    /// - `action_rx`: Channel receiver for incoming network actions
     /// - `event_tx`: Channel sender for outgoing swarm events
-    ///
-    /// # Type Parameters
-    /// - `A`: Action type that implements SwarmAction<NestedBehaviour<B>>
-    pub async fn run<A>(
+    pub async fn run(
         &self,
-        mut action_rx: mpsc::Receiver<A>,
         event_tx: mpsc::Sender<SwarmEvent<<NestedBehaviour<B> as NetworkBehaviour>::ToSwarm>>,
-    ) where
-        A: SwarmAction<NestedBehaviour<B>>,
-    {
+    ) {
         use libp2p::futures::StreamExt;
+
+        let mut action_rx = match self.action_rx.lock().await.take() {
+            Some(action_rx) => action_rx,
+            None => {
+                tracing::error!("Action receiver already taken, shutting down network loop");
+                return;
+            }
+        };
 
         let mut swarm = self.swarm.lock().await;
 
@@ -237,10 +258,27 @@ where
                 }
                 action = action_rx.recv() => {
                     match action {
-                        Some(action) => {
-                            // Apply action to swarm
-                           action.apply(&mut swarm);
-                        }
+                        Some(action) => match action {
+                            NetworkAction::DialClosestPeers(peers) => {
+                                for peer in peers {
+                                    swarm.behaviour_mut().kad.get_closest_peers(peer);
+                                }
+                            }
+                            NetworkAction::AddKadAddresses {
+                                peer_id,
+                                listen_addrs,
+                            } => {
+                                for address in listen_addrs {
+                                    swarm.behaviour_mut().kad.add_address(&peer_id, address);
+                                }
+                            }
+                            NetworkAction::SendProtocolRequest { request } => {
+                                swarm.behaviour_mut().protocols.send_request(request);
+                            }
+                            NetworkAction::SendProtocolResponse { response } => {
+                                swarm.behaviour_mut().protocols.send_response(response);
+                            }
+                        },
                         None => {
                             tracing::error!("Action channel closed, shutting down network loop");
                             break;
@@ -249,5 +287,43 @@ where
                 }
             }
         }
+    }
+
+    async fn enqueue_action(&self, action: NetworkAction<B>) -> Result<(), NetworkError> {
+        self.action_tx
+            .send(action)
+            .await
+            .map_err(|_| NetworkError::ActionChannelClosed)
+    }
+
+    /// Enqueue a Kademlia closest-peers lookup for each peer ID.
+    pub async fn dial_peers(&self, peers: Vec<PeerId>) -> Result<(), NetworkError> {
+        self.enqueue_action(NetworkAction::DialClosestPeers(peers))
+            .await
+    }
+
+    /// Enqueue Kademlia address updates for a peer.
+    pub async fn add_kad_addresses(
+        &self,
+        peer_id: PeerId,
+        listen_addrs: Vec<Multiaddr>,
+    ) -> Result<(), NetworkError> {
+        self.enqueue_action(NetworkAction::AddKadAddresses {
+            peer_id,
+            listen_addrs,
+        })
+        .await
+    }
+
+    /// Enqueue a protocol request for dispatch by the swarm.
+    pub async fn send_protocol_request(&self, request: B::Request) -> Result<(), NetworkError> {
+        self.enqueue_action(NetworkAction::SendProtocolRequest { request })
+            .await
+    }
+
+    /// Enqueue a protocol response for dispatch by the swarm.
+    pub async fn send_protocol_response(&self, response: B::Response) -> Result<(), NetworkError> {
+        self.enqueue_action(NetworkAction::SendProtocolResponse { response })
+            .await
     }
 }

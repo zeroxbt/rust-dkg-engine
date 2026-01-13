@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use network::{
-    ErrorMessage, PeerId,
+    ErrorMessage, NetworkManager, PeerId,
     message::{RequestMessage, ResponseMessage, ResponseMessageHeader, ResponseMessageType},
     request_response,
 };
 
 use crate::{
     context::Context,
-    network::NetworkHandle,
+    network::{NetworkProtocols, ProtocolResponse},
     types::{
         protocol::{GetRequestData, GetResponseData},
         traits::controller::BaseController,
@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub struct GetController {
-    network_handle: Arc<NetworkHandle>,
+    network_manager: Arc<NetworkManager<NetworkProtocols>>,
 }
 
 impl BaseController for GetController {
@@ -25,7 +25,7 @@ impl BaseController for GetController {
 
     fn new(context: Arc<Context>) -> Self {
         Self {
-            network_handle: Arc::clone(context.network_handle()),
+            network_manager: Arc::clone(context.network_manager()),
         }
     }
 
@@ -53,8 +53,8 @@ impl BaseController for GetController {
 
         // Send response directly through swarm
         let _ = self
-            .network_handle
-            .send_get_response(channel, message)
+            .network_manager
+            .send_protocol_response(ProtocolResponse::get(channel, message))
             .await;
     }
 

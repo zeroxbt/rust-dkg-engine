@@ -3,7 +3,7 @@ use std::sync::Arc;
 use blockchain::BlockchainName;
 use chrono::Utc;
 use network::{
-    PeerId,
+    NetworkManager, PeerId,
     message::{RequestMessage, ResponseMessageType},
 };
 use repository::RepositoryManager;
@@ -12,10 +12,10 @@ use uuid::Uuid;
 
 use crate::{
     error::{NodeError, ServiceError},
-    network::NetworkHandle,
+    network::NetworkProtocols,
     services::{
         file_service::{FileService, FileServiceError},
-        operation_service::{OperationResponseTracker, OperationState},
+        operation_response_tracker::{OperationResponseTracker, OperationState},
         sharding_table_service::ShardingTableService,
     },
     types::models::OperationId,
@@ -26,15 +26,17 @@ type Result<T> = std::result::Result<T, NodeError>;
 // Native async trait (Rust 1.75+)
 pub trait NetworkOperationProtocol {
     type OperationRequestMessageData: Send + Sync + Clone;
-    const BATCH_SIZE: usize;
-    const MIN_ACK_RESPONSES: usize;
+    const BATCH_SIZE: u8;
+    const MIN_ACK_RESPONSES: u8;
 
     fn sharding_table_service(&self) -> &Arc<ShardingTableService>;
-    fn network_handle(&self) -> &Arc<NetworkHandle>;
+    fn network_manager(&self) -> &Arc<NetworkManager<NetworkProtocols>>;
     fn response_tracker(&self) -> &OperationResponseTracker<Self::OperationRequestMessageData>;
 
-    /// Send a request message to a peer
-    /// Implementors should use `NetworkHandle` to enqueue swarm actions.
+    fn min_ack_responses(&self) -> u8 {
+        Self::MIN_ACK_RESPONSES
+    }
+
     async fn send_request(
         &self,
         peer: PeerId,
@@ -102,7 +104,7 @@ pub trait NetworkOperationProtocol {
         {
             tracing::info!("Operation {} is completed", operation_id);
         } else if operation_state.completed_number < Self::MIN_ACK_RESPONSES
-            && (operation_state.nodes_found.len() == total_responses
+            && (operation_state.nodes_found.len() == total_responses as usize
                 || ((total_responses) % Self::BATCH_SIZE == 0))
         {
             if operation_state.last_contacted_index >= operation_state.nodes_found.len() - 1 {
@@ -122,7 +124,7 @@ pub trait NetworkOperationProtocol {
     ) {
         let start_index = operation_state.last_contacted_index;
         let end_index = usize::min(
-            start_index + Self::BATCH_SIZE,
+            start_index + Self::BATCH_SIZE as usize,
             operation_state.nodes_found.len(),
         );
 
@@ -236,11 +238,7 @@ pub trait OperationLifecycle {
     }
 
     /// Mark operation as failed
-    async fn mark_failed(
-        &self,
-        operation_id: OperationId,
-        error: Box<dyn std::error::Error + Send + Sync>,
-    ) -> Result<()> {
+    async fn mark_failed(&self, operation_id: OperationId, error_message: &str) -> Result<()> {
         tracing::warn!(
             "{} for operationId: ${operation_id} failed.",
             Self::OPERATION_NAME
@@ -250,20 +248,18 @@ pub trait OperationLifecycle {
             .update(
                 operation_id.into_inner(),
                 Some(OperationStatus::Failed.as_str()),
-                Some(error.to_string()),
+                Some(error_message.to_string()),
                 None,
                 None,
             )
             .await?;
 
-        let cache_dir = self.file_service().operation_result_cache_dir();
+        let operation_result_file_path = self
+            .file_service()
+            .operation_result_cache_path(&operation_id.to_string());
 
         self.file_service()
-            .write(
-                &cache_dir,
-                &operation_id.to_string(),
-                error.to_string().into_bytes().as_slice(),
-            )
+            .remove_file(&operation_result_file_path)
             .await
             .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
 

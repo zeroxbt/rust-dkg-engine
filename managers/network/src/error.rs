@@ -56,6 +56,10 @@ pub enum NetworkError {
     #[error("Swarm already taken for event loop.")]
     SwarmAlreadyTaken,
 
+    /// Swarm action channel closed
+    #[error("Swarm action channel closed.")]
+    ActionChannelClosed,
+
     /// Key management error
     #[error("Key conversion failed: {0}")]
     KeyConversion(#[from] libp2p::identity::OtherVariantError),

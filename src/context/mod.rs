@@ -9,7 +9,7 @@ use validation::ValidationManager;
 use crate::{
     commands::command::Command,
     config::Config,
-    network::{NetworkHandle, NetworkProtocols},
+    network::NetworkProtocols,
     services::{
         pending_storage_service::PendingStorageService, publish_service::PublishService,
         sharding_table_service::ShardingTableService, ual_service::UalService,
@@ -21,7 +21,6 @@ pub struct Context {
     schedule_command_tx: Sender<Command>,
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    network_handle: Arc<NetworkHandle>,
     blockchain_manager: Arc<BlockchainManager>,
     validation_manager: Arc<ValidationManager>,
     ual_service: Arc<UalService>,
@@ -36,7 +35,6 @@ impl Context {
         schedule_command_tx: Sender<Command>,
         repository_manager: Arc<RepositoryManager>,
         network_manager: Arc<NetworkManager<NetworkProtocols>>,
-        network_handle: Arc<NetworkHandle>,
         blockchain_manager: Arc<BlockchainManager>,
         validation_manager: Arc<ValidationManager>,
         ual_service: Arc<UalService>,
@@ -49,7 +47,6 @@ impl Context {
             schedule_command_tx,
             repository_manager,
             network_manager,
-            network_handle,
             blockchain_manager,
             validation_manager,
             ual_service,
@@ -69,10 +66,6 @@ impl Context {
 
     pub fn network_manager(&self) -> &Arc<NetworkManager<NetworkProtocols>> {
         &self.network_manager
-    }
-
-    pub fn network_handle(&self) -> &Arc<NetworkHandle> {
-        &self.network_handle
     }
 
     pub fn blockchain_manager(&self) -> &Arc<BlockchainManager> {

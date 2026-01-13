@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde::Serialize;
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::commands::command::{Command, CommandBuilder};
 
@@ -62,8 +62,13 @@ pub trait CommandHandler: Send + Sync {
     }
 }
 
-pub trait CommandData: Serialize + Sized {
+pub trait CommandData: Serialize + DeserializeOwned + Sized {
     const COMMAND_NAME: &'static str;
+
+    fn from_command(command: &Command) -> Self {
+        serde_json::from_value(command.data.clone())
+            .unwrap_or_else(|e| panic!("Invalid command data for {}: {}", Self::COMMAND_NAME, e))
+    }
 
     fn into_command(self) -> Command {
         Command::builder(Self::COMMAND_NAME).data(self).build()

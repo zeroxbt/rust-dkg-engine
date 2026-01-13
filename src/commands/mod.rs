@@ -4,4 +4,4 @@ pub mod command_resolver;
 pub mod constants;
 pub mod dial_peers_command;
 pub mod find_nodes_command;
-pub mod publish_replication_command;
+pub mod protocols;

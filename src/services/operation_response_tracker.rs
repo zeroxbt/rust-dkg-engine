@@ -12,8 +12,8 @@ type Result<T> = std::result::Result<T, NodeError>;
 pub struct OperationState<OperationRequestMessageData: Clone> {
     pub nodes_found: Vec<PeerId>,
     pub last_contacted_index: usize,
-    pub failed_number: usize,
-    pub completed_number: usize,
+    pub failed_number: u8,
+    pub completed_number: u8,
     pub request_message: RequestMessage<OperationRequestMessageData>,
 }
 

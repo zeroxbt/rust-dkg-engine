@@ -33,7 +33,7 @@ use validation::ValidationManager;
 
 use crate::{
     config::Config,
-    network::{NetworkHandle, NetworkProtocols},
+    network::NetworkProtocols,
     services::{file_service::FileService, pending_storage_service::PendingStorageService},
 };
 
@@ -47,9 +47,7 @@ async fn main() {
     let (schedule_command_tx, schedule_command_rx) = initialize_channels();
 
     // Channels for network manager event loop
-    let (network_action_tx, network_action_rx) = tokio::sync::mpsc::channel(1024);
     let (network_event_tx, network_event_rx) = tokio::sync::mpsc::channel(1024);
-    let network_handle = Arc::new(NetworkHandle::new(network_action_tx));
 
     let (network_manager, repository_manager, blockchain_manager, validation_manager) =
         initialize_managers(&config.managers).await;
@@ -59,7 +57,7 @@ async fn main() {
             &blockchain_manager,
             &repository_manager,
             &validation_manager,
-            &network_handle,
+            &network_manager,
         );
 
     let context = Arc::new(Context::new(
@@ -67,7 +65,6 @@ async fn main() {
         schedule_command_tx,
         Arc::clone(&repository_manager),
         Arc::clone(&network_manager),
-        Arc::clone(&network_handle),
         Arc::clone(&blockchain_manager),
         Arc::clone(&validation_manager),
         Arc::clone(&ual_service),
@@ -115,9 +112,7 @@ async fn main() {
         }
 
         // Run the network manager event loop
-        network_manager
-            .run(network_action_rx, network_event_tx)
-            .await;
+        network_manager.run(network_event_tx).await;
     });
 
     // Spawn RPC router task to handle network events
@@ -212,7 +207,7 @@ fn initialize_services(
     blockchain_manager: &Arc<BlockchainManager>,
     repository_manager: &Arc<RepositoryManager>,
     validation_manager: &Arc<ValidationManager>,
-    network_handle: &Arc<NetworkHandle>,
+    network_manager: &Arc<NetworkManager<NetworkProtocols>>,
 ) -> (
     Arc<UalService>,
     Arc<ShardingTableService>,
@@ -228,7 +223,7 @@ fn initialize_services(
         Arc::clone(validation_manager),
     ));
     let publish_service = Arc::new(PublishService::new(
-        Arc::clone(network_handle),
+        Arc::clone(network_manager),
         Arc::clone(repository_manager),
         Arc::clone(&sharding_table_service),
         Arc::clone(&file_service),

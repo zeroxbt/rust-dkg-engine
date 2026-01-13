@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
-use network::{PeerId, message::RequestMessage};
+use network::{NetworkManager, PeerId, message::RequestMessage};
 use repository::RepositoryManager;
 
 use super::{
-    operation_service::OperationResponseTracker, sharding_table_service::ShardingTableService,
+    operation_response_tracker::OperationResponseTracker,
+    sharding_table_service::ShardingTableService,
 };
 use crate::{
-    network::NetworkHandle,
+    network::{NetworkProtocols, ProtocolRequest},
     services::file_service::FileService,
     types::{
         protocol::StoreRequestData,
@@ -16,7 +17,7 @@ use crate::{
 };
 
 pub struct PublishService {
-    network_handle: Arc<NetworkHandle>,
+    network_manager: Arc<NetworkManager<NetworkProtocols>>,
     repository_manager: Arc<RepositoryManager>,
     response_tracker: OperationResponseTracker<StoreRequestData>,
     sharding_table_service: Arc<ShardingTableService>,
@@ -25,13 +26,13 @@ pub struct PublishService {
 
 impl PublishService {
     pub fn new(
-        network_handle: Arc<NetworkHandle>,
+        network_manager: Arc<NetworkManager<NetworkProtocols>>,
         repository_manager: Arc<RepositoryManager>,
         sharding_table_service: Arc<ShardingTableService>,
         file_service: Arc<FileService>,
     ) -> Self {
         Self {
-            network_handle,
+            network_manager,
             repository_manager,
             response_tracker: OperationResponseTracker::new(),
             sharding_table_service,
@@ -42,15 +43,15 @@ impl PublishService {
 
 impl NetworkOperationProtocol for PublishService {
     type OperationRequestMessageData = StoreRequestData;
-    const BATCH_SIZE: usize = 20;
-    const MIN_ACK_RESPONSES: usize = 8;
+    const BATCH_SIZE: u8 = 20;
+    const MIN_ACK_RESPONSES: u8 = 8;
 
     fn sharding_table_service(&self) -> &Arc<ShardingTableService> {
         &self.sharding_table_service
     }
 
-    fn network_handle(&self) -> &Arc<NetworkHandle> {
-        &self.network_handle
+    fn network_manager(&self) -> &Arc<NetworkManager<NetworkProtocols>> {
+        &self.network_manager
     }
 
     fn response_tracker(&self) -> &OperationResponseTracker<Self::OperationRequestMessageData> {
@@ -62,7 +63,10 @@ impl NetworkOperationProtocol for PublishService {
         peer: PeerId,
         message: RequestMessage<Self::OperationRequestMessageData>,
     ) {
-        let _ = self.network_handle.send_store_request(peer, message).await;
+        let _ = self
+            .network_manager
+            .send_protocol_request(ProtocolRequest::store(peer, message))
+            .await;
     }
 }
 

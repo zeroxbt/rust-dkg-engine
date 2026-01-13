@@ -5,7 +5,7 @@ use hyper::StatusCode;
 use validator::Validate;
 
 use crate::{
-    commands::publish_replication_command::PublishReplicationCommandData,
+    commands::protocols::publish::sender::publish_replication_command::PublishReplicationCommandData,
     context::Context,
     types::{
         dto::publish::{PublishRequest, PublishResponse},
@@ -97,7 +97,7 @@ impl PublishController {
                 operation_id,
                 e
             );
-            Self::handle_operation_failure(&context, operation_id, Box::new(e), "store dataset")
+            Self::handle_operation_failure(&context, operation_id, &e.to_string(), "store dataset")
                 .await;
             return;
         }
@@ -122,8 +122,13 @@ impl PublishController {
                 operation_id,
                 e
             );
-            Self::handle_operation_failure(&context, operation_id, Box::new(e), "schedule command")
-                .await;
+            Self::handle_operation_failure(
+                &context,
+                operation_id,
+                &e.to_string(),
+                "schedule command",
+            )
+            .await;
             return;
         }
 
@@ -138,12 +143,12 @@ impl PublishController {
     async fn handle_operation_failure(
         context: &Arc<Context>,
         operation_id: OperationId,
-        error: Box<dyn std::error::Error + Send + Sync>,
+        error_message: &str,
         stage: &str,
     ) {
         if let Err(mark_error) = context
             .publish_service()
-            .mark_failed(operation_id, error)
+            .mark_failed(operation_id, error_message)
             .await
         {
             tracing::error!(
