@@ -27,3 +27,4 @@ Temporary Items
 .*origintrail_noderc
 .node*_config*
 data*/
+dkg-engine/*
