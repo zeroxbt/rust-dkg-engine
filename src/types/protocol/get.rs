@@ -1,7 +1,7 @@
-use network::ErrorMessage;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenIds {
     pub start_token_id: u64,
     pub end_token_id: u64,
@@ -9,6 +9,7 @@ pub struct TokenIds {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetRequestData {
     pub ual: String,
     pub token_ids: TokenIds,
@@ -21,7 +22,9 @@ pub struct Assertion {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum GetResponseData {
+    #[serde(rename_all = "camelCase")]
     Error { error_message: String },
     Data { data: Assertion },
 }

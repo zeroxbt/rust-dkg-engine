@@ -9,6 +9,7 @@ use error::RepositoryError;
 use repositories::{
     blockchain_repository::BlockchainRepository, command_repository::CommandRepository,
     operation_repository::OperationRepository, shard_repository::ShardRepository,
+    signature_repository::SignatureRepository,
 };
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
@@ -21,6 +22,7 @@ pub struct RepositoryManager {
     shard_repository: ShardRepository,
     blockchain_repository: BlockchainRepository,
     operation_repository: OperationRepository,
+    signature_repository: SignatureRepository,
 }
 
 impl RepositoryManager {
@@ -60,6 +62,7 @@ impl RepositoryManager {
             shard_repository: ShardRepository::new(Arc::clone(&conn)),
             blockchain_repository: BlockchainRepository::new(Arc::clone(&conn)),
             operation_repository: OperationRepository::new(Arc::clone(&conn)),
+            signature_repository: SignatureRepository::new(Arc::clone(&conn)),
         })
     }
 
@@ -77,6 +80,10 @@ impl RepositoryManager {
 
     pub fn operation_repository(&self) -> &OperationRepository {
         &self.operation_repository
+    }
+
+    pub fn signature_repository(&self) -> &SignatureRepository {
+        &self.signature_repository
     }
 }
 

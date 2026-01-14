@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use blockchain::BlockchainName;
+use blockchain::{BlockchainName, utils::SignatureComponents};
 use network::{
     NetworkManager, ResponseMessage,
     message::{ResponseMessageHeader, ResponseMessageType},
@@ -207,10 +207,12 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
             data: StoreResponseData::Data {
                 // TODO: Add actual signature data here
                 identity_id: String::new(),
-                v: 0,
-                r: String::new(),
-                s: String::new(),
-                vs: String::new(),
+                signature: SignatureComponents {
+                    v: 0,
+                    r: String::new(),
+                    s: String::new(),
+                    vs: String::new(),
+                },
             },
         };
 

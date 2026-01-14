@@ -246,4 +246,17 @@ impl BlockchainManager {
             .get_assertion_id_by_index(contract, token_id, index)
             .await
     }
+
+    pub async fn sign_message(
+        &self,
+        blockchain: &BlockchainName,
+        message_hash: &str,
+    ) -> Result<Vec<u8>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl.sign_message(message_hash).await
+    }
 }

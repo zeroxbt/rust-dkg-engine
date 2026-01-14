@@ -1,8 +1,8 @@
-use blockchain::BlockchainName;
-use network::ErrorMessage;
+use blockchain::{BlockchainName, utils::SignatureComponents};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct StoreRequestData {
     dataset: Vec<String>,
     dataset_root: String,
@@ -32,15 +32,16 @@ impl StoreRequestData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum StoreResponseData {
+    #[serde(rename_all = "camelCase")]
     Error {
         error_message: String,
     },
+    #[serde(rename_all = "camelCase")]
     Data {
         identity_id: String,
-        v: u64,
-        r: String,
-        s: String,
-        vs: String,
+        #[serde(flatten)]
+        signature: SignatureComponents,
     },
 }

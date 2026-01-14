@@ -333,4 +333,29 @@ pub trait AbstractBlockchain: Send + Sync {
             .await
             .map_err(|_| BlockchainError::Custom(format!("Unable to get assertion id for asset state with index: {}, content asset storage with address: {}", index, contract)))
     }
+
+    async fn sign_message(&self, message_hash: &str) -> Result<Vec<u8>, BlockchainError> {
+        use ethers::{signers::Signer, utils::hex};
+
+        // Decode the hex message hash
+        let message_bytes = hex::decode(message_hash.strip_prefix("0x").unwrap_or(message_hash))
+            .map_err(|e| {
+                BlockchainError::Custom(format!("Failed to decode message hash: {}", e))
+            })?;
+
+        // Access the signer through the provider's inner middleware
+        // BlockchainProvider is NonceManagerMiddleware<SignerMiddleware<Provider<Http>,
+        // LocalWallet>>
+        let provider = self.provider();
+        let signer = provider.inner().signer();
+
+        // Sign the message
+        let signature = signer
+            .sign_message(&message_bytes)
+            .await
+            .map_err(|e| BlockchainError::Custom(format!("Failed to sign message: {}", e)))?;
+
+        // Return the flat signature as bytes
+        Ok(signature.to_vec())
+    }
 }
