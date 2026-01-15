@@ -1,11 +1,11 @@
 use ethers::{
-    abi::{Address, EncodePackedError, Token},
+    abi::{Address, EncodePackedError, Token, encode_packed},
     contract::{EthLogDecode, parse_log},
     prelude::{ContractError, TransactionReceipt},
     providers::{Http, PendingTransaction},
     types::U256,
+    utils::{hex::FromHexError, keccak256},
 };
-use hex::FromHexError;
 
 use crate::{
     blockchains::{abstract_blockchain::EventLog, blockchain_creator::BlockchainProvider},
@@ -35,11 +35,16 @@ pub fn encode_packed_keyword(
 }
 
 pub fn to_hex_string(data: Vec<u8>) -> String {
-    hex::encode(data)
+    ethers::utils::hex::encode(data)
 }
 
 pub fn from_hex_string(data: String) -> Result<Vec<u8>, FromHexError> {
-    hex::decode(data)
+    ethers::utils::hex::decode(data)
+}
+
+pub fn keccak256_encode_packed(tokens: &[Token]) -> Result<[u8; 32], EncodePackedError> {
+    let packed = encode_packed(tokens)?;
+    Ok(keccak256(packed))
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -70,11 +75,11 @@ pub fn split_signature(flat_signature: Vec<u8>) -> Result<SignatureComponents, B
     // Convert U256 to bytes (32 bytes each for r and s)
     let mut r_bytes = [0u8; 32];
     signature.r.to_big_endian(&mut r_bytes);
-    let r = format!("0x{}", hex::encode(r_bytes));
+    let r = format!("0x{}", ethers::utils::hex::encode(r_bytes));
 
     let mut s_bytes = [0u8; 32];
     signature.s.to_big_endian(&mut s_bytes);
-    let s = format!("0x{}", hex::encode(s_bytes));
+    let s = format!("0x{}", ethers::utils::hex::encode(s_bytes));
 
     // Compute vs (compact signature format: s with the parity bit from v encoded in the high bit)
     let mut vs_bytes = s_bytes;
@@ -82,7 +87,7 @@ pub fn split_signature(flat_signature: Vec<u8>) -> Result<SignatureComponents, B
     if signature.v == 28 || signature.v == 1 {
         vs_bytes[0] |= 0x80;
     }
-    let vs = format!("0x{}", hex::encode(vs_bytes));
+    let vs = format!("0x{}", ethers::utils::hex::encode(vs_bytes));
 
     Ok(SignatureComponents { v, r, s, vs })
 }

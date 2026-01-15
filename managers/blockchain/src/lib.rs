@@ -1,7 +1,6 @@
 pub mod blockchains;
 pub mod error;
 pub mod utils;
-
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 
 use blockchains::{abstract_blockchain::AbstractBlockchain, blockchain_creator::BlockchainCreator};
@@ -13,7 +12,10 @@ pub use blockchains::{
         StakeWithdrawalStartedFilter,
     },
 };
-pub use ethers::types::Address;
+pub use ethers::{
+    abi::Token,
+    types::{Address, H256, U256},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::error::BlockchainError;

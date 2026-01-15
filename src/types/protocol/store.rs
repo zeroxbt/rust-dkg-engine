@@ -31,16 +31,14 @@ impl StoreRequestData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum StoreResponseData {
     #[serde(rename_all = "camelCase")]
-    Error {
-        error_message: String,
-    },
+    Error { error_message: String },
     #[serde(rename_all = "camelCase")]
     Data {
-        identity_id: String,
+        identity_id: u128,
         #[serde(flatten)]
         signature: SignatureComponents,
     },

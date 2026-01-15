@@ -60,3 +60,20 @@ pub enum ProtocolOperation {
     Get,
     Update,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum OperationStatus {
+    InProgress,
+    Completed,
+    Failed,
+}
+
+impl OperationStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::InProgress => "IN_PROGRESS",
+            Self::Completed => "COMPLETED",
+            Self::Failed => "FAILED",
+        }
+    }
+}

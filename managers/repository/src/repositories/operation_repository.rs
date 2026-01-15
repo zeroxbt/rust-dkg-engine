@@ -36,7 +36,6 @@ impl OperationRepository {
             operation_name: Set(operation_name.to_string()),
             status: Set(status.to_string()),
             error_message: Set(None),
-            min_acks_reached: Set(false),
             timestamp: Set(timestamp),
             created_at: Set(now),
             updated_at: Set(now),
@@ -64,7 +63,6 @@ impl OperationRepository {
         operation_id: Uuid,
         status: Option<&str>,
         error_message: Option<String>,
-        min_acks_reached: Option<bool>,
         timestamp: Option<i64>,
     ) -> Result<Model, RepositoryError> {
         // First, find the existing record
@@ -84,9 +82,6 @@ impl OperationRepository {
         if let Some(em) = error_message {
             active_model.error_message = Set(Some(em));
         }
-        if let Some(mar) = min_acks_reached {
-            active_model.min_acks_reached = Set(mar);
-        }
         if let Some(ts) = timestamp {
             active_model.timestamp = Set(ts);
         }
@@ -104,18 +99,7 @@ impl OperationRepository {
         operation_id: Uuid,
         status: &str,
     ) -> Result<Model, RepositoryError> {
-        self.update(operation_id, Some(status), None, None, None)
-            .await
-    }
-
-    /// Update min_acks_reached flag
-    pub async fn update_min_acks_reached(
-        &self,
-        operation_id: Uuid,
-        min_acks_reached: bool,
-    ) -> Result<Model, RepositoryError> {
-        self.update(operation_id, None, None, Some(min_acks_reached), None)
-            .await
+        self.update(operation_id, Some(status), None, None).await
     }
 
     /// Delete an operation record by ID

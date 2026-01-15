@@ -17,10 +17,7 @@ use crate::{
     types::{
         models::OperationId,
         protocol::StoreResponseData,
-        traits::{
-            command::{CommandData, CommandExecutionResult, CommandHandler},
-            service::OperationLifecycle,
-        },
+        traits::command::{CommandData, CommandExecutionResult, CommandHandler},
     },
 };
 
@@ -88,7 +85,7 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
             remote_peer_id,
         } = data;
 
-        // Retrieve the cached channel
+        /*  // Retrieve the cached channel
         let channel = match self
             .session_manager
             .retrieve_channel(&remote_peer_id, operation_id)
@@ -104,122 +101,7 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
             }
         };
 
-        let _dataset = match self.pending_storage_service.get_dataset(operation_id).await {
-            Ok(data) => data.dataset().clone(),
-            Err(e) => {
-                if let Err(e) = self
-                    .publish_service
-                    .mark_failed(operation_id, &e.to_string())
-                    .await
-                {
-                    tracing::error!("Unable to mark operation {} as failed: {}", operation_id, e)
-                }
-
-                // Send NACK response
-                let message = ResponseMessage {
-                    header: ResponseMessageHeader {
-                        operation_id: operation_id.into_inner(),
-                        message_type: ResponseMessageType::Nack,
-                    },
-                    data: StoreResponseData::Error {
-                        error_message: format!("Failed to get dataset: {}", e),
-                    },
-                };
-
-                let _ = self
-                    .network_manager
-                    .send_protocol_response(ProtocolResponse::Store { channel, message })
-                    .await;
-
-                return CommandExecutionResult::Completed;
-            }
-        };
-
-        tracing::trace!(
-            "Validating shard for datasetRoot: {dataset_root}, operation: {operation_id}"
-        );
-
-        match self
-            .repository_manager
-            .shard_repository()
-            .get_peer_record(blockchain.as_str(), &remote_peer_id)
-            .await
-        {
-            Ok(Some(_)) => {}
-            invalid_result => {
-                let error_message = match invalid_result {
-                    Err(e) => format!(
-                        "Failed to get remote peer: {remote_peer_id} in shard_repository for operation: {operation_id}. Error: {e}"
-                    ),
-                    _ => format!(
-                        "Invalid shard on blockchain: {blockchain}, operation: {operation_id}"
-                    ),
-                };
-
-                if let Err(e) = self
-                    .publish_service
-                    .mark_failed(operation_id, &error_message)
-                    .await
-                {
-                    tracing::error!("Unable to mark operation {} as failed: {}", operation_id, e)
-                }
-
-                let message = ResponseMessage {
-                    header: ResponseMessageHeader {
-                        operation_id: operation_id.into_inner(),
-                        message_type: ResponseMessageType::Nack,
-                    },
-                    data: StoreResponseData::Error {
-                        error_message: "Invalid neighbourhood".to_string(),
-                    },
-                };
-
-                let _ = self
-                    .network_manager
-                    .send_protocol_response(ProtocolResponse::Store { channel, message })
-                    .await;
-
-                return CommandExecutionResult::Completed;
-            }
-        };
-
-        /*
-
-        // TODO: validate dataset root
-
-        // TODO: get identity id
-
-        // TODO: sign message
-
-        // TODO send ACK response with signature data
-
-        return {
-            messageType: NETWORK_MESSAGE_TYPES.RESPONSES.ACK,
-            messageData: { identityId, v, r, s, vs },
-        }; */
-
-        // For now, send a simple ACK (you'll replace this with actual signature logic)
-        let message = ResponseMessage {
-            header: ResponseMessageHeader {
-                operation_id: operation_id.into_inner(),
-                message_type: ResponseMessageType::Ack,
-            },
-            data: StoreResponseData::Data {
-                // TODO: Add actual signature data here
-                identity_id: String::new(),
-                signature: SignatureComponents {
-                    v: 0,
-                    r: String::new(),
-                    s: String::new(),
-                    vs: String::new(),
-                },
-            },
-        };
-
-        let _ = self
-            .network_manager
-            .send_protocol_response(ProtocolResponse::Store { channel, message })
-            .await;
+        */
 
         CommandExecutionResult::Completed
     }

@@ -25,6 +25,10 @@ pub struct Assertion {
 #[serde(untagged)]
 pub enum GetResponseData {
     #[serde(rename_all = "camelCase")]
-    Error { error_message: String },
-    Data { data: Assertion },
+    Error {
+        error_message: String,
+    },
+    Data {
+        data: Assertion,
+    },
 }

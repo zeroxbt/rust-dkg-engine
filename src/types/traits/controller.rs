@@ -1,4 +1,4 @@
-use std::{fmt::Debug, sync::Arc};
+/* use std::{fmt::Debug, sync::Arc};
 
 use network::{
     PeerId,
@@ -37,13 +37,14 @@ pub trait BaseController {
             request_response::Message::Request {
                 request, channel, ..
             } => {
-                info!("Received message: {:?} from peer: {:?}", request, peer);
+                info!("Received message: {:?} from peer: {}", request, peer);
                 self.handle_request(request, channel, peer).await;
             }
             request_response::Message::Response { response, .. } => {
-                info!("Received response: {:?} from peer: {:?}", response, peer);
+                info!("Received response: {:?} from peer: {}", response, peer);
                 self.handle_response(response, peer).await;
             }
         }
     }
 }
+ */

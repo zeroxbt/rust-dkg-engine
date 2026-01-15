@@ -11,5 +11,4 @@ ethers.workspace = true
 serde.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
-hex.workspace = true
 async-trait.workspace = true  # Required for AbstractBlockchain trait (used with trait objects)

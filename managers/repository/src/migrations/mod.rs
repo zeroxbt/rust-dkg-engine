@@ -4,7 +4,6 @@ mod m001_create_command;
 mod m002_create_shard;
 mod m003_create_blockchain;
 mod m004_create_operations;
-mod m005_create_operations_responses;
 mod m006_create_signatures;
 
 pub struct Migrator;
@@ -17,7 +16,6 @@ impl MigratorTrait for Migrator {
             Box::new(m002_create_shard::Migration),
             Box::new(m003_create_blockchain::Migration),
             Box::new(m004_create_operations::Migration),
-            Box::new(m005_create_operations_responses::Migration),
             Box::new(m006_create_signatures::Migration),
         ]
     }

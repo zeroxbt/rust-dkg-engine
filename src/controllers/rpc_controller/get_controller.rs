@@ -1,4 +1,4 @@
-use std::sync::Arc;
+/* use std::sync::Arc;
 
 use network::{
     ErrorMessage, NetworkManager, PeerId,
@@ -66,3 +66,4 @@ impl BaseController for GetController {
         println!("Handling GET response...");
     }
 }
+ */

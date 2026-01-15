@@ -22,7 +22,6 @@ impl MigrationTrait for Migration {
                     .col(string(operations::Column::OperationName))
                     .col(string_null(operations::Column::Status))
                     .col(text_null(operations::Column::ErrorMessage))
-                    .col(boolean(operations::Column::MinAcksReached).default(false))
                     .col(big_integer(operations::Column::Timestamp))
                     .to_owned(),
             ))

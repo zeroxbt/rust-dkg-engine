@@ -12,10 +12,7 @@ use serde::Deserialize;
 use tokio::{net::TcpListener, sync::Mutex};
 use tower_http::cors::*;
 
-use super::{
-    get_controller::GetController, info_controller::InfoController,
-    publish_controller::PublishController,
-};
+use super::{info_controller::InfoController, publish_controller::PublishController};
 use crate::context::Context;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -38,7 +35,7 @@ impl HttpApiRouter {
             .layer(cors_layer)
             .route("/info", get(InfoController::handle_request))
             .route("/publish", post(PublishController::handle_request))
-            .route("/get", post(GetController::handle_request))
+            // .route("/get", post(GetController::handle_request))
             .with_state(Arc::clone(context));
 
         HttpApiRouter {

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
+use libp2p::request_response::Message;
 use network::{NestedBehaviourEvent, NetworkManager, SwarmEvent, identify, request_response};
 use repository::RepositoryManager;
 use tokio::sync::{Semaphore, mpsc};
@@ -8,11 +9,8 @@ use tokio::sync::{Semaphore, mpsc};
 use super::constants::NETWORK_EVENT_QUEUE_PARALLELISM;
 use crate::{
     context::Context,
-    controllers::rpc_controller::{
-        get_controller::GetController, store_controller::StoreController,
-    },
+    controllers::rpc_controller::store_controller::StoreController,
     network::{NetworkProtocols, NetworkProtocolsEvent},
-    types::traits::controller::BaseController,
 };
 
 // Type alias for the complete behaviour and its event type
@@ -22,7 +20,6 @@ type BehaviourEvent = <Behaviour as network::NetworkBehaviour>::ToSwarm;
 pub struct RpcRouter {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    get_controller: Arc<GetController>,
     store_controller: Arc<StoreController>,
     semaphore: Arc<Semaphore>,
 }
@@ -32,7 +29,6 @@ impl RpcRouter {
         RpcRouter {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            get_controller: Arc::new(GetController::new(Arc::clone(&context))),
             store_controller: Arc::new(StoreController::new(Arc::clone(&context))),
             semaphore: Arc::new(Semaphore::new(NETWORK_EVENT_QUEUE_PARALLELISM)),
         }
@@ -74,20 +70,30 @@ impl RpcRouter {
             SwarmEvent::Behaviour(behaviour_event) => match behaviour_event {
                 NestedBehaviourEvent::Protocols(protocol_event) => match protocol_event {
                     NetworkProtocolsEvent::Store(inner_event) => match inner_event {
-                        request_response::Event::OutboundFailure { error, .. } => {
-                            tracing::error!("Failed to store: {}", error);
-                        }
                         request_response::Event::Message { message, peer, .. } => {
-                            self.store_controller.handle_message(message, peer).await;
+                            match message {
+                                Message::Request {
+                                    request, channel, ..
+                                } => {
+                                    self.store_controller
+                                        .handle_request(request, channel, peer)
+                                        .await;
+                                }
+                                Message::Response { response, .. } => {
+                                    self.store_controller.handle_response(response, peer).await;
+                                }
+                            };
                         }
-                        _ => {}
+                        x => {
+                            println!("{:?}", x)
+                        }
                     },
                     NetworkProtocolsEvent::Get(inner_event) => match inner_event {
                         request_response::Event::OutboundFailure { error, .. } => {
                             tracing::error!("Failed to get: {}", error)
                         }
-                        request_response::Event::Message { message, peer, .. } => {
-                            self.get_controller.handle_message(message, peer).await;
+                        request_response::Event::Message { .. } => {
+                            // self.get_controller.handle_message(message, peer).await;
                         }
                         _ => {}
                     },
