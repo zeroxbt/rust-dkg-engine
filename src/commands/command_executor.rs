@@ -6,7 +6,9 @@ use tokio::sync::{Mutex, Semaphore, mpsc};
 use super::{
     command::Command,
     command_resolver::CommandResolver,
-    constants::{COMMAND_QUEUE_PARALLELISM, DEFAULT_COMMAND_REPEAT_INTERVAL_MS, MAX_COMMAND_DELAY_MS},
+    constants::{
+        COMMAND_QUEUE_PARALLELISM, DEFAULT_COMMAND_REPEAT_INTERVAL_MS, MAX_COMMAND_DELAY_MS,
+    },
 };
 use crate::{context::Context, types::traits::command::CommandExecutionResult};
 
