@@ -11,7 +11,7 @@ use crate::{
     config::Config,
     network::{NetworkProtocols, SessionManager},
     services::{
-        pending_storage_service::PendingStorageService, publish_service::PublishService,
+        operation_manager::OperationManager, pending_storage_service::PendingStorageService,
         ual_service::UalService,
     },
     types::protocol::{GetResponseData, StoreResponseData},
@@ -25,7 +25,7 @@ pub struct Context {
     blockchain_manager: Arc<BlockchainManager>,
     validation_manager: Arc<ValidationManager>,
     ual_service: Arc<UalService>,
-    publish_service: Arc<PublishService>,
+    publish_operation_manager: Arc<OperationManager>,
     pending_storage_service: Arc<PendingStorageService>,
     store_session_manager: Arc<SessionManager<StoreResponseData>>,
     get_session_manager: Arc<SessionManager<GetResponseData>>,
@@ -40,7 +40,7 @@ impl Context {
         blockchain_manager: Arc<BlockchainManager>,
         validation_manager: Arc<ValidationManager>,
         ual_service: Arc<UalService>,
-        publish_service: Arc<PublishService>,
+        publish_operation_manager: Arc<OperationManager>,
         pending_storage_service: Arc<PendingStorageService>,
         store_session_manager: Arc<SessionManager<StoreResponseData>>,
         get_session_manager: Arc<SessionManager<GetResponseData>>,
@@ -53,7 +53,7 @@ impl Context {
             blockchain_manager,
             validation_manager,
             ual_service,
-            publish_service,
+            publish_operation_manager,
             pending_storage_service,
             store_session_manager,
             get_session_manager,
@@ -84,8 +84,8 @@ impl Context {
         &self.ual_service
     }
 
-    pub fn publish_service(&self) -> &Arc<PublishService> {
-        &self.publish_service
+    pub fn publish_operation_manager(&self) -> &Arc<OperationManager> {
+        &self.publish_operation_manager
     }
 
     pub fn pending_storage_service(&self) -> &Arc<PendingStorageService> {

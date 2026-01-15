@@ -12,7 +12,9 @@ use validation::ValidationManager;
 use crate::{
     context::Context,
     network::{NetworkProtocols, ProtocolResponse},
-    services::{pending_storage_service::PendingStorageService, publish_service::PublishService},
+    services::{
+        operation_manager::OperationManager, pending_storage_service::PendingStorageService,
+    },
     types::{
         models::{Assertion, OperationId},
         protocol::{StoreRequestData, StoreResponseData},
@@ -21,7 +23,7 @@ use crate::{
 
 pub struct StoreController {
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    publish_service: Arc<PublishService>,
+    publish_operation_manager: Arc<OperationManager>,
     pending_storage_service: Arc<PendingStorageService>,
     repository_manager: Arc<RepositoryManager>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -35,7 +37,7 @@ impl StoreController {
             repository_manager: Arc::clone(context.repository_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             validation_manager: Arc::clone(context.validation_manager()),
-            publish_service: Arc::clone(context.publish_service()),
+            publish_operation_manager: Arc::clone(context.publish_operation_manager()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
     }
@@ -73,8 +75,7 @@ impl StoreController {
                     ),
                 };
 
-                self.publish_service
-                    .operation_manager()
+                self.publish_operation_manager
                     .mark_failed(operation_id.into_inner(), error_message)
                     .await;
 
@@ -287,8 +288,7 @@ impl StoreController {
 
         // Record response using operation manager
         if let Err(e) = self
-            .publish_service
-            .operation_manager()
+            .publish_operation_manager
             .record_response(operation_id.into_inner(), is_success)
             .await
         {

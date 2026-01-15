@@ -20,7 +20,7 @@ use crate::{
     commands::command::Command,
     context::Context,
     network::{NetworkProtocols, ProtocolRequest},
-    services::{pending_storage_service::PendingStorageService, publish_service::PublishService},
+    services::pending_storage_service::PendingStorageService,
     types::{
         models::OperationId,
         protocol::{StoreRequestData, StoreResponseData},
@@ -61,7 +61,6 @@ pub struct SendPublishRequestsCommandHandler {
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     blockchain_manager: Arc<BlockchainManager>,
     pending_storage_service: Arc<PendingStorageService>,
-    publish_service: Arc<PublishService>,
 }
 
 impl SendPublishRequestsCommandHandler {
@@ -70,7 +69,6 @@ impl SendPublishRequestsCommandHandler {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
-            publish_service: Arc::clone(context.publish_service()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
     }

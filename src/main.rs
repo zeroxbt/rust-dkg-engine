@@ -20,7 +20,10 @@ use controllers::{
 };
 use dotenvy::dotenv;
 use repository::RepositoryManager;
-use services::{publish_service::PublishService, ual_service::UalService};
+use services::{
+    operation_manager::{OperationConfig, OperationManager},
+    ual_service::UalService,
+};
 use tokio::{
     join,
     sync::mpsc::{Receiver, Sender},
@@ -47,7 +50,7 @@ async fn main() {
 
     let (network_manager, repository_manager, blockchain_manager, validation_manager) =
         initialize_managers(&config.managers).await;
-    let (ual_service, publish_service, pending_storage_service) = initialize_services(
+    let (ual_service, publish_operation_manager, pending_storage_service) = initialize_services(
         &config,
         &blockchain_manager,
         &repository_manager,
@@ -66,7 +69,7 @@ async fn main() {
         Arc::clone(&blockchain_manager),
         Arc::clone(&validation_manager),
         Arc::clone(&ual_service),
-        Arc::clone(&publish_service),
+        Arc::clone(&publish_operation_manager),
         Arc::clone(&pending_storage_service),
         Arc::clone(&store_session_manager),
         Arc::clone(&get_session_manager),
@@ -194,23 +197,30 @@ fn initialize_services(
     config: &Config,
     blockchain_manager: &Arc<BlockchainManager>,
     repository_manager: &Arc<RepositoryManager>,
-    validation_manager: &Arc<ValidationManager>,
-    network_manager: &Arc<NetworkManager<NetworkProtocols>>,
+    _validation_manager: &Arc<ValidationManager>,
+    _network_manager: &Arc<NetworkManager<NetworkProtocols>>,
 ) -> (
     Arc<UalService>,
-    Arc<PublishService>,
+    Arc<OperationManager>,
     Arc<PendingStorageService>,
 ) {
     let file_service = Arc::new(FileService::new(config.app_data_path.clone()));
     let pending_storage_service = Arc::new(PendingStorageService::new(Arc::clone(&file_service)));
     let ual_service = Arc::new(UalService::new(Arc::clone(blockchain_manager)));
 
-    let publish_service = Arc::new(PublishService::new(
+    let publish_operation_manager = Arc::new(OperationManager::new(
         Arc::clone(repository_manager),
         Arc::clone(&file_service),
+        OperationConfig {
+            operation_name: "publish",
+        },
     ));
 
-    (ual_service, publish_service, pending_storage_service)
+    (
+        ual_service,
+        publish_operation_manager,
+        pending_storage_service,
+    )
 }
 
 fn initialize_controllers(

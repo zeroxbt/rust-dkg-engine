@@ -13,7 +13,7 @@ use crate::{
     commands::command::Command,
     context::Context,
     network::{NetworkProtocols, ProtocolResponse, SessionManager},
-    services::{pending_storage_service::PendingStorageService, publish_service::PublishService},
+    services::pending_storage_service::PendingStorageService,
     types::{
         models::OperationId,
         protocol::StoreResponseData,
@@ -52,7 +52,6 @@ impl HandlePublishRequestCommandData {
 pub struct HandlePublishRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    publish_service: Arc<PublishService>,
     pending_storage_service: Arc<PendingStorageService>,
     session_manager: Arc<SessionManager<StoreResponseData>>,
 }
@@ -62,7 +61,6 @@ impl HandlePublishRequestCommandHandler {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            publish_service: Arc::clone(context.publish_service()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
             session_manager: Arc::clone(context.store_session_manager()),
         }

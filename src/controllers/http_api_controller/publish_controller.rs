@@ -23,6 +23,8 @@ use crate::{
 
 pub struct PublishController;
 
+const MIN_ACK_RESPONSES: u8 = 8;
+
 impl PublishController {
     pub async fn handle_request(
         State(context): State<Arc<Context>>,
@@ -35,8 +37,7 @@ impl PublishController {
 
                 // Create operation record in DB before spawning
                 if let Err(e) = context
-                    .publish_service()
-                    .operation_manager()
+                    .publish_operation_manager()
                     .create_operation(operation_id.into_inner())
                     .await
                 {
@@ -110,8 +111,7 @@ impl PublishController {
                 e
             );
             context
-                .publish_service()
-                .operation_manager()
+                .publish_operation_manager()
                 .mark_failed(operation_id.into_inner(), e.to_string())
                 .await;
 
@@ -141,8 +141,7 @@ impl PublishController {
                 );
 
                 context
-                    .publish_service()
-                    .operation_manager()
+                    .publish_operation_manager()
                     .mark_failed(operation_id.into_inner(), error_message)
                     .await;
                 return;
@@ -154,8 +153,7 @@ impl PublishController {
             shard_nodes.len()
         );
 
-        let min_ack_responses = minimum_number_of_node_replications
-            .unwrap_or(context.publish_service().min_ack_responses());
+        let min_ack_responses = minimum_number_of_node_replications.unwrap_or(MIN_ACK_RESPONSES);
 
         let peers: Vec<PeerId> = shard_nodes
             .iter()
@@ -177,8 +175,7 @@ impl PublishController {
 
         // Initialize progress tracking (operation record already created in handle_request)
         if let Err(e) = context
-            .publish_service()
-            .operation_manager()
+            .publish_operation_manager()
             .initialize_progress(
                 operation_id.into_inner(),
                 total_peers,
@@ -188,8 +185,7 @@ impl PublishController {
         {
             tracing::error!("Failed to initialize progress for {operation_id}: {e}");
             context
-                .publish_service()
-                .operation_manager()
+                .publish_operation_manager()
                 .mark_failed(operation_id.into_inner(), e.to_string())
                 .await;
             return;
@@ -203,8 +199,7 @@ impl PublishController {
             // TODO: in js implementation the operation result data is removed. check how it's
             // handled when it's read by client
             context
-                .publish_service()
-                .operation_manager()
+                .publish_operation_manager()
                 .mark_failed(operation_id.into_inner(), error_message)
                 .await;
 
@@ -219,8 +214,7 @@ impl PublishController {
             Ok(data) => data.dataset().clone(),
             Err(e) => {
                 context
-                    .publish_service()
-                    .operation_manager()
+                    .publish_operation_manager()
                     .mark_failed(operation_id.into_inner(), e.to_string())
                     .await;
 
@@ -244,8 +238,7 @@ impl PublishController {
                     operation_id
                 );
                 context
-                    .publish_service()
-                    .operation_manager()
+                    .publish_operation_manager()
                     .mark_failed(
                         operation_id.into_inner(),
                         "Identity ID not found".to_string(),
@@ -260,8 +253,7 @@ impl PublishController {
                     e
                 );
                 context
-                    .publish_service()
-                    .operation_manager()
+                    .publish_operation_manager()
                     .mark_failed(operation_id.into_inner(), e.to_string())
                     .await;
                 return;
@@ -276,8 +268,7 @@ impl PublishController {
                     operation_id
                 );
                 context
-                    .publish_service()
-                    .operation_manager()
+                    .publish_operation_manager()
                     .mark_failed(
                         operation_id.into_inner(),
                         "Invalid dataset root format".to_string(),
@@ -398,8 +389,7 @@ impl PublishController {
             .await?;
 
         context
-            .publish_service()
-            .operation_manager()
+            .publish_operation_manager()
             .record_response(operation_id.into_inner(), true)
             .await?;
 
