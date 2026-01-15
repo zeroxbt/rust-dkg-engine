@@ -1,15 +1,10 @@
 [
   {
     "inputs": [],
-    "name": "ZeroAddressHub",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "hub",
+    "name": "getParanetIncentivesPoolStorage",
     "outputs": [
       {
-        "internalType": "contract Hub",
+        "internalType": "address",
         "name": "",
         "type": "address"
       }

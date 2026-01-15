@@ -11,22 +11,49 @@
     "type": "constructor"
   },
   {
+    "inputs": [],
+    "name": "NoPendingOperatorFee",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "msg",
+        "type": "string"
+      }
+    ],
+    "name": "UnauthorizedAccess",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ZeroAddressHub",
+    "type": "error"
+  },
+  {
     "anonymous": false,
     "inputs": [
       {
         "indexed": true,
-        "internalType": "address",
-        "name": "custodian",
-        "type": "address"
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
       },
       {
         "indexed": false,
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
+        "internalType": "uint96",
+        "name": "oldAsk",
+        "type": "uint96"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint96",
+        "name": "newAsk",
+        "type": "uint96"
       }
     ],
-    "name": "MisplacedOTPWithdrawn",
+    "name": "NodeAskUpdated",
     "type": "event"
   },
   {
@@ -34,24 +61,24 @@
     "inputs": [
       {
         "indexed": true,
-        "internalType": "address",
-        "name": "custodian",
-        "type": "address"
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
       },
       {
         "indexed": false,
-        "internalType": "address",
-        "name": "tokenContract",
-        "type": "address"
+        "internalType": "bytes",
+        "name": "oldNodeId",
+        "type": "bytes"
       },
       {
         "indexed": false,
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
+        "internalType": "bytes",
+        "name": "newNodeId",
+        "type": "bytes"
       }
     ],
-    "name": "MisplacedTokensWithdrawn",
+    "name": "NodeIdUpdated",
     "type": "event"
   },
   {
@@ -59,18 +86,161 @@
     "inputs": [
       {
         "indexed": true,
-        "internalType": "address",
-        "name": "custodian",
-        "type": "address"
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "oldName",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "newName",
+        "type": "string"
+      }
+    ],
+    "name": "NodeNameUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint16",
+        "name": "feePercentage",
+        "type": "uint16"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "amount",
+        "name": "effectiveDate",
         "type": "uint256"
       }
     ],
-    "name": "TokenTransferred",
+    "name": "OperatorFeeAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint16",
+        "name": "oldFeePercentage",
+        "type": "uint16"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint16",
+        "name": "newFeePercentage",
+        "type": "uint16"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "effectiveDate",
+        "type": "uint256"
+      }
+    ],
+    "name": "OperatorFeesReplaced",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "feePercentage",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint256",
+            "name": "effectiveDate",
+            "type": "uint256"
+          }
+        ],
+        "indexed": false,
+        "internalType": "struct ProfileLib.OperatorFee[]",
+        "name": "operatorFees",
+        "type": "tuple[]"
+      }
+    ],
+    "name": "OperatorFeesUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "nodeName",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes",
+        "name": "nodeId",
+        "type": "bytes"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint16",
+        "name": "initialOperatorFee",
+        "type": "uint16"
+      }
+    ],
+    "name": "ProfileCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes",
+        "name": "nodeId",
+        "type": "bytes"
+      }
+    ],
+    "name": "ProfileDeleted",
     "type": "event"
   },
   {
@@ -81,14 +251,61 @@
         "type": "uint72"
       },
       {
+        "internalType": "uint16",
+        "name": "feePercentage",
+        "type": "uint16"
+      },
+      {
+        "internalType": "uint256",
+        "name": "effectiveDate",
+        "type": "uint256"
+      }
+    ],
+    "name": "addOperatorFee",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "",
+        "type": "uint72"
+      }
+    ],
+    "name": "askUpdateCooldown",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "string",
+        "name": "nodeName",
+        "type": "string"
+      },
+      {
         "internalType": "bytes",
         "name": "nodeId",
         "type": "bytes"
       },
       {
-        "internalType": "address",
-        "name": "sharesContractAddress",
-        "type": "address"
+        "internalType": "uint16",
+        "name": "initialOperatorFee",
+        "type": "uint16"
       }
     ],
     "name": "createProfile",
@@ -117,12 +334,24 @@
         "type": "uint72"
       }
     ],
-    "name": "getAccumulatedOperatorFee",
+    "name": "getActiveOperatorFee",
     "outputs": [
       {
-        "internalType": "uint96",
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "feePercentage",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint256",
+            "name": "effectiveDate",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct ProfileLib.OperatorFee",
         "name": "",
-        "type": "uint96"
+        "type": "tuple"
       }
     ],
     "stateMutability": "view",
@@ -136,31 +365,31 @@
         "type": "uint72"
       }
     ],
-    "name": "getAccumulatedOperatorFeeWithdrawalAmount",
-    "outputs": [
-      {
-        "internalType": "uint96",
-        "name": "",
-        "type": "uint96"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint72",
-        "name": "identityId",
-        "type": "uint72"
-      }
-    ],
-    "name": "getAccumulatedOperatorFeeWithdrawalTimestamp",
+    "name": "getActiveOperatorFeeEffectiveDate",
     "outputs": [
       {
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      }
+    ],
+    "name": "getActiveOperatorFeePercentage",
+    "outputs": [
+      {
+        "internalType": "uint16",
+        "name": "",
+        "type": "uint16"
       }
     ],
     "stateMutability": "view",
@@ -191,19 +420,83 @@
         "internalType": "uint72",
         "name": "identityId",
         "type": "uint72"
-      },
-      {
-        "internalType": "uint8",
-        "name": "hashFunctionId",
-        "type": "uint8"
       }
     ],
-    "name": "getNodeAddress",
+    "name": "getLatestOperatorFee",
     "outputs": [
       {
-        "internalType": "bytes32",
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "feePercentage",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint256",
+            "name": "effectiveDate",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct ProfileLib.OperatorFee",
         "name": "",
-        "type": "bytes32"
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      }
+    ],
+    "name": "getLatestOperatorFeeEffectiveDate",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      }
+    ],
+    "name": "getLatestOperatorFeePercentage",
+    "outputs": [
+      {
+        "internalType": "uint16",
+        "name": "",
+        "type": "uint16"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      }
+    ],
+    "name": "getName",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
       }
     ],
     "stateMutability": "view",
@@ -236,22 +529,264 @@
         "type": "uint72"
       }
     ],
-    "name": "getProfile",
+    "name": "getOperatorFee",
     "outputs": [
       {
-        "internalType": "bytes",
-        "name": "nodeId",
-        "type": "bytes"
+        "internalType": "uint16",
+        "name": "",
+        "type": "uint16"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
       },
       {
-        "internalType": "uint96[2]",
-        "name": "profileSettings",
-        "type": "uint96[2]"
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      }
+    ],
+    "name": "getOperatorFeeByIndex",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "feePercentage",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint256",
+            "name": "effectiveDate",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct ProfileLib.OperatorFee",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
       },
       {
-        "internalType": "address",
-        "name": "sharesContractAddress",
-        "type": "address"
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "getOperatorFeeByTimestamp",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "feePercentage",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint256",
+            "name": "effectiveDate",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct ProfileLib.OperatorFee",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "getOperatorFeeByTimestampReverse",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "feePercentage",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint256",
+            "name": "effectiveDate",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct ProfileLib.OperatorFee",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      }
+    ],
+    "name": "getOperatorFeeEffectiveDateByIndex",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "getOperatorFeeEffectiveDateByTimestamp",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "getOperatorFeeEffectiveDateByTimestampReverse",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      }
+    ],
+    "name": "getOperatorFeePercentageByIndex",
+    "outputs": [
+      {
+        "internalType": "uint16",
+        "name": "",
+        "type": "uint16"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "getOperatorFeePercentageByTimestamp",
+    "outputs": [
+      {
+        "internalType": "uint16",
+        "name": "",
+        "type": "uint16"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "getOperatorFeePercentageByTimestampReverse",
+    "outputs": [
+      {
+        "internalType": "uint16",
+        "name": "",
+        "type": "uint16"
       }
     ],
     "stateMutability": "view",
@@ -265,12 +800,89 @@
         "type": "uint72"
       }
     ],
-    "name": "getSharesContractAddress",
+    "name": "getOperatorFees",
     "outputs": [
       {
-        "internalType": "address",
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "feePercentage",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint256",
+            "name": "effectiveDate",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct ProfileLib.OperatorFee[]",
         "name": "",
-        "type": "address"
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      }
+    ],
+    "name": "getOperatorFeesLength",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      }
+    ],
+    "name": "getProfile",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      },
+      {
+        "internalType": "bytes",
+        "name": "",
+        "type": "bytes"
+      },
+      {
+        "internalType": "uint96",
+        "name": "",
+        "type": "uint96"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "feePercentage",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint256",
+            "name": "effectiveDate",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct ProfileLib.OperatorFee[]",
+        "name": "",
+        "type": "tuple[]"
       }
     ],
     "stateMutability": "view",
@@ -290,10 +902,41 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "initialize",
-    "outputs": [],
-    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "name": "isNameTaken",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      }
+    ],
+    "name": "isOperatorFeeChangePending",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -351,18 +994,29 @@
     "inputs": [
       {
         "internalType": "uint72",
-        "name": "identityId",
+        "name": "",
         "type": "uint72"
+      }
+    ],
+    "name": "profiles",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "internalType": "bytes",
+        "name": "nodeId",
+        "type": "bytes"
       },
       {
         "internalType": "uint96",
-        "name": "newOperatorFeeAmount",
+        "name": "ask",
         "type": "uint96"
       }
     ],
-    "name": "setAccumulatedOperatorFee",
-    "outputs": [],
-    "stateMutability": "nonpayable",
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -373,30 +1027,17 @@
         "type": "uint72"
       },
       {
-        "internalType": "uint96",
-        "name": "accumulatedOperatorFeeWithdrawalAmount",
-        "type": "uint96"
-      }
-    ],
-    "name": "setAccumulatedOperatorFeeWithdrawalAmount",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint72",
-        "name": "identityId",
-        "type": "uint72"
+        "internalType": "uint16",
+        "name": "feePercentage",
+        "type": "uint16"
       },
       {
         "internalType": "uint256",
-        "name": "operatorFeeWithdrawalTimestamp",
+        "name": "effectiveDate",
         "type": "uint256"
       }
     ],
-    "name": "setAccumulatedOperatorFeeWithdrawalTimestamp",
+    "name": "replacePendingOperatorFee",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -427,17 +1068,30 @@
         "type": "uint72"
       },
       {
-        "internalType": "uint8",
-        "name": "hashFunctionId",
-        "type": "uint8"
-      },
-      {
-        "internalType": "bytes32",
-        "name": "nodeAddress",
-        "type": "bytes32"
+        "internalType": "uint256",
+        "name": "cooldownEnd",
+        "type": "uint256"
       }
     ],
-    "name": "setNodeAddress",
+    "name": "setAskUpdateCooldown",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "string",
+        "name": "_name",
+        "type": "string"
+      }
+    ],
+    "name": "setName",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -468,94 +1122,24 @@
         "type": "uint72"
       },
       {
-        "internalType": "address",
-        "name": "sharesContractAddress",
-        "type": "address"
+        "components": [
+          {
+            "internalType": "uint16",
+            "name": "feePercentage",
+            "type": "uint16"
+          },
+          {
+            "internalType": "uint256",
+            "name": "effectiveDate",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct ProfileLib.OperatorFee[]",
+        "name": "operatorFees",
+        "type": "tuple[]"
       }
     ],
-    "name": "setSharesContractAddress",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "name": "sharesNames",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "name": "sharesSymbols",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "tokenContract",
-    "outputs": [
-      {
-        "internalType": "contract IERC20",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "receiver",
-        "type": "address"
-      },
-      {
-        "internalType": "uint96",
-        "name": "amount",
-        "type": "uint96"
-      }
-    ],
-    "name": "transferAccumulatedOperatorFee",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address payable",
-        "name": "custodian",
-        "type": "address"
-      }
-    ],
-    "name": "transferTokens",
+    "name": "setOperatorFees",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -571,26 +1155,6 @@
       }
     ],
     "stateMutability": "pure",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "withdrawMisplacedOTP",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "tokenContractAddress",
-        "type": "address"
-      }
-    ],
-    "name": "withdrawMisplacedTokens",
-    "outputs": [],
-    "stateMutability": "nonpayable",
     "type": "function"
   }
 ]

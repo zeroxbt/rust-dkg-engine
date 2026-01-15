@@ -5,15 +5,21 @@
         "internalType": "address",
         "name": "hubAddress",
         "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "_v81ReleaseEpoch",
-        "type": "uint256"
       }
     ],
     "stateMutability": "nonpayable",
     "type": "constructor"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "msg",
+        "type": "string"
+      }
+    ],
+    "name": "UnauthorizedAccess",
+    "type": "error"
   },
   {
     "inputs": [],
@@ -21,27 +27,52 @@
     "type": "error"
   },
   {
-    "anonymous": false,
     "inputs": [
       {
-        "indexed": false,
-        "internalType": "string",
-        "name": "parameterName",
-        "type": "string"
-      },
+        "internalType": "uint96",
+        "name": "amount",
+        "type": "uint96"
+      }
+    ],
+    "name": "decreaseTotalActiveStake",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
       {
-        "indexed": false,
         "internalType": "uint256",
-        "name": "parameterValue",
+        "name": "amount",
         "type": "uint256"
       }
     ],
-    "name": "ParameterChanged",
-    "type": "event"
+    "name": "decreaseWeightedActiveAskSum",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
   },
   {
     "inputs": [],
-    "name": "askLowerBoundFactor",
+    "name": "getAskBounds",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getAskLowerBound",
     "outputs": [
       {
         "internalType": "uint256",
@@ -54,7 +85,59 @@
   },
   {
     "inputs": [],
-    "name": "askUpperBoundFactor",
+    "name": "getAskUpperBound",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getPrevPricePerKbEpoch",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getPrevStakeWeightedAverageAsk",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getPricePerKbEpoch",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getStakeWeightedAverageAsk",
     "outputs": [
       {
         "internalType": "uint256",
@@ -79,55 +162,36 @@
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "maxOperatorFee",
-    "outputs": [
-      {
-        "internalType": "uint16",
-        "name": "",
-        "type": "uint16"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "maximumStake",
-    "outputs": [
+    "inputs": [
       {
         "internalType": "uint96",
-        "name": "",
+        "name": "amount",
         "type": "uint96"
       }
     ],
-    "stateMutability": "view",
+    "name": "increaseTotalActiveStake",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "minimumRequiredSignatures",
-    "outputs": [
+    "inputs": [
       {
         "internalType": "uint256",
-        "name": "",
+        "name": "amount",
         "type": "uint256"
       }
     ],
-    "stateMutability": "view",
+    "name": "increaseWeightedActiveAskSum",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
     "inputs": [],
-    "name": "minimumStake",
-    "outputs": [
-      {
-        "internalType": "uint96",
-        "name": "",
-        "type": "uint96"
-      }
-    ],
-    "stateMutability": "view",
+    "name": "initialize",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -145,12 +209,12 @@
   },
   {
     "inputs": [],
-    "name": "nodeAskUpdateDelay",
+    "name": "parametersStorage",
     "outputs": [
       {
-        "internalType": "uint256",
+        "internalType": "contract ParametersStorage",
         "name": "",
-        "type": "uint256"
+        "type": "address"
       }
     ],
     "stateMutability": "view",
@@ -158,12 +222,12 @@
   },
   {
     "inputs": [],
-    "name": "opWalletsLimitOnProfileCreation",
+    "name": "prevTotalActiveStake",
     "outputs": [
       {
-        "internalType": "uint16",
+        "internalType": "uint96",
         "name": "",
-        "type": "uint16"
+        "type": "uint96"
       }
     ],
     "stateMutability": "view",
@@ -171,7 +235,7 @@
   },
   {
     "inputs": [],
-    "name": "operatorFeeUpdateDelay",
+    "name": "prevWeightedActiveAskSum",
     "outputs": [
       {
         "internalType": "uint256",
@@ -185,12 +249,12 @@
   {
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "_askLowerBoundFactor",
-        "type": "uint256"
+        "internalType": "uint96",
+        "name": "_prevTotalActiveStake",
+        "type": "uint96"
       }
     ],
-    "name": "setAskLowerBoundFactor",
+    "name": "setPrevTotalActiveStake",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -199,11 +263,11 @@
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "_askUpperBoundFactor",
+        "name": "_prevWeightedActiveAskSum",
         "type": "uint256"
       }
     ],
-    "name": "setAskUpperBoundFactor",
+    "name": "setPrevWeightedActiveAskSum",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -211,12 +275,12 @@
   {
     "inputs": [
       {
-        "internalType": "uint16",
-        "name": "maxOperatorFee_",
-        "type": "uint16"
+        "internalType": "bool",
+        "name": "_status",
+        "type": "bool"
       }
     ],
-    "name": "setMaxOperatorFee",
+    "name": "setStatus",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -225,11 +289,11 @@
     "inputs": [
       {
         "internalType": "uint96",
-        "name": "newMaximumStake",
+        "name": "_totalActiveStake",
         "type": "uint96"
       }
     ],
-    "name": "setMaximumStake",
+    "name": "setTotalActiveStake",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -238,140 +302,36 @@
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "_minimumRequiredSignatures",
+        "name": "_weightedActiveAskSum",
         "type": "uint256"
       }
     ],
-    "name": "setMinimumRequiredSignatures",
+    "name": "setWeightedActiveAskSum",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
   {
-    "inputs": [
+    "inputs": [],
+    "name": "status",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalActiveStake",
+    "outputs": [
       {
         "internalType": "uint96",
-        "name": "newMinimumStake",
+        "name": "",
         "type": "uint96"
-      }
-    ],
-    "name": "setMinimumStake",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "newNodeAskUpdateDelay",
-        "type": "uint256"
-      }
-    ],
-    "name": "setNodeAskUpdateDelay",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint16",
-        "name": "opWalletsLimitOnProfileCreation_",
-        "type": "uint16"
-      }
-    ],
-    "name": "setOpWalletsLimitOnProfileCreation",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "newOperatorFeeUpdateDelay",
-        "type": "uint256"
-      }
-    ],
-    "name": "setOperatorFeeUpdateDelay",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint16",
-        "name": "shardingTableSizeLimit_",
-        "type": "uint16"
-      }
-    ],
-    "name": "setShardingTableSizeLimit",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "newStakeWithdrawalDelay",
-        "type": "uint256"
-      }
-    ],
-    "name": "setStakeWithdrawalDelay",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "_v81ReleaseEpoch",
-        "type": "uint256"
-      }
-    ],
-    "name": "setV81ReleaseEpoch",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "shardingTableSizeLimit",
-    "outputs": [
-      {
-        "internalType": "uint16",
-        "name": "",
-        "type": "uint16"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "stakeWithdrawalDelay",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "v81ReleaseEpoch",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -388,6 +348,19 @@
       }
     ],
     "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "weightedActiveAskSum",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   }
 ]

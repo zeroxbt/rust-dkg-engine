@@ -11,18 +11,29 @@
     "type": "constructor"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint256",
+        "name": "cooldownEnd",
+        "type": "uint256"
+      }
+    ],
+    "name": "AskUpdateOnCooldown",
+    "type": "error"
+  },
+  {
     "inputs": [],
     "name": "EmptyNodeId",
     "type": "error"
   },
   {
     "inputs": [],
-    "name": "EmptySharesTokenName",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "EmptySharesTokenSymbol",
+    "name": "EmptyNodeName",
     "type": "error"
   },
   {
@@ -42,14 +53,8 @@
     "type": "error"
   },
   {
-    "inputs": [
-      {
-        "internalType": "uint72",
-        "name": "identityId",
-        "type": "uint72"
-      }
-    ],
-    "name": "NoOperatorFees",
+    "inputs": [],
+    "name": "InvalidOperatorFee",
     "type": "error"
   },
   {
@@ -61,6 +66,17 @@
       }
     ],
     "name": "NodeIdAlreadyExists",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "nodeName",
+        "type": "string"
+      }
+    ],
+    "name": "NodeNameAlreadyExists",
     "type": "error"
   },
   {
@@ -99,34 +115,12 @@
   {
     "inputs": [
       {
-        "internalType": "uint8",
+        "internalType": "uint16",
         "name": "operatorFee",
-        "type": "uint8"
+        "type": "uint16"
       }
     ],
     "name": "OperatorFeeOutOfRange",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "tokenName",
-        "type": "string"
-      }
-    ],
-    "name": "SharesTokenNameAlreadyExists",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "tokenSymbol",
-        "type": "string"
-      }
-    ],
-    "name": "SharesTokenSymbolAlreadyExists",
     "type": "error"
   },
   {
@@ -148,22 +142,17 @@
   {
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "nowTimestamp",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "endTimestamp",
-        "type": "uint256"
+        "internalType": "string",
+        "name": "msg",
+        "type": "string"
       }
     ],
-    "name": "WithdrawalPeriodPending",
+    "name": "UnauthorizedAccess",
     "type": "error"
   },
   {
     "inputs": [],
-    "name": "WithdrawalWasntInitiated",
+    "name": "ZeroAddressHub",
     "type": "error"
   },
   {
@@ -172,79 +161,30 @@
     "type": "error"
   },
   {
-    "anonymous": false,
-    "inputs": [
+    "inputs": [],
+    "name": "askContract",
+    "outputs": [
       {
-        "indexed": true,
-        "internalType": "uint72",
-        "name": "identityId",
-        "type": "uint72"
-      },
-      {
-        "indexed": false,
-        "internalType": "bytes",
-        "name": "nodeId",
-        "type": "bytes"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint96",
-        "name": "ask",
-        "type": "uint96"
+        "internalType": "contract Ask",
+        "name": "",
+        "type": "address"
       }
     ],
-    "name": "AskUpdated",
-    "type": "event"
+    "stateMutability": "view",
+    "type": "function"
   },
   {
-    "anonymous": false,
-    "inputs": [
+    "inputs": [],
+    "name": "chronos",
+    "outputs": [
       {
-        "indexed": true,
-        "internalType": "uint72",
-        "name": "identityId",
-        "type": "uint72"
-      },
-      {
-        "indexed": false,
-        "internalType": "bytes",
-        "name": "nodeId",
-        "type": "bytes"
-      },
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "adminWallet",
+        "internalType": "contract Chronos",
+        "name": "",
         "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "sharesContractAddress",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint8",
-        "name": "initialOperatorFee",
-        "type": "uint8"
       }
     ],
-    "name": "ProfileCreated",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "uint72",
-        "name": "identityId",
-        "type": "uint72"
-      }
-    ],
-    "name": "ProfileDeleted",
-    "type": "event"
+    "stateMutability": "view",
+    "type": "function"
   },
   {
     "inputs": [
@@ -259,24 +199,19 @@
         "type": "address[]"
       },
       {
+        "internalType": "string",
+        "name": "nodeName",
+        "type": "string"
+      },
+      {
         "internalType": "bytes",
         "name": "nodeId",
         "type": "bytes"
       },
       {
-        "internalType": "string",
-        "name": "sharesTokenName",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "sharesTokenSymbol",
-        "type": "string"
-      },
-      {
-        "internalType": "uint8",
+        "internalType": "uint16",
         "name": "initialOperatorFee",
-        "type": "uint8"
+        "type": "uint16"
       }
     ],
     "name": "createProfile",
@@ -286,10 +221,10 @@
   },
   {
     "inputs": [],
-    "name": "hashingProxy",
+    "name": "delegatorsInfo",
     "outputs": [
       {
-        "internalType": "contract HashingProxy",
+        "internalType": "contract DelegatorsInfo",
         "name": "",
         "type": "address"
       }
@@ -385,82 +320,12 @@
   {
     "inputs": [
       {
-        "internalType": "uint72",
-        "name": "identityId",
-        "type": "uint72"
-      },
-      {
-        "internalType": "uint96",
-        "name": "ask",
-        "type": "uint96"
-      }
-    ],
-    "name": "setAsk",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
         "internalType": "bool",
         "name": "_status",
         "type": "bool"
       }
     ],
     "name": "setStatus",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint72",
-        "name": "identityId",
-        "type": "uint72"
-      }
-    ],
-    "name": "stakeAccumulatedOperatorFee",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "stakingContract",
-    "outputs": [
-      {
-        "internalType": "contract Staking",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "stakingStorage",
-    "outputs": [
-      {
-        "internalType": "contract StakingStorage",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint72",
-        "name": "identityId",
-        "type": "uint72"
-      }
-    ],
-    "name": "startAccumulatedOperatorFeeWithdrawal",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -476,6 +341,42 @@
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint96",
+        "name": "ask",
+        "type": "uint96"
+      }
+    ],
+    "name": "updateAsk",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint72",
+        "name": "identityId",
+        "type": "uint72"
+      },
+      {
+        "internalType": "uint16",
+        "name": "newOperatorFee",
+        "type": "uint16"
+      }
+    ],
+    "name": "updateOperatorFee",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -502,19 +403,6 @@
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint72",
-        "name": "identityId",
-        "type": "uint72"
-      }
-    ],
-    "name": "withdrawAccumulatedOperatorFee",
-    "outputs": [],
-    "stateMutability": "nonpayable",
     "type": "function"
   }
 ]
