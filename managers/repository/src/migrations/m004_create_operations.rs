@@ -23,6 +23,11 @@ impl MigrationTrait for Migration {
                     .col(string_null(operations::Column::Status))
                     .col(text_null(operations::Column::ErrorMessage))
                     .col(big_integer(operations::Column::Timestamp))
+                    // Progress tracking fields
+                    .col(small_unsigned_null(operations::Column::TotalPeers))
+                    .col(small_unsigned_null(operations::Column::MinAckResponses))
+                    .col(small_unsigned(operations::Column::CompletedCount).default(0))
+                    .col(small_unsigned(operations::Column::FailedCount).default(0))
                     .to_owned(),
             ))
             .await?;

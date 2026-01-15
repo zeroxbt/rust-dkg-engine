@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use blockchain::utils::SignatureComponents;
+use blockchain::BlockchainManager;
 use network::{
     NetworkManager, PeerId,
     message::{RequestMessage, ResponseMessage, ResponseMessageHeader, ResponseMessageType},
@@ -23,6 +23,7 @@ pub struct StoreController {
     publish_service: Arc<PublishService>,
     pending_storage_service: Arc<PendingStorageService>,
     repository_manager: Arc<RepositoryManager>,
+    blockchain_manager: Arc<BlockchainManager>,
 }
 
 impl StoreController {
@@ -30,6 +31,7 @@ impl StoreController {
         Self {
             network_manager: Arc::clone(context.network_manager()),
             repository_manager: Arc::clone(context.repository_manager()),
+            blockchain_manager: Arc::clone(context.blockchain_manager()),
             publish_service: Arc::clone(context.publish_service()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
@@ -44,37 +46,6 @@ impl StoreController {
         let RequestMessage { header, data } = request;
 
         let operation_id = OperationId::from(header.operation_id);
-
-        let _dataset = match self.pending_storage_service.get_dataset(operation_id).await {
-            Ok(data) => data.dataset().clone(),
-            Err(e) => {
-                if let Err(e) = self
-                    .publish_service
-                    .mark_failed(operation_id, &e.to_string())
-                    .await
-                {
-                    tracing::error!("Unable to mark operation {} as failed: {}", operation_id, e)
-                }
-
-                // Send NACK response
-                let message = ResponseMessage {
-                    header: ResponseMessageHeader {
-                        operation_id: operation_id.into_inner(),
-                        message_type: ResponseMessageType::Nack,
-                    },
-                    data: StoreResponseData::Error {
-                        error_message: format!("Failed to get dataset: {}", e),
-                    },
-                };
-
-                let _ = self
-                    .network_manager
-                    .send_protocol_response(ProtocolResponse::Store { channel, message })
-                    .await;
-
-                return;
-            }
-        };
 
         tracing::trace!(
             "Validating shard for datasetRoot: {}, operation: {operation_id}",
@@ -130,34 +101,42 @@ impl StoreController {
 
         // TODO: validate dataset root
 
-        // TODO: get identity id
-
-        // TODO: sign message
+        // TODO: store in pending storage
 
         */
 
-        // For now, send a simple ACK ( TODO: replace this with actual signature logic)
+        let identity_id = self
+            .blockchain_manager
+            .get_identity_id(&data.blockchain())
+            .await
+            .unwrap()
+            .unwrap();
+
+        let signature = self
+            .blockchain_manager
+            .sign_message(
+                &data.blockchain(),
+                data.dataset_root().strip_prefix("0x").unwrap(),
+            )
+            .await
+            .unwrap();
+        let signature = blockchain::utils::split_signature(signature).unwrap();
+
         let message = ResponseMessage {
             header: ResponseMessageHeader {
                 operation_id: operation_id.into_inner(),
                 message_type: ResponseMessageType::Ack,
             },
             data: StoreResponseData::Data {
-                // TODO: Add actual signature data here
-                identity_id: 0,
-                signature: SignatureComponents {
-                    v: 0,
-                    r: String::new(),
-                    s: String::new(),
-                    vs: String::new(),
-                },
+                identity_id,
+                signature,
             },
         };
 
-        let _ = self
-            .network_manager
+        self.network_manager
             .send_protocol_response(ProtocolResponse::Store { channel, message })
-            .await;
+            .await
+            .unwrap();
     }
 
     pub async fn handle_response(
@@ -167,78 +146,53 @@ impl StoreController {
     ) {
         let ResponseMessage { header, data } = response;
 
-        match (&header.message_type, data.clone()) {
-            (ResponseMessageType::Ack, _)
-            | (ResponseMessageType::Nack | ResponseMessageType::Busy, _) => {
-                let operation_id = OperationId::from(header.operation_id);
+        let operation_id = OperationId::from(header.operation_id);
+        let is_success = header.message_type == ResponseMessageType::Ack;
 
-                self.publish_service
-                    .response_tracker()
-                    .update_state_responses(
-                        &header.operation_id,
-                        header.message_type == ResponseMessageType::Ack,
-                    )
-                    .await;
-
-                let operation_state = self
-                    .publish_service
-                    .response_tracker()
-                    .get_state(&header.operation_id)
-                    .await;
-
-                let total_responses =
-                    operation_state.completed_number + operation_state.failed_number;
-
-                tracing::debug!(
-                    "Processing response for operation id: {}, number of responses: {}, Completed: {}, Failed: {}, minimum replication factor: {}",
+        if let (
+            ResponseMessageType::Ack,
+            StoreResponseData::Data {
+                identity_id,
+                signature,
+            },
+        ) = (header.message_type, data)
+        {
+            self.repository_manager
+                .signature_repository()
+                .create(
                     header.operation_id,
-                    total_responses,
-                    operation_state.completed_number,
-                    operation_state.failed_number,
-                    operation_state.min_ack_responses
-                );
+                    "network",
+                    &identity_id.to_string(),
+                    signature.v,
+                    &signature.r,
+                    &signature.s,
+                    &signature.vs,
+                )
+                .await
+                .unwrap();
+        };
 
-                if operation_state.completed_number > operation_state.min_ack_responses {
-                    return;
-                }
-
-                if operation_state.completed_number == operation_state.min_ack_responses {
-                    tracing::info!(
-                        "[PUBLISH] Minimum replication reached for operation: {},  completed: {}/{} ",
-                        header.operation_id,
-                        operation_state.completed_number,
-                        operation_state.min_ack_responses
-                    );
-
-                    self.publish_service
-                        .mark_completed(operation_id)
-                        .await
-                        .unwrap();
-
-                    tracing::info!(
-                        "Total number of responses: {}, failed: {}, completed: {}",
-                        total_responses,
-                        operation_state.failed_number,
-                        operation_state.completed_number
-                    );
-                } else if total_responses == operation_state.nodes_found.len() as u8 {
-                    tracing::warn!(
-                        "[PUBLISH] Failed for operation: {}, only {}/{} nodes responsed successfully",
-                        header.operation_id,
-                        operation_state.completed_number,
-                        operation_state.min_ack_responses
-                    );
-                    self.publish_service
-                        .mark_failed(operation_id, "Not replicated to enough nodes!")
-                        .await
-                        .unwrap();
-                    tracing::info!(
-                        "Total number of responses: {}, failed: {}, completed: {}",
-                        total_responses,
-                        operation_state.failed_number,
-                        operation_state.completed_number
-                    );
-                }
+        // Record response using operation manager
+        match self
+            .publish_service
+            .operation_manager()
+            .record_response(operation_id.into_inner(), is_success)
+            .await
+        {
+            Ok(crate::services::operation_manager::OperationAction::Complete) => {
+                tracing::debug!("Operation {operation_id} completed successfully");
+            }
+            Ok(crate::services::operation_manager::OperationAction::Failed { reason }) => {
+                tracing::debug!("Operation {operation_id} failed: {reason}");
+            }
+            Ok(crate::services::operation_manager::OperationAction::Continue) => {
+                tracing::debug!("Operation {operation_id} continuing (waiting for more responses)");
+            }
+            Ok(crate::services::operation_manager::OperationAction::AlreadyFinished) => {
+                tracing::trace!("Operation {operation_id} already finished (late response)");
+            }
+            Err(e) => {
+                tracing::error!("Failed to record response for operation {operation_id}: {e}");
             }
         }
     }

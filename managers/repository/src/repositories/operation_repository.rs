@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set,
+    QuerySelect, Set, sea_query::Expr,
 };
 use uuid::Uuid;
 
@@ -37,6 +37,10 @@ impl OperationRepository {
             status: Set(status.to_string()),
             error_message: Set(None),
             timestamp: Set(timestamp),
+            total_peers: Set(None),
+            min_ack_responses: Set(None),
+            completed_count: Set(0),
+            failed_count: Set(0),
             created_at: Set(now),
             updated_at: Set(now),
         };
@@ -100,6 +104,175 @@ impl OperationRepository {
         status: &str,
     ) -> Result<Model, RepositoryError> {
         self.update(operation_id, Some(status), None, None).await
+    }
+
+    /// Update progress counters (completed_count and failed_count)
+    pub async fn update_progress(
+        &self,
+        operation_id: Uuid,
+        completed_count: u16,
+        failed_count: u16,
+    ) -> Result<Model, RepositoryError> {
+        let existing = Entity::find_by_id(operation_id)
+            .one(self.conn.as_ref())
+            .await?
+            .ok_or_else(|| {
+                RepositoryError::NotFound(format!("Operation {} not found", operation_id))
+            })?;
+
+        let mut active_model: operations::ActiveModel = existing.into();
+        active_model.completed_count = Set(completed_count);
+        active_model.failed_count = Set(failed_count);
+        active_model.updated_at = Set(Utc::now());
+
+        let result = active_model.update(self.conn.as_ref()).await?;
+        Ok(result)
+    }
+
+    /// Atomically increment either completed_count or failed_count and return the updated record.
+    /// This avoids race conditions when multiple responses arrive concurrently.
+    pub async fn atomic_increment_response(
+        &self,
+        operation_id: Uuid,
+        is_success: bool,
+    ) -> Result<Model, RepositoryError> {
+        // Atomically increment the appropriate counter
+        let update_result = if is_success {
+            Entity::update_many()
+                .filter(Column::OperationId.eq(operation_id))
+                .col_expr(
+                    Column::CompletedCount,
+                    Expr::col(Column::CompletedCount).add(1),
+                )
+                .col_expr(Column::UpdatedAt, Expr::value(Utc::now()))
+                .exec(self.conn.as_ref())
+                .await?
+        } else {
+            Entity::update_many()
+                .filter(Column::OperationId.eq(operation_id))
+                .col_expr(Column::FailedCount, Expr::col(Column::FailedCount).add(1))
+                .col_expr(Column::UpdatedAt, Expr::value(Utc::now()))
+                .exec(self.conn.as_ref())
+                .await?
+        };
+
+        if update_result.rows_affected == 0 {
+            return Err(RepositoryError::NotFound(format!(
+                "Operation {} not found",
+                operation_id
+            )));
+        }
+
+        // Fetch the updated record to get the new counts
+        let record = Entity::find_by_id(operation_id)
+            .one(self.conn.as_ref())
+            .await?
+            .ok_or_else(|| {
+                RepositoryError::NotFound(format!("Operation {} not found", operation_id))
+            })?;
+
+        Ok(record)
+    }
+
+    /// Atomically update status only if current status matches expected status.
+    /// Returns Ok(Some(model)) if update succeeded, Ok(None) if status didn't match.
+    /// This enables compare-and-swap for status transitions.
+    pub async fn atomic_complete_if_in_progress(
+        &self,
+        operation_id: Uuid,
+        new_status: &str,
+        error_message: Option<String>,
+    ) -> Result<Option<Model>, RepositoryError> {
+        let mut update_query = Entity::update_many()
+            .filter(Column::OperationId.eq(operation_id))
+            .filter(Column::Status.eq("in_progress"))
+            .col_expr(Column::Status, Expr::value(new_status))
+            .col_expr(Column::UpdatedAt, Expr::value(Utc::now()));
+
+        if let Some(em) = error_message {
+            update_query = update_query.col_expr(Column::ErrorMessage, Expr::value(Some(em)));
+        }
+
+        let update_result = update_query.exec(self.conn.as_ref()).await?;
+
+        if update_result.rows_affected == 0 {
+            // Either not found or status wasn't "in_progress"
+            // Check if the record exists
+            let record = Entity::find_by_id(operation_id)
+                .one(self.conn.as_ref())
+                .await?;
+
+            if record.is_none() {
+                return Err(RepositoryError::NotFound(format!(
+                    "Operation {} not found",
+                    operation_id
+                )));
+            }
+
+            // Record exists but status wasn't in_progress - return None to indicate no update
+            return Ok(None);
+        }
+
+        // Fetch the updated record
+        let record = Entity::find_by_id(operation_id)
+            .one(self.conn.as_ref())
+            .await?;
+
+        Ok(record)
+    }
+
+    /// Initialize progress tracking fields (total_peers, min_ack_responses)
+    pub async fn initialize_progress(
+        &self,
+        operation_id: Uuid,
+        total_peers: u16,
+        min_ack_responses: u16,
+    ) -> Result<Model, RepositoryError> {
+        let existing = Entity::find_by_id(operation_id)
+            .one(self.conn.as_ref())
+            .await?
+            .ok_or_else(|| {
+                RepositoryError::NotFound(format!("Operation {} not found", operation_id))
+            })?;
+
+        let mut active_model: operations::ActiveModel = existing.into();
+        active_model.total_peers = Set(Some(total_peers));
+        active_model.min_ack_responses = Set(Some(min_ack_responses));
+        active_model.completed_count = Set(0);
+        active_model.failed_count = Set(0);
+        active_model.updated_at = Set(Utc::now());
+
+        let result = active_model.update(self.conn.as_ref()).await?;
+        Ok(result)
+    }
+
+    /// Update progress and status together (for completion/failure)
+    pub async fn update_progress_and_status(
+        &self,
+        operation_id: Uuid,
+        status: &str,
+        error_message: Option<String>,
+        completed_count: u16,
+        failed_count: u16,
+    ) -> Result<Model, RepositoryError> {
+        let existing = Entity::find_by_id(operation_id)
+            .one(self.conn.as_ref())
+            .await?
+            .ok_or_else(|| {
+                RepositoryError::NotFound(format!("Operation {} not found", operation_id))
+            })?;
+
+        let mut active_model: operations::ActiveModel = existing.into();
+        active_model.status = Set(status.to_string());
+        active_model.completed_count = Set(completed_count);
+        active_model.failed_count = Set(failed_count);
+        if let Some(em) = error_message {
+            active_model.error_message = Set(Some(em));
+        }
+        active_model.updated_at = Set(Utc::now());
+
+        let result = active_model.update(self.conn.as_ref()).await?;
+        Ok(result)
     }
 
     /// Delete an operation record by ID

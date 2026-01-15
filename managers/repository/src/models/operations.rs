@@ -17,6 +17,11 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub error_message: Option<String>,
     pub timestamp: i64,
+    // Progress tracking fields
+    pub total_peers: Option<u16>,
+    pub min_ack_responses: Option<u16>,
+    pub completed_count: u16,
+    pub failed_count: u16,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }

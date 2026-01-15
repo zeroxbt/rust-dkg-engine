@@ -61,7 +61,7 @@ pub enum ProtocolOperation {
     Update,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OperationStatus {
     InProgress,
     Completed,
@@ -74,6 +74,15 @@ impl OperationStatus {
             Self::InProgress => "IN_PROGRESS",
             Self::Completed => "COMPLETED",
             Self::Failed => "FAILED",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "IN_PROGRESS" => Self::InProgress,
+            "COMPLETED" => Self::Completed,
+            "FAILED" => Self::Failed,
+            _ => Self::InProgress, // Default to InProgress for unknown values
         }
     }
 }

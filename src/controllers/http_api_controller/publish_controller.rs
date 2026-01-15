@@ -16,7 +16,6 @@ use validator::Validate;
 use crate::{
     context::Context,
     network::ProtocolRequest,
-    services::operation_response_tracker::OperationState,
     types::{
         dto::publish::{PublishRequest, PublishResponse},
         models::OperationId,
@@ -33,22 +32,27 @@ impl PublishController {
     ) -> impl IntoResponse {
         match req.validate() {
             Ok(_) => {
-                // Generate operation ID
-                let operation_id = match context.publish_service().create_operation_record().await {
-                    Ok(id) => id,
-                    Err(e) => {
-                        tracing::error!("Failed to create operation record: {}", e);
-                        return (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Failed to create operation: {}", e),
-                        )
-                            .into_response();
-                    }
-                };
+                // Generate operation ID and create DB record immediately
+                let operation_id = OperationId::new();
+
+                // Create operation record in DB before spawning
+                if let Err(e) = context
+                    .publish_service()
+                    .operation_manager()
+                    .create_operation(operation_id.into_inner())
+                    .await
+                {
+                    tracing::error!("Failed to create operation record: {}", e);
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to create operation: {}", e),
+                    )
+                        .into_response();
+                }
 
                 // Spawn async task to execute the operation
                 tokio::spawn(async move {
-                    Self::execute_publish_operation(Arc::clone(&context), req, operation_id).await
+                    Self::execute_publish_operation(Arc::clone(&context), &req, operation_id).await
                 });
 
                 // Return operation ID immediately
@@ -78,7 +82,7 @@ impl PublishController {
 
     async fn execute_publish_operation(
         context: Arc<Context>,
-        request: PublishRequest,
+        request: &PublishRequest,
         operation_id: OperationId,
     ) {
         // Destructure request early to take ownership and avoid clones later
@@ -99,7 +103,7 @@ impl PublishController {
 
         if let Err(e) = context
             .pending_storage_service()
-            .store_dataset(operation_id, &dataset_root, &dataset)
+            .store_dataset(operation_id, dataset_root, dataset)
             .await
         {
             tracing::error!(
@@ -154,23 +158,33 @@ impl PublishController {
         let min_ack_responses = minimum_number_of_node_replications
             .unwrap_or(context.publish_service().min_ack_responses());
 
-        let operation_state = OperationState {
-            nodes_found: shard_nodes
-                .iter()
-                .map(|record| record.peer_id.parse().unwrap())
-                .collect(),
-            min_ack_responses,
-            last_contacted_index: 0,
-            failed_number: 0,
-            completed_number: 0,
-        };
-        context
-            .publish_service()
-            .response_tracker()
-            .insert_operation_state(operation_id.into_inner(), operation_state.clone())
-            .await;
+        let peers: Vec<PeerId> = shard_nodes
+            .iter()
+            .map(|record| record.peer_id.parse().unwrap())
+            .collect();
 
-        if shard_nodes.len() < min_ack_responses as usize {
+        let total_peers = peers.len() as u16;
+
+        // Initialize progress tracking (operation record already created in handle_request)
+        if let Err(e) = context
+            .publish_service()
+            .operation_manager()
+            .initialize_progress(
+                operation_id.into_inner(),
+                total_peers,
+                min_ack_responses as u16,
+            )
+            .await
+        {
+            tracing::error!("Failed to initialize progress for {operation_id}: {e}");
+            let _ = context
+                .publish_service()
+                .mark_failed(operation_id, &e.to_string())
+                .await;
+            return;
+        }
+
+        if peers.len() < min_ack_responses as usize {
             let error_message = format!(
                 "Unable to find enough nodes for operation: {operation_id}. Minimum number of nodes required: {min_ack_responses}"
             );
@@ -210,31 +224,20 @@ impl PublishController {
         let my_peer_id = *context.network_manager().peer_id();
         let mut send_futures = Vec::with_capacity(shard_nodes.len());
 
+        let identity_id = context
+            .blockchain_manager()
+            .get_identity_id(blockchain)
+            .await
+            .unwrap()
+            .unwrap();
+
         for node in shard_nodes {
             let remote_peer_id: PeerId = node.peer_id.parse().unwrap();
 
             if remote_peer_id == my_peer_id {
-                let identity_id = context
-                    .blockchain_manager()
-                    .get_identity_id(&blockchain)
-                    .await
-                    .unwrap()
-                    .unwrap();
-                let dataset_root: H256 = dataset_root.parse().unwrap();
-                let tokens = vec![
-                    Token::Uint(identity_id.into()),
-                    Token::FixedBytes(dataset_root.as_bytes().to_vec()),
-                ];
-                let message_hash = blockchain::utils::keccak256_encode_packed(&tokens).unwrap();
                 let signature = context
                     .blockchain_manager()
-                    .sign_message(
-                        &blockchain,
-                        &format!(
-                            "0x{}",
-                            blockchain::utils::to_hex_string(message_hash.to_vec())
-                        ),
-                    )
+                    .sign_message(blockchain, dataset_root.strip_prefix("0x").unwrap())
                     .await
                     .unwrap();
                 let signature = blockchain::utils::split_signature(signature).unwrap();
@@ -249,9 +252,7 @@ impl PublishController {
                         signature,
                     },
                 };
-                // TODO:
-                //      1. create network signature
-                //      2. process response for our own node
+                // TODO: process response for our own node
             } else {
                 let network_manager = Arc::clone(context.network_manager());
                 let message = RequestMessage {
@@ -262,7 +263,7 @@ impl PublishController {
                     data: StoreRequestData::new(
                         dataset.public.clone(),
                         dataset_root.clone(),
-                        blockchain,
+                        blockchain.to_owned(),
                     ),
                 };
 
@@ -285,6 +286,40 @@ impl PublishController {
         }
 
         join_all(send_futures).await;
+
+        let dataset_root: H256 = dataset_root.parse().unwrap();
+        let tokens = vec![
+            Token::Uint(identity_id.into()),
+            Token::FixedBytes(dataset_root.as_bytes().to_vec()),
+        ];
+        let message_hash = blockchain::utils::keccak256_encode_packed(&tokens).unwrap();
+        let signature = context
+            .blockchain_manager()
+            .sign_message(
+                blockchain,
+                &format!(
+                    "0x{}",
+                    blockchain::utils::to_hex_string(message_hash.to_vec())
+                ),
+            )
+            .await
+            .unwrap();
+        let signature = blockchain::utils::split_signature(signature).unwrap();
+
+        context
+            .repository_manager()
+            .signature_repository()
+            .create(
+                operation_id.into_inner(),
+                "publisher",
+                &identity_id.to_string(),
+                signature.v,
+                &signature.r,
+                &signature.s,
+                &signature.vs,
+            )
+            .await
+            .unwrap();
     }
 
     async fn handle_operation_failure(

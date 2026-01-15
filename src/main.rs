@@ -228,9 +228,7 @@ fn initialize_services(
         Arc::clone(validation_manager),
     ));
     let publish_service = Arc::new(PublishService::new(
-        Arc::clone(network_manager),
         Arc::clone(repository_manager),
-        Arc::clone(&sharding_table_service),
         Arc::clone(&file_service),
     ));
 

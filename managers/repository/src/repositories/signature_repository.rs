@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use uuid::Uuid;
 
 use crate::{
     error::RepositoryError,
@@ -20,7 +21,7 @@ impl SignatureRepository {
     /// Add a signature for an operation
     pub async fn create(
         &self,
-        operation_id: &str,
+        operation_id: Uuid,
         signature_type: &str,
         identity_id: &str,
         v: u8,
