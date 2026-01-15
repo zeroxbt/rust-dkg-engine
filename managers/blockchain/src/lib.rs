@@ -7,9 +7,8 @@ use blockchains::{abstract_blockchain::AbstractBlockchain, blockchain_creator::B
 pub use blockchains::{
     abstract_blockchain::{ContractName, EventLog, EventName},
     blockchain_creator::{
-        AskUpdatedFilter, AssetStorageChangedFilter, ContractChangedFilter, NewAssetStorageFilter,
-        NewContractFilter, NodeAddedFilter, NodeRemovedFilter, StakeIncreasedFilter,
-        StakeWithdrawalStartedFilter,
+        AssetStorageChangedFilter, ContractChangedFilter, KnowledgeCollectionCreatedFilter,
+        NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter,
     },
 };
 pub use ethers::{
@@ -232,22 +231,7 @@ impl BlockchainManager {
             .await
     }
 
-    pub async fn get_assertion_id_by_index(
-        &self,
-        blockchain: &BlockchainName,
-        contract: &Address,
-        token_id: u64,
-        index: u64,
-    ) -> Result<[u8; 32], BlockchainError> {
-        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
-            BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
-            }
-        })?;
-        blockchain_impl
-            .get_assertion_id_by_index(contract, token_id, index)
-            .await
-    }
+    // Note: get_assertion_id_by_index removed - ContentAssetStorage not currently in use
 
     pub async fn sign_message(
         &self,

@@ -27,22 +27,22 @@ pub enum ContractName {
     CommitManagerV1U1,
     ServiceAgreementV1,
     ContentAssetStorage,
+    // New contracts for event monitoring (aligned with JS)
+    ParametersStorage,
+    KnowledgeCollectionStorage,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum EventName {
+    // Hub events
     NewContract,
     ContractChanged,
     NewAssetStorage,
     AssetStorageChanged,
-    NodeAdded,
-    NodeRemoved,
-    StakeIncreased,
-    StakeWithdrawalStarted,
-    AskUpdated,
-    StateFinalized,
-    ServiceAgreementV1Extended,
-    ServiceAgreementV1Terminated,
+    // ParametersStorage events
+    ParameterChanged,
+    // KnowledgeCollectionStorage events
+    KnowledgeCollectionCreated,
 }
 
 impl ContractName {
@@ -55,12 +55,14 @@ impl ContractName {
             ContractName::ServiceAgreementV1 => "ServiceAgreementV1",
             ContractName::Profile => "Profile",
             ContractName::ContentAssetStorage => "ContentAssetStorage",
+            ContractName::ParametersStorage => "ParametersStorage",
+            ContractName::KnowledgeCollectionStorage => "KnowledgeCollectionStorage",
         }
     }
 }
 
 impl FromStr for ContractName {
-    type Err = String; // You can use a more complex error type if needed
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -71,6 +73,8 @@ impl FromStr for ContractName {
             "CommitManagerV1U1" => Ok(ContractName::CommitManagerV1U1),
             "ServiceAgreementV1" => Ok(ContractName::ServiceAgreementV1),
             "ContentAssetStorage" => Ok(ContractName::ContentAssetStorage),
+            "ParametersStorage" => Ok(ContractName::ParametersStorage),
+            "KnowledgeCollectionStorage" => Ok(ContractName::KnowledgeCollectionStorage),
             _ => Err(format!("'{}' is not a valid contract name", s)),
         }
     }
@@ -83,14 +87,8 @@ impl EventName {
             EventName::ContractChanged => "ContractChanged",
             EventName::NewAssetStorage => "NewAssetStorage",
             EventName::AssetStorageChanged => "AssetStorageChanged",
-            EventName::NodeAdded => "NodeAdded",
-            EventName::NodeRemoved => "NodeRemoved",
-            EventName::StakeIncreased => "StakeIncreased",
-            EventName::StakeWithdrawalStarted => "StakeWithdrawalStarted",
-            EventName::AskUpdated => "AskUpdated",
-            EventName::StateFinalized => "StateFinalized",
-            EventName::ServiceAgreementV1Extended => "ServiceAgreementV1Extended",
-            EventName::ServiceAgreementV1Terminated => "ServiceAgreementV1Terminated",
+            EventName::ParameterChanged => "ParameterChanged",
+            EventName::KnowledgeCollectionCreated => "KnowledgeCollectionCreated",
         }
     }
 }
@@ -271,13 +269,14 @@ pub trait AbstractBlockchain: Send + Sync {
 
         let contracts = self.contracts().await;
 
+        // Profile ABI: create_profile(adminWallet, operationalWallets, nodeName, nodeId,
+        // initialOperatorFee)
         let create_profile_call = contracts.profile().create_profile(
             admin_wallet,
             vec![],
-            peer_id_bytes,
-            shares_token_name.clone(),
-            shares_token_symbol.clone(),
-            0,
+            shares_token_name.clone(), // nodeName
+            peer_id_bytes,             // nodeId
+            0u16,                      // initialOperatorFee
         );
 
         let result = create_profile_call.send().await;
@@ -314,25 +313,7 @@ pub trait AbstractBlockchain: Send + Sync {
         }
     }
 
-    async fn get_assertion_id_by_index(
-        &self,
-        contract: &Address,
-        token_id: u64,
-        index: u64,
-    ) -> Result<[u8; 32], BlockchainError> {
-        let contracts = self.contracts().await;
-        let Some(content_asset_storage) = contracts.get_content_asset_storage(contract) else {
-            return Err(BlockchainError::Custom(format!(
-                "Unable to find asset storage for address: {} ",
-                contract
-            )));
-        };
-
-        content_asset_storage
-            .get_assertion_id_by_index(token_id.into(), index.into())
-            .await
-            .map_err(|_| BlockchainError::Custom(format!("Unable to get assertion id for asset state with index: {}, content asset storage with address: {}", index, contract)))
-    }
+    // Note: get_assertion_id_by_index removed - ContentAssetStorage not currently in use
 
     async fn sign_message(&self, message_hash: &str) -> Result<Vec<u8>, BlockchainError> {
         use ethers::{signers::Signer, utils::hex};

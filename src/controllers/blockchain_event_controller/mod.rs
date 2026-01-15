@@ -1,342 +1,414 @@
-/* use std::{collections::HashMap, sync::Arc, vec};
+use std::{collections::HashMap, sync::Arc};
 
 use blockchain::{
-    AskUpdatedFilter, AssetStorageChangedFilter, BlockchainManager, BlockchainName,
-    ContractChangedFilter, ContractName, EventLog, EventName, NewAssetStorageFilter,
-    NewContractFilter, NodeAddedFilter, NodeRemovedFilter, StakeIncreasedFilter,
-    StakeWithdrawalStartedFilter,
+    AssetStorageChangedFilter, BlockchainManager, BlockchainName, ContractChangedFilter,
+    ContractName, EventLog, EventName, KnowledgeCollectionCreatedFilter, NewAssetStorageFilter,
+    NewContractFilter, ParameterChangedFilter, utils::to_hex_string,
 };
-use chrono::DateTime;
-use futures::stream::{FuturesUnordered, StreamExt};
 use repository::RepositoryManager;
-use validation::ValidationManager;
 
-use crate::{config::Config, context::Context};
+use crate::context::Context;
 
-const EVENT_FETCH_INTERVAL_SEC: u64 = 2;
+const EVENT_FETCH_INTERVAL_MAINNET_MS: u64 = 10_000;
+const EVENT_FETCH_INTERVAL_DEV_MS: u64 = 4_000;
+
+/// Maximum number of blocks we can sync historically.
+/// If the node has been offline for longer than this (in blocks), we skip missed events.
+/// This is roughly 1 hour worth of blocks assuming ~12 second block time.
+/// In dev/test environments, this is set to u64::MAX (effectively unlimited).
+const MAX_BLOCKS_TO_SYNC_MAINNET: u64 = 300; // ~1 hour at 12s blocks
+const MAX_BLOCKS_TO_SYNC_DEV: u64 = u64::MAX; // unlimited for dev
+
+/// Contracts and events to monitor (aligned with JS implementation)
+/// MONITORED_CONTRACT_EVENTS = {
+///     Hub: ['NewContract', 'ContractChanged', 'NewAssetStorage', 'AssetStorageChanged'],
+///     ParametersStorage: ['ParameterChanged'],
+///     KnowledgeCollectionStorage: ['KnowledgeCollectionCreated'],
+/// }
+fn get_monitored_contract_events() -> HashMap<ContractName, Vec<EventName>> {
+    let mut map = HashMap::new();
+    map.insert(
+        ContractName::Hub,
+        vec![
+            EventName::NewContract,
+            EventName::ContractChanged,
+            EventName::NewAssetStorage,
+            EventName::AssetStorageChanged,
+        ],
+    );
+    map.insert(
+        ContractName::ParametersStorage,
+        vec![EventName::ParameterChanged],
+    );
+    map.insert(
+        ContractName::KnowledgeCollectionStorage,
+        vec![EventName::KnowledgeCollectionCreated],
+    );
+    map
+}
 
 pub struct BlockchainEventController {
-    config: Arc<Config>,
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
-    validation_manager: Arc<ValidationManager>,
+    /// Polling interval in milliseconds
+    poll_interval_ms: u64,
+    /// Maximum number of blocks to sync historically (beyond this, events are skipped)
+    max_blocks_to_sync: u64,
 }
 
 impl BlockchainEventController {
     pub fn new(context: Arc<Context>) -> Self {
+        let is_dev_env = context.config().is_dev_env;
+
+        let poll_interval_ms = if is_dev_env {
+            EVENT_FETCH_INTERVAL_DEV_MS
+        } else {
+            EVENT_FETCH_INTERVAL_MAINNET_MS
+        };
+
+        let max_blocks_to_sync = if is_dev_env {
+            MAX_BLOCKS_TO_SYNC_DEV
+        } else {
+            MAX_BLOCKS_TO_SYNC_MAINNET
+        };
+
         Self {
-            config: Arc::clone(context.config()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             repository_manager: Arc::clone(context.repository_manager()),
-            validation_manager: Arc::clone(context.validation_manager()),
+            poll_interval_ms,
+            max_blocks_to_sync,
         }
     }
 
-    fn get_contracts_to_listen_to() -> Vec<ContractName> {
-        vec![
-            ContractName::Hub,
-            ContractName::ShardingTable,
-            ContractName::Staking,
-            ContractName::Profile,
-            ContractName::CommitManagerV1U1,
-            ContractName::ServiceAgreementV1,
-        ]
-    }
-
-    fn get_events_to_listen_to(contract_name: &ContractName) -> Vec<EventName> {
-        match contract_name {
-            ContractName::Hub => vec![
-                EventName::NewContract,
-                EventName::ContractChanged,
-                EventName::NewAssetStorage,
-                EventName::AssetStorageChanged,
-            ],
-
-            ContractName::ShardingTable => vec![EventName::NodeAdded, EventName::NodeRemoved],
-
-            ContractName::Staking => {
-                vec![EventName::StakeIncreased, EventName::StakeWithdrawalStarted]
-            }
-
-            ContractName::Profile => vec![EventName::AskUpdated],
-
-            ContractName::CommitManagerV1U1 => vec![EventName::StateFinalized],
-
-            ContractName::ServiceAgreementV1 => vec![
-                EventName::ServiceAgreementV1Extended,
-                EventName::ServiceAgreementV1Terminated,
-            ],
-
-            ContractName::ContentAssetStorage => vec![],
-        }
-    }
-
+    /// Main event loop - polls for blockchain events at regular intervals
     pub async fn listen_and_handle_events(&self) {
         let mut interval =
-            tokio::time::interval(tokio::time::Duration::from_secs(EVENT_FETCH_INTERVAL_SEC));
+            tokio::time::interval(tokio::time::Duration::from_millis(self.poll_interval_ms));
+
+        let max_blocks_display = if self.max_blocks_to_sync == u64::MAX {
+            "unlimited".to_string()
+        } else {
+            self.max_blocks_to_sync.to_string()
+        };
+
+        tracing::info!(
+            "Starting blockchain event listener (poll_interval: {}ms, max_blocks_to_sync: {})",
+            self.poll_interval_ms,
+            max_blocks_display
+        );
+
         loop {
             interval.tick().await;
-            self.retrieve_and_handle_unprocessed_events().await
+
+            // Process each blockchain sequentially (as in JS EventListenerCommand)
+            for blockchain in self.blockchain_manager.get_blockchain_names() {
+                if let Err(e) = self.fetch_and_handle_blockchain_events(blockchain).await {
+                    tracing::error!(
+                        "Error processing blockchain events for {}: {:?}",
+                        blockchain,
+                        e
+                    );
+                }
+            }
         }
     }
 
-    pub async fn retrieve_and_handle_unprocessed_events(&self) {
-        let blockchains = self.blockchain_manager.get_blockchain_names();
-        let mut futures_unordered = FuturesUnordered::new();
-
-        for blockchain in blockchains {
-            futures_unordered.push(async {
-                let event_logs = self.get_blockchain_event_logs(blockchain).await;
-                self.process_event_logs(blockchain, event_logs).await;
-            });
-        }
-
-        while (futures_unordered.next().await).is_some() {}
-    }
-
-    async fn get_blockchain_event_logs(&self, blockchain: &BlockchainName) -> Vec<EventLog> {
-        let to_block = self
+    /// Fetch and handle events for a single blockchain
+    /// Corresponds to BlockchainEventListenerCommand.fetchAndHandleBlockchainEvents in JS
+    async fn fetch_and_handle_blockchain_events(
+        &self,
+        blockchain: &BlockchainName,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Get current block (JS uses: currentBlock - 2 for finality safety)
+        let current_block = self
             .blockchain_manager
             .get_block_number(blockchain)
-            .await
-            .unwrap();
+            .await?
+            .saturating_sub(2);
 
-        let mut event_logs = Vec::new();
-        let contract_names = Self::get_contracts_to_listen_to();
-        let filtered_contract_names = contract_names
-            .iter()
-            .filter(|c| **c != ContractName::Hub || !self.config.is_dev_env);
-        for contract_name in filtered_contract_names {
+        // Fetch events from all monitored contracts
+        let mut all_events = Vec::new();
+        let monitored = get_monitored_contract_events();
+
+        for (contract_name, events_to_filter) in &monitored {
             let last_checked_block = self
                 .repository_manager
                 .blockchain_repository()
                 .get_last_checked_block(blockchain.as_str(), contract_name.as_str())
-                .await
-                .unwrap();
+                .await?;
 
             let from_block = last_checked_block + 1;
-            if from_block >= to_block {
+
+            // Skip if we're already up to date
+            if from_block > current_block {
                 continue;
             }
 
-            event_logs.extend(
-                self.blockchain_manager
-                    .get_event_logs(
-                        blockchain,
-                        contract_name,
-                        &Self::get_events_to_listen_to(contract_name),
-                        from_block,
-                        to_block,
-                    )
-                    .await
-                    .unwrap(),
-            );
+            // Check for extended downtime - if we missed too many blocks, skip them
+            let blocks_behind = current_block.saturating_sub(last_checked_block);
+            if blocks_behind > self.max_blocks_to_sync {
+                tracing::warn!(
+                    "Extended downtime detected for {} on {}: {} blocks behind (max: {}). Skipping missed events.",
+                    contract_name.as_str(),
+                    blockchain,
+                    blocks_behind,
+                    self.max_blocks_to_sync
+                );
 
+                // Update last checked block to current and skip fetching
+                self.repository_manager
+                    .blockchain_repository()
+                    .update_last_checked_block(
+                        blockchain.as_str(),
+                        contract_name.as_str(),
+                        current_block,
+                        chrono::Utc::now(),
+                    )
+                    .await?;
+                continue;
+            }
+
+            // Fetch events for this contract
+            let events = self
+                .blockchain_manager
+                .get_event_logs(
+                    blockchain,
+                    contract_name,
+                    events_to_filter,
+                    from_block,
+                    current_block,
+                )
+                .await?;
+
+            all_events.extend(events);
+
+            // Update last checked block for this contract
             self.repository_manager
                 .blockchain_repository()
                 .update_last_checked_block(
                     blockchain.as_str(),
                     contract_name.as_str(),
-                    to_block,
+                    current_block,
                     chrono::Utc::now(),
                 )
-                .await
-                .unwrap();
+                .await?;
         }
 
-        event_logs
-    }
-
-    async fn process_event_logs(&self, blockchain: &BlockchainName, event_logs: Vec<EventLog>) {
-        let mut grouped_events: HashMap<u64, Vec<EventLog>> = HashMap::new();
-        for event_log in event_logs {
-            let block_number = event_log.log().block_number.unwrap_or_default();
-            grouped_events
-                .entry(block_number.as_u64())
-                .or_default()
-                .push(event_log);
+        if all_events.is_empty() {
+            return Ok(());
         }
-
-        let mut ordered_blocks: Vec<(u64, Vec<EventLog>)> = grouped_events.into_iter().collect();
-        ordered_blocks.sort_by_key(|(block_number, _)| *block_number);
-
-        for (_, event_logs) in ordered_blocks {
-            let mut futures_unordered = FuturesUnordered::new();
-
-            for event_log in event_logs {
-                futures_unordered.push(async {
-                    match event_log.event_name() {
-                        EventName::NewContract => {
-                            self.handle_contract_changed(blockchain, event_log).await;
-                        }
-                        EventName::ContractChanged => {
-                            self.handle_contract_changed(blockchain, event_log).await;
-                        }
-                        EventName::NewAssetStorage => {
-                            self.handle_contract_changed(blockchain, event_log).await;
-                        }
-                        EventName::AssetStorageChanged => {
-                            self.handle_contract_changed(blockchain, event_log).await;
-                        }
-                        EventName::NodeAdded => {
-                            self.handle_node_added(blockchain, event_log).await;
-                        }
-                        EventName::NodeRemoved => {
-                            self.handle_node_removed(blockchain, event_log).await;
-                        }
-                        EventName::StakeIncreased => {
-                            self.handle_stake_updated(blockchain, event_log).await;
-                        }
-                        EventName::StakeWithdrawalStarted => {
-                            self.handle_stake_updated(blockchain, event_log).await;
-                        }
-                        EventName::AskUpdated => {
-                            self.handle_ask_updated(blockchain, event_log).await;
-                        }
-                        EventName::StateFinalized => {
-                            tracing::debug!("Found StateFinalized event!");
-                        }
-                        EventName::ServiceAgreementV1Extended => {
-                            tracing::debug!("Found ServiceAgreementV1Extended event!");
-                        }
-                        EventName::ServiceAgreementV1Terminated => {
-                            tracing::debug!("Found ServiceAgreementV1Terminated event!");
-                        }
-                    }
-                });
-            }
-
-            while (futures_unordered.next().await).is_some() {}
-        }
-    }
-
-    async fn handle_node_added(&self, blockchain: &BlockchainName, event_log: EventLog) {
-        let node_added_filter = blockchain::utils::decode_event_log::<NodeAddedFilter>(event_log);
-        let peer_id_bytes = node_added_filter.node_id.into_iter().collect::<Vec<u8>>();
-        let peer_id = String::from_utf8(peer_id_bytes.clone()).unwrap();
-        let sha256 = self
-            .validation_manager
-            .call_hash_function(&HashFunction::Sha256, peer_id_bytes);
-        tracing::debug!("Adding peer id: {} to sharding table.", peer_id);
-
-        self.repository_manager
-            .shard_repository()
-            .create_peer_record(repository::models::shard::Model {
-                peer_id,
-                blockchain_id: blockchain.as_str().to_owned(),
-                ask: blockchain::utils::from_wei(&node_added_filter.ask.to_string()),
-                stake: blockchain::utils::from_wei(&node_added_filter.stake.to_string()),
-                last_seen: DateTime::from_timestamp(0, 0).unwrap(),
-                last_dialed: DateTime::from_timestamp(0, 0).unwrap(),
-                sha256: blockchain::utils::to_hex_string(sha256),
-            })
-            .await
-            .unwrap();
-    }
-
-    async fn handle_node_removed(&self, blockchain: &BlockchainName, event_log: EventLog) {
-        let node_removed_filter =
-            blockchain::utils::decode_event_log::<NodeRemovedFilter>(event_log);
-        let peer_id_bytes = node_removed_filter.node_id.into_iter().collect::<Vec<u8>>();
-        let peer_id = String::from_utf8(peer_id_bytes.clone()).unwrap();
-
-        tracing::debug!("Removing peer id: {} from sharding table.", peer_id);
-
-        self.repository_manager
-            .shard_repository()
-            .remove_peer_record(blockchain.as_str(), &peer_id)
-            .await
-            .unwrap();
-    }
-
-    async fn handle_stake_updated(&self, blockchain: &BlockchainName, event_log: EventLog) {
-        let (node_id, new_stake) = match event_log.event_name() {
-            EventName::StakeIncreased => {
-                let filter = blockchain::utils::decode_event_log::<StakeIncreasedFilter>(event_log);
-                (filter.node_id, filter.new_stake)
-            }
-            EventName::StakeWithdrawalStarted => {
-                let filter =
-                    blockchain::utils::decode_event_log::<StakeWithdrawalStartedFilter>(event_log);
-                (filter.node_id, filter.new_stake)
-            }
-            _ => panic!("Unexpected event name in handle stake updated log!"),
-        };
-
-        let peer_id_bytes = node_id.into_iter().collect::<Vec<u8>>();
-        let peer_id = String::from_utf8(peer_id_bytes.clone()).unwrap();
 
         tracing::debug!(
-            "Updating stake value for peer id: {} in sharding table.",
-            peer_id
+            "Fetched {} events for blockchain {}",
+            all_events.len(),
+            blockchain
         );
 
-        self.repository_manager
-            .shard_repository()
-            .update_peer_stake(
-                peer_id,
-                blockchain.as_str().to_owned(),
-                blockchain::utils::from_wei(&new_stake.to_string()),
-            )
-            .await
-            .unwrap();
+        // Sort events by (blockNumber, transactionIndex, logIndex) as in JS
+        all_events.sort_by(|a, b| {
+            let a_log = a.log();
+            let b_log = b.log();
+
+            let a_block = a_log.block_number.unwrap_or_default().as_u64();
+            let b_block = b_log.block_number.unwrap_or_default().as_u64();
+            if a_block != b_block {
+                return a_block.cmp(&b_block);
+            }
+
+            let a_tx_index = a_log.transaction_index.unwrap_or_default().as_u64();
+            let b_tx_index = b_log.transaction_index.unwrap_or_default().as_u64();
+            if a_tx_index != b_tx_index {
+                return a_tx_index.cmp(&b_tx_index);
+            }
+
+            let a_log_index = a_log.log_index.unwrap_or_default().as_u64();
+            let b_log_index = b_log.log_index.unwrap_or_default().as_u64();
+            a_log_index.cmp(&b_log_index)
+        });
+
+        // Process all events sequentially (all dependent in current JS implementation)
+        for event in all_events {
+            self.process_event(blockchain, event).await;
+        }
+
+        Ok(())
     }
 
-    async fn handle_ask_updated(&self, blockchain: &BlockchainName, event_log: EventLog) {
-        let ask_updated_filter = blockchain::utils::decode_event_log::<AskUpdatedFilter>(event_log);
-        let peer_id_bytes = ask_updated_filter.node_id.into_iter().collect::<Vec<u8>>();
-        let peer_id = String::from_utf8(peer_id_bytes.clone()).unwrap();
-
-        tracing::debug!(
-            "Updating ask value for peer id: {} in sharding table.",
-            peer_id
+    /// Process a single event - dispatch to appropriate handler
+    async fn process_event(&self, blockchain: &BlockchainName, event: EventLog) {
+        let block_number = event.log().block_number.unwrap_or_default().as_u64();
+        tracing::trace!(
+            "Processing event {:?} in block {}",
+            event.event_name(),
+            block_number
         );
 
-        self.repository_manager
-            .shard_repository()
-            .update_peer_ask(
-                blockchain.as_str().to_owned(),
-                peer_id,
-                blockchain::utils::from_wei(&ask_updated_filter.ask.to_string()),
-            )
-            .await
-            .unwrap();
-    }
-
-    async fn handle_contract_changed(&self, blockchain: &BlockchainName, event_log: EventLog) {
-        let (contract_name, new_contract_address) = match event_log.event_name() {
+        match event.event_name() {
             EventName::NewContract => {
-                let filter = blockchain::utils::decode_event_log::<NewContractFilter>(event_log);
-                (filter.contract_name, filter.new_contract_address)
+                self.handle_new_contract_event(blockchain, event).await;
             }
             EventName::ContractChanged => {
-                let filter =
-                    blockchain::utils::decode_event_log::<ContractChangedFilter>(event_log);
-                (filter.contract_name, filter.new_contract_address)
+                self.handle_contract_changed_event(blockchain, event).await;
             }
             EventName::NewAssetStorage => {
-                let filter =
-                    blockchain::utils::decode_event_log::<NewAssetStorageFilter>(event_log);
-                (filter.contract_name, filter.new_contract_address)
+                self.handle_new_asset_storage_event(blockchain, event).await;
             }
             EventName::AssetStorageChanged => {
-                let filter =
-                    blockchain::utils::decode_event_log::<AssetStorageChangedFilter>(event_log);
-                (filter.contract_name, filter.new_contract_address)
+                self.handle_asset_storage_changed_event(blockchain, event)
+                    .await;
             }
-            _ => panic!("Unexpected event name in handle stake updated log!"),
-        };
+            EventName::ParameterChanged => {
+                self.handle_parameter_changed_event(blockchain, event).await;
+            }
+            EventName::KnowledgeCollectionCreated => {
+                self.handle_knowledge_collection_created_event(blockchain, event)
+                    .await;
+            }
+        }
+    }
 
+    // === Event Handlers (aligned with JS) ===
+
+    async fn handle_parameter_changed_event(&self, blockchain: &BlockchainName, event: EventLog) {
+        let filter = blockchain::utils::decode_event_log::<ParameterChangedFilter>(event);
         tracing::debug!(
-            "New contract address found for {}: {}",
-            contract_name,
-            new_contract_address
+            "ParameterChanged on {}: {} = {}",
+            blockchain,
+            filter.parameter_name,
+            filter.parameter_value
+        );
+        // TODO: Update contract call cache with new parameter values
+        // In JS: blockchainModuleManager.setContractCallCache(blockchain,
+        // CONTRACTS.PARAMETERS_STORAGE, parameterName, parameterValue)
+    }
+
+    async fn handle_new_contract_event(&self, blockchain: &BlockchainName, event: EventLog) {
+        let filter = blockchain::utils::decode_event_log::<NewContractFilter>(event);
+        tracing::info!(
+            "NewContract on {}: {} at {:?}",
+            blockchain,
+            filter.contract_name,
+            filter.new_contract_address
         );
 
-        let _ = self
+        if let Err(e) = self
             .blockchain_manager
-            .re_initialize_contract(blockchain, contract_name, new_contract_address)
-            .await;
+            .re_initialize_contract(
+                blockchain,
+                filter.contract_name.clone(),
+                filter.new_contract_address,
+            )
+            .await
+        {
+            tracing::error!(
+                "Failed to re-initialize contract {} on {}: {:?}",
+                filter.contract_name,
+                blockchain,
+                e
+            );
+        }
+    }
+
+    async fn handle_contract_changed_event(&self, blockchain: &BlockchainName, event: EventLog) {
+        let filter = blockchain::utils::decode_event_log::<ContractChangedFilter>(event);
+        tracing::info!(
+            "ContractChanged on {}: {} at {:?}",
+            blockchain,
+            filter.contract_name,
+            filter.new_contract_address
+        );
+
+        if let Err(e) = self
+            .blockchain_manager
+            .re_initialize_contract(
+                blockchain,
+                filter.contract_name.clone(),
+                filter.new_contract_address,
+            )
+            .await
+        {
+            tracing::error!(
+                "Failed to re-initialize contract {} on {}: {:?}",
+                filter.contract_name,
+                blockchain,
+                e
+            );
+        }
+    }
+
+    async fn handle_new_asset_storage_event(&self, blockchain: &BlockchainName, event: EventLog) {
+        let filter = blockchain::utils::decode_event_log::<NewAssetStorageFilter>(event);
+        tracing::info!(
+            "NewAssetStorage on {}: {} at {:?}",
+            blockchain,
+            filter.contract_name,
+            filter.new_contract_address
+        );
+
+        if let Err(e) = self
+            .blockchain_manager
+            .re_initialize_contract(
+                blockchain,
+                filter.contract_name.clone(),
+                filter.new_contract_address,
+            )
+            .await
+        {
+            tracing::error!(
+                "Failed to re-initialize asset storage {} on {}: {:?}",
+                filter.contract_name,
+                blockchain,
+                e
+            );
+        }
+    }
+
+    async fn handle_asset_storage_changed_event(
+        &self,
+        blockchain: &BlockchainName,
+        event: EventLog,
+    ) {
+        let filter = blockchain::utils::decode_event_log::<AssetStorageChangedFilter>(event);
+        tracing::info!(
+            "AssetStorageChanged on {}: {} at {:?}",
+            blockchain,
+            filter.contract_name,
+            filter.new_contract_address
+        );
+
+        if let Err(e) = self
+            .blockchain_manager
+            .re_initialize_contract(
+                blockchain,
+                filter.contract_name.clone(),
+                filter.new_contract_address,
+            )
+            .await
+        {
+            tracing::error!(
+                "Failed to re-initialize asset storage {} on {}: {:?}",
+                filter.contract_name,
+                blockchain,
+                e
+            );
+        }
+    }
+
+    async fn handle_knowledge_collection_created_event(
+        &self,
+        blockchain: &BlockchainName,
+        event: EventLog,
+    ) {
+        let filter = blockchain::utils::decode_event_log::<KnowledgeCollectionCreatedFilter>(event);
+        tracing::info!(
+            "KnowledgeCollectionCreated on {}: id={}, merkleRoot=0x{}, byteSize={}",
+            blockchain,
+            filter.id,
+            to_hex_string(filter.merkle_root.to_vec()),
+            filter.byte_size
+        );
+
+        // TODO: Queue publishFinalizationCommand
+        // In JS: commandExecutor.add({ name: 'publishFinalizationCommand', data: { event }, ... })
     }
 }
- */

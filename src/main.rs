@@ -15,6 +15,7 @@ use commands::{command::Command, command_executor::CommandExecutor};
 use config::ManagersConfig;
 use context::Context;
 use controllers::{
+    blockchain_event_controller::BlockchainEventController,
     http_api_controller::http_api_router::{HttpApiConfig, HttpApiRouter},
     rpc_controller::rpc_router::RpcRouter,
 };
@@ -85,6 +86,9 @@ async fn main() {
 
     let (http_api_router, rpc_router) = initialize_controllers(&config.http_api, &context);
 
+    // Initialize blockchain event controller
+    let blockchain_event_controller = BlockchainEventController::new(Arc::clone(&context));
+
     let cloned_command_executor = Arc::clone(&command_executor);
 
     let schedule_commands_task = tokio::task::spawn(async move {
@@ -116,12 +120,18 @@ async fn main() {
     let handle_http_events_task =
         tokio::task::spawn(async move { http_api_router.listen_and_handle_http_requests().await });
 
+    // Spawn blockchain event listener task
+    let blockchain_event_listener_task = tokio::task::spawn(async move {
+        blockchain_event_controller.listen_and_handle_events().await
+    });
+
     let _ = join!(
         handle_http_events_task,
         network_event_loop_task,
         handle_network_events_task,
         schedule_commands_task,
         execute_commands_task,
+        blockchain_event_listener_task,
     );
 }
 
