@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{Json, extract::State, response::IntoResponse};
-use blockchain::{H256, Token};
+use blockchain::{BlockchainName, H256, Token};
 use futures::future::join_all;
 use hyper::StatusCode;
 use libp2p::PeerId;
@@ -109,7 +109,10 @@ impl PublishController {
                 operation_id,
                 e
             );
-            Self::handle_operation_failure(&context, operation_id, &e.to_string(), "store dataset")
+            context
+                .publish_service()
+                .operation_manager()
+                .mark_failed(operation_id.into_inner(), e.to_string())
                 .await;
 
             return;
@@ -137,13 +140,11 @@ impl PublishController {
                     "Failed to get shard nodes from repository for operation: {operation_id}. Error: {e}"
                 );
 
-                if let Err(e) = context
+                context
                     .publish_service()
-                    .mark_failed(operation_id, &error_message)
-                    .await
-                {
-                    tracing::error!("Unable to mark operation {} as failed: {}", operation_id, e)
-                }
+                    .operation_manager()
+                    .mark_failed(operation_id.into_inner(), error_message)
+                    .await;
                 return;
             }
         };
@@ -158,7 +159,18 @@ impl PublishController {
 
         let peers: Vec<PeerId> = shard_nodes
             .iter()
-            .map(|record| record.peer_id.parse().unwrap())
+            .filter_map(|record| match record.peer_id.parse() {
+                Ok(peer_id) => Some(peer_id),
+                Err(e) => {
+                    tracing::warn!(
+                        "Invalid peer ID '{}' in shard nodes for operation {}: {}",
+                        record.peer_id,
+                        operation_id,
+                        e
+                    );
+                    None
+                }
+            })
             .collect();
 
         let total_peers = peers.len() as u16;
@@ -175,9 +187,10 @@ impl PublishController {
             .await
         {
             tracing::error!("Failed to initialize progress for {operation_id}: {e}");
-            let _ = context
+            context
                 .publish_service()
-                .mark_failed(operation_id, &e.to_string())
+                .operation_manager()
+                .mark_failed(operation_id.into_inner(), e.to_string())
                 .await;
             return;
         }
@@ -189,13 +202,11 @@ impl PublishController {
 
             // TODO: in js implementation the operation result data is removed. check how it's
             // handled when it's read by client
-            if let Err(e) = context
+            context
                 .publish_service()
-                .mark_failed(operation_id, &error_message)
-                .await
-            {
-                tracing::error!("Unable to mark operation {} as failed: {}", operation_id, e)
-            }
+                .operation_manager()
+                .mark_failed(operation_id.into_inner(), error_message)
+                .await;
 
             return;
         }
@@ -207,13 +218,11 @@ impl PublishController {
         {
             Ok(data) => data.dataset().clone(),
             Err(e) => {
-                if let Err(e) = context
+                context
                     .publish_service()
-                    .mark_failed(operation_id, &e.to_string())
-                    .await
-                {
-                    tracing::error!("Unable to mark operation {} as failed: {}", operation_id, e)
-                }
+                    .operation_manager()
+                    .mark_failed(operation_id.into_inner(), e.to_string())
+                    .await;
 
                 return;
             }
@@ -222,43 +231,93 @@ impl PublishController {
         let my_peer_id = *context.network_manager().peer_id();
         let mut send_futures = Vec::with_capacity(shard_nodes.len());
 
-        let identity_id = context
+        let identity_id = match context
             .blockchain_manager()
             .get_identity_id(blockchain)
             .await
-            .unwrap()
-            .unwrap();
-
-        for node in shard_nodes {
-            let remote_peer_id: PeerId = node.peer_id.parse().unwrap();
-
-            if remote_peer_id == my_peer_id {
-                let signature = context
-                    .blockchain_manager()
-                    .sign_message(blockchain, dataset_root.strip_prefix("0x").unwrap())
-                    .await
-                    .unwrap();
-                let signature = blockchain::utils::split_signature(signature).unwrap();
-
-                context
-                    .repository_manager()
-                    .signature_repository()
-                    .store_network_signature(
-                        operation_id.into_inner(),
-                        &identity_id.to_string(),
-                        signature.v,
-                        &signature.r,
-                        &signature.s,
-                        &signature.vs,
-                    )
-                    .await
-                    .unwrap();
+        {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                tracing::error!(
+                    "Identity ID not found for blockchain {} in operation {}",
+                    blockchain,
+                    operation_id
+                );
                 context
                     .publish_service()
                     .operation_manager()
-                    .record_response(operation_id.into_inner(), true)
-                    .await
-                    .unwrap();
+                    .mark_failed(
+                        operation_id.into_inner(),
+                        "Identity ID not found".to_string(),
+                    )
+                    .await;
+                return;
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to get identity ID for operation {}: {}",
+                    operation_id,
+                    e
+                );
+                context
+                    .publish_service()
+                    .operation_manager()
+                    .mark_failed(operation_id.into_inner(), e.to_string())
+                    .await;
+                return;
+            }
+        };
+
+        let dataset_root_hex = match dataset_root.strip_prefix("0x") {
+            Some(hex) => hex,
+            None => {
+                tracing::error!(
+                    "Dataset root missing '0x' prefix for operation {}",
+                    operation_id
+                );
+                context
+                    .publish_service()
+                    .operation_manager()
+                    .mark_failed(
+                        operation_id.into_inner(),
+                        "Invalid dataset root format".to_string(),
+                    )
+                    .await;
+                return;
+            }
+        };
+
+        for node in shard_nodes {
+            let remote_peer_id: PeerId = match node.peer_id.parse() {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::warn!(
+                        "Invalid peer ID '{}' in shard nodes for operation {}: {}",
+                        node.peer_id,
+                        operation_id,
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            if remote_peer_id == my_peer_id {
+                if let Err(e) = Self::handle_self_node_signature(
+                    &context,
+                    operation_id,
+                    blockchain,
+                    dataset_root_hex,
+                    identity_id,
+                )
+                .await
+                {
+                    tracing::error!(
+                        "Failed to handle self-node signature for operation {}: {}",
+                        operation_id,
+                        e
+                    );
+                    // Continue with other nodes even if self-node fails
+                }
             } else {
                 let network_manager = Arc::clone(context.network_manager());
                 let message = RequestMessage {
@@ -293,12 +352,73 @@ impl PublishController {
 
         join_all(send_futures).await;
 
-        let dataset_root: H256 = dataset_root.parse().unwrap();
+        // Store publisher signature
+        if let Err(e) = Self::store_publisher_signature(
+            &context,
+            operation_id,
+            blockchain,
+            dataset_root,
+            identity_id,
+        )
+        .await
+        {
+            tracing::error!(
+                "Failed to store publisher signature for operation {}: {}",
+                operation_id,
+                e
+            );
+            // Don't mark as failed here - the operation may still succeed with network signatures
+        }
+    }
+
+    async fn handle_self_node_signature(
+        context: &Arc<Context>,
+        operation_id: OperationId,
+        blockchain: &BlockchainName,
+        dataset_root_hex: &str,
+        identity_id: u128,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let signature = context
+            .blockchain_manager()
+            .sign_message(blockchain, dataset_root_hex)
+            .await?;
+        let signature = blockchain::utils::split_signature(signature)?;
+
+        context
+            .repository_manager()
+            .signature_repository()
+            .store_network_signature(
+                operation_id.into_inner(),
+                &identity_id.to_string(),
+                signature.v,
+                &signature.r,
+                &signature.s,
+                &signature.vs,
+            )
+            .await?;
+
+        context
+            .publish_service()
+            .operation_manager()
+            .record_response(operation_id.into_inner(), true)
+            .await?;
+
+        Ok(())
+    }
+
+    async fn store_publisher_signature(
+        context: &Arc<Context>,
+        operation_id: OperationId,
+        blockchain: &BlockchainName,
+        dataset_root: &str,
+        identity_id: u128,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let dataset_root_h256: H256 = dataset_root.parse()?;
         let tokens = vec![
             Token::Uint(identity_id.into()),
-            Token::FixedBytes(dataset_root.as_bytes().to_vec()),
+            Token::FixedBytes(dataset_root_h256.as_bytes().to_vec()),
         ];
-        let message_hash = blockchain::utils::keccak256_encode_packed(&tokens).unwrap();
+        let message_hash = blockchain::utils::keccak256_encode_packed(&tokens)?;
         let signature = context
             .blockchain_manager()
             .sign_message(
@@ -308,9 +428,8 @@ impl PublishController {
                     blockchain::utils::to_hex_string(message_hash.to_vec())
                 ),
             )
-            .await
-            .unwrap();
-        let signature = blockchain::utils::split_signature(signature).unwrap();
+            .await?;
+        let signature = blockchain::utils::split_signature(signature)?;
 
         context
             .repository_manager()
@@ -323,27 +442,8 @@ impl PublishController {
                 &signature.s,
                 &signature.vs,
             )
-            .await
-            .unwrap();
-    }
+            .await?;
 
-    async fn handle_operation_failure(
-        context: &Arc<Context>,
-        operation_id: OperationId,
-        error_message: &str,
-        stage: &str,
-    ) {
-        if let Err(mark_error) = context
-            .publish_service()
-            .mark_failed(operation_id, error_message)
-            .await
-        {
-            tracing::error!(
-                "Unable to mark operation {} as failed (stage: {}): {}",
-                operation_id,
-                stage,
-                mark_error
-            );
-        }
+        Ok(())
     }
 }

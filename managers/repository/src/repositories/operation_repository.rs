@@ -174,53 +174,6 @@ impl OperationRepository {
         Ok(record)
     }
 
-    /// Atomically update status only if current status matches expected status.
-    /// Returns Ok(Some(model)) if update succeeded, Ok(None) if status didn't match.
-    /// This enables compare-and-swap for status transitions.
-    pub async fn atomic_complete_if_in_progress(
-        &self,
-        operation_id: Uuid,
-        new_status: &str,
-        error_message: Option<String>,
-    ) -> Result<Option<Model>, RepositoryError> {
-        let mut update_query = Entity::update_many()
-            .filter(Column::OperationId.eq(operation_id))
-            .filter(Column::Status.eq("in_progress"))
-            .col_expr(Column::Status, Expr::value(new_status))
-            .col_expr(Column::UpdatedAt, Expr::value(Utc::now()));
-
-        if let Some(em) = error_message {
-            update_query = update_query.col_expr(Column::ErrorMessage, Expr::value(Some(em)));
-        }
-
-        let update_result = update_query.exec(self.conn.as_ref()).await?;
-
-        if update_result.rows_affected == 0 {
-            // Either not found or status wasn't "in_progress"
-            // Check if the record exists
-            let record = Entity::find_by_id(operation_id)
-                .one(self.conn.as_ref())
-                .await?;
-
-            if record.is_none() {
-                return Err(RepositoryError::NotFound(format!(
-                    "Operation {} not found",
-                    operation_id
-                )));
-            }
-
-            // Record exists but status wasn't in_progress - return None to indicate no update
-            return Ok(None);
-        }
-
-        // Fetch the updated record
-        let record = Entity::find_by_id(operation_id)
-            .one(self.conn.as_ref())
-            .await?;
-
-        Ok(record)
-    }
-
     /// Initialize progress tracking fields (total_peers, min_ack_responses)
     pub async fn initialize_progress(
         &self,

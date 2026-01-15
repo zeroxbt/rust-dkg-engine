@@ -73,13 +73,10 @@ impl StoreController {
                     ),
                 };
 
-                if let Err(e) = self
-                    .publish_service
-                    .mark_failed(operation_id, &error_message)
-                    .await
-                {
-                    tracing::error!("Unable to mark operation {} as failed: {}", operation_id, e)
-                }
+                self.publish_service
+                    .operation_manager()
+                    .mark_failed(operation_id.into_inner(), error_message)
+                    .await;
 
                 let message = ResponseMessage {
                     header: ResponseMessageHeader {
@@ -91,10 +88,15 @@ impl StoreController {
                     },
                 };
 
-                self.network_manager
+                if let Err(e) = self
+                    .network_manager
                     .send_protocol_response(ProtocolResponse::Store { channel, message })
                     .await
-                    .unwrap();
+                {
+                    tracing::error!(
+                        "Failed to send NACK response for operation {operation_id}: {e}"
+                    );
+                }
 
                 return;
             }
@@ -119,15 +121,19 @@ impl StoreController {
                 },
             };
 
-            self.network_manager
+            if let Err(e) = self
+                .network_manager
                 .send_protocol_response(ProtocolResponse::Store { channel, message })
                 .await
-                .unwrap();
+            {
+                tracing::error!("Failed to send NACK response for operation {operation_id}: {e}");
+            }
 
             return;
         }
 
-        self.pending_storage_service
+        if let Err(e) = self
+            .pending_storage_service
             .store_dataset(
                 operation_id,
                 &dataset_root,
@@ -137,24 +143,69 @@ impl StoreController {
                 },
             )
             .await
-            .unwrap();
+        {
+            tracing::error!("Failed to store dataset for operation {operation_id}: {e}");
+            self.send_error_response(channel, operation_id, "Failed to store dataset")
+                .await;
+            return;
+        }
 
-        let identity_id = self
+        let identity_id = match self
             .blockchain_manager
             .get_identity_id(&data.blockchain())
             .await
-            .unwrap()
-            .unwrap();
+        {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                tracing::error!(
+                    "Identity ID not found for blockchain {} in operation {operation_id}",
+                    data.blockchain()
+                );
+                self.send_error_response(channel, operation_id, "Identity ID not found")
+                    .await;
+                return;
+            }
+            Err(e) => {
+                tracing::error!("Failed to get identity ID for operation {operation_id}: {e}");
+                self.send_error_response(channel, operation_id, "Failed to get identity ID")
+                    .await;
+                return;
+            }
+        };
 
-        let signature = self
+        let dataset_root_hex = match data.dataset_root().strip_prefix("0x") {
+            Some(hex) => hex,
+            None => {
+                tracing::error!("Dataset root missing '0x' prefix for operation {operation_id}");
+                self.send_error_response(channel, operation_id, "Invalid dataset root format")
+                    .await;
+                return;
+            }
+        };
+
+        let signature = match self
             .blockchain_manager
-            .sign_message(
-                &data.blockchain(),
-                data.dataset_root().strip_prefix("0x").unwrap(),
-            )
+            .sign_message(&data.blockchain(), dataset_root_hex)
             .await
-            .unwrap();
-        let signature = blockchain::utils::split_signature(signature).unwrap();
+        {
+            Ok(sig) => sig,
+            Err(e) => {
+                tracing::error!("Failed to sign message for operation {operation_id}: {e}");
+                self.send_error_response(channel, operation_id, "Failed to sign message")
+                    .await;
+                return;
+            }
+        };
+
+        let signature = match blockchain::utils::split_signature(signature) {
+            Ok(sig) => sig,
+            Err(e) => {
+                tracing::error!("Failed to split signature for operation {operation_id}: {e}");
+                self.send_error_response(channel, operation_id, "Failed to process signature")
+                    .await;
+                return;
+            }
+        };
 
         let message = ResponseMessage {
             header: ResponseMessageHeader {
@@ -167,10 +218,38 @@ impl StoreController {
             },
         };
 
-        self.network_manager
+        if let Err(e) = self
+            .network_manager
             .send_protocol_response(ProtocolResponse::Store { channel, message })
             .await
-            .unwrap();
+        {
+            tracing::error!("Failed to send ACK response for operation {operation_id}: {e}");
+        }
+    }
+
+    async fn send_error_response(
+        &self,
+        channel: request_response::ResponseChannel<ResponseMessage<StoreResponseData>>,
+        operation_id: OperationId,
+        error_message: &str,
+    ) {
+        let message = ResponseMessage {
+            header: ResponseMessageHeader {
+                operation_id: operation_id.into_inner(),
+                message_type: ResponseMessageType::Nack,
+            },
+            data: StoreResponseData::Error {
+                error_message: error_message.to_string(),
+            },
+        };
+
+        if let Err(e) = self
+            .network_manager
+            .send_protocol_response(ProtocolResponse::Store { channel, message })
+            .await
+        {
+            tracing::error!("Failed to send error response for operation {operation_id}: {e}");
+        }
     }
 
     pub async fn handle_response(
@@ -190,8 +269,8 @@ impl StoreController {
                 signature,
             },
         ) = (header.message_type, data)
-        {
-            self.repository_manager
+            && let Err(e) = self
+                .repository_manager
                 .signature_repository()
                 .store_network_signature(
                     header.operation_id,
@@ -202,31 +281,18 @@ impl StoreController {
                     &signature.vs,
                 )
                 .await
-                .unwrap();
+        {
+            tracing::error!("Failed to store network signature for operation {operation_id}: {e}");
         };
 
         // Record response using operation manager
-        match self
+        if let Err(e) = self
             .publish_service
             .operation_manager()
             .record_response(operation_id.into_inner(), is_success)
             .await
         {
-            Ok(crate::services::operation_manager::OperationAction::Complete) => {
-                tracing::debug!("Operation {operation_id} completed successfully");
-            }
-            Ok(crate::services::operation_manager::OperationAction::Failed { reason }) => {
-                tracing::debug!("Operation {operation_id} failed: {reason}");
-            }
-            Ok(crate::services::operation_manager::OperationAction::Continue) => {
-                tracing::debug!("Operation {operation_id} continuing (waiting for more responses)");
-            }
-            Ok(crate::services::operation_manager::OperationAction::AlreadyFinished) => {
-                tracing::trace!("Operation {operation_id} already finished (late response)");
-            }
-            Err(e) => {
-                tracing::error!("Failed to record response for operation {operation_id}: {e}");
-            }
-        }
+            tracing::error!("Failed to record response for operation {operation_id}: {e}");
+        };
     }
 }

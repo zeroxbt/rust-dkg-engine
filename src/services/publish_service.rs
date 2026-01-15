@@ -36,15 +36,4 @@ impl PublishService {
     pub fn operation_manager(&self) -> &Arc<OperationManager> {
         &self.operation_manager
     }
-
-    /// Mark operation as failed
-    pub async fn mark_failed(
-        &self,
-        operation_id: OperationId,
-        error_message: &str,
-    ) -> Result<(), NodeError> {
-        self.operation_manager
-            .mark_failed(operation_id.into_inner(), error_message.to_string())
-            .await
-    }
 }
