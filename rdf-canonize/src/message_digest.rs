@@ -1,4 +1,7 @@
-use sha2::{Digest, Sha256};
+use ethers::{
+    core::k256::sha2::{Digest, Sha256},
+    utils::hex,
+};
 
 /// Provides a mechanism for hashing data using the SHA-256 hashing algorithm.
 ///

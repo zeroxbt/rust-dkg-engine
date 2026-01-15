@@ -11,7 +11,7 @@ pub use libp2p::request_response::ProtocolSupport;
 pub use libp2p::{
     Multiaddr, PeerId, StreamProtocol, Swarm, identify, identity,
     kad::{self, BucketInserts, Config as KademliaConfig, Mode, store::MemoryStore},
-    ping, request_response,
+    request_response,
     swarm::{NetworkBehaviour, SwarmEvent},
 };
 // Internal libp2p imports for NetworkManager implementation

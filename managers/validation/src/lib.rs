@@ -1,6 +1,6 @@
 use ethers::{
     abi::{encode, Token},
-    utils::keccak256,
+    utils::{hex, keccak256},
 };
 use serde::Deserialize;
 

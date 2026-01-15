@@ -27,33 +27,38 @@ validation = { path = "./managers/validation" }
 rdf-canonize = { path = "./rdf-canonize" }
 
 # Common dependencies shared across workspace
-tokio = { version = "1.49.0", features = ["full"] }
+tokio = { version = "1.49.0", features = [
+    "macros",
+    "rt-multi-thread",
+    "sync",
+    "time",
+    "fs",
+    "io-util",
+] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 tracing = "0.1.44"
 thiserror = "2.0.17"
-chrono = "0.4.31"
-uuid = { version = "1.19.0", features = ["serde", "v4", "v5"] }
+chrono = "0.4.43"
+uuid = { version = "1.19.0", features = ["serde", "v4"] }
 async-trait = "0.1.89"
 
 # Other shared dependencies
 clap = "4.5.54"
 ethers = { version = "2.0.14", features = ["openssl", "ws"] }
-hex = "0.4.3"
-sha2 = "0.10.9"
 libp2p = { version = "0.56.0", features = ["macros"] }
 
 # Main binary specific (can be referenced by others if needed)
 futures = "0.3.31"
 tracing-subscriber = "0.3.22"
 axum = "0.8.8"
-tower = "0.5.2"
-tower-http = { version = "0.6.8", features = ["full"] }
+tower = "0.5.3"
+tower-http = { version = "0.6.8", features = ["cors"] }
 hyper = "1.8.1"
 dotenvy = "0.15.7"
 validator = "0.20.0"
 validator_derive = "0.20.0"
-figment = { version = "0.10", features = ["toml", "env"] }
+figment = { version = "0.10", features = ["toml"] }
 
 [dependencies]
 blockchain.workspace = true
