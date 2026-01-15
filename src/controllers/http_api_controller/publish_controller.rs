@@ -252,7 +252,20 @@ impl PublishController {
                         signature,
                     },
                 };
-                // TODO: process response for our own node
+                
+                self.repository_manager
+                .signature_repository()
+                .create(
+                    header.operation_id,
+                    "network",
+                    &identity_id.to_string(),
+                    signature.v,
+                    &signature.r,
+                    &signature.s,
+                    &signature.vs,
+                )
+                .await
+                .unwrap();
             } else {
                 let network_manager = Arc::clone(context.network_manager());
                 let message = RequestMessage {
