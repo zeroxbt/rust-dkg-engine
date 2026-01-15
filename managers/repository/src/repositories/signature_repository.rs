@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, sea_query::Mode};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 
 use crate::{
@@ -33,7 +33,7 @@ impl SignatureRepository {
 
         let active_model = signatures::ActiveModel {
             id: Set(0), // Auto-increment
-            operation_id: Set(operation_id.to_string()),
+            operation_id: Set(operation_id),
             is_publisher: Set(is_publisher),
             identity_id: Set(identity_id.to_string()),
             v: Set(v),
@@ -80,7 +80,7 @@ impl SignatureRepository {
     /// Get all signatures for an operation by type
     async fn get_publisher_signature(
         &self,
-        operation_id: &str,
+        operation_id: Uuid,
     ) -> Result<Option<Model>, RepositoryError> {
         let signature = Entity::find()
             .filter(Column::OperationId.eq(operation_id))
@@ -94,7 +94,7 @@ impl SignatureRepository {
     /// Get all signatures for an operation by type
     async fn get_network_signatures(
         &self,
-        operation_id: &str,
+        operation_id: Uuid,
     ) -> Result<Vec<Model>, RepositoryError> {
         let signatures = Entity::find()
             .filter(Column::OperationId.eq(operation_id))
@@ -108,7 +108,7 @@ impl SignatureRepository {
     /// Get all signatures for an operation (regardless of type)
     pub async fn get_by_operation(
         &self,
-        operation_id: &str,
+        operation_id: Uuid,
     ) -> Result<Vec<Model>, RepositoryError> {
         let signatures = Entity::find()
             .filter(Column::OperationId.eq(operation_id))
@@ -119,7 +119,7 @@ impl SignatureRepository {
     }
 
     /// Delete all signatures for an operation (cleanup)
-    pub async fn delete_by_operation(&self, operation_id: &str) -> Result<u64, RepositoryError> {
+    pub async fn delete_by_operation(&self, operation_id: Uuid) -> Result<u64, RepositoryError> {
         let result = Entity::delete_many()
             .filter(Column::OperationId.eq(operation_id))
             .exec(self.conn.as_ref())

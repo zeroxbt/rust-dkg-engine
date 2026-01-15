@@ -1,6 +1,9 @@
 use sea_orm_migration::{
     async_trait::async_trait,
-    prelude::{DbErr, DeriveMigrationName, Iden, Index, MigrationTrait, SchemaManager, Table},
+    prelude::{
+        DbErr, DeriveMigrationName, ForeignKey, ForeignKeyAction, Iden, Index, MigrationTrait,
+        SchemaManager, Table,
+    },
     schema::*,
     sea_query,
 };
@@ -18,6 +21,12 @@ enum Signatures {
     Vs,
 }
 
+#[derive(Iden)]
+enum Operations {
+    Table,
+    OperationId,
+}
+
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -30,7 +39,7 @@ impl MigrationTrait for Migration {
                     .table(Signatures::Table)
                     .if_not_exists()
                     .col(pk_auto(Signatures::Id))
-                    .col(string(Signatures::OperationId))
+                    .col(uuid(Signatures::OperationId))
                     .col(boolean(Signatures::IsPublisher))
                     .col(string(Signatures::IdentityId))
                     .col(tiny_unsigned(Signatures::V))
@@ -60,6 +69,18 @@ impl MigrationTrait for Migration {
                     .col(Signatures::IsPublisher)
                     .col(Signatures::IdentityId)
                     .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        // Foreign key to operations table with cascade delete
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name("fk_signatures_operation")
+                    .from(Signatures::Table, Signatures::OperationId)
+                    .to(Operations::Table, Operations::OperationId)
+                    .on_delete(ForeignKeyAction::Cascade)
                     .to_owned(),
             )
             .await?;

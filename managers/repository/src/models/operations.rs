@@ -1,9 +1,12 @@
 use sea_orm::{
-    entity::prelude::{DeriveRelation, EnumIter},
+    EntityTrait, RelationTrait,
+    entity::prelude::{DeriveRelation, EnumIter, Related},
     prelude::{
         ActiveModelBehavior, DateTimeUtc, DeriveEntityModel, DerivePrimaryKey, PrimaryKeyTrait,
     },
 };
+
+use super::signatures;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -27,6 +30,15 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(has_many = "signatures::Entity")]
+    Signatures,
+}
+
+impl Related<signatures::Entity> for Entity {
+    fn to() -> sea_orm::RelationDef {
+        Relation::Signatures.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}

@@ -1,6 +1,6 @@
 use sea_orm_migration::{
     async_trait::async_trait,
-    prelude::{DbErr, DeriveMigrationName, Iden, MigrationTrait, SchemaManager, Table},
+    prelude::{DbErr, DeriveMigrationName, Iden, Index, MigrationTrait, SchemaManager, Table},
     schema::*,
     sea_query,
 };
@@ -41,6 +41,29 @@ impl MigrationTrait for Migration {
                     .col(small_unsigned(Operations::FailedCount).default(0))
                     .to_owned(),
             ))
+            .await?;
+
+        // Index on status for find_by_status() queries
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_operations_status")
+                    .table(Operations::Table)
+                    .col(Operations::Status)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Composite index for find_by_operation_name_and_status() queries
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_operations_name_status")
+                    .table(Operations::Table)
+                    .col(Operations::OperationName)
+                    .col(Operations::Status)
+                    .to_owned(),
+            )
             .await?;
 
         Ok(())
