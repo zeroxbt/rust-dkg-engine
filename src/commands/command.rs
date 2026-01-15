@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr};
+use std::{any::Any, fmt, str::FromStr, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use repository::models::command::{self, Model};
@@ -62,33 +62,35 @@ pub struct Command {
     pub transactional: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub data: serde_json::Value,
+    /// Command-specific data. Use `Command::data::<T>()` to downcast.
+    pub data: Arc<dyn Any + Send + Sync>,
 }
 
-impl From<Model> for Command {
-    fn from(model: command::Model) -> Self {
-        Self {
-            id: uuid::Uuid::from_str(model.id.as_str()).unwrap(),
-            name: model.name.parse().unwrap(),
-            sequence: Some(model.sequence),
-            ready_at: model.ready_at,
-            delay: model.delay,
-            started_at: model.started_at,
-            deadline_at: model.deadline_at,
-            period: model.period,
-            status: model.status.parse().unwrap(),
-            message: model.message,
-            parent_id: model
-                .parent_id
-                .map(|string| uuid::Uuid::from_str(string.as_str()).unwrap()),
-            retries: model.retries,
-            transactional: model.transactional,
-            created_at: model.created_at,
-            updated_at: model.updated_at,
-            data: serde_json::from_value(model.data).unwrap(),
-        }
-    }
-}
+// NOTE: Commented out - commands are no longer persisted/replayed from DB
+// impl From<Model> for Command {
+//     fn from(model: command::Model) -> Self {
+//         Self {
+//             id: uuid::Uuid::from_str(model.id.as_str()).unwrap(),
+//             name: model.name.parse().unwrap(),
+//             sequence: Some(model.sequence),
+//             ready_at: model.ready_at,
+//             delay: model.delay,
+//             started_at: model.started_at,
+//             deadline_at: model.deadline_at,
+//             period: model.period,
+//             status: model.status.parse().unwrap(),
+//             message: model.message,
+//             parent_id: model
+//                 .parent_id
+//                 .map(|string| uuid::Uuid::from_str(string.as_str()).unwrap()),
+//             retries: model.retries,
+//             transactional: model.transactional,
+//             created_at: model.created_at,
+//             updated_at: model.updated_at,
+//             data: serde_json::from_value(model.data).unwrap(),
+//         }
+//     }
+// }
 
 impl Command {
     pub fn builder(name: impl Into<String>) -> CommandBuilder {
@@ -98,7 +100,7 @@ impl Command {
 
 pub struct CommandBuilder {
     name: String,
-    data: Option<Value>,
+    data: Option<Arc<dyn Any + Send + Sync>>,
     delay: i64,
     retries: i32,
     period: Option<i64>,
@@ -121,13 +123,8 @@ impl CommandBuilder {
         }
     }
 
-    pub fn data<T: serde::Serialize>(mut self, data: T) -> Self {
-        self.data = Some(serde_json::to_value(data).expect("Failed to serialize data"));
-        self
-    }
-
-    pub fn data_json(mut self, data: Value) -> Self {
-        self.data = Some(data);
+    pub fn data<T: Any + Send + Sync>(mut self, data: T) -> Self {
+        self.data = Some(Arc::new(data));
         self
     }
 
@@ -166,7 +163,7 @@ impl CommandBuilder {
         Command {
             id: Uuid::new_v4(),
             name: self.name,
-            data: self.data.unwrap_or(serde_json::json!({})),
+            data: self.data.unwrap_or_else(|| Arc::new(())),
             ready_at: now.timestamp_millis(),
             delay: self.delay,
             started_at: None,
@@ -185,26 +182,34 @@ impl CommandBuilder {
 }
 
 impl Command {
-    pub fn to_model(&self) -> Model {
-        Model {
-            id: self.id.hyphenated().to_string(),
-            name: self.name.to_string(),
-            data: serde_json::to_value(self.data.clone())
-                .expect("Failed to convert command data to Value"),
-            sequence: serde_json::to_value(&self.sequence)
-                .expect("Failed to convert command sequence to Value"),
-            ready_at: self.ready_at,
-            delay: self.delay,
-            started_at: self.started_at,
-            deadline_at: self.deadline_at,
-            period: self.period,
-            status: self.status.to_string(),
-            message: self.message.clone(),
-            parent_id: self.parent_id.map(|uuid| uuid.hyphenated().to_string()),
-            transactional: self.transactional,
-            retries: self.retries,
-            created_at: self.created_at,
-            updated_at: self.updated_at,
-        }
+    /// Downcast the command data to the expected type.
+    pub fn data<T: Any + Send + Sync>(&self) -> &T {
+        self.data
+            .downcast_ref::<T>()
+            .unwrap_or_else(|| panic!("Failed to downcast command data to expected type"))
     }
+
+    // NOTE: Commented out - commands are no longer persisted to DB
+    // pub fn to_model(&self) -> Model {
+    //     Model {
+    //         id: self.id.hyphenated().to_string(),
+    //         name: self.name.to_string(),
+    //         data: serde_json::to_value(self.data.clone())
+    //             .expect("Failed to convert command data to Value"),
+    //         sequence: serde_json::to_value(&self.sequence)
+    //             .expect("Failed to convert command sequence to Value"),
+    //         ready_at: self.ready_at,
+    //         delay: self.delay,
+    //         started_at: self.started_at,
+    //         deadline_at: self.deadline_at,
+    //         period: self.period,
+    //         status: self.status.to_string(),
+    //         message: self.message.clone(),
+    //         parent_id: self.parent_id.map(|uuid| uuid.hyphenated().to_string()),
+    //         transactional: self.transactional,
+    //         retries: self.retries,
+    //         created_at: self.created_at,
+    //         updated_at: self.updated_at,
+    //     }
+    // }
 }

@@ -4,10 +4,9 @@ use dashmap::DashMap;
 use network::{PeerId, ResponseMessage, request_response};
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::time::Instant;
+use uuid::Uuid;
 
-use crate::types::models::OperationId;
-
-type SessionKey = (String, OperationId); // (peer_id_string, operation_id)
+type SessionKey = (String, Uuid);
 
 struct SessionEntry<T> {
     channel: request_response::ResponseChannel<ResponseMessage<T>>,
@@ -39,8 +38,8 @@ where
 
     pub fn store_channel(
         &self,
-        peer_id: PeerId,
-        operation_id: OperationId,
+        peer_id: &PeerId,
+        operation_id: Uuid,
         channel: request_response::ResponseChannel<ResponseMessage<T>>,
     ) {
         let key = (peer_id.to_string(), operation_id);
@@ -60,8 +59,8 @@ where
 
     pub fn retrieve_channel(
         &self,
-        peer_id: &str,
-        operation_id: OperationId,
+        peer_id: &PeerId,
+        operation_id: Uuid,
     ) -> Option<request_response::ResponseChannel<ResponseMessage<T>>> {
         let key = (peer_id.to_string(), operation_id);
 
@@ -74,7 +73,7 @@ where
         self.sessions.remove(&key).map(|(_, entry)| entry.channel)
     }
 
-    pub fn remove_session(&self, peer_id: &str, operation_id: OperationId) {
+    pub fn remove_session(&self, peer_id: &PeerId, operation_id: Uuid) {
         let key = (peer_id.to_string(), operation_id);
 
         tracing::trace!(

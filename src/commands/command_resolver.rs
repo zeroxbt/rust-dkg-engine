@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{any::Any, collections::HashMap, sync::Arc};
 
 use chrono::Utc;
 use uuid::Uuid;
@@ -51,7 +51,7 @@ impl CommandResolver {
                     Some(Command {
                         id: Uuid::new_v4(),
                         name: handler.name().to_string(),
-                        data: serde_json::json!({}),
+                        data: Arc::new(()) as Arc<dyn Any + Send + Sync>,
                         period: Some(period_ms),
                         delay: initial_delay_ms,
                         retries: 0,

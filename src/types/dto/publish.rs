@@ -1,8 +1,9 @@
 use blockchain::BlockchainName;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 use validator_derive::Validate;
 
-use crate::types::models::{Assertion, OperationId};
+use crate::types::models::Assertion;
 
 #[derive(Deserialize, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
@@ -20,11 +21,11 @@ pub struct PublishRequest {
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishResponse {
-    pub operation_id: OperationId,
+    pub operation_id: Uuid,
 }
 
 impl PublishResponse {
-    pub fn new(operation_id: OperationId) -> Self {
+    pub fn new(operation_id: Uuid) -> Self {
         Self { operation_id }
     }
 }

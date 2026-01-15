@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
     error::{NodeError, ServiceError},
     services::file_service::FileService,
-    types::models::{Assertion, OperationId},
+    types::models::Assertion,
 };
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -45,7 +46,7 @@ impl PendingStorageService {
 impl PendingStorageService {
     pub async fn store_dataset(
         &self,
-        operation_id: OperationId,
+        operation_id: Uuid,
         dataset_root: &str,
         dataset: &Assertion,
     ) -> Result<(), NodeError> {
@@ -68,10 +69,7 @@ impl PendingStorageService {
         Ok(())
     }
 
-    pub async fn get_dataset(
-        &self,
-        operation_id: OperationId,
-    ) -> Result<PendingStorageData, NodeError> {
+    pub async fn get_dataset(&self, operation_id: Uuid) -> Result<PendingStorageData, NodeError> {
         tracing::debug!(
             operation_id = %operation_id,
             "Retrieving dataset from pending storage"
