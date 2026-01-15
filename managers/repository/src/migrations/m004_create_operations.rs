@@ -1,11 +1,23 @@
-use sea_orm::DeriveMigrationName;
 use sea_orm_migration::{
     async_trait::async_trait,
-    prelude::{DbErr, MigrationTrait, SchemaManager, Table},
+    prelude::{DbErr, DeriveMigrationName, Iden, MigrationTrait, SchemaManager, Table},
     schema::*,
+    sea_query,
 };
 
-use crate::models::operations;
+#[derive(Iden)]
+enum Operations {
+    Table,
+    OperationId,
+    OperationName,
+    Status,
+    ErrorMessage,
+    Timestamp,
+    TotalPeers,
+    MinAckResponses,
+    CompletedCount,
+    FailedCount,
+}
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -16,18 +28,17 @@ impl MigrationTrait for Migration {
         manager
             .create_table(timestamps(
                 Table::create()
-                    .table(operations::Entity)
+                    .table(Operations::Table)
                     .if_not_exists()
-                    .col(pk_uuid(operations::Column::OperationId))
-                    .col(string(operations::Column::OperationName))
-                    .col(string_null(operations::Column::Status))
-                    .col(text_null(operations::Column::ErrorMessage))
-                    .col(big_integer(operations::Column::Timestamp))
-                    // Progress tracking fields
-                    .col(small_unsigned_null(operations::Column::TotalPeers))
-                    .col(small_unsigned_null(operations::Column::MinAckResponses))
-                    .col(small_unsigned(operations::Column::CompletedCount).default(0))
-                    .col(small_unsigned(operations::Column::FailedCount).default(0))
+                    .col(pk_uuid(Operations::OperationId))
+                    .col(string(Operations::OperationName))
+                    .col(string_null(Operations::Status))
+                    .col(text_null(Operations::ErrorMessage))
+                    .col(big_integer(Operations::Timestamp))
+                    .col(small_unsigned_null(Operations::TotalPeers))
+                    .col(small_unsigned_null(Operations::MinAckResponses))
+                    .col(small_unsigned(Operations::CompletedCount).default(0))
+                    .col(small_unsigned(Operations::FailedCount).default(0))
                     .to_owned(),
             ))
             .await?;
@@ -39,7 +50,7 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(
                 Table::drop()
-                    .table(operations::Entity)
+                    .table(Operations::Table)
                     .if_exists()
                     .to_owned(),
             )

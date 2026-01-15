@@ -1,11 +1,18 @@
-use sea_orm::DeriveMigrationName;
 use sea_orm_migration::{
     async_trait::async_trait,
-    prelude::{DbErr, Index, MigrationTrait, SchemaManager, Table},
+    prelude::{DbErr, DeriveMigrationName, Iden, Index, MigrationTrait, SchemaManager, Table},
     schema::*,
+    sea_query,
 };
 
-use crate::models::blockchain;
+#[derive(Iden)]
+enum Blockchain {
+    Table,
+    BlockchainId,
+    Contract,
+    LastCheckedBlock,
+    LastCheckedTimestamp,
+}
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -16,23 +23,23 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(blockchain::Entity)
+                    .table(Blockchain::Table)
                     .if_not_exists()
-                    .col(string(blockchain::Column::BlockchainId))
-                    .col(string_len(blockchain::Column::Contract, 42))
+                    .col(string(Blockchain::BlockchainId))
+                    .col(string_len(Blockchain::Contract, 42))
                     .col(
-                        unsigned(blockchain::Column::LastCheckedBlock)
+                        unsigned(Blockchain::LastCheckedBlock)
                             .big_integer()
                             .default("0"),
                     )
                     .col(
-                        date_time(blockchain::Column::LastCheckedTimestamp)
+                        date_time(Blockchain::LastCheckedTimestamp)
                             .default("1970-01-01 00:00:00"),
                     )
                     .primary_key(
                         Index::create()
-                            .col(blockchain::Column::BlockchainId)
-                            .col(blockchain::Column::Contract),
+                            .col(Blockchain::BlockchainId)
+                            .col(Blockchain::Contract),
                     )
                     .to_owned(),
             )
@@ -43,7 +50,7 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(
                 Table::drop()
-                    .table(blockchain::Entity)
+                    .table(Blockchain::Table)
                     .if_exists()
                     .to_owned(),
             )

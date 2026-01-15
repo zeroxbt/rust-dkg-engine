@@ -1,11 +1,22 @@
-use sea_orm::DeriveMigrationName;
 use sea_orm_migration::{
     async_trait::async_trait,
-    prelude::{DbErr, Index, MigrationTrait, SchemaManager, Table},
+    prelude::{DbErr, DeriveMigrationName, Iden, Index, MigrationTrait, SchemaManager, Table},
     schema::*,
+    sea_query,
 };
 
-use crate::models::signatures;
+#[derive(Iden)]
+enum Signatures {
+    Table,
+    Id,
+    OperationId,
+    IsPublisher,
+    IdentityId,
+    V,
+    R,
+    S,
+    Vs,
+}
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -16,40 +27,38 @@ impl MigrationTrait for Migration {
         manager
             .create_table(timestamps(
                 Table::create()
-                    .table(signatures::Entity)
+                    .table(Signatures::Table)
                     .if_not_exists()
-                    .col(pk_auto(signatures::Column::Id))
-                    .col(string(signatures::Column::OperationId))
-                    .col(boolean(signatures::Column::IsPublisher))
-                    .col(string(signatures::Column::IdentityId))
-                    .col(tiny_unsigned(signatures::Column::V))
-                    .col(string(signatures::Column::R))
-                    .col(string(signatures::Column::S))
-                    .col(string(signatures::Column::Vs))
+                    .col(pk_auto(Signatures::Id))
+                    .col(string(Signatures::OperationId))
+                    .col(boolean(Signatures::IsPublisher))
+                    .col(string(Signatures::IdentityId))
+                    .col(tiny_unsigned(Signatures::V))
+                    .col(string(Signatures::R))
+                    .col(string(Signatures::S))
+                    .col(string(Signatures::Vs))
                     .to_owned(),
             ))
             .await?;
 
-        // Create index on operation_id for fast lookups
         manager
             .create_index(
                 Index::create()
                     .name("idx_signatures_operation_id")
-                    .table(signatures::Entity)
-                    .col(signatures::Column::OperationId)
+                    .table(Signatures::Table)
+                    .col(Signatures::OperationId)
                     .to_owned(),
             )
             .await?;
 
-        // Create unique constraint to prevent duplicate signatures
         manager
             .create_index(
                 Index::create()
                     .name("idx_signatures_unique")
-                    .table(signatures::Entity)
-                    .col(signatures::Column::OperationId)
-                    .col(signatures::Column::IsPublisher)
-                    .col(signatures::Column::IdentityId)
+                    .table(Signatures::Table)
+                    .col(Signatures::OperationId)
+                    .col(Signatures::IsPublisher)
+                    .col(Signatures::IdentityId)
                     .unique()
                     .to_owned(),
             )
@@ -62,7 +71,7 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(
                 Table::drop()
-                    .table(signatures::Entity)
+                    .table(Signatures::Table)
                     .if_exists()
                     .to_owned(),
             )

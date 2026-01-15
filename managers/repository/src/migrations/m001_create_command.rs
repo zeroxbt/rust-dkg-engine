@@ -1,11 +1,28 @@
-use sea_orm::DeriveMigrationName;
 use sea_orm_migration::{
     async_trait::async_trait,
-    prelude::{DbErr, MigrationTrait, SchemaManager, Table},
+    prelude::{DbErr, DeriveMigrationName, Iden, MigrationTrait, SchemaManager, Table},
     schema::*,
+    sea_query,
 };
 
-use crate::models::command;
+#[derive(Iden)]
+enum Command {
+    Table,
+    Id,
+    Name,
+    Data,
+    Sequence,
+    ReadyAt,
+    Delay,
+    StartedAt,
+    DeadlineAt,
+    Period,
+    Status,
+    Message,
+    ParentId,
+    Retries,
+    Transactional,
+}
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -16,22 +33,22 @@ impl MigrationTrait for Migration {
         manager
             .create_table(timestamps(
                 Table::create()
-                    .table(command::Entity)
+                    .table(Command::Table)
                     .if_not_exists()
-                    .col(string(command::Column::Id).primary_key())
-                    .col(string(command::Column::Name))
-                    .col(json(command::Column::Data))
-                    .col(json(command::Column::Sequence))
-                    .col(big_integer(command::Column::ReadyAt))
-                    .col(big_integer(command::Column::Delay).default(0))
-                    .col(big_integer(command::Column::StartedAt))
-                    .col(big_integer(command::Column::DeadlineAt))
-                    .col(integer(command::Column::Period))
-                    .col(string(command::Column::Status))
-                    .col(text(command::Column::Message))
-                    .col(string(command::Column::ParentId))
-                    .col(integer(command::Column::Retries).default(0))
-                    .col(boolean(command::Column::Transactional).default(false))
+                    .col(string(Command::Id).primary_key())
+                    .col(string(Command::Name))
+                    .col(json(Command::Data))
+                    .col(json(Command::Sequence))
+                    .col(big_integer(Command::ReadyAt))
+                    .col(big_integer(Command::Delay).default(0))
+                    .col(big_integer(Command::StartedAt))
+                    .col(big_integer(Command::DeadlineAt))
+                    .col(integer(Command::Period))
+                    .col(string(Command::Status))
+                    .col(text(Command::Message))
+                    .col(string(Command::ParentId))
+                    .col(integer(Command::Retries).default(0))
+                    .col(boolean(Command::Transactional).default(false))
                     .to_owned(),
             ))
             .await
@@ -39,7 +56,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(command::Entity).if_exists().to_owned())
+            .drop_table(Table::drop().table(Command::Table).if_exists().to_owned())
             .await
     }
 }

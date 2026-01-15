@@ -1,11 +1,21 @@
-use sea_orm::DeriveMigrationName;
 use sea_orm_migration::{
     async_trait::async_trait,
-    prelude::{DbErr, Index, MigrationTrait, SchemaManager, Table},
+    prelude::{DbErr, DeriveMigrationName, Iden, Index, MigrationTrait, SchemaManager, Table},
     schema::*,
+    sea_query,
 };
 
-use crate::models::shard;
+#[derive(Iden)]
+enum Shard {
+    Table,
+    PeerId,
+    BlockchainId,
+    Ask,
+    Stake,
+    LastSeen,
+    LastDialed,
+    Sha256,
+}
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -16,19 +26,19 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(shard::Entity)
+                    .table(Shard::Table)
                     .if_not_exists()
-                    .col(string(shard::Column::PeerId))
-                    .col(string(shard::Column::BlockchainId))
-                    .col(string(shard::Column::Ask))
-                    .col(string(shard::Column::Stake))
-                    .col(date_time(shard::Column::LastSeen).default("1970-01-01 00:00:00"))
-                    .col(date_time(shard::Column::LastDialed).default("1970-01-01 00:00:00"))
-                    .col(string(shard::Column::Sha256))
+                    .col(string(Shard::PeerId))
+                    .col(string(Shard::BlockchainId))
+                    .col(string(Shard::Ask))
+                    .col(string(Shard::Stake))
+                    .col(date_time(Shard::LastSeen).default("1970-01-01 00:00:00"))
+                    .col(date_time(Shard::LastDialed).default("1970-01-01 00:00:00"))
+                    .col(string(Shard::Sha256))
                     .primary_key(
                         Index::create()
-                            .col(shard::Column::PeerId)
-                            .col(shard::Column::BlockchainId),
+                            .col(Shard::PeerId)
+                            .col(Shard::BlockchainId),
                     )
                     .to_owned(),
             )
@@ -37,7 +47,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(shard::Entity).if_exists().to_owned())
+            .drop_table(Table::drop().table(Shard::Table).if_exists().to_owned())
             .await
     }
 }
