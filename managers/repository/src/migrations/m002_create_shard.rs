@@ -35,11 +35,7 @@ impl MigrationTrait for Migration {
                     .col(date_time(Shard::LastSeen).default("1970-01-01 00:00:00"))
                     .col(date_time(Shard::LastDialed).default("1970-01-01 00:00:00"))
                     .col(string(Shard::Sha256))
-                    .primary_key(
-                        Index::create()
-                            .col(Shard::PeerId)
-                            .col(Shard::BlockchainId),
-                    )
+                    .primary_key(Index::create().col(Shard::PeerId).col(Shard::BlockchainId))
                     .to_owned(),
             )
             .await

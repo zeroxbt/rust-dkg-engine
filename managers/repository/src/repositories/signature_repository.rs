@@ -18,6 +18,7 @@ impl SignatureRepository {
         Self { conn }
     }
 
+    #[allow(clippy::too_many_arguments)]
     /// Add a signature for an operation
     async fn create(
         &self,

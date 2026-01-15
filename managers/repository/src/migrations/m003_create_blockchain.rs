@@ -32,10 +32,7 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .default("0"),
                     )
-                    .col(
-                        date_time(Blockchain::LastCheckedTimestamp)
-                            .default("1970-01-01 00:00:00"),
-                    )
+                    .col(date_time(Blockchain::LastCheckedTimestamp).default("1970-01-01 00:00:00"))
                     .primary_key(
                         Index::create()
                             .col(Blockchain::BlockchainId)

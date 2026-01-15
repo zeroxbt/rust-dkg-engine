@@ -5,10 +5,10 @@ use sea_orm::{
         ActiveModelBehavior, DateTimeUtc, DeriveEntityModel, DerivePrimaryKey, PrimaryKeyTrait,
     },
 };
-
-use super::signatures;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use super::signatures;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "operations")]
