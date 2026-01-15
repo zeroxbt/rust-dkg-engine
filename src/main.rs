@@ -121,9 +121,10 @@ async fn main() {
         tokio::task::spawn(async move { http_api_router.listen_and_handle_http_requests().await });
 
     // Spawn blockchain event listener task
-    let blockchain_event_listener_task = tokio::task::spawn(async move {
-        blockchain_event_controller.listen_and_handle_events().await
-    });
+    let blockchain_event_listener_task =
+        tokio::task::spawn(
+            async move { blockchain_event_controller.listen_and_handle_events().await },
+        );
 
     let _ = join!(
         handle_http_events_task,

@@ -11,8 +11,8 @@ impl UalService {
         Self { blockchain_manager }
     }
 
-    // Note: calculate_location_keyword is disabled since ContentAssetStorage is not currently in use
-    // This will need to be reimplemented when KnowledgeCollectionStorage is integrated
+    // Note: calculate_location_keyword is disabled since ContentAssetStorage is not currently in
+    // use This will need to be reimplemented when KnowledgeCollectionStorage is integrated
     #[allow(dead_code)]
     pub async fn calculate_location_keyword(
         &self,
@@ -26,7 +26,8 @@ impl UalService {
         //     .get_assertion_id_by_index(blockchain, contract, token_id, 0)
         //     .await
         //     .unwrap();
-        // blockchain::utils::encode_packed_keyword(contract.to_owned(), first_assertion_id).unwrap()
+        // blockchain::utils::encode_packed_keyword(contract.to_owned(),
+        // first_assertion_id).unwrap()
         unimplemented!("calculate_location_keyword requires KnowledgeCollectionStorage integration")
     }
 }

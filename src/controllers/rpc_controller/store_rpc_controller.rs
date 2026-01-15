@@ -21,7 +21,7 @@ use crate::{
     },
 };
 
-pub struct StoreController {
+pub struct StoreRpcController {
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     publish_operation_manager: Arc<OperationManager>,
     pending_storage_service: Arc<PendingStorageService>,
@@ -30,7 +30,7 @@ pub struct StoreController {
     validation_manager: Arc<ValidationManager>,
 }
 
-impl StoreController {
+impl StoreRpcController {
     pub fn new(context: Arc<Context>) -> Self {
         Self {
             network_manager: Arc::clone(context.network_manager()),

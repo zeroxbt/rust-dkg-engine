@@ -21,11 +21,11 @@ use crate::{
     },
 };
 
-pub struct PublishController;
+pub struct PublishHttpApiController;
 
 const MIN_ACK_RESPONSES: u8 = 8;
 
-impl PublishController {
+impl PublishHttpApiController {
     pub async fn handle_request(
         State(context): State<Arc<Context>>,
         Json(req): Json<PublishRequest>,

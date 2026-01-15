@@ -2,9 +2,9 @@ use axum::Json;
 
 use crate::types::dto::info::InfoResponse;
 
-pub struct InfoController;
+pub struct InfoHttpApiController;
 
-impl InfoController {
+impl InfoHttpApiController {
     pub async fn handle_request() -> Json<InfoResponse> {
         Json(InfoResponse::new("6.0.12"))
     }

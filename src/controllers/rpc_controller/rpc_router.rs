@@ -9,7 +9,7 @@ use tokio::sync::{Semaphore, mpsc};
 use super::constants::NETWORK_EVENT_QUEUE_PARALLELISM;
 use crate::{
     context::Context,
-    controllers::rpc_controller::store_controller::StoreController,
+    controllers::rpc_controller::store_rpc_controller::StoreRpcController,
     network::{NetworkProtocols, NetworkProtocolsEvent},
 };
 
@@ -20,7 +20,7 @@ type BehaviourEvent = <Behaviour as network::NetworkBehaviour>::ToSwarm;
 pub struct RpcRouter {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    store_controller: Arc<StoreController>,
+    store_controller: Arc<StoreRpcController>,
     semaphore: Arc<Semaphore>,
 }
 
@@ -29,7 +29,7 @@ impl RpcRouter {
         RpcRouter {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            store_controller: Arc::new(StoreController::new(Arc::clone(&context))),
+            store_controller: Arc::new(StoreRpcController::new(Arc::clone(&context))),
             semaphore: Arc::new(Semaphore::new(NETWORK_EVENT_QUEUE_PARALLELISM)),
         }
     }
