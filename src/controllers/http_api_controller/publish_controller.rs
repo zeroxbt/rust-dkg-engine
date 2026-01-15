@@ -243,9 +243,8 @@ impl PublishController {
                 context
                     .repository_manager()
                     .signature_repository()
-                    .create(
+                    .store_network_signature(
                         operation_id.into_inner(),
-                        "network",
                         &identity_id.to_string(),
                         signature.v,
                         &signature.r,
@@ -316,9 +315,8 @@ impl PublishController {
         context
             .repository_manager()
             .signature_repository()
-            .create(
+            .store_publisher_signature(
                 operation_id.into_inner(),
-                "publisher",
                 &identity_id.to_string(),
                 signature.v,
                 &signature.r,

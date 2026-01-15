@@ -20,7 +20,7 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(pk_auto(signatures::Column::Id))
                     .col(string(signatures::Column::OperationId))
-                    .col(string(signatures::Column::SignatureType))
+                    .col(boolean(signatures::Column::IsPublisher))
                     .col(string(signatures::Column::IdentityId))
                     .col(tiny_unsigned(signatures::Column::V))
                     .col(string(signatures::Column::R))
@@ -48,7 +48,7 @@ impl MigrationTrait for Migration {
                     .name("idx_signatures_unique")
                     .table(signatures::Entity)
                     .col(signatures::Column::OperationId)
-                    .col(signatures::Column::SignatureType)
+                    .col(signatures::Column::IsPublisher)
                     .col(signatures::Column::IdentityId)
                     .unique()
                     .to_owned(),

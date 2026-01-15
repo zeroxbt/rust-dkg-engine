@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, sea_query::Mode};
 use uuid::Uuid;
 
 use crate::{
@@ -19,10 +19,10 @@ impl SignatureRepository {
     }
 
     /// Add a signature for an operation
-    pub async fn create(
+    async fn create(
         &self,
         operation_id: Uuid,
-        signature_type: &str,
+        is_publisher: bool,
         identity_id: &str,
         v: u8,
         r: &str,
@@ -34,7 +34,7 @@ impl SignatureRepository {
         let active_model = signatures::ActiveModel {
             id: Set(0), // Auto-increment
             operation_id: Set(operation_id.to_string()),
-            signature_type: Set(signature_type.to_string()),
+            is_publisher: Set(is_publisher),
             identity_id: Set(identity_id.to_string()),
             v: Set(v),
             r: Set(r.to_string()),
@@ -51,15 +51,54 @@ impl SignatureRepository {
         Ok(result)
     }
 
+    pub async fn store_publisher_signature(
+        &self,
+        operation_id: Uuid,
+        identity_id: &str,
+        v: u8,
+        r: &str,
+        s: &str,
+        vs: &str,
+    ) -> Result<Model, RepositoryError> {
+        self.create(operation_id, true, identity_id, v, r, s, vs)
+            .await
+    }
+
+    pub async fn store_network_signature(
+        &self,
+        operation_id: Uuid,
+        identity_id: &str,
+        v: u8,
+        r: &str,
+        s: &str,
+        vs: &str,
+    ) -> Result<Model, RepositoryError> {
+        self.create(operation_id, false, identity_id, v, r, s, vs)
+            .await
+    }
+
     /// Get all signatures for an operation by type
-    pub async fn get_by_operation_and_type(
+    async fn get_publisher_signature(
         &self,
         operation_id: &str,
-        signature_type: &str,
+    ) -> Result<Option<Model>, RepositoryError> {
+        let signature = Entity::find()
+            .filter(Column::OperationId.eq(operation_id))
+            .filter(Column::IsPublisher.eq(true))
+            .one(self.conn.as_ref())
+            .await?;
+
+        Ok(signature)
+    }
+
+    /// Get all signatures for an operation by type
+    async fn get_network_signatures(
+        &self,
+        operation_id: &str,
     ) -> Result<Vec<Model>, RepositoryError> {
         let signatures = Entity::find()
             .filter(Column::OperationId.eq(operation_id))
-            .filter(Column::SignatureType.eq(signature_type))
+            .filter(Column::IsPublisher.eq(false))
             .all(self.conn.as_ref())
             .await?;
 

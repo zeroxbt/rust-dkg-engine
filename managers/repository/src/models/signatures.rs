@@ -12,7 +12,7 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub operation_id: String,
-    pub signature_type: String,
+    pub is_publisher: bool,
     pub identity_id: String,
     pub v: u8,
     pub r: String,

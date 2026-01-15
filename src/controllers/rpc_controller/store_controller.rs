@@ -193,9 +193,8 @@ impl StoreController {
         {
             self.repository_manager
                 .signature_repository()
-                .create(
+                .store_network_signature(
                     header.operation_id,
-                    "network",
                     &identity_id.to_string(),
                     signature.v,
                     &signature.r,
