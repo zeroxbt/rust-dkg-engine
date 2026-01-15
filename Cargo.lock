@@ -6969,6 +6969,8 @@ dependencies = [
 name = "validation"
 version = "0.1.0"
 dependencies = [
+ "ethers",
+ "hex",
  "serde",
  "sha2",
 ]

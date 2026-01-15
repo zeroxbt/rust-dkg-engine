@@ -7,14 +7,10 @@ use crate::{error::NodeError, services::file_service::FileService, types::models
 
 pub struct PublishService {
     operation_manager: Arc<OperationManager>,
-    file_service: Arc<FileService>,
 }
 
 impl PublishService {
-    pub fn new(
-        repository_manager: Arc<RepositoryManager>,
-        file_service: Arc<FileService>,
-    ) -> Self {
+    pub fn new(repository_manager: Arc<RepositoryManager>, file_service: Arc<FileService>) -> Self {
         let config = OperationConfig {
             operation_name: Self::OPERATION_NAME,
         };
@@ -25,7 +21,6 @@ impl PublishService {
                 Arc::clone(&file_service),
                 config,
             )),
-            file_service,
         }
     }
 }
@@ -40,10 +35,6 @@ impl PublishService {
 
     pub fn operation_manager(&self) -> &Arc<OperationManager> {
         &self.operation_manager
-    }
-
-    pub fn file_service(&self) -> &Arc<FileService> {
-        &self.file_service
     }
 
     /// Mark operation as failed

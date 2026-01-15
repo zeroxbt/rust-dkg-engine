@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 serde.workspace = true
 sha2.workspace = true
+ethers.workspace = true
+hex.workspace = true

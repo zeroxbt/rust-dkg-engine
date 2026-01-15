@@ -20,10 +20,7 @@ use crate::{
     commands::command::Command,
     context::Context,
     network::{NetworkProtocols, ProtocolRequest},
-    services::{
-        operation_response_tracker::OperationState, pending_storage_service::PendingStorageService,
-        publish_service::PublishService,
-    },
+    services::{pending_storage_service::PendingStorageService, publish_service::PublishService},
     types::{
         models::OperationId,
         protocol::{StoreRequestData, StoreResponseData},

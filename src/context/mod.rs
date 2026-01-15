@@ -12,7 +12,7 @@ use crate::{
     network::{NetworkProtocols, SessionManager},
     services::{
         pending_storage_service::PendingStorageService, publish_service::PublishService,
-        sharding_table_service::ShardingTableService, ual_service::UalService,
+        ual_service::UalService,
     },
     types::protocol::{GetResponseData, StoreResponseData},
 };
@@ -25,7 +25,6 @@ pub struct Context {
     blockchain_manager: Arc<BlockchainManager>,
     validation_manager: Arc<ValidationManager>,
     ual_service: Arc<UalService>,
-    sharding_table_service: Arc<ShardingTableService>,
     publish_service: Arc<PublishService>,
     pending_storage_service: Arc<PendingStorageService>,
     store_session_manager: Arc<SessionManager<StoreResponseData>>,
@@ -41,7 +40,6 @@ impl Context {
         blockchain_manager: Arc<BlockchainManager>,
         validation_manager: Arc<ValidationManager>,
         ual_service: Arc<UalService>,
-        sharding_table_service: Arc<ShardingTableService>,
         publish_service: Arc<PublishService>,
         pending_storage_service: Arc<PendingStorageService>,
         store_session_manager: Arc<SessionManager<StoreResponseData>>,
@@ -55,7 +53,6 @@ impl Context {
             blockchain_manager,
             validation_manager,
             ual_service,
-            sharding_table_service,
             publish_service,
             pending_storage_service,
             store_session_manager,
@@ -85,10 +82,6 @@ impl Context {
 
     pub fn ual_service(&self) -> &Arc<UalService> {
         &self.ual_service
-    }
-
-    pub fn sharding_table_service(&self) -> &Arc<ShardingTableService> {
-        &self.sharding_table_service
     }
 
     pub fn publish_service(&self) -> &Arc<PublishService> {

@@ -7,13 +7,14 @@ use network::{
     request_response,
 };
 use repository::RepositoryManager;
+use validation::ValidationManager;
 
 use crate::{
     context::Context,
     network::{NetworkProtocols, ProtocolResponse},
     services::{pending_storage_service::PendingStorageService, publish_service::PublishService},
     types::{
-        models::OperationId,
+        models::{Assertion, OperationId},
         protocol::{StoreRequestData, StoreResponseData},
     },
 };
@@ -24,6 +25,7 @@ pub struct StoreController {
     pending_storage_service: Arc<PendingStorageService>,
     repository_manager: Arc<RepositoryManager>,
     blockchain_manager: Arc<BlockchainManager>,
+    validation_manager: Arc<ValidationManager>,
 }
 
 impl StoreController {
@@ -32,6 +34,7 @@ impl StoreController {
             network_manager: Arc::clone(context.network_manager()),
             repository_manager: Arc::clone(context.repository_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
+            validation_manager: Arc::clone(context.validation_manager()),
             publish_service: Arc::clone(context.publish_service()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
@@ -88,22 +91,53 @@ impl StoreController {
                     },
                 };
 
-                let _ = self
-                    .network_manager
+                self.network_manager
                     .send_protocol_response(ProtocolResponse::Store { channel, message })
-                    .await;
+                    .await
+                    .unwrap();
 
                 return;
             }
         };
 
-        /*
+        let dataset_root = self
+            .validation_manager
+            .calculate_merkle_root(data.dataset());
 
-        // TODO: validate dataset root
+        if data.dataset_root() != dataset_root {
+            let message = ResponseMessage {
+                header: ResponseMessageHeader {
+                    operation_id: operation_id.into_inner(),
+                    message_type: ResponseMessageType::Nack,
+                },
+                data: StoreResponseData::Error {
+                    error_message: format!(
+                        "Dataset root validation failed. Received dataset root: {}; Calculated dataset root: {}",
+                        data.dataset_root(),
+                        dataset_root
+                    ),
+                },
+            };
 
-        // TODO: store in pending storage
+            self.network_manager
+                .send_protocol_response(ProtocolResponse::Store { channel, message })
+                .await
+                .unwrap();
 
-        */
+            return;
+        }
+
+        self.pending_storage_service
+            .store_dataset(
+                operation_id,
+                &dataset_root,
+                &Assertion {
+                    public: data.dataset().to_owned(),
+                    private: None,
+                },
+            )
+            .await
+            .unwrap();
 
         let identity_id = self
             .blockchain_manager

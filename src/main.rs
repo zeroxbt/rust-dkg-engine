@@ -15,16 +15,12 @@ use commands::{command::Command, command_executor::CommandExecutor};
 use config::ManagersConfig;
 use context::Context;
 use controllers::{
-    blockchain_event_controller::BlockchainEventController,
     http_api_controller::http_api_router::{HttpApiConfig, HttpApiRouter},
     rpc_controller::rpc_router::RpcRouter,
 };
 use dotenvy::dotenv;
 use repository::RepositoryManager;
-use services::{
-    publish_service::PublishService, sharding_table_service::ShardingTableService,
-    ual_service::UalService,
-};
+use services::{publish_service::PublishService, ual_service::UalService};
 use tokio::{
     join,
     sync::mpsc::{Receiver, Sender},
@@ -51,14 +47,13 @@ async fn main() {
 
     let (network_manager, repository_manager, blockchain_manager, validation_manager) =
         initialize_managers(&config.managers).await;
-    let (ual_service, sharding_table_service, publish_service, pending_storage_service) =
-        initialize_services(
-            &config,
-            &blockchain_manager,
-            &repository_manager,
-            &validation_manager,
-            &network_manager,
-        );
+    let (ual_service, publish_service, pending_storage_service) = initialize_services(
+        &config,
+        &blockchain_manager,
+        &repository_manager,
+        &validation_manager,
+        &network_manager,
+    );
 
     let store_session_manager = Arc::new(network::SessionManager::new());
     let get_session_manager = Arc::new(network::SessionManager::new());
@@ -71,7 +66,6 @@ async fn main() {
         Arc::clone(&blockchain_manager),
         Arc::clone(&validation_manager),
         Arc::clone(&ual_service),
-        Arc::clone(&sharding_table_service),
         Arc::clone(&publish_service),
         Arc::clone(&pending_storage_service),
         Arc::clone(&store_session_manager),
@@ -86,8 +80,7 @@ async fn main() {
 
     let command_executor = Arc::new(CommandExecutor::new(Arc::clone(&context)).await);
 
-    let (http_api_router, rpc_router, blockchain_event_controller) =
-        initialize_controllers(&config.http_api, &context);
+    let (http_api_router, rpc_router) = initialize_controllers(&config.http_api, &context);
 
     let cloned_command_executor = Arc::clone(&command_executor);
 
@@ -97,17 +90,8 @@ async fn main() {
             .await
     });
 
-    blockchain_event_controller
-        .retrieve_and_handle_unprocessed_events()
-        .await;
-
     let execute_commands_task =
         tokio::task::spawn(async move { command_executor.listen_and_execute_commands().await });
-
-    let handle_blockchain_events_task =
-        tokio::task::spawn(
-            async move { blockchain_event_controller.listen_and_handle_events().await },
-        );
 
     // Spawn network manager event loop task
     let network_event_loop_task = tokio::task::spawn(async move {
@@ -133,7 +117,6 @@ async fn main() {
         handle_http_events_task,
         network_event_loop_task,
         handle_network_events_task,
-        handle_blockchain_events_task,
         schedule_commands_task,
         execute_commands_task,
     );
@@ -215,40 +198,29 @@ fn initialize_services(
     network_manager: &Arc<NetworkManager<NetworkProtocols>>,
 ) -> (
     Arc<UalService>,
-    Arc<ShardingTableService>,
     Arc<PublishService>,
     Arc<PendingStorageService>,
 ) {
     let file_service = Arc::new(FileService::new(config.app_data_path.clone()));
     let pending_storage_service = Arc::new(PendingStorageService::new(Arc::clone(&file_service)));
     let ual_service = Arc::new(UalService::new(Arc::clone(blockchain_manager)));
-    let sharding_table_service = Arc::new(ShardingTableService::new(
-        Arc::clone(repository_manager),
-        Arc::clone(blockchain_manager),
-        Arc::clone(validation_manager),
-    ));
+
     let publish_service = Arc::new(PublishService::new(
         Arc::clone(repository_manager),
         Arc::clone(&file_service),
     ));
 
-    (
-        ual_service,
-        sharding_table_service,
-        publish_service,
-        pending_storage_service,
-    )
+    (ual_service, publish_service, pending_storage_service)
 }
 
 fn initialize_controllers(
     http_api_config: &HttpApiConfig,
     context: &Arc<Context>,
-) -> (HttpApiRouter, RpcRouter, BlockchainEventController) {
+) -> (HttpApiRouter, RpcRouter) {
     let http_api_router = HttpApiRouter::new(http_api_config, context);
     let rpc_router = RpcRouter::new(Arc::clone(context));
-    let blockchain_event_controller = BlockchainEventController::new(Arc::clone(context));
 
-    (http_api_router, rpc_router, blockchain_event_controller)
+    (http_api_router, rpc_router)
 }
 
 async fn initialize_dev_environment(blockchain_manager: &Arc<BlockchainManager>) {

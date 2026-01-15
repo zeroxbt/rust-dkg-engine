@@ -6,10 +6,8 @@ use futures::future::join_all;
 use hyper::StatusCode;
 use libp2p::PeerId;
 use network::{
-    RequestMessage, ResponseMessage,
-    message::{
-        RequestMessageHeader, RequestMessageType, ResponseMessageHeader, ResponseMessageType,
-    },
+    RequestMessage,
+    message::{RequestMessageHeader, RequestMessageType},
 };
 use validator::Validate;
 
@@ -19,7 +17,7 @@ use crate::{
     types::{
         dto::publish::{PublishRequest, PublishResponse},
         models::OperationId,
-        protocol::{StoreRequestData, StoreResponseData},
+        protocol::StoreRequestData,
     },
 };
 
@@ -242,30 +240,26 @@ impl PublishController {
                     .unwrap();
                 let signature = blockchain::utils::split_signature(signature).unwrap();
 
-                let message = ResponseMessage {
-                    header: ResponseMessageHeader {
-                        operation_id: operation_id.into_inner(),
-                        message_type: ResponseMessageType::Ack,
-                    },
-                    data: StoreResponseData::Data {
-                        identity_id,
-                        signature,
-                    },
-                };
-                
-                self.repository_manager
-                .signature_repository()
-                .create(
-                    header.operation_id,
-                    "network",
-                    &identity_id.to_string(),
-                    signature.v,
-                    &signature.r,
-                    &signature.s,
-                    &signature.vs,
-                )
-                .await
-                .unwrap();
+                context
+                    .repository_manager()
+                    .signature_repository()
+                    .create(
+                        operation_id.into_inner(),
+                        "network",
+                        &identity_id.to_string(),
+                        signature.v,
+                        &signature.r,
+                        &signature.s,
+                        &signature.vs,
+                    )
+                    .await
+                    .unwrap();
+                context
+                    .publish_service()
+                    .operation_manager()
+                    .record_response(operation_id.into_inner(), true)
+                    .await
+                    .unwrap();
             } else {
                 let network_manager = Arc::clone(context.network_manager());
                 let message = RequestMessage {

@@ -5,8 +5,7 @@ use repository::RepositoryManager;
 use uuid::Uuid;
 
 use crate::{
-    error::NodeError,
-    services::file_service::FileService,
+    error::NodeError, services::file_service::FileService,
     types::models::operation::OperationStatus,
 };
 
@@ -87,7 +86,8 @@ impl OperationManager {
     }
 
     /// Record a response and return what action to take next.
-    /// Uses atomic database operations to avoid race conditions when multiple responses arrive concurrently.
+    /// Uses atomic database operations to avoid race conditions when multiple responses arrive
+    /// concurrently.
     pub async fn record_response(
         &self,
         operation_id: Uuid,
@@ -175,9 +175,7 @@ impl OperationManager {
             }
             None => {
                 // Another thread already finished this operation
-                tracing::trace!(
-                    "Operation {operation_id} was already finished by another thread"
-                );
+                tracing::trace!("Operation {operation_id} was already finished by another thread");
                 Ok(OperationAction::AlreadyFinished)
             }
         }
@@ -224,9 +222,7 @@ impl OperationManager {
             }
             None => {
                 // Another thread already finished this operation
-                tracing::trace!(
-                    "Operation {operation_id} was already finished by another thread"
-                );
+                tracing::trace!("Operation {operation_id} was already finished by another thread");
                 Ok(OperationAction::AlreadyFinished)
             }
         }
@@ -235,21 +231,33 @@ impl OperationManager {
     /// Manually fail an operation (e.g., due to external error before sending requests)
     pub async fn mark_failed(&self, operation_id: Uuid, reason: String) -> Result<(), NodeError> {
         // Get current counts from DB for logging
-        let record = self.repository.operation_repository().get(operation_id).await?;
+        let record = self
+            .repository
+            .operation_repository()
+            .get(operation_id)
+            .await?;
         let (completed, failed) = match &record {
             Some(r) => (r.completed_count, r.failed_count),
             None => (0, 0),
         };
 
         // Use atomic update to mark as failed
-        let result = self.try_fail_operation(operation_id, reason, completed, failed).await?;
+        let result = self
+            .try_fail_operation(operation_id, reason, completed, failed)
+            .await?;
 
         match result {
             OperationAction::Failed { .. } => {
-                tracing::warn!("{} for operationId: {operation_id} failed.", self.config.operation_name);
+                tracing::warn!(
+                    "{} for operationId: {operation_id} failed.",
+                    self.config.operation_name
+                );
             }
             OperationAction::AlreadyFinished => {
-                tracing::trace!("{} for operationId: {operation_id} was already finished.", self.config.operation_name);
+                tracing::trace!(
+                    "{} for operationId: {operation_id} was already finished.",
+                    self.config.operation_name
+                );
             }
             _ => {}
         }
