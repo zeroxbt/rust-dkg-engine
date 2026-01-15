@@ -50,7 +50,9 @@ impl PendingStorageService {
         dataset: &Assertion,
     ) -> Result<(), NodeError> {
         tracing::debug!(
-            "Storing dataset with root: {dataset_root}, operation id: {operation_id} in pending storage"
+            operation_id = %operation_id,
+            dataset_root = %dataset_root,
+            "Storing dataset in pending storage"
         );
 
         let dir = self.file_service.pending_storage_cache_dir();
@@ -71,7 +73,8 @@ impl PendingStorageService {
         operation_id: OperationId,
     ) -> Result<PendingStorageData, NodeError> {
         tracing::debug!(
-            "Retrieving cached dataset for operation id: {operation_id} in pending storage"
+            operation_id = %operation_id,
+            "Retrieving dataset from pending storage"
         );
 
         let file_path = self
@@ -86,7 +89,9 @@ impl PendingStorageService {
             Ok(data) => Ok(data),
             Err(e) => {
                 tracing::error!(
-                    "Failed to retrieve or parse cached dataset for operation with id: {operation_id}. Error: {e}"
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Failed to retrieve cached dataset"
                 );
 
                 Err(NodeError::Service(ServiceError::Other(e.to_string())))

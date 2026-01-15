@@ -41,13 +41,15 @@ impl PublishController {
                     .create_operation(operation_id.into_inner())
                     .await
                 {
-                    tracing::error!("Failed to create operation record: {}", e);
+                    tracing::error!(operation_id = %operation_id, error = %e, "Failed to create operation record");
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         format!("Failed to create operation: {}", e),
                     )
                         .into_response();
                 }
+
+                tracing::info!(operation_id = %operation_id, "Publish request received");
 
                 // Spawn async task to execute the operation
                 tokio::spawn(async move {
@@ -93,23 +95,11 @@ impl PublishController {
             ..
         } = request;
 
-        tracing::info!(
-            "Starting publish operation - operation_id: {}, dataset_root: {}, blockchain: {}",
-            operation_id,
-            dataset_root,
-            blockchain
-        );
-
         if let Err(e) = context
             .pending_storage_service()
             .store_dataset(operation_id, dataset_root, dataset)
             .await
         {
-            tracing::error!(
-                "Failed to store dataset for operation {}: {}",
-                operation_id,
-                e
-            );
             context
                 .publish_operation_manager()
                 .mark_failed(operation_id.into_inner(), e.to_string())
@@ -117,16 +107,6 @@ impl PublishController {
 
             return;
         }
-
-        tracing::debug!(
-            "Dataset stored successfully for operation {} (dataset_root: {})",
-            operation_id,
-            dataset_root
-        );
-
-        tracing::debug!(
-            "Searching for shard for operation: {operation_id}, dataset root: {dataset_root}"
-        );
 
         let shard_nodes = match context
             .repository_manager()
@@ -148,27 +128,11 @@ impl PublishController {
             }
         };
 
-        tracing::debug!(
-            "Found {} node(s) for operation: {operation_id}",
-            shard_nodes.len()
-        );
-
         let min_ack_responses = minimum_number_of_node_replications.unwrap_or(MIN_ACK_RESPONSES);
 
         let peers: Vec<PeerId> = shard_nodes
             .iter()
-            .filter_map(|record| match record.peer_id.parse() {
-                Ok(peer_id) => Some(peer_id),
-                Err(e) => {
-                    tracing::warn!(
-                        "Invalid peer ID '{}' in shard nodes for operation {}: {}",
-                        record.peer_id,
-                        operation_id,
-                        e
-                    );
-                    None
-                }
-            })
+            .filter_map(|record| record.peer_id.parse().ok())
             .collect();
 
         let total_peers = peers.len() as u16;
@@ -183,7 +147,6 @@ impl PublishController {
             )
             .await
         {
-            tracing::error!("Failed to initialize progress for {operation_id}: {e}");
             context
                 .publish_operation_manager()
                 .mark_failed(operation_id.into_inner(), e.to_string())
@@ -232,29 +195,22 @@ impl PublishController {
         {
             Ok(Some(id)) => id,
             Ok(None) => {
-                tracing::error!(
-                    "Identity ID not found for blockchain {} in operation {}",
-                    blockchain,
-                    operation_id
-                );
                 context
                     .publish_operation_manager()
                     .mark_failed(
                         operation_id.into_inner(),
-                        "Identity ID not found".to_string(),
+                        format!("Identity ID not found for blockchain {}", blockchain),
                     )
                     .await;
                 return;
             }
             Err(e) => {
-                tracing::error!(
-                    "Failed to get identity ID for operation {}: {}",
-                    operation_id,
-                    e
-                );
                 context
                     .publish_operation_manager()
-                    .mark_failed(operation_id.into_inner(), e.to_string())
+                    .mark_failed(
+                        operation_id.into_inner(),
+                        format!("Failed to get identity ID: {}", e),
+                    )
                     .await;
                 return;
             }
@@ -263,15 +219,11 @@ impl PublishController {
         let dataset_root_hex = match dataset_root.strip_prefix("0x") {
             Some(hex) => hex,
             None => {
-                tracing::error!(
-                    "Dataset root missing '0x' prefix for operation {}",
-                    operation_id
-                );
                 context
                     .publish_operation_manager()
                     .mark_failed(
                         operation_id.into_inner(),
-                        "Invalid dataset root format".to_string(),
+                        "Dataset root missing '0x' prefix".to_string(),
                     )
                     .await;
                 return;
@@ -281,15 +233,7 @@ impl PublishController {
         for node in shard_nodes {
             let remote_peer_id: PeerId = match node.peer_id.parse() {
                 Ok(id) => id,
-                Err(e) => {
-                    tracing::warn!(
-                        "Invalid peer ID '{}' in shard nodes for operation {}: {}",
-                        node.peer_id,
-                        operation_id,
-                        e
-                    );
-                    continue;
-                }
+                Err(_) => continue,
             };
 
             if remote_peer_id == my_peer_id {
@@ -302,12 +246,11 @@ impl PublishController {
                 )
                 .await
                 {
-                    tracing::error!(
-                        "Failed to handle self-node signature for operation {}: {}",
-                        operation_id,
-                        e
+                    tracing::warn!(
+                        operation_id = %operation_id,
+                        error = %e,
+                        "Failed to handle self-node signature, continuing with other nodes"
                     );
-                    // Continue with other nodes even if self-node fails
                 }
             } else {
                 let network_manager = Arc::clone(context.network_manager());
@@ -332,9 +275,9 @@ impl PublishController {
                         .await
                     {
                         tracing::error!(
-                            "Failed to send protocol request to {}: {}",
-                            remote_peer_id,
-                            e
+                            peer = %remote_peer_id,
+                            error = %e,
+                            "Failed to send store request"
                         );
                     }
                 });
@@ -353,12 +296,11 @@ impl PublishController {
         )
         .await
         {
-            tracing::error!(
-                "Failed to store publisher signature for operation {}: {}",
-                operation_id,
-                e
+            tracing::warn!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to store publisher signature, operation may still succeed with network signatures"
             );
-            // Don't mark as failed here - the operation may still succeed with network signatures
         }
     }
 

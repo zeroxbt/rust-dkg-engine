@@ -47,7 +47,7 @@ impl OperationManager {
             )
             .await?;
 
-        tracing::debug!("Created operation record {operation_id}");
+        tracing::debug!(operation_id = %operation_id, "Operation record created");
 
         Ok(())
     }
@@ -65,8 +65,12 @@ impl OperationManager {
             .initialize_progress(operation_id, total_peers, min_ack_responses)
             .await?;
 
-        tracing::debug!(
-            "Initialized progress for operation {operation_id}: total_peers={total_peers}, min_ack={min_ack_responses}"
+        tracing::info!(
+            operation_id = %operation_id,
+            total_peers = total_peers,
+            min_ack = min_ack_responses,
+            "[{}] Operation started",
+            self.config.operation_name
         );
 
         Ok(())
@@ -94,9 +98,13 @@ impl OperationManager {
         let total_responses = completed_count + failed_count;
 
         tracing::trace!(
-            "Operation {operation_id} response recorded: success={is_success}, \
-             completed={completed_count}/{min_ack_responses}, failed={failed_count}, \
-             total_peers={total_peers}"
+            operation_id = %operation_id,
+            success = is_success,
+            completed = completed_count,
+            min_ack = min_ack_responses,
+            failed = failed_count,
+            total_peers = total_peers,
+            "Response recorded"
         );
 
         // Check if we've reached exactly the minimum replications threshold
@@ -108,14 +116,13 @@ impl OperationManager {
                 .update_status(operation_id, OperationStatus::Completed.as_str())
                 .await?;
 
-            let total_responses = completed_count + failed_count;
             tracing::info!(
-                "[PUBLISH] Minimum replication reached for operation: {operation_id}, \
-             completed: {completed_count}"
-            );
-            tracing::info!(
-                "Total number of responses: {total_responses}, \
-             failed: {failed_count}, completed: {completed_count}"
+                operation_id = %operation_id,
+                completed = completed_count,
+                failed = failed_count,
+                total_responses = completed_count + failed_count,
+                "[{}] Minimum replication reached",
+                self.config.operation_name
             );
         }
 
@@ -130,7 +137,7 @@ impl OperationManager {
                 .update(
                     operation_id,
                     Some(OperationStatus::Failed.as_str()),
-                    Some(reason.clone()),
+                    Some(reason),
                     None,
                 )
                 .await?;
@@ -141,14 +148,14 @@ impl OperationManager {
                 .operation_result_cache_path(&operation_id.to_string());
             let _ = self.file_service.remove_file(&cache_path).await;
 
-            let total_responses = completed_count + failed_count;
             tracing::warn!(
-                "[PUBLISH] Failed for operation: {operation_id}, \
-             only {completed_count} nodes responded successfully"
-            );
-            tracing::info!(
-                "Total number of responses: {total_responses}, \
-             failed: {failed_count}, completed: {completed_count}"
+                operation_id = %operation_id,
+                completed = completed_count,
+                required = min_ack_responses,
+                failed = failed_count,
+                total_responses = completed_count + failed_count,
+                "[{}] Failed - insufficient replications",
+                self.config.operation_name
             );
         }
 
@@ -174,12 +181,17 @@ impl OperationManager {
         match result {
             Ok(_) => {
                 tracing::warn!(
-                    "{} for operationId: {operation_id} failed.",
+                    operation_id = %operation_id,
+                    "[{}] Operation failed",
                     self.config.operation_name
                 );
             }
             Err(e) => {
-                tracing::error!("Unable to mark operation {operation_id} as failed: {e}");
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Unable to mark operation as failed"
+                );
             }
         }
     }

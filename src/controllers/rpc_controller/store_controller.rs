@@ -53,8 +53,10 @@ impl StoreController {
         let operation_id = OperationId::from(header.operation_id);
 
         tracing::trace!(
-            "Validating shard for datasetRoot: {}, operation: {operation_id}",
-            data.dataset_root()
+            operation_id = %operation_id,
+            dataset_root = %data.dataset_root(),
+            peer = %remote_peer_id,
+            "Store request received"
         );
 
         match self
@@ -95,7 +97,9 @@ impl StoreController {
                     .await
                 {
                     tracing::error!(
-                        "Failed to send NACK response for operation {operation_id}: {e}"
+                        operation_id = %operation_id,
+                        error = %e,
+                        "Failed to send NACK response"
                     );
                 }
 
@@ -127,7 +131,11 @@ impl StoreController {
                 .send_protocol_response(ProtocolResponse::Store { channel, message })
                 .await
             {
-                tracing::error!("Failed to send NACK response for operation {operation_id}: {e}");
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Failed to send NACK response"
+                );
             }
 
             return;
@@ -145,8 +153,7 @@ impl StoreController {
             )
             .await
         {
-            tracing::error!("Failed to store dataset for operation {operation_id}: {e}");
-            self.send_error_response(channel, operation_id, "Failed to store dataset")
+            self.send_error_response(channel, operation_id, &format!("Failed to store dataset: {}", e))
                 .await;
             return;
         }
@@ -158,18 +165,21 @@ impl StoreController {
         {
             Ok(Some(id)) => id,
             Ok(None) => {
-                tracing::error!(
-                    "Identity ID not found for blockchain {} in operation {operation_id}",
-                    data.blockchain()
-                );
-                self.send_error_response(channel, operation_id, "Identity ID not found")
-                    .await;
+                self.send_error_response(
+                    channel,
+                    operation_id,
+                    &format!("Identity ID not found for blockchain {}", data.blockchain()),
+                )
+                .await;
                 return;
             }
             Err(e) => {
-                tracing::error!("Failed to get identity ID for operation {operation_id}: {e}");
-                self.send_error_response(channel, operation_id, "Failed to get identity ID")
-                    .await;
+                self.send_error_response(
+                    channel,
+                    operation_id,
+                    &format!("Failed to get identity ID: {}", e),
+                )
+                .await;
                 return;
             }
         };
@@ -177,8 +187,7 @@ impl StoreController {
         let dataset_root_hex = match data.dataset_root().strip_prefix("0x") {
             Some(hex) => hex,
             None => {
-                tracing::error!("Dataset root missing '0x' prefix for operation {operation_id}");
-                self.send_error_response(channel, operation_id, "Invalid dataset root format")
+                self.send_error_response(channel, operation_id, "Dataset root missing '0x' prefix")
                     .await;
                 return;
             }
@@ -191,9 +200,12 @@ impl StoreController {
         {
             Ok(sig) => sig,
             Err(e) => {
-                tracing::error!("Failed to sign message for operation {operation_id}: {e}");
-                self.send_error_response(channel, operation_id, "Failed to sign message")
-                    .await;
+                self.send_error_response(
+                    channel,
+                    operation_id,
+                    &format!("Failed to sign message: {}", e),
+                )
+                .await;
                 return;
             }
         };
@@ -201,9 +213,12 @@ impl StoreController {
         let signature = match blockchain::utils::split_signature(signature) {
             Ok(sig) => sig,
             Err(e) => {
-                tracing::error!("Failed to split signature for operation {operation_id}: {e}");
-                self.send_error_response(channel, operation_id, "Failed to process signature")
-                    .await;
+                self.send_error_response(
+                    channel,
+                    operation_id,
+                    &format!("Failed to process signature: {}", e),
+                )
+                .await;
                 return;
             }
         };
@@ -224,7 +239,17 @@ impl StoreController {
             .send_protocol_response(ProtocolResponse::Store { channel, message })
             .await
         {
-            tracing::error!("Failed to send ACK response for operation {operation_id}: {e}");
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send ACK response"
+            );
+        } else {
+            tracing::debug!(
+                operation_id = %operation_id,
+                peer = %remote_peer_id,
+                "Store request validated, ACK sent"
+            );
         }
     }
 
@@ -249,7 +274,11 @@ impl StoreController {
             .send_protocol_response(ProtocolResponse::Store { channel, message })
             .await
         {
-            tracing::error!("Failed to send error response for operation {operation_id}: {e}");
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send error response"
+            );
         }
     }
 
@@ -283,7 +312,11 @@ impl StoreController {
                 )
                 .await
         {
-            tracing::error!("Failed to store network signature for operation {operation_id}: {e}");
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to store network signature"
+            );
         };
 
         // Record response using operation manager
@@ -292,7 +325,17 @@ impl StoreController {
             .record_response(operation_id.into_inner(), is_success)
             .await
         {
-            tracing::error!("Failed to record response for operation {operation_id}: {e}");
-        };
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to record response"
+            );
+        } else {
+            tracing::debug!(
+                operation_id = %operation_id,
+                success = is_success,
+                "Store response processed"
+            );
+        }
     }
 }
