@@ -153,8 +153,12 @@ impl StoreController {
             )
             .await
         {
-            self.send_error_response(channel, operation_id, &format!("Failed to store dataset: {}", e))
-                .await;
+            self.send_error_response(
+                channel,
+                operation_id,
+                &format!("Failed to store dataset: {}", e),
+            )
+            .await;
             return;
         }
 
