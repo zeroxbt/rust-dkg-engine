@@ -58,6 +58,7 @@ password = "" # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # Example:
 # [[managers.blockchain]]
 # [managers.blockchain.OriginTrailParachain]
+# blockchain_id = "origintrail-parachain:2043"
 # chain_id = 2043
 # hub_contract_address = "0x..."
 # rpc_endpoints = ["https://..."]

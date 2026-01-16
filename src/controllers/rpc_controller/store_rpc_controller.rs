@@ -71,7 +71,7 @@ impl StoreRpcController {
 
         // Schedule command with dataset passed inline
         let command = HandlePublishRequestCommandData::new(
-            data.blockchain(),
+            data.blockchain().clone(),
             operation_id,
             data.dataset_root().to_owned(),
             remote_peer_id,

@@ -51,6 +51,7 @@ password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # Example testnet configuration:
 # [[managers.blockchain]]
 # [managers.blockchain.GnosisChiado]
+# blockchain_id = "gnosis-chiado:10200"
 # chain_id = 10200
 # hub_contract_address = "0x2c08AC4B630c009F709521e56Ac385A6af70650f"
 # rpc_endpoints = ["https://rpc.chiadochain.net"]

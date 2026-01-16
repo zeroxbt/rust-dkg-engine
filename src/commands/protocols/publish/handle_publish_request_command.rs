@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use blockchain::{BlockchainManager, BlockchainName};
+use blockchain::{BlockchainId, BlockchainManager};
 use libp2p::PeerId;
 use network::{
     NetworkManager, ResponseMessage,
@@ -27,7 +27,7 @@ use crate::{
 /// Command data for handling incoming publish/store requests.
 /// Dataset is passed inline; channel is retrieved from session manager.
 pub struct HandlePublishRequestCommandData {
-    pub blockchain: BlockchainName,
+    pub blockchain: BlockchainId,
     pub operation_id: Uuid,
     pub dataset_root: String,
     pub remote_peer_id: PeerId,
@@ -40,7 +40,7 @@ impl CommandData for HandlePublishRequestCommandData {
 
 impl HandlePublishRequestCommandData {
     pub fn new(
-        blockchain: BlockchainName,
+        blockchain: BlockchainId,
         operation_id: Uuid,
         dataset_root: String,
         remote_peer_id: PeerId,

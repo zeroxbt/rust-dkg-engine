@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use blockchain::{
-    AssetStorageChangedFilter, BlockchainManager, BlockchainName, ContractChangedFilter,
+    AssetStorageChangedFilter, BlockchainId, BlockchainManager, ContractChangedFilter,
     ContractName, EventLog, EventName, KnowledgeCollectionCreatedFilter, NewAssetStorageFilter,
     NewContractFilter, ParameterChangedFilter, utils::to_hex_string,
 };
@@ -101,7 +101,7 @@ impl BlockchainEventController {
             interval.tick().await;
 
             // Process each blockchain sequentially (as in JS EventListenerCommand)
-            for blockchain in self.blockchain_manager.get_blockchain_names() {
+            for blockchain in self.blockchain_manager.get_blockchain_ids() {
                 if let Err(e) = self.fetch_and_handle_blockchain_events(blockchain).await {
                     tracing::error!(
                         "Error processing blockchain events for {}: {:?}",
@@ -117,7 +117,7 @@ impl BlockchainEventController {
     /// Corresponds to BlockchainEventListenerCommand.fetchAndHandleBlockchainEvents in JS
     async fn fetch_and_handle_blockchain_events(
         &self,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Get current block (JS uses: currentBlock - 2 for finality safety)
         let current_block = self
@@ -235,7 +235,7 @@ impl BlockchainEventController {
     }
 
     /// Process a single event - dispatch to appropriate handler
-    async fn process_event(&self, blockchain: &BlockchainName, event: EventLog) {
+    async fn process_event(&self, blockchain: &BlockchainId, event: EventLog) {
         let block_number = event.log().block_number.unwrap_or_default().as_u64();
         tracing::trace!(
             "Processing event {:?} in block {}",
@@ -269,7 +269,7 @@ impl BlockchainEventController {
 
     // === Event Handlers (aligned with JS) ===
 
-    async fn handle_parameter_changed_event(&self, blockchain: &BlockchainName, event: EventLog) {
+    async fn handle_parameter_changed_event(&self, blockchain: &BlockchainId, event: EventLog) {
         let filter = blockchain::utils::decode_event_log::<ParameterChangedFilter>(event);
         tracing::debug!(
             "ParameterChanged on {}: {} = {}",
@@ -282,7 +282,7 @@ impl BlockchainEventController {
         // CONTRACTS.PARAMETERS_STORAGE, parameterName, parameterValue)
     }
 
-    async fn handle_new_contract_event(&self, blockchain: &BlockchainName, event: EventLog) {
+    async fn handle_new_contract_event(&self, blockchain: &BlockchainId, event: EventLog) {
         let filter = blockchain::utils::decode_event_log::<NewContractFilter>(event);
         tracing::info!(
             "NewContract on {}: {} at {:?}",
@@ -309,7 +309,7 @@ impl BlockchainEventController {
         }
     }
 
-    async fn handle_contract_changed_event(&self, blockchain: &BlockchainName, event: EventLog) {
+    async fn handle_contract_changed_event(&self, blockchain: &BlockchainId, event: EventLog) {
         let filter = blockchain::utils::decode_event_log::<ContractChangedFilter>(event);
         tracing::info!(
             "ContractChanged on {}: {} at {:?}",
@@ -336,7 +336,7 @@ impl BlockchainEventController {
         }
     }
 
-    async fn handle_new_asset_storage_event(&self, blockchain: &BlockchainName, event: EventLog) {
+    async fn handle_new_asset_storage_event(&self, blockchain: &BlockchainId, event: EventLog) {
         let filter = blockchain::utils::decode_event_log::<NewAssetStorageFilter>(event);
         tracing::info!(
             "NewAssetStorage on {}: {} at {:?}",
@@ -365,7 +365,7 @@ impl BlockchainEventController {
 
     async fn handle_asset_storage_changed_event(
         &self,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
         event: EventLog,
     ) {
         let filter = blockchain::utils::decode_event_log::<AssetStorageChangedFilter>(event);
@@ -396,7 +396,7 @@ impl BlockchainEventController {
 
     async fn handle_knowledge_collection_created_event(
         &self,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
         event: EventLog,
     ) {
         let filter = blockchain::utils::decode_event_log::<KnowledgeCollectionCreatedFilter>(event);

@@ -54,6 +54,7 @@
 # Example: Override RPC endpoints for better reliability
 # [[managers.blockchain]]
 # [managers.blockchain.Hardhat]
+# blockchain_id = "hardhat1:31337"
 # rpc_endpoints = [
 #     "https://my-private-rpc.example.com",
 #     "http://127.0.0.1:8545"

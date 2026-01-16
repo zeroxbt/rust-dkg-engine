@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use blockchain::{Address, BlockchainManager, BlockchainName};
+use blockchain::{Address, BlockchainId, BlockchainManager};
 
 pub struct UalService {
     blockchain_manager: Arc<BlockchainManager>,
@@ -16,7 +16,7 @@ impl UalService {
     #[allow(dead_code)]
     pub async fn calculate_location_keyword(
         &self,
-        _blockchain: &BlockchainName,
+        _blockchain: &BlockchainId,
         _contract: &Address,
         _token_id: u64,
     ) -> Vec<u8> {

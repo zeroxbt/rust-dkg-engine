@@ -1,4 +1,4 @@
-use blockchain::{BlockchainName, utils::SignatureComponents};
+use blockchain::{BlockchainId, utils::SignatureComponents};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 pub struct StoreRequestData {
     dataset: Vec<String>,
     dataset_root: String,
-    blockchain: BlockchainName,
+    blockchain: BlockchainId,
 }
 
 impl StoreRequestData {
-    pub fn new(dataset: Vec<String>, dataset_root: String, blockchain: BlockchainName) -> Self {
+    pub fn new(dataset: Vec<String>, dataset_root: String, blockchain: BlockchainId) -> Self {
         Self {
             dataset,
             dataset_root,
@@ -26,8 +26,8 @@ impl StoreRequestData {
         &self.dataset_root
     }
 
-    pub fn blockchain(&self) -> BlockchainName {
-        self.blockchain
+    pub fn blockchain(&self) -> &BlockchainId {
+        &self.blockchain
     }
 }
 

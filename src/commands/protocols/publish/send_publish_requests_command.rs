@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use blockchain::{BlockchainManager, BlockchainName, H256, Token, utils::keccak256_encode_packed};
+use blockchain::{BlockchainId, BlockchainManager, H256, Token, utils::keccak256_encode_packed};
 use futures::future::join_all;
 use libp2p::PeerId;
 use network::{
@@ -27,7 +27,7 @@ use crate::{
 /// Dataset is passed inline instead of being retrieved from storage.
 pub struct SendPublishRequestsCommandData {
     pub operation_id: Uuid,
-    pub blockchain: BlockchainName,
+    pub blockchain: BlockchainId,
     pub dataset_root: String,
     pub min_ack_responses: u8,
     pub dataset: Assertion,
@@ -40,7 +40,7 @@ impl CommandData for SendPublishRequestsCommandData {
 impl SendPublishRequestsCommandData {
     pub fn new(
         operation_id: Uuid,
-        blockchain: BlockchainName,
+        blockchain: BlockchainId,
         dataset_root: String,
         min_ack_responses: u8,
         dataset: Assertion,
@@ -75,7 +75,7 @@ impl SendPublishRequestsCommandHandler {
     async fn handle_self_node_signature(
         &self,
         operation_id: Uuid,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
         dataset_root_hex: &str,
         identity_id: u128,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -108,7 +108,7 @@ impl SendPublishRequestsCommandHandler {
     async fn store_publisher_signature(
         &self,
         operation_id: Uuid,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
         dataset_root: &str,
         identity_id: u128,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

@@ -245,7 +245,7 @@ fn initialize_controllers(
 }
 
 async fn initialize_dev_environment(blockchain_manager: &Arc<BlockchainManager>) {
-    for blockchain in blockchain_manager.get_blockchain_names() {
+    for blockchain in blockchain_manager.get_blockchain_ids() {
         let config = blockchain_manager
             .get_blockchain_config(blockchain)
             .unwrap();

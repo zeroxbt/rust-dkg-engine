@@ -8,6 +8,7 @@ const DEFAULT_NODES: usize = 12;
 const HTTP_PORT_BASE: usize = 8900;
 const NETWORK_PORT_BASE: usize = 9100;
 const HARDHAT_PORT: u16 = 8545;
+const HARDHAT_BLOCKCHAIN_ID: &str = "hardhat1:31337";
 const BOOTSTRAP_NODE_INDEX: usize = 0;
 const BOOTSTRAP_KEY_FILENAME: &str = "private_key";
 
@@ -129,6 +130,7 @@ async fn main() {
             .replace("{{APP_DATA_PATH}}", &data_folder)
             .replace("{{BOOTSTRAP_NODE}}", &bootstrap_multiaddr)
             .replace("{{DATABASE_NAME}}", &database_name)
+            .replace("{{BLOCKCHAIN_ID}}", HARDHAT_BLOCKCHAIN_ID)
             .replace(
                 "{{OPERATIONAL_WALLET_PUBLIC}}",
                 public_keys

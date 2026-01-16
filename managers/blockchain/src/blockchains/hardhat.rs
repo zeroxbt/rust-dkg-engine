@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
-    BlockchainConfig, BlockchainName,
+    BlockchainConfig, BlockchainId,
     blockchains::{
         abstract_blockchain::AbstractBlockchain,
         blockchain_creator::{BlockchainCreator, BlockchainProvider, Contracts},
@@ -20,8 +20,8 @@ pub struct HardhatBlockchain {
 
 #[async_trait]
 impl AbstractBlockchain for HardhatBlockchain {
-    fn name(&self) -> &BlockchainName {
-        &BlockchainName::Hardhat
+    fn blockchain_id(&self) -> &BlockchainId {
+        self.config.blockchain_id()
     }
     fn config(&self) -> &BlockchainConfig {
         &self.config

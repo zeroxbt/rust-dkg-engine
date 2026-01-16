@@ -10,7 +10,7 @@ use ethers::{
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
-    BlockchainConfig, BlockchainName,
+    BlockchainConfig, BlockchainId,
     blockchains::blockchain_creator::{BlockchainProvider, Contracts},
     error::BlockchainError,
     utils::handle_contract_call,
@@ -125,7 +125,7 @@ impl EventLog {
 // AbstractBlockchain>) Native async traits are not dyn-compatible yet
 #[async_trait]
 pub trait AbstractBlockchain: Send + Sync {
-    fn name(&self) -> &BlockchainName;
+    fn blockchain_id(&self) -> &BlockchainId;
     fn config(&self) -> &BlockchainConfig;
     fn provider(&self) -> &Arc<BlockchainProvider>;
     async fn contracts(&self) -> RwLockReadGuard<'_, Contracts>;

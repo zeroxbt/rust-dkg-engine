@@ -1,7 +1,7 @@
 pub mod blockchains;
 pub mod error;
 pub mod utils;
-use std::{collections::HashMap, fmt::Display, str::FromStr};
+use std::collections::HashMap;
 
 use blockchains::{abstract_blockchain::AbstractBlockchain, blockchain_creator::BlockchainCreator};
 pub use blockchains::{
@@ -19,8 +19,42 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::BlockchainError;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct BlockchainId(String);
+
+impl BlockchainId {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for BlockchainId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<String> for BlockchainId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for BlockchainId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct BlockchainConfig {
+    #[serde(default)]
+    blockchain_id: Option<BlockchainId>,
     chain_id: u64,
     evm_operational_wallet_private_key: String,
     evm_operational_wallet_public_key: String,
@@ -33,6 +67,16 @@ pub struct BlockchainConfig {
 }
 
 impl BlockchainConfig {
+    pub fn blockchain_id(&self) -> &BlockchainId {
+        self.blockchain_id
+            .as_ref()
+            .expect("blockchain_id must be set before use")
+    }
+
+    pub fn chain_id(&self) -> u64 {
+        self.chain_id
+    }
+
     pub fn evm_operational_wallet_private_key(&self) -> &str {
         &self.evm_operational_wallet_private_key
     }
@@ -66,37 +110,6 @@ impl BlockchainConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BlockchainName {
-    Hardhat,
-}
-
-impl BlockchainName {
-    pub fn as_str(&self) -> &str {
-        match self {
-            BlockchainName::Hardhat => "hardhat",
-        }
-    }
-}
-
-impl Display for BlockchainName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl FromStr for BlockchainName {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "hardhat" => Ok(BlockchainName::Hardhat),
-            other => Err(format!("Unknown blockchain: {}", other)),
-        }
-    }
-}
-
 #[derive(Debug, Deserialize, Clone)]
 pub enum Blockchain {
     Hardhat(BlockchainConfig),
@@ -114,7 +127,7 @@ impl Blockchain {
 pub struct BlockchainManagerConfig(pub Vec<Blockchain>);
 
 pub struct BlockchainManager {
-    blockchains: HashMap<BlockchainName, Box<dyn AbstractBlockchain>>,
+    blockchains: HashMap<BlockchainId, Box<dyn AbstractBlockchain>>,
 }
 
 impl BlockchainManager {
@@ -123,13 +136,17 @@ impl BlockchainManager {
         for blockchain in config.0.iter() {
             match blockchain {
                 Blockchain::Hardhat(blockchain_config) => {
+                    let mut config = blockchain_config.clone();
+                    let blockchain_id = config
+                        .blockchain_id
+                        .clone()
+                        .unwrap_or_else(|| BlockchainId::new(format!("hardhat:{}", config.chain_id())));
+                    config.blockchain_id = Some(blockchain_id.clone());
                     let blockchain =
-                        blockchains::hardhat::HardhatBlockchain::new(blockchain_config.clone())
-                            .await;
-                    let blockchain_name = blockchain.name().to_owned();
+                        blockchains::hardhat::HardhatBlockchain::new(config).await;
                     let trait_object: Box<dyn AbstractBlockchain> = Box::new(blockchain);
 
-                    blockchains.insert(blockchain_name, trait_object);
+                    blockchains.insert(blockchain_id, trait_object);
                 }
             }
         }
@@ -137,13 +154,13 @@ impl BlockchainManager {
         Self { blockchains }
     }
 
-    pub fn get_blockchain_names(&self) -> Vec<&BlockchainName> {
+    pub fn get_blockchain_ids(&self) -> Vec<&BlockchainId> {
         self.blockchains.keys().collect()
     }
 
     pub fn get_blockchain_config(
         &self,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
     ) -> Result<&BlockchainConfig, BlockchainError> {
         self.blockchains
             .get(blockchain)
@@ -155,7 +172,7 @@ impl BlockchainManager {
 
     pub async fn identity_id_exists(
         &self,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
     ) -> Result<bool, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
@@ -167,7 +184,7 @@ impl BlockchainManager {
 
     pub async fn get_identity_id(
         &self,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
     ) -> Result<Option<u128>, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
@@ -187,7 +204,7 @@ impl BlockchainManager {
 
     pub async fn get_event_logs(
         &self,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
         contract_name: &ContractName,
         events_to_filter: &Vec<EventName>,
         from_block: u64,
@@ -205,7 +222,7 @@ impl BlockchainManager {
 
     pub async fn get_block_number(
         &self,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
     ) -> Result<u64, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
@@ -217,7 +234,7 @@ impl BlockchainManager {
 
     pub async fn re_initialize_contract(
         &self,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
         contract_name: String,
         contract_address: Address,
     ) -> Result<(), BlockchainError> {
@@ -235,7 +252,7 @@ impl BlockchainManager {
 
     pub async fn sign_message(
         &self,
-        blockchain: &BlockchainName,
+        blockchain: &BlockchainId,
         message_hash: &str,
     ) -> Result<Vec<u8>, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
