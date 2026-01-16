@@ -6,7 +6,6 @@ use sea_orm::{
     },
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use super::signatures;
 
@@ -14,7 +13,7 @@ use super::signatures;
 #[sea_orm(table_name = "operations")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub operation_id: Uuid,
+    pub operation_id: String,
     pub operation_name: String,
     pub status: String,
     #[sea_orm(column_type = "Text", nullable)]

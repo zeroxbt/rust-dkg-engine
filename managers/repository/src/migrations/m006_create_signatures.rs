@@ -39,7 +39,7 @@ impl MigrationTrait for Migration {
                     .table(Signatures::Table)
                     .if_not_exists()
                     .col(pk_auto(Signatures::Id))
-                    .col(uuid(Signatures::OperationId))
+                    .col(string_len(Signatures::OperationId, 36))
                     .col(boolean(Signatures::IsPublisher))
                     .col(string(Signatures::IdentityId))
                     .col(tiny_unsigned(Signatures::V))

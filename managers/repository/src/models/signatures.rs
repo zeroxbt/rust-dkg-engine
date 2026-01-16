@@ -6,7 +6,6 @@ use sea_orm::{
     },
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use super::operations;
 
@@ -15,7 +14,7 @@ use super::operations;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    pub operation_id: Uuid,
+    pub operation_id: String,
     pub is_publisher: bool,
     pub identity_id: String,
     pub v: u8,

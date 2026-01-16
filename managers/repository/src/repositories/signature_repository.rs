@@ -34,7 +34,7 @@ impl SignatureRepository {
 
         let active_model = signatures::ActiveModel {
             id: Set(0), // Auto-increment
-            operation_id: Set(operation_id),
+            operation_id: Set(operation_id.to_string()),
             is_publisher: Set(is_publisher),
             identity_id: Set(identity_id.to_string()),
             v: Set(v),
@@ -84,7 +84,7 @@ impl SignatureRepository {
         operation_id: Uuid,
     ) -> Result<Option<Model>, RepositoryError> {
         let signature = Entity::find()
-            .filter(Column::OperationId.eq(operation_id))
+            .filter(Column::OperationId.eq(operation_id.to_string()))
             .filter(Column::IsPublisher.eq(true))
             .one(self.conn.as_ref())
             .await?;
@@ -98,7 +98,7 @@ impl SignatureRepository {
         operation_id: Uuid,
     ) -> Result<Vec<Model>, RepositoryError> {
         let signatures = Entity::find()
-            .filter(Column::OperationId.eq(operation_id))
+            .filter(Column::OperationId.eq(operation_id.to_string()))
             .filter(Column::IsPublisher.eq(false))
             .all(self.conn.as_ref())
             .await?;
@@ -112,7 +112,7 @@ impl SignatureRepository {
         operation_id: Uuid,
     ) -> Result<Vec<Model>, RepositoryError> {
         let signatures = Entity::find()
-            .filter(Column::OperationId.eq(operation_id))
+            .filter(Column::OperationId.eq(operation_id.to_string()))
             .all(self.conn.as_ref())
             .await?;
 
@@ -122,7 +122,7 @@ impl SignatureRepository {
     /// Delete all signatures for an operation (cleanup)
     pub async fn delete_by_operation(&self, operation_id: Uuid) -> Result<u64, RepositoryError> {
         let result = Entity::delete_many()
-            .filter(Column::OperationId.eq(operation_id))
+            .filter(Column::OperationId.eq(operation_id.to_string()))
             .exec(self.conn.as_ref())
             .await?;
 

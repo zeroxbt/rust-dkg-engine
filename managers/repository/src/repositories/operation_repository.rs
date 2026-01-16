@@ -32,7 +32,7 @@ impl OperationRepository {
         let now = Utc::now();
 
         let active_model = operations::ActiveModel {
-            operation_id: Set(operation_id),
+            operation_id: Set(operation_id.to_string()),
             operation_name: Set(operation_name.to_string()),
             status: Set(status.to_string()),
             error_message: Set(None),
@@ -54,7 +54,7 @@ impl OperationRepository {
 
     /// Get an operation record by its ID
     pub async fn get(&self, operation_id: Uuid) -> Result<Option<Model>, RepositoryError> {
-        let record = Entity::find_by_id(operation_id)
+        let record = Entity::find_by_id(operation_id.to_string())
             .one(self.conn.as_ref())
             .await?;
 
@@ -70,7 +70,7 @@ impl OperationRepository {
         timestamp: Option<i64>,
     ) -> Result<Model, RepositoryError> {
         // First, find the existing record
-        let existing = Entity::find_by_id(operation_id)
+        let existing = Entity::find_by_id(operation_id.to_string())
             .one(self.conn.as_ref())
             .await?
             .ok_or_else(|| {
@@ -113,7 +113,7 @@ impl OperationRepository {
         completed_count: u16,
         failed_count: u16,
     ) -> Result<Model, RepositoryError> {
-        let existing = Entity::find_by_id(operation_id)
+        let existing = Entity::find_by_id(operation_id.to_string())
             .one(self.conn.as_ref())
             .await?
             .ok_or_else(|| {
@@ -139,7 +139,7 @@ impl OperationRepository {
         // Atomically increment the appropriate counter
         let update_result = if is_success {
             Entity::update_many()
-                .filter(Column::OperationId.eq(operation_id))
+                .filter(Column::OperationId.eq(operation_id.to_string()))
                 .col_expr(
                     Column::CompletedCount,
                     Expr::col(Column::CompletedCount).add(1),
@@ -149,7 +149,7 @@ impl OperationRepository {
                 .await?
         } else {
             Entity::update_many()
-                .filter(Column::OperationId.eq(operation_id))
+                .filter(Column::OperationId.eq(operation_id.to_string()))
                 .col_expr(Column::FailedCount, Expr::col(Column::FailedCount).add(1))
                 .col_expr(Column::UpdatedAt, Expr::value(Utc::now()))
                 .exec(self.conn.as_ref())
@@ -164,7 +164,7 @@ impl OperationRepository {
         }
 
         // Fetch the updated record to get the new counts
-        let record = Entity::find_by_id(operation_id)
+        let record = Entity::find_by_id(operation_id.to_string())
             .one(self.conn.as_ref())
             .await?
             .ok_or_else(|| {
@@ -181,7 +181,7 @@ impl OperationRepository {
         total_peers: u16,
         min_ack_responses: u16,
     ) -> Result<Model, RepositoryError> {
-        let existing = Entity::find_by_id(operation_id)
+        let existing = Entity::find_by_id(operation_id.to_string())
             .one(self.conn.as_ref())
             .await?
             .ok_or_else(|| {
@@ -208,7 +208,7 @@ impl OperationRepository {
         completed_count: u16,
         failed_count: u16,
     ) -> Result<Model, RepositoryError> {
-        let existing = Entity::find_by_id(operation_id)
+        let existing = Entity::find_by_id(operation_id.to_string())
             .one(self.conn.as_ref())
             .await?
             .ok_or_else(|| {
@@ -230,7 +230,7 @@ impl OperationRepository {
 
     /// Delete an operation record by ID
     pub async fn delete(&self, operation_id: Uuid) -> Result<bool, RepositoryError> {
-        let result = Entity::delete_by_id(operation_id)
+        let result = Entity::delete_by_id(operation_id.to_string())
             .exec(self.conn.as_ref())
             .await?;
 
@@ -287,7 +287,7 @@ impl OperationRepository {
                 .all(self.conn.as_ref())
                 .await?;
 
-            let ids: Vec<Uuid> = records.into_iter().map(|r| r.operation_id).collect();
+            let ids: Vec<String> = records.into_iter().map(|r| r.operation_id).collect();
 
             if ids.is_empty() {
                 return Ok(0);

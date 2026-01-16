@@ -30,7 +30,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Operations::Table)
                     .if_not_exists()
-                    .col(pk_uuid(Operations::OperationId))
+                    .col(string_len(Operations::OperationId, 36))
                     .col(string(Operations::OperationName))
                     .col(string(Operations::Status))
                     .col(text_null(Operations::ErrorMessage))
@@ -39,6 +39,9 @@ impl MigrationTrait for Migration {
                     .col(small_unsigned_null(Operations::MinAckResponses))
                     .col(small_unsigned(Operations::CompletedCount).default(0))
                     .col(small_unsigned(Operations::FailedCount).default(0))
+                    .primary_key(
+                        Index::create().col(Operations::OperationId),
+                    )
                     .to_owned(),
             ))
             .await?;
