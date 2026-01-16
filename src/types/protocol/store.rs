@@ -31,8 +31,9 @@ impl StoreRequestData {
     }
 }
 
+// TODO: This will not work for js implementation because of enum. I tried using #[serde(untagged)]
+// to remove enum variant names from the json but it has deserialization issues and throws errors.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(untagged)]
 pub enum StoreResponseData {
     #[serde(rename_all = "camelCase")]
     Error { error_message: String },

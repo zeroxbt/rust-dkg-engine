@@ -109,8 +109,15 @@ impl SendPublishRequestsCommandHandler {
         identity_id: u128,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let dataset_root_h256: H256 = dataset_root.parse()?;
+        // JS uses: keccak256EncodePacked(['uint72', 'bytes32'], [identityId, datasetRoot])
+        // uint72 = 9 bytes, so we encode identity_id as FixedBytes(9) to match Solidity's packed
+        // encoding
+        let identity_bytes = {
+            let bytes = identity_id.to_be_bytes(); // u128 = 16 bytes
+            bytes[16 - 9..].to_vec() // Take last 9 bytes for uint72
+        };
         let tokens = vec![
-            Token::Uint(identity_id.into()),
+            Token::FixedBytes(identity_bytes),
             Token::FixedBytes(dataset_root_h256.as_bytes().to_vec()),
         ];
         let message_hash = keccak256_encode_packed(&tokens)?;
@@ -157,16 +164,36 @@ impl CommandHandler for SendPublishRequestsCommandHandler {
         let min_ack_responses = data.min_ack_responses;
         let dataset = &data.dataset;
 
+        tracing::info!(
+            operation_id = %operation_id,
+            blockchain = %blockchain,
+            dataset_root = %dataset_root,
+            min_ack_responses = %min_ack_responses,
+            "Starting SendPublishRequests command"
+        );
+
         let shard_nodes = match self
             .repository_manager
             .shard_repository()
             .get_all_peer_records(blockchain.as_str(), true)
             .await
         {
-            Ok(shard_nodes) => shard_nodes,
+            Ok(shard_nodes) => {
+                tracing::info!(
+                    operation_id = %operation_id,
+                    shard_nodes_count = shard_nodes.len(),
+                    "Retrieved shard nodes from repository"
+                );
+                shard_nodes
+            }
             Err(e) => {
                 let error_message = format!(
                     "Failed to get shard nodes from repository for operation: {operation_id}. Error: {e}"
+                );
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Failed to get shard nodes"
                 );
 
                 self.publish_operation_manager
@@ -182,6 +209,13 @@ impl CommandHandler for SendPublishRequestsCommandHandler {
             .collect();
 
         let total_peers = peers.len() as u16;
+
+        tracing::info!(
+            operation_id = %operation_id,
+            total_peers = total_peers,
+            peer_ids = ?peers.iter().map(|p| p.to_string()).collect::<Vec<_>>(),
+            "Parsed peer IDs from shard nodes"
+        );
 
         // Initialize progress tracking (operation record already created in handle_request)
         if let Err(e) = self
@@ -209,6 +243,12 @@ impl CommandHandler for SendPublishRequestsCommandHandler {
 
         let my_peer_id = *self.network_manager.peer_id();
         let mut send_futures = Vec::with_capacity(shard_nodes.len());
+
+        tracing::info!(
+            operation_id = %operation_id,
+            my_peer_id = %my_peer_id,
+            "Self peer ID identified"
+        );
 
         let identity_id = match self.blockchain_manager.get_identity_id(blockchain).await {
             Ok(Some(id)) => id,
@@ -246,6 +286,11 @@ impl CommandHandler for SendPublishRequestsCommandHandler {
             };
 
             if remote_peer_id == my_peer_id {
+                tracing::info!(
+                    operation_id = %operation_id,
+                    peer = %remote_peer_id,
+                    "Processing self-node (publisher), handling signature locally"
+                );
                 if let Err(e) = self
                     .handle_self_node_signature(
                         operation_id,
@@ -260,8 +305,18 @@ impl CommandHandler for SendPublishRequestsCommandHandler {
                         error = %e,
                         "Failed to handle self-node signature, continuing with other nodes"
                     );
+                } else {
+                    tracing::info!(
+                        operation_id = %operation_id,
+                        "Self-node signature handled successfully"
+                    );
                 }
             } else {
+                tracing::info!(
+                    operation_id = %operation_id,
+                    remote_peer = %remote_peer_id,
+                    "Preparing to send store request to remote peer"
+                );
                 let network_manager = Arc::clone(&self.network_manager);
                 let message = RequestMessage {
                     header: RequestMessageHeader {
@@ -275,25 +330,52 @@ impl CommandHandler for SendPublishRequestsCommandHandler {
                     ),
                 };
 
+                let op_id = operation_id;
                 send_futures.push(async move {
-                    if let Err(e) = network_manager
+                    tracing::debug!(
+                        operation_id = %op_id,
+                        peer = %remote_peer_id,
+                        "Sending store request to peer"
+                    );
+                    match network_manager
                         .send_protocol_request(ProtocolRequest::Store {
                             peer: remote_peer_id,
                             message,
                         })
                         .await
                     {
-                        tracing::error!(
-                            peer = %remote_peer_id,
-                            error = %e,
-                            "Failed to send store request"
-                        );
+                        Ok(_) => {
+                            tracing::info!(
+                                operation_id = %op_id,
+                                peer = %remote_peer_id,
+                                "Store request sent successfully to peer"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                operation_id = %op_id,
+                                peer = %remote_peer_id,
+                                error = %e,
+                                "Failed to send store request"
+                            );
+                        }
                     }
                 });
             }
         }
 
+        tracing::info!(
+            operation_id = %operation_id,
+            futures_count = send_futures.len(),
+            "Waiting for all store requests to complete"
+        );
+
         join_all(send_futures).await;
+
+        tracing::info!(
+            operation_id = %operation_id,
+            "All store requests have been sent"
+        );
 
         // Store publisher signature
         if let Err(e) = self

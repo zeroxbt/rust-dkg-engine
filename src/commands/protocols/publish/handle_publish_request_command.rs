@@ -126,7 +126,21 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
         let remote_peer_id = &data.remote_peer_id;
         let dataset = &data.dataset;
 
+        tracing::info!(
+            operation_id = %operation_id,
+            blockchain = %blockchain,
+            dataset_root = %dataset_root,
+            remote_peer_id = %remote_peer_id,
+            dataset_public_len = dataset.public.len(),
+            "Starting HandlePublishRequest command"
+        );
+
         // Retrieve the channel from session manager
+        tracing::debug!(
+            operation_id = %operation_id,
+            peer = %remote_peer_id,
+            "Attempting to retrieve channel from session manager"
+        );
         let Some(channel) = self
             .session_manager
             .retrieve_channel(remote_peer_id, operation_id)
@@ -138,24 +152,55 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
             );
             return CommandExecutionResult::Completed;
         };
+        tracing::debug!(
+            operation_id = %operation_id,
+            peer = %remote_peer_id,
+            "Channel retrieved successfully from session manager"
+        );
 
+        tracing::debug!(
+            operation_id = %operation_id,
+            blockchain = %blockchain,
+            remote_peer_id = %remote_peer_id,
+            "Checking if remote peer exists in shard repository"
+        );
         match self
             .repository_manager
             .shard_repository()
             .get_peer_record(blockchain.as_str(), &remote_peer_id.to_base58())
             .await
         {
-            Ok(Some(_)) => {}
+            Ok(Some(record)) => {
+                tracing::info!(
+                    operation_id = %operation_id,
+                    remote_peer_id = %remote_peer_id,
+                    peer_record = ?record,
+                    "Remote peer found in shard repository"
+                );
+            }
             invalid_result => {
-                let error_message = match invalid_result {
+                let error_message = match &invalid_result {
                     Err(e) => format!(
                         "Failed to get remote peer: {remote_peer_id} in shard_repository for operation: {operation_id}. Error: {e}"
+                    ),
+                    Ok(None) => format!(
+                        "Remote peer {} not found in shard repository for blockchain: {}, operation: {operation_id}",
+                        remote_peer_id,
+                        blockchain.as_str()
                     ),
                     _ => format!(
                         "Invalid shard on blockchain: {}, operation: {operation_id}",
                         blockchain.as_str()
                     ),
                 };
+
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    remote_peer_id = %remote_peer_id,
+                    blockchain = %blockchain,
+                    error = %error_message,
+                    "Peer validation failed - sending NACK"
+                );
 
                 self.publish_operation_manager
                     .mark_failed(operation_id, error_message)
@@ -168,11 +213,29 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
             }
         };
 
+        tracing::debug!(
+            operation_id = %operation_id,
+            "Calculating merkle root for dataset validation"
+        );
         let computed_dataset_root = self
             .validation_manager
             .calculate_merkle_root(&dataset.public);
 
+        tracing::info!(
+            operation_id = %operation_id,
+            received_dataset_root = %dataset_root,
+            computed_dataset_root = %computed_dataset_root,
+            roots_match = (*dataset_root == computed_dataset_root),
+            "Dataset root validation"
+        );
+
         if *dataset_root != computed_dataset_root {
+            tracing::warn!(
+                operation_id = %operation_id,
+                received = %dataset_root,
+                computed = %computed_dataset_root,
+                "Dataset root mismatch - sending NACK"
+            );
             self.send_nack(
                 channel,
                 operation_id,
@@ -186,9 +249,26 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
             return CommandExecutionResult::Completed;
         }
 
+        tracing::debug!(
+            operation_id = %operation_id,
+            blockchain = %blockchain,
+            "Getting identity ID from blockchain manager"
+        );
         let identity_id = match self.blockchain_manager.get_identity_id(blockchain).await {
-            Ok(Some(id)) => id,
+            Ok(Some(id)) => {
+                tracing::info!(
+                    operation_id = %operation_id,
+                    identity_id = %id,
+                    "Identity ID retrieved successfully"
+                );
+                id
+            }
             Ok(None) => {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    blockchain = %blockchain,
+                    "Identity ID not found - sending NACK"
+                );
                 self.send_nack(
                     channel,
                     operation_id,
@@ -199,6 +279,12 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
                 return CommandExecutionResult::Completed;
             }
             Err(e) => {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    blockchain = %blockchain,
+                    error = %e,
+                    "Failed to get identity ID - sending NACK"
+                );
                 self.send_nack(
                     channel,
                     operation_id,
@@ -213,6 +299,11 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
         let dataset_root_hex = match dataset_root.strip_prefix("0x") {
             Some(hex) => hex,
             None => {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    dataset_root = %dataset_root,
+                    "Dataset root missing '0x' prefix - sending NACK"
+                );
                 self.send_nack(channel, operation_id, "Dataset root missing '0x' prefix")
                     .await;
 
@@ -220,13 +311,29 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
             }
         };
 
+        tracing::debug!(
+            operation_id = %operation_id,
+            dataset_root_hex = %dataset_root_hex,
+            "Signing message with blockchain manager"
+        );
         let signature = match self
             .blockchain_manager
             .sign_message(blockchain, dataset_root_hex)
             .await
         {
-            Ok(sig) => sig,
+            Ok(sig) => {
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    "Message signed successfully"
+                );
+                sig
+            }
             Err(e) => {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Failed to sign message - sending NACK"
+                );
                 self.send_nack(
                     channel,
                     operation_id,
@@ -239,8 +346,19 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
         };
 
         let signature = match blockchain::utils::split_signature(signature) {
-            Ok(sig) => sig,
+            Ok(sig) => {
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    "Signature split successfully"
+                );
+                sig
+            }
             Err(e) => {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Failed to split signature - sending NACK"
+                );
                 self.send_nack(
                     channel,
                     operation_id,
@@ -263,12 +381,19 @@ impl CommandHandler for HandlePublishRequestCommandHandler {
             },
         };
 
-        self.send_response(channel, operation_id, message).await;
-
-        tracing::debug!(
+        tracing::info!(
             operation_id = %operation_id,
             peer = %remote_peer_id,
-            "Store request validated, ACK sent"
+            identity_id = %identity_id,
+            "Sending ACK response with signature"
+        );
+
+        self.send_response(channel, operation_id, message).await;
+
+        tracing::info!(
+            operation_id = %operation_id,
+            peer = %remote_peer_id,
+            "Store request validated and ACK sent successfully"
         );
 
         CommandExecutionResult::Completed
