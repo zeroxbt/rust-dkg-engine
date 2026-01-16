@@ -3457,6 +3457,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "ethers",
+ "libp2p",
  "serde",
  "serde_json",
  "tokio",

@@ -13,7 +13,7 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub contract: String,
     #[sea_orm(default_value = "0")]
-    pub last_checked_block: u64,
+    pub last_checked_block: i64,
     #[sea_orm(default_value = "1970-01-01 00:00:00")]
     pub last_checked_timestamp: DateTimeUtc,
 }

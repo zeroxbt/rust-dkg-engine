@@ -166,6 +166,37 @@ pub trait AbstractBlockchain: Send + Sync {
         current_block: u64,
     ) -> Result<Vec<EventLog>, BlockchainError> {
         let contracts = self.contracts().await;
+        if *contract_name == ContractName::KnowledgeCollectionStorage {
+            let storage_addresses = contracts.get_knowledge_collection_storage_addresses();
+            let mut all_events = Vec::new();
+
+            for address in storage_addresses {
+                let Some(contract) = contracts.get_knowledge_collection_storage(&address) else {
+                    continue;
+                };
+                let mut from_block = from_block;
+                while from_block <= current_block {
+                    let to_block = std::cmp::min(
+                        from_block + MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH - 1,
+                        current_block,
+                    );
+                    let new_events = self
+                        .process_block_range(
+                            from_block,
+                            to_block,
+                            contract,
+                            contract_name,
+                            events_to_filter,
+                        )
+                        .await?;
+                    all_events.extend(new_events);
+                    from_block = to_block + 1;
+                }
+            }
+
+            return Ok(all_events);
+        }
+
         let contract = contracts.get(contract_name)?;
 
         let mut events = Vec::new();

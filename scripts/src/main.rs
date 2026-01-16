@@ -131,7 +131,7 @@ async fn set_stake(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::error:
         .await?;
 
     staking_contract
-        .add_stake(identity_id, stake_wei.as_u128())
+        .stake(identity_id, stake_wei.as_u128())
         .send()
         .await?
         .await?;
@@ -185,7 +185,7 @@ async fn set_ask(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::error::E
     let ask_wei = parse_ether(ask)?;
 
     profile
-        .set_ask(identity_id, ask_wei.as_u128())
+        .update_ask(identity_id, ask_wei.as_u128())
         .send()
         .await?
         .await?;

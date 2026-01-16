@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use sea_orm::{
-    ActiveValue, DatabaseConnection, EntityTrait, prelude::DateTimeUtc, sea_query::OnConflict,
+    ActiveValue, DatabaseConnection, DbErr, EntityTrait, prelude::DateTimeUtc,
+    sea_query::OnConflict,
 };
 
 use crate::{
@@ -27,7 +28,7 @@ impl BlockchainRepository {
             return Ok(0);
         };
 
-        Ok(model.last_checked_block)
+        Ok(model.last_checked_block.max(0) as u64)
     }
 
     pub async fn update_last_checked_block(
@@ -37,6 +38,9 @@ impl BlockchainRepository {
         last_checked_block: u64,
         last_checked_timestamp: DateTimeUtc,
     ) -> Result<()> {
+        let last_checked_block = i64::try_from(last_checked_block)
+            .map_err(|_| DbErr::Custom("last_checked_block exceeds i64::MAX".to_string()))?;
+
         let model = ActiveModel {
             blockchain_id: ActiveValue::Set(blockchain_id.to_owned()),
             contract: ActiveValue::Set(contract.to_owned()),
