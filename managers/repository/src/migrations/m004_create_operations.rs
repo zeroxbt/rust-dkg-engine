@@ -32,7 +32,7 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(pk_uuid(Operations::OperationId))
                     .col(string(Operations::OperationName))
-                    .col(string_null(Operations::Status))
+                    .col(string(Operations::Status))
                     .col(text_null(Operations::ErrorMessage))
                     .col(big_integer(Operations::Timestamp))
                     .col(small_unsigned_null(Operations::TotalPeers))

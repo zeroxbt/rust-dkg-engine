@@ -1,8 +1,6 @@
-use std::any::Any;
-
 use async_trait::async_trait;
 
-use crate::commands::command::{Command, CommandBuilder};
+use crate::commands::command::Command;
 
 pub enum CommandExecutionResult {
     Completed,
@@ -47,30 +45,8 @@ pub trait CommandHandler: Send + Sync {
 
     async fn execute(&self, command: &Command) -> CommandExecutionResult;
 
-    async fn recover(&self) -> CommandExecutionResult {
-        self.handle_error().await
-    }
-
-    async fn handle_error(&self) -> CommandExecutionResult {
-        // TODO: add error handling
-        tracing::error!("Command error (): ");
-
-        CommandExecutionResult::Completed
-    }
-
+    /// Called when a command returns `Retry` but has exhausted all retries.
     async fn retry_finished(&self) {
         tracing::trace!("Max retry count for command reached!");
-    }
-}
-
-pub trait CommandData: Any + Send + Sync + Sized {
-    const COMMAND_NAME: &'static str;
-
-    fn from_command(command: &Command) -> &Self {
-        command.data::<Self>()
-    }
-
-    fn into_command(self) -> Command {
-        Command::builder(Self::COMMAND_NAME).data(self).build()
     }
 }

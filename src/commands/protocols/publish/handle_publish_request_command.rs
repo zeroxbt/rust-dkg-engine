@@ -20,7 +20,7 @@ use crate::{
     types::{
         models::Assertion,
         protocol::StoreResponseData,
-        traits::command::{CommandData, CommandExecutionResult, CommandHandler},
+        traits::command::{CommandExecutionResult, CommandHandler},
     },
 };
 
@@ -32,10 +32,6 @@ pub struct HandlePublishRequestCommandData {
     pub dataset_root: String,
     pub remote_peer_id: PeerId,
     pub dataset: Assertion,
-}
-
-impl CommandData for HandlePublishRequestCommandData {
-    const COMMAND_NAME: &'static str = "handlePublishRequestCommand";
 }
 
 impl HandlePublishRequestCommandData {
@@ -118,11 +114,11 @@ impl HandlePublishRequestCommandHandler {
 #[async_trait]
 impl CommandHandler for HandlePublishRequestCommandHandler {
     fn name(&self) -> &'static str {
-        HandlePublishRequestCommandData::COMMAND_NAME
+        "handlePublishRequestCommand"
     }
 
     async fn execute(&self, command: &Command) -> CommandExecutionResult {
-        let data = HandlePublishRequestCommandData::from_command(command);
+        let data = command.data::<HandlePublishRequestCommandData>();
 
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;

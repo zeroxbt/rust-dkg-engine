@@ -1,15 +1,3 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc};
-
-use ethers::{
-    abi::Address,
-    contract::{Contract as EthersContract, abigen},
-    middleware::{Middleware, MiddlewareBuilder, NonceManagerMiddleware, SignerMiddleware},
-    providers::{Http, Provider},
-    signers::{LocalWallet, Signer},
-};
-
-use crate::{BlockchainConfig, ContractName, error::BlockchainError};
-
 abigen!(Hub, "../../abi/Hub.json");
 abigen!(Staking, "../../abi/Staking.json");
 abigen!(IdentityStorage, "../../abi/IdentityStorage.json");
@@ -20,6 +8,21 @@ abigen!(
 );
 abigen!(Profile, "../../abi/Profile.json");
 abigen!(ShardingTable, "../../abi/ShardingTable.json");
+abigen!(ShardingTableStorage, "../../abi/ShardingTableStorage.json");
+abigen!(Token, "../../abi/Token.json");
+
+use std::{collections::HashMap, str::FromStr, sync::Arc};
+
+use ethers::{
+    abi::Address,
+    contract::{Contract as EthersContract, abigen},
+    middleware::{Middleware, MiddlewareBuilder, NonceManagerMiddleware, SignerMiddleware},
+    providers::{Http, Provider},
+    signers::{LocalWallet, Signer},
+};
+pub use sharding_table::NodeInfo as ShardingTableNode;
+
+use crate::{BlockchainConfig, ContractName, error::BlockchainError};
 // abigen!(
 // ServiceAgreementStorageProxy,
 // "../../abi/ServiceAgreementStorageProxy.json"
@@ -39,6 +42,8 @@ pub struct Contracts {
     parameters_storage: ParametersStorage<BlockchainProvider>,
     profile: Profile<BlockchainProvider>,
     sharding_table: ShardingTable<BlockchainProvider>,
+    sharding_table_storage: ShardingTableStorage<BlockchainProvider>,
+    token: Token<BlockchainProvider>,
 }
 
 impl Contracts {
@@ -50,6 +55,22 @@ impl Contracts {
         &self.profile
     }
 
+    pub fn sharding_table(&self) -> &ShardingTable<BlockchainProvider> {
+        &self.sharding_table
+    }
+
+    pub fn sharding_table_storage(&self) -> &ShardingTableStorage<BlockchainProvider> {
+        &self.sharding_table_storage
+    }
+
+    pub fn staking(&self) -> &Staking<BlockchainProvider> {
+        &self.staking
+    }
+
+    pub fn token(&self) -> &Token<BlockchainProvider> {
+        &self.token
+    }
+
     pub fn get(
         &self,
         contract_name: &ContractName,
@@ -57,6 +78,7 @@ impl Contracts {
         match contract_name {
             ContractName::Hub => Ok(&self.hub),
             ContractName::ShardingTable => Ok(&self.sharding_table),
+            ContractName::ShardingTableStorage => Ok(&self.sharding_table_storage),
             ContractName::Staking => Ok(&self.staking),
             ContractName::Profile => Ok(&self.profile),
             ContractName::ParametersStorage => Ok(&self.parameters_storage),
@@ -64,13 +86,6 @@ impl Contracts {
                 "KnowledgeCollectionStorage contracts must be accessed via get_knowledge_collection_storage"
                     .to_string(),
             )),
-            // Legacy contracts not currently in use
-            ContractName::CommitManagerV1U1
-            | ContractName::ServiceAgreementV1
-            | ContractName::ContentAssetStorage => Err(BlockchainError::Custom(format!(
-                "Contract {} is not currently initialized",
-                contract_name.as_str()
-            ))),
         }
     }
 
@@ -98,6 +113,10 @@ impl Contracts {
             ContractName::ShardingTable => {
                 self.sharding_table = ShardingTable::new(contract_address, Arc::clone(provider))
             }
+            ContractName::ShardingTableStorage => {
+                self.sharding_table_storage =
+                    ShardingTableStorage::new(contract_address, Arc::clone(provider))
+            }
             ContractName::Hub => {
                 self.hub = Hub::new(contract_address, Arc::clone(provider));
             }
@@ -112,15 +131,6 @@ impl Contracts {
                 self.knowledge_collection_storages.insert(
                     contract_address,
                     KnowledgeCollectionStorage::new(contract_address, Arc::clone(provider)),
-                );
-            }
-            // Legacy contracts - log warning but don't fail
-            ContractName::CommitManagerV1U1
-            | ContractName::ServiceAgreementV1
-            | ContractName::ContentAssetStorage => {
-                tracing::warn!(
-                    "Contract {} is not currently supported for re-initialization",
-                    contract_name.as_str()
                 );
             }
         };
@@ -246,6 +256,16 @@ pub(crate) trait BlockchainCreator {
                 hub.get_contract_address("ShardingTable".to_string())
                     .call()
                     .await?,
+                Arc::clone(provider),
+            ),
+            sharding_table_storage: ShardingTableStorage::new(
+                hub.get_contract_address("ShardingTableStorage".to_string())
+                    .call()
+                    .await?,
+                Arc::clone(provider),
+            ),
+            token: Token::new(
+                hub.get_contract_address("Token".to_string()).call().await?,
                 Arc::clone(provider),
             ),
         })

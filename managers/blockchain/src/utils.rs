@@ -1,6 +1,7 @@
 use ethers::{
     abi::{Address, EncodePackedError, Token, encode_packed},
     contract::{EthLogDecode, parse_log},
+    core::k256::sha2::{Digest, Sha256},
     prelude::{ContractError, TransactionReceipt},
     providers::{Http, PendingTransaction},
     types::U256,
@@ -45,6 +46,13 @@ pub fn from_hex_string(data: String) -> Result<Vec<u8>, FromHexError> {
 pub fn keccak256_encode_packed(tokens: &[Token]) -> Result<[u8; 32], EncodePackedError> {
     let packed = encode_packed(tokens)?;
     Ok(keccak256(packed))
+}
+
+pub fn sha256_hex(input: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input);
+    let digest = hasher.finalize();
+    to_hex_string(digest.to_vec())
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -110,20 +118,34 @@ pub(super) async fn handle_contract_call(
             match &err {
                 // note the use of & to borrow rather than move
                 ethers::contract::ContractError::Revert(revert_msg) => {
-                    let error_msg =
-                        ethers::abi::decode(&[ethers::abi::ParamType::String], &revert_msg.0[4..])
-                            .map_err(|_| BlockchainError::Decode)?
-                            .into_iter()
-                            .next()
-                            .and_then(|param| match param {
-                                ethers::abi::Token::String(msg) => Some(msg),
-                                _ => None,
-                            });
+                    // Revert data needs at least 4 bytes for the selector
+                    if revert_msg.0.len() >= 4 {
+                        let error_msg = ethers::abi::decode(
+                            &[ethers::abi::ParamType::String],
+                            &revert_msg.0[4..],
+                        )
+                        .ok()
+                        .and_then(|tokens| tokens.into_iter().next())
+                        .and_then(|param| match param {
+                            ethers::abi::Token::String(msg) => Some(msg),
+                            _ => None,
+                        });
 
-                    if let Some(msg) = error_msg {
-                        tracing::error!("Smart contract reverted with message: {}", msg);
+                        if let Some(msg) = error_msg {
+                            tracing::error!("Smart contract reverted with message: {}", msg);
+                        } else {
+                            tracing::error!(
+                                "Smart contract reverted with data: 0x{}",
+                                ethers::utils::hex::encode(&revert_msg.0)
+                            );
+                        }
+                    } else if revert_msg.0.is_empty() {
+                        tracing::error!("Smart contract reverted with no message");
                     } else {
-                        tracing::error!("Failed to decode revert message");
+                        tracing::error!(
+                            "Smart contract reverted with data: 0x{}",
+                            ethers::utils::hex::encode(&revert_msg.0)
+                        );
                     }
                 }
                 _ => {

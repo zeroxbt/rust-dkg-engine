@@ -4,22 +4,17 @@ use async_trait::async_trait;
 use libp2p::PeerId;
 use network::NetworkManager;
 use repository::RepositoryManager;
-use serde::{Deserialize, Serialize};
 
 use super::command::Command;
 use crate::{
-    commands::constants::DEFAULT_COMMAND_DELAY_MS,
     context::Context,
     network::NetworkProtocols,
     types::traits::command::{CommandExecutionResult, CommandHandler, ScheduleConfig},
 };
 
-const DIAL_PEERS_COMMAND_PERIOD_MS: i64 = 30_000;
+const DIAL_PEERS_COMMAND_PERIOD_MS: i64 = 10_000;
 const DIAL_CONCURRENCY: usize = 5;
 const MIN_DIAL_FREQUENCY_PER_PEER_MS: i64 = 60 * 60 * 1000;
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct DialPeersCommandData;
 
 pub struct DialPeersCommandHandler {
     repository_manager: Arc<RepositoryManager>,
@@ -42,7 +37,7 @@ impl CommandHandler for DialPeersCommandHandler {
     }
 
     fn schedule_config(&self) -> ScheduleConfig {
-        ScheduleConfig::periodic_with_delay(DIAL_PEERS_COMMAND_PERIOD_MS, DEFAULT_COMMAND_DELAY_MS)
+        ScheduleConfig::periodic_with_delay(DIAL_PEERS_COMMAND_PERIOD_MS, 0)
     }
 
     async fn execute(&self, _: &Command) -> CommandExecutionResult {
@@ -69,16 +64,10 @@ impl CommandHandler for DialPeersCommandHandler {
 
             let peers: Vec<PeerId> = peer_ids
                 .iter()
-                .map(|peer_id| peer_id.parse::<PeerId>().unwrap()) // Note: Consider handling this unwrap.
+                .map(|peer_id| peer_id.parse::<PeerId>().unwrap()) // TODO: Consider handling this unwrap.
                 .collect();
             let _ = self.network_manager.dial_peers(peers).await;
         }
-
-        CommandExecutionResult::Repeat
-    }
-
-    async fn recover(&self) -> CommandExecutionResult {
-        tracing::warn!("Failed to dial peers: error: ");
 
         CommandExecutionResult::Repeat
     }

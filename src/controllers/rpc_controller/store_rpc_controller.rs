@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use network::{
-    NetworkManager, PeerId,
+    PeerId,
     message::{RequestMessage, ResponseMessage, ResponseMessageType},
     request_response,
 };
@@ -10,21 +10,19 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     commands::{
-        command::Command,
+        command::{Command, CommandBuilder},
         protocols::publish::handle_publish_request_command::HandlePublishRequestCommandData,
     },
     context::Context,
-    network::{NetworkProtocols, SessionManager},
+    network::SessionManager,
     services::operation_manager::OperationManager,
     types::{
         models::Assertion,
         protocol::{StoreRequestData, StoreResponseData},
-        traits::command::CommandData,
     },
 };
 
 pub struct StoreRpcController {
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
     publish_operation_manager: Arc<OperationManager>,
     repository_manager: Arc<RepositoryManager>,
     session_manager: Arc<SessionManager<StoreResponseData>>,
@@ -34,7 +32,6 @@ pub struct StoreRpcController {
 impl StoreRpcController {
     pub fn new(context: Arc<Context>) -> Self {
         Self {
-            network_manager: Arc::clone(context.network_manager()),
             repository_manager: Arc::clone(context.repository_manager()),
             publish_operation_manager: Arc::clone(context.publish_operation_manager()),
             session_manager: Arc::clone(context.store_session_manager()),
@@ -70,14 +67,15 @@ impl StoreRpcController {
         };
 
         // Schedule command with dataset passed inline
-        let command = HandlePublishRequestCommandData::new(
-            data.blockchain().clone(),
-            operation_id,
-            data.dataset_root().to_owned(),
-            remote_peer_id,
-            dataset,
-        )
-        .into_command();
+        let command = CommandBuilder::new("handlePublishRequestCommand")
+            .data(HandlePublishRequestCommandData::new(
+                data.blockchain().clone(),
+                operation_id,
+                data.dataset_root().to_owned(),
+                remote_peer_id,
+                dataset,
+            ))
+            .build();
 
         let command_name = command.name.clone();
         if let Err(e) = self.schedule_command_tx.send(command).await {

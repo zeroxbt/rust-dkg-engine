@@ -3,11 +3,20 @@ use std::sync::Arc;
 use chrono::Duration;
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, DbBackend, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Statement, UpdateResult, error::DbErr,
-    prelude::DateTimeUtc, sea_query::Expr,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait,
+    UpdateResult, error::DbErr, prelude::DateTimeUtc, sea_query::Expr,
 };
 
 use crate::models::shard::{ActiveModel, Column, Entity, Model};
+
+#[derive(Debug, Clone)]
+pub struct ShardRecordInput {
+    pub peer_id: String,
+    pub blockchain_id: String,
+    pub ask: String,
+    pub stake: String,
+    pub sha256: String,
+}
 
 pub struct ShardRepository {
     conn: Arc<DatabaseConnection>,
@@ -18,9 +27,22 @@ impl ShardRepository {
         Self { conn }
     }
 
-    pub async fn create_many_peer_records(&self, models: Vec<Model>) -> Result<(), DbErr> {
-        let active_models: Vec<ActiveModel> =
-            models.into_iter().map(|model| model.into()).collect();
+    pub async fn create_many_peer_records(
+        &self,
+        records: Vec<ShardRecordInput>,
+    ) -> Result<(), DbErr> {
+        let active_models: Vec<ActiveModel> = records
+            .into_iter()
+            .map(|record| ActiveModel {
+                peer_id: ActiveValue::Set(record.peer_id),
+                blockchain_id: ActiveValue::Set(record.blockchain_id),
+                ask: ActiveValue::Set(record.ask),
+                stake: ActiveValue::Set(record.stake),
+                sha256: ActiveValue::Set(record.sha256),
+                last_seen: ActiveValue::NotSet,
+                last_dialed: ActiveValue::NotSet,
+            })
+            .collect();
 
         Entity::insert_many(active_models)
             .exec(self.conn.as_ref())
@@ -53,8 +75,16 @@ impl ShardRepository {
         Ok(())
     }
 
-    pub async fn create_peer_record(&self, model: Model) -> Result<(), DbErr> {
-        let active_model: ActiveModel = model.clone().into();
+    pub async fn create_peer_record(&self, record: ShardRecordInput) -> Result<(), DbErr> {
+        let active_model = ActiveModel {
+            peer_id: ActiveValue::Set(record.peer_id),
+            blockchain_id: ActiveValue::Set(record.blockchain_id),
+            ask: ActiveValue::Set(record.ask),
+            stake: ActiveValue::Set(record.stake),
+            sha256: ActiveValue::Set(record.sha256),
+            last_seen: ActiveValue::NotSet,
+            last_dialed: ActiveValue::NotSet,
+        };
 
         Entity::insert(active_model)
             .exec(self.conn.as_ref())
@@ -202,6 +232,41 @@ impl ShardRepository {
         } else {
             Entity::delete_many().exec(self.conn.as_ref()).await?;
         }
+        Ok(())
+    }
+
+    /// Atomically replaces all sharding table records for a blockchain.
+    /// Deletes existing records and inserts new ones within a single transaction.
+    pub async fn replace_sharding_table(
+        &self,
+        blockchain_id: &str,
+        records: Vec<ShardRecordInput>,
+    ) -> Result<(), DbErr> {
+        let txn = self.conn.begin().await?;
+
+        Entity::delete_many()
+            .filter(Column::BlockchainId.eq(blockchain_id))
+            .exec(&txn)
+            .await?;
+
+        if !records.is_empty() {
+            let active_models: Vec<ActiveModel> = records
+                .into_iter()
+                .map(|record| ActiveModel {
+                    peer_id: ActiveValue::Set(record.peer_id),
+                    blockchain_id: ActiveValue::Set(record.blockchain_id),
+                    ask: ActiveValue::Set(record.ask),
+                    stake: ActiveValue::Set(record.stake),
+                    sha256: ActiveValue::Set(record.sha256),
+                    last_seen: ActiveValue::NotSet,
+                    last_dialed: ActiveValue::NotSet,
+                })
+                .collect();
+
+            Entity::insert_many(active_models).exec(&txn).await?;
+        }
+
+        txn.commit().await?;
         Ok(())
     }
 }

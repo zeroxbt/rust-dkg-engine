@@ -3,7 +3,10 @@ use std::{any::Any, collections::HashMap, sync::Arc};
 use chrono::Utc;
 use uuid::Uuid;
 
-use super::{command::Command, dial_peers_command::DialPeersCommandHandler};
+use super::{
+    command::Command, dial_peers_command::DialPeersCommandHandler,
+    sharding_table_check_command::ShardingTableCheckCommandHandler,
+};
 use crate::{
     commands::protocols::publish::{
         handle_publish_request_command::HandlePublishRequestCommandHandler,
@@ -21,6 +24,7 @@ impl CommandResolver {
     pub fn new(context: Arc<Context>) -> Self {
         let handlers: Vec<Arc<dyn CommandHandler>> = vec![
             Arc::new(DialPeersCommandHandler::new(Arc::clone(&context))),
+            Arc::new(ShardingTableCheckCommandHandler::new(Arc::clone(&context))),
             Arc::new(SendPublishRequestsCommandHandler::new(Arc::clone(&context))),
             Arc::new(HandlePublishRequestCommandHandler::new(Arc::clone(
                 &context,
@@ -56,15 +60,7 @@ impl CommandResolver {
                         delay: initial_delay_ms,
                         retries: 0,
                         ready_at: now.timestamp_millis(),
-                        started_at: None,
                         deadline_at: None,
-                        status: super::command::CommandStatus::Pending,
-                        message: None,
-                        parent_id: None,
-                        sequence: None,
-                        transactional: false,
-                        created_at: now,
-                        updated_at: now,
                     })
                 }
                 ScheduleConfig::OneShot => None,

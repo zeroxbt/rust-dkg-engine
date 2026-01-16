@@ -13,7 +13,6 @@ use super::{
 use crate::{context::Context, types::traits::command::CommandExecutionResult};
 
 pub struct CommandExecutor {
-    // pub repository_manager: Arc<RepositoryManager>,
     pub command_resolver: CommandResolver,
     pub process_command_tx: mpsc::Sender<Command>,
     pub process_command_rx: Arc<Mutex<mpsc::Receiver<Command>>>,
@@ -30,7 +29,6 @@ impl CommandExecutor {
         let (tx, rx) = mpsc::channel::<Command>(COMMAND_QUEUE_PARALLELISM);
 
         Self {
-            // repository_manager: Arc::clone(context.repository_manager()),
             command_resolver: CommandResolver::new(context),
             process_command_tx: tx,
             process_command_rx: Arc::new(Mutex::new(rx)),
@@ -42,8 +40,6 @@ impl CommandExecutor {
         let mut pending_tasks = FuturesUnordered::new();
 
         self.schedule_default_commands().await;
-        // NOTE: Commented out - commands are no longer persisted/replayed from DB
-        // self.replay().await;
 
         loop {
             let mut locked_rx = self.process_command_rx.lock().await;
@@ -95,9 +91,6 @@ impl CommandExecutor {
     ) -> Result<(), mpsc::error::SendError<Command>> {
         let delay = min(delay as u64, MAX_COMMAND_DELAY_MS as u64);
 
-        // NOTE: Commented out - commands are no longer persisted to DB
-        // self.insert(&command).await;
-
         if delay > 0 {
             let process_command_tx = self.process_command_tx.clone();
 
@@ -124,15 +117,6 @@ impl CommandExecutor {
                 )
             }
 
-            // NOTE: Commented out - commands are no longer persisted to DB
-            // self.update(
-            //     &command,
-            //     Some(CommandStatus::Expired.to_string()),
-            //     None,
-            //     None,
-            // )
-            // .await;
-
             return;
         }
 
@@ -143,15 +127,6 @@ impl CommandExecutor {
 
             return;
         }
-
-        // NOTE: Commented out - commands are no longer persisted to DB
-        // self.update(
-        //     &command,
-        //     Some(CommandStatus::Started.to_string()),
-        //     Some(now),
-        //     None,
-        // )
-        // .await;
 
         let Some(command_handler) = self.command_resolver.resolve(&command.name.to_string()) else {
             tracing::error!("Unknown command: {}", command.name);
@@ -183,89 +158,4 @@ impl CommandExecutor {
             }
         }
     }
-
-    // NOTE: Commented out - commands are no longer persisted to DB
-    // async fn handle_retry(&self, command: &Command) {
-    //     self.update(
-    //         command,
-    //         Some(CommandStatus::Repeating.to_string()),
-    //         None,
-    //         Some(command.retries - 1),
-    //     )
-    //     .await;
-    //
-    //     let delay = command.period.unwrap_or_default();
-    //
-    //     self.add(command.clone(), delay).await.unwrap();
-    // }
-
-    // NOTE: Commented out - commands are no longer persisted to DB
-    // async fn handle_repeat(&self, command: &Command) {
-    //     self.update(
-    //         command,
-    //         Some(CommandStatus::Repeating.to_string()),
-    //         None,
-    //         None,
-    //     )
-    //     .await;
-    //
-    //     let period = command.period.unwrap_or(DEFAULT_COMMAND_REPEAT_INTERVAL_MS);
-    //
-    //     self.add(command.clone(), period).await.unwrap();
-    // }
-
-    // NOTE: Commented out - commands are no longer persisted to DB
-    // async fn handle_completed(&self, command: &Command) {
-    //     self.update(
-    //         command,
-    //         Some(CommandStatus::Completed.to_string()),
-    //         None,
-    //         None,
-    //     )
-    //     .await;
-    // }
-
-    // NOTE: Commented out - commands are no longer persisted to DB
-    // async fn insert(&self, command: &Command) {
-    //     self.repository_manager
-    //         .command_repository()
-    //         .create_command(&command.to_model())
-    //         .await
-    //         .unwrap();
-    // }
-
-    // NOTE: Commented out - commands are no longer persisted to DB
-    // async fn update(
-    //     &self,
-    //     command: &Command,
-    //     new_status: Option<String>,
-    //     new_started_at: Option<i64>,
-    //     new_retries: Option<i32>,
-    // ) {
-    //     self.repository_manager
-    //         .command_repository()
-    //         .update_command(&command.to_model(), new_status, new_started_at, new_retries)
-    //         .await
-    //         .unwrap();
-    // }
-
-    // NOTE: Commented out - commands are no longer persisted/replayed from DB
-    // async fn replay(&self) {
-    //     tracing::info!("Replaying pending/started commands from the repository...");
-    //
-    //     let pending_commands = self
-    //         .repository_manager
-    //         .command_repository()
-    //         .get_commands_with_status(vec![
-    //             CommandStatus::Pending.to_string(),
-    //             CommandStatus::Started.to_string(),
-    //             CommandStatus::Repeating.to_string(),
-    //         ])
-    //         .await
-    //         .unwrap();
-    //
-    //     for model in pending_commands {
-    //         self.add(Command::from(model), 0).await.unwrap();
-    //     }
-    // }
 }

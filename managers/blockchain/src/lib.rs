@@ -8,7 +8,7 @@ pub use blockchains::{
     abstract_blockchain::{ContractName, EventLog, EventName},
     blockchain_creator::{
         AssetStorageChangedFilter, ContractChangedFilter, KnowledgeCollectionCreatedFilter,
-        NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter,
+        NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter, ShardingTableNode,
     },
 };
 pub use ethers::{
@@ -137,13 +137,11 @@ impl BlockchainManager {
             match blockchain {
                 Blockchain::Hardhat(blockchain_config) => {
                     let mut config = blockchain_config.clone();
-                    let blockchain_id = config
-                        .blockchain_id
-                        .clone()
-                        .unwrap_or_else(|| BlockchainId::new(format!("hardhat:{}", config.chain_id())));
+                    let blockchain_id = config.blockchain_id.clone().unwrap_or_else(|| {
+                        BlockchainId::new(format!("hardhat:{}", config.chain_id()))
+                    });
                     config.blockchain_id = Some(blockchain_id.clone());
-                    let blockchain =
-                        blockchains::hardhat::HardhatBlockchain::new(config).await;
+                    let blockchain = blockchains::hardhat::HardhatBlockchain::new(config).await;
                     let trait_object: Box<dyn AbstractBlockchain> = Box::new(blockchain);
 
                     blockchains.insert(blockchain_id, trait_object);
@@ -232,6 +230,49 @@ impl BlockchainManager {
         blockchain_impl.get_block_number().await
     }
 
+    pub async fn get_sharding_table_head(
+        &self,
+        blockchain: &BlockchainId,
+    ) -> Result<u128, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+
+        blockchain_impl.get_sharding_table_head().await
+    }
+
+    pub async fn get_sharding_table_length(
+        &self,
+        blockchain: &BlockchainId,
+    ) -> Result<u128, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+
+        blockchain_impl.get_sharding_table_length().await
+    }
+
+    pub async fn get_sharding_table_page(
+        &self,
+        blockchain: &BlockchainId,
+        starting_identity_id: u128,
+        nodes_num: u128,
+    ) -> Result<Vec<ShardingTableNode>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+
+        blockchain_impl
+            .get_sharding_table_page(starting_identity_id, nodes_num)
+            .await
+    }
+
     pub async fn re_initialize_contract(
         &self,
         blockchain: &BlockchainId,
@@ -261,5 +302,35 @@ impl BlockchainManager {
             }
         })?;
         blockchain_impl.sign_message(message_hash).await
+    }
+
+    /// Sets the stake for a node's identity (dev environment only).
+    /// stake_wei should be the stake amount in wei (e.g., 50_000 * 10^18 for 50,000 tokens).
+    pub async fn set_stake(
+        &self,
+        blockchain: &BlockchainId,
+        stake_wei: u128,
+    ) -> Result<(), BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl.set_stake(stake_wei).await
+    }
+
+    /// Sets the ask price for a node's identity (dev environment only).
+    /// ask_wei should be the ask amount in wei (e.g., 0.2 * 10^18 for 0.2 tokens).
+    pub async fn set_ask(
+        &self,
+        blockchain: &BlockchainId,
+        ask_wei: u128,
+    ) -> Result<(), BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl.set_ask(ask_wei).await
     }
 }

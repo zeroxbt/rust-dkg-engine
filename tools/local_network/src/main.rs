@@ -11,6 +11,7 @@ const HARDHAT_PORT: u16 = 8545;
 const HARDHAT_BLOCKCHAIN_ID: &str = "hardhat1:31337";
 const BOOTSTRAP_NODE_INDEX: usize = 0;
 const BOOTSTRAP_KEY_FILENAME: &str = "private_key";
+const BINARY_NAME: &str = "rust-ot-node";
 
 const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";
 const PUBLIC_KEYS_PATH: &str = "./tools/local_network/src/public_keys.json";
@@ -48,6 +49,22 @@ fn drop_database(database_name: &str) {
 fn load_keys(path: &str) -> Vec<String> {
     serde_json::from_str(&fs::read_to_string(path).expect("Failed to read key file"))
         .expect("Failed to parse key file")
+}
+
+fn get_binary_path() -> String {
+    let release_path = format!("./target/release/{}", BINARY_NAME);
+    let debug_path = format!("./target/debug/{}", BINARY_NAME);
+
+    if Path::new(&release_path).exists() {
+        release_path
+    } else if Path::new(&debug_path).exists() {
+        debug_path
+    } else {
+        panic!(
+            "Binary '{}' not found. Please run 'cargo build --release' or 'cargo build' first.",
+            BINARY_NAME
+        );
+    }
 }
 
 fn ensure_bootstrap_peer_id(data_folder: &str) -> PeerId {
@@ -166,9 +183,16 @@ async fn main() {
     let current_dir = std::env::current_dir().expect("Failed to get current directory");
     let current_dir_str = current_dir.to_str().expect("Failed to convert Path to str");
 
+    // Get the pre-built binary path (will panic with instructions if not found)
+    let binary_path = get_binary_path();
+    println!("Using binary: {}", binary_path);
+
     local_blockchain::LocalBlockchain::run(HARDHAT_PORT, set_parameters)
         .await
         .unwrap();
+
+    // Stagger node startups to avoid overwhelming the local blockchain with concurrent transactions
+    const NODE_STARTUP_DELAY_MS: u64 = 1000;
 
     for i in 0..nodes {
         // Drop the database for this config
@@ -177,8 +201,17 @@ async fn main() {
 
         let config_path = format!("tools/local_network/.node{}_config.toml", i);
         open_terminal_with_command(&format!(
-            "cd {} && cargo run -- --config {}",
-            current_dir_str, config_path
+            "cd {} && {} --config {}",
+            current_dir_str, binary_path, config_path
         ));
+
+        // Add delay between node startups to prevent transaction conflicts on the local blockchain
+        if i < nodes - 1 {
+            println!(
+                "Waiting {}ms before starting next node...",
+                NODE_STARTUP_DELAY_MS
+            );
+            tokio::time::sleep(tokio::time::Duration::from_millis(NODE_STARTUP_DELAY_MS)).await;
+        }
     }
 }

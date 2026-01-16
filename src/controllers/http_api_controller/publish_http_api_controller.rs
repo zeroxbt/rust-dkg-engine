@@ -6,12 +6,12 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    commands::protocols::publish::send_publish_requests_command::SendPublishRequestsCommandData,
-    context::Context,
-    types::{
-        dto::publish::{PublishRequest, PublishResponse},
-        traits::command::CommandData,
+    commands::{
+        command::CommandBuilder,
+        protocols::publish::send_publish_requests_command::SendPublishRequestsCommandData,
     },
+    context::Context,
+    types::dto::publish::{PublishRequest, PublishResponse},
 };
 
 const MIN_ACK_RESPONSES: u8 = 8;
@@ -45,15 +45,17 @@ impl PublishHttpApiController {
                 tracing::info!(operation_id = %operation_id, "Publish request received");
 
                 // Schedule the command with dataset passed inline
-                let command = SendPublishRequestsCommandData::new(
-                    operation_id,
-                    req.blockchain,
-                    req.dataset_root,
-                    req.minimum_number_of_node_replications
-                        .unwrap_or(MIN_ACK_RESPONSES),
-                    req.dataset,
-                )
-                .into_command();
+
+                let command = CommandBuilder::new("sendPublishRequestsCommand")
+                    .data(SendPublishRequestsCommandData::new(
+                        operation_id,
+                        req.blockchain,
+                        req.dataset_root,
+                        req.minimum_number_of_node_replications
+                            .unwrap_or(MIN_ACK_RESPONSES),
+                        req.dataset,
+                    ))
+                    .build();
 
                 if let Err(e) = context.schedule_command_tx().send(command).await {
                     tracing::error!(operation_id = %operation_id, error = %e, "Failed to schedule SendPublishRequestsCommand");

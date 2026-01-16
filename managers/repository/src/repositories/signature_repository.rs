@@ -79,7 +79,7 @@ impl SignatureRepository {
     }
 
     /// Get all signatures for an operation by type
-    async fn get_publisher_signature(
+    pub async fn get_publisher_signature(
         &self,
         operation_id: Uuid,
     ) -> Result<Option<Model>, RepositoryError> {
@@ -93,7 +93,7 @@ impl SignatureRepository {
     }
 
     /// Get all signatures for an operation by type
-    async fn get_network_signatures(
+    pub async fn get_network_signatures(
         &self,
         operation_id: Uuid,
     ) -> Result<Vec<Model>, RepositoryError> {

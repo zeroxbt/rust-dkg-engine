@@ -6,11 +6,12 @@ mod repositories;
 use std::sync::Arc;
 
 use error::RepositoryError;
+pub use repositories::shard_repository::ShardRecordInput;
 use repositories::{
-    blockchain_repository::BlockchainRepository, command_repository::CommandRepository,
-    operation_repository::OperationRepository, shard_repository::ShardRepository,
-    signature_repository::SignatureRepository,
+    blockchain_repository::BlockchainRepository, operation_repository::OperationRepository,
+    shard_repository::ShardRepository, signature_repository::SignatureRepository,
 };
+pub use sea_orm::ActiveValue;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::Deserialize;
@@ -18,7 +19,6 @@ use serde::Deserialize;
 use self::migrations::Migrator;
 
 pub struct RepositoryManager {
-    command_repository: CommandRepository,
     shard_repository: ShardRepository,
     blockchain_repository: BlockchainRepository,
     operation_repository: OperationRepository,
@@ -58,16 +58,11 @@ impl RepositoryManager {
         Migrator::up(conn.as_ref(), None).await?;
 
         Ok(RepositoryManager {
-            command_repository: CommandRepository::new(Arc::clone(&conn)),
             shard_repository: ShardRepository::new(Arc::clone(&conn)),
             blockchain_repository: BlockchainRepository::new(Arc::clone(&conn)),
             operation_repository: OperationRepository::new(Arc::clone(&conn)),
             signature_repository: SignatureRepository::new(Arc::clone(&conn)),
         })
-    }
-
-    pub fn command_repository(&self) -> &CommandRepository {
-        &self.command_repository
     }
 
     pub fn shard_repository(&self) -> &ShardRepository {

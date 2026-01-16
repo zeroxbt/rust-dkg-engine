@@ -11,7 +11,9 @@ use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
     BlockchainConfig, BlockchainId,
-    blockchains::blockchain_creator::{BlockchainProvider, Contracts},
+    blockchains::blockchain_creator::{
+        BlockchainProvider, Contracts, ShardingTableNode, Staking, Token,
+    },
     error::BlockchainError,
     utils::handle_contract_call,
 };
@@ -22,12 +24,9 @@ const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
 pub enum ContractName {
     Hub,
     ShardingTable,
+    ShardingTableStorage,
     Staking,
     Profile,
-    CommitManagerV1U1,
-    ServiceAgreementV1,
-    ContentAssetStorage,
-    // New contracts for event monitoring (aligned with JS)
     ParametersStorage,
     KnowledgeCollectionStorage,
 }
@@ -50,11 +49,9 @@ impl ContractName {
         match self {
             ContractName::Hub => "Hub",
             ContractName::ShardingTable => "ShardingTable",
+            ContractName::ShardingTableStorage => "ShardingTableStorage",
             ContractName::Staking => "Staking",
-            ContractName::CommitManagerV1U1 => "CommitManagerV1U1",
-            ContractName::ServiceAgreementV1 => "ServiceAgreementV1",
             ContractName::Profile => "Profile",
-            ContractName::ContentAssetStorage => "ContentAssetStorage",
             ContractName::ParametersStorage => "ParametersStorage",
             ContractName::KnowledgeCollectionStorage => "KnowledgeCollectionStorage",
         }
@@ -68,11 +65,9 @@ impl FromStr for ContractName {
         match s {
             "Hub" => Ok(ContractName::Hub),
             "ShardingTable" => Ok(ContractName::ShardingTable),
+            "ShardingTableStorage" => Ok(ContractName::ShardingTableStorage),
             "Staking" => Ok(ContractName::Staking),
             "Profile" => Ok(ContractName::Profile),
-            "CommitManagerV1U1" => Ok(ContractName::CommitManagerV1U1),
-            "ServiceAgreementV1" => Ok(ContractName::ServiceAgreementV1),
-            "ContentAssetStorage" => Ok(ContractName::ContentAssetStorage),
             "ParametersStorage" => Ok(ContractName::ParametersStorage),
             "KnowledgeCollectionStorage" => Ok(ContractName::KnowledgeCollectionStorage),
             _ => Err(format!("'{}' is not a valid contract name", s)),
@@ -222,6 +217,40 @@ pub trait AbstractBlockchain: Send + Sync {
         Ok(events)
     }
 
+    async fn get_sharding_table_head(&self) -> Result<u128, BlockchainError> {
+        let contracts = self.contracts().await;
+        let head = contracts.sharding_table_storage().head().call().await?;
+        Ok(head)
+    }
+
+    async fn get_sharding_table_length(&self) -> Result<u128, BlockchainError> {
+        let contracts = self.contracts().await;
+        let nodes_count = contracts
+            .sharding_table_storage()
+            .nodes_count()
+            .call()
+            .await?;
+        Ok(nodes_count)
+    }
+
+    async fn get_sharding_table_page(
+        &self,
+        starting_identity_id: u128,
+        nodes_num: u128,
+    ) -> Result<Vec<ShardingTableNode>, BlockchainError> {
+        let contracts = self.contracts().await;
+        let nodes = contracts
+            .sharding_table()
+            .get_sharding_table_with_starting_identity_id_and_nodes_number(
+                starting_identity_id,
+                nodes_num,
+            )
+            .call()
+            .await?;
+
+        Ok(nodes)
+    }
+
     async fn process_block_range(
         &self,
         from_block: u64,
@@ -345,6 +374,91 @@ pub trait AbstractBlockchain: Send + Sync {
     }
 
     // Note: get_assertion_id_by_index removed - ContentAssetStorage not currently in use
+
+    /// Sets the stake for this node's identity (dev environment only).
+    /// Requires management wallet private key to be configured.
+    async fn set_stake(&self, stake_wei: u128) -> Result<(), BlockchainError> {
+        use ethers::{
+            middleware::MiddlewareBuilder,
+            providers::{Http, Provider},
+            signers::{LocalWallet, Signer},
+        };
+
+        let config = self.config();
+
+        // Get management wallet private key (required for staking)
+        let management_pk = config.evm_management_wallet_private_key().ok_or_else(|| {
+            BlockchainError::Custom(
+                "Management wallet private key required for set_stake".to_string(),
+            )
+        })?;
+
+        // Create a provider with the management wallet for staking operations
+        let management_wallet = management_pk
+            .parse::<LocalWallet>()
+            .map_err(|e| BlockchainError::Custom(format!("Invalid management wallet key: {}", e)))?
+            .with_chain_id(config.chain_id());
+        let management_address = management_wallet.address();
+
+        let http = Http::from_str(&config.rpc_endpoints()[0]).map_err(|e| {
+            BlockchainError::Custom(format!("Failed to create HTTP provider: {}", e))
+        })?;
+        let management_provider = Arc::new(
+            Provider::new(http)
+                .with_signer(management_wallet)
+                .nonce_manager(management_address),
+        );
+
+        // Get contract addresses from existing contracts
+        let contracts = self.contracts().await;
+        let staking_address = contracts.staking().address();
+        let token_address = contracts.token().address();
+        drop(contracts);
+
+        // Create contracts with management wallet provider
+        let staking = Staking::new(staking_address, Arc::clone(&management_provider));
+        let token = Token::new(token_address, Arc::clone(&management_provider));
+
+        // Get identity ID
+        let identity_id = self.get_identity_id().await.ok_or_else(|| {
+            BlockchainError::Custom("Identity ID not found for staking".to_string())
+        })?;
+
+        // Approve token spending
+        let approve_call =
+            token.increase_allowance(staking_address, ethers::types::U256::from(stake_wei));
+        let approve_result = approve_call.send().await;
+
+        handle_contract_call(approve_result).await?;
+
+        // Stake tokens
+        let stake_call = staking.stake(identity_id, stake_wei);
+        let stake_result = stake_call.send().await;
+
+        handle_contract_call(stake_result).await?;
+
+        tracing::info!("Set stake completed for identity {}", identity_id);
+        Ok(())
+    }
+
+    /// Sets the ask price for this node's identity (dev environment only).
+    async fn set_ask(&self, ask_wei: u128) -> Result<(), BlockchainError> {
+        let contracts = self.contracts().await;
+
+        // Get identity ID
+        let identity_id = self.get_identity_id().await.ok_or_else(|| {
+            BlockchainError::Custom("Identity ID not found for set_ask".to_string())
+        })?;
+
+        // Update ask via Profile contract
+        let update_ask_call = contracts.profile().update_ask(identity_id, ask_wei);
+        let update_ask_result = update_ask_call.send().await;
+
+        handle_contract_call(update_ask_result).await?;
+
+        tracing::info!("Set ask completed for identity {}", identity_id);
+        Ok(())
+    }
 
     async fn sign_message(&self, message_hash: &str) -> Result<Vec<u8>, BlockchainError> {
         use ethers::{signers::Signer, utils::hex};

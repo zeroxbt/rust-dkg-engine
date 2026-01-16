@@ -7,7 +7,7 @@ mod network;
 mod services;
 mod types;
 
-use std::{process::Command as ProcessCommand, sync::Arc};
+use std::sync::Arc;
 
 use ::network::NetworkManager;
 use blockchain::BlockchainManager;
@@ -77,9 +77,7 @@ async fn main() {
     ));
 
     if config.is_dev_env {
-        tokio::task::spawn(async move {
-            initialize_dev_environment(&blockchain_manager).await;
-        });
+        initialize_dev_environment(&blockchain_manager).await;
     }
 
     let command_executor = Arc::new(CommandExecutor::new(Arc::clone(&context)).await);
@@ -245,47 +243,26 @@ fn initialize_controllers(
 }
 
 async fn initialize_dev_environment(blockchain_manager: &Arc<BlockchainManager>) {
-    for blockchain in blockchain_manager.get_blockchain_ids() {
-        let config = blockchain_manager
-            .get_blockchain_config(blockchain)
-            .unwrap();
-        let stake_command = format!(
-            "cargo run -p scripts -- set-stake --rpcEndpoint={} --stake={} --operationalWalletPrivateKey={} --managementWalletPrivateKey={} --hubContractAddress={}",
-            config.rpc_endpoints()[0],
-            50_000,
-            config.evm_operational_wallet_private_key(),
-            config.evm_management_wallet_private_key().unwrap(),
-            config.hub_contract_address()
-        );
+    use ethers::utils::parse_ether;
 
-        let ask_command = format!(
-            "cargo run -p scripts -- set-ask --rpcEndpoint={} --ask={} --privateKey={} --hubContractAddress={}",
-            config.rpc_endpoints()[0],
-            0.2,
-            config.evm_operational_wallet_private_key(),
-            config.hub_contract_address()
-        );
+    // 50,000 tokens for stake
+    let stake_wei = parse_ether(50_000u64)
+        .expect("Failed to parse stake amount")
+        .as_u128();
+    // 0.2 tokens for ask
+    let ask_wei = parse_ether("0.2")
+        .expect("Failed to parse ask amount")
+        .as_u128();
 
-        let status = ProcessCommand::new("sh")
-            .arg("-c")
-            .arg(stake_command)
-            .status()
-            .expect("Failed to run set-stake command");
+    for blockchain_id in blockchain_manager.get_blockchain_ids() {
+        if let Err(e) = blockchain_manager.set_stake(blockchain_id, stake_wei).await {
+            tracing::error!("Failed to set stake for {}: {}", blockchain_id, e);
+            panic!("set-stake did not complete successfully: {}", e);
+        }
 
-        assert!(
-            status.success(),
-            "set-stake command did not complete successfully."
-        );
-
-        let status = ProcessCommand::new("sh")
-            .arg("-c")
-            .arg(ask_command)
-            .status()
-            .expect("Failed to run set-ask command");
-
-        assert!(
-            status.success(),
-            "set-ask command did not complete successfully."
-        );
+        if let Err(e) = blockchain_manager.set_ask(blockchain_id, ask_wei).await {
+            tracing::error!("Failed to set ask for {}: {}", blockchain_id, e);
+            panic!("set-ask did not complete successfully: {}", e);
+        }
     }
 }
