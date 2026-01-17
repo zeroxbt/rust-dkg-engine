@@ -13,19 +13,16 @@ use uuid::Uuid;
 use validation::ValidationManager;
 
 use crate::{
-    commands::command::Command,
+    commands::{command::CommandHandler, command_executor::CommandExecutionResult},
     context::Context,
     network::{NetworkProtocols, ProtocolResponse, SessionManager},
     services::operation_manager::OperationManager,
-    types::{
-        models::Assertion,
-        protocol::StoreResponseData,
-        traits::command::{CommandExecutionResult, CommandHandler},
-    },
+    types::{models::Assertion, protocol::StoreResponseData},
 };
 
 /// Command data for handling incoming publish/store requests.
 /// Dataset is passed inline; channel is retrieved from session manager.
+#[derive(Clone)]
 pub struct HandlePublishRequestCommandData {
     pub blockchain: BlockchainId,
     pub operation_id: Uuid,
@@ -112,14 +109,8 @@ impl HandlePublishRequestCommandHandler {
 }
 
 #[async_trait]
-impl CommandHandler for HandlePublishRequestCommandHandler {
-    fn name(&self) -> &'static str {
-        "handlePublishRequestCommand"
-    }
-
-    async fn execute(&self, command: &Command) -> CommandExecutionResult {
-        let data = command.data::<HandlePublishRequestCommandData>();
-
+impl CommandHandler<HandlePublishRequestCommandData> for HandlePublishRequestCommandHandler {
+    async fn execute(&self, data: &HandlePublishRequestCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;
         let dataset_root = &data.dataset_root;

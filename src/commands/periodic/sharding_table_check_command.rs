@@ -8,10 +8,9 @@ use blockchain::{
 use futures::future::join_all;
 use repository::{RepositoryManager, ShardRecordInput};
 
-use super::command::Command;
 use crate::{
+    commands::{command::CommandHandler, command_executor::CommandExecutionResult},
     context::Context,
-    types::traits::command::{CommandExecutionResult, CommandHandler, ScheduleConfig},
 };
 
 const SHARDING_TABLE_CHECK_COMMAND_PERIOD_MS: i64 = 10_000;
@@ -174,17 +173,12 @@ impl ShardingTableCheckCommandHandler {
     }
 }
 
+#[derive(Clone, Default)]
+pub struct ShardingTableCheckCommandData;
+
 #[async_trait]
-impl CommandHandler for ShardingTableCheckCommandHandler {
-    fn name(&self) -> &'static str {
-        "shardingTableCheckCommand"
-    }
-
-    fn schedule_config(&self) -> ScheduleConfig {
-        ScheduleConfig::periodic_with_delay(SHARDING_TABLE_CHECK_COMMAND_PERIOD_MS, 0)
-    }
-
-    async fn execute(&self, _: &Command) -> CommandExecutionResult {
+impl CommandHandler<ShardingTableCheckCommandData> for ShardingTableCheckCommandHandler {
+    async fn execute(&self, _: &ShardingTableCheckCommandData) -> CommandExecutionResult {
         let blockchain_ids = self.blockchain_manager.get_blockchain_ids();
 
         let futures = blockchain_ids
@@ -203,6 +197,8 @@ impl CommandHandler for ShardingTableCheckCommandHandler {
             }
         }
 
-        CommandExecutionResult::Repeat
+        CommandExecutionResult::Repeat {
+            delay_ms: SHARDING_TABLE_CHECK_COMMAND_PERIOD_MS,
+        }
     }
 }

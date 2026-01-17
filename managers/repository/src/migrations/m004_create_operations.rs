@@ -39,9 +39,7 @@ impl MigrationTrait for Migration {
                     .col(small_unsigned_null(Operations::MinAckResponses))
                     .col(small_unsigned(Operations::CompletedCount).default(0))
                     .col(small_unsigned(Operations::FailedCount).default(0))
-                    .primary_key(
-                        Index::create().col(Operations::OperationId),
-                    )
+                    .primary_key(Index::create().col(Operations::OperationId))
                     .to_owned(),
             ))
             .await?;

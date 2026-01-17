@@ -7,7 +7,7 @@ use tokio::sync::mpsc::Sender;
 use validation::ValidationManager;
 
 use crate::{
-    commands::command::Command,
+    commands::command_executor::CommandExecutionRequest,
     config::Config,
     network::{NetworkProtocols, SessionManager},
     services::{
@@ -19,7 +19,7 @@ use crate::{
 
 pub struct Context {
     config: Arc<Config>,
-    schedule_command_tx: Sender<Command>,
+    schedule_command_tx: Sender<CommandExecutionRequest>,
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -34,7 +34,7 @@ pub struct Context {
 impl Context {
     pub fn new(
         config: Arc<Config>,
-        schedule_command_tx: Sender<Command>,
+        schedule_command_tx: Sender<CommandExecutionRequest>,
         repository_manager: Arc<RepositoryManager>,
         network_manager: Arc<NetworkManager<NetworkProtocols>>,
         blockchain_manager: Arc<BlockchainManager>,
@@ -92,7 +92,7 @@ impl Context {
         &self.pending_storage_service
     }
 
-    pub fn schedule_command_tx(&self) -> &Sender<Command> {
+    pub fn schedule_command_tx(&self) -> &Sender<CommandExecutionRequest> {
         &self.schedule_command_tx
     }
 

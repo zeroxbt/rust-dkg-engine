@@ -11,7 +11,10 @@ use std::sync::Arc;
 
 use ::network::NetworkManager;
 use blockchain::BlockchainManager;
-use commands::{command::Command, command_executor::CommandExecutor};
+use commands::{
+    command_executor::{CommandExecutionRequest, CommandExecutor},
+    command_registry::Command,
+};
 use config::ManagersConfig;
 use context::Context;
 use controllers::{
@@ -161,8 +164,12 @@ fn display_ot_node_ascii_art() {
     }
 }
 
-fn initialize_channels() -> (Sender<Command>, Receiver<Command>) {
-    let (schedule_command_tx, schedule_command_rx) = tokio::sync::mpsc::channel::<Command>(1000);
+fn initialize_channels() -> (
+    Sender<CommandExecutionRequest>,
+    Receiver<CommandExecutionRequest>,
+) {
+    let (schedule_command_tx, schedule_command_rx) =
+        tokio::sync::mpsc::channel::<CommandExecutionRequest>(1000);
 
     (schedule_command_tx, schedule_command_rx)
 }

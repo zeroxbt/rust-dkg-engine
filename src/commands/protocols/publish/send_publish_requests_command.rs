@@ -12,19 +12,16 @@ use repository::RepositoryManager;
 use uuid::Uuid;
 
 use crate::{
-    commands::command::Command,
+    commands::{command::CommandHandler, command_executor::CommandExecutionResult},
     context::Context,
     network::{NetworkProtocols, ProtocolRequest},
     services::operation_manager::OperationManager,
-    types::{
-        models::Assertion,
-        protocol::StoreRequestData,
-        traits::command::{CommandExecutionResult, CommandHandler},
-    },
+    types::{models::Assertion, protocol::StoreRequestData},
 };
 
 /// Command data for sending publish requests to network nodes.
 /// Dataset is passed inline instead of being retrieved from storage.
+#[derive(Clone)]
 pub struct SendPublishRequestsCommandData {
     pub operation_id: Uuid,
     pub blockchain: BlockchainId,
@@ -150,14 +147,8 @@ impl SendPublishRequestsCommandHandler {
 }
 
 #[async_trait]
-impl CommandHandler for SendPublishRequestsCommandHandler {
-    fn name(&self) -> &'static str {
-        "sendPublishRequestsCommand"
-    }
-
-    async fn execute(&self, command: &Command) -> CommandExecutionResult {
-        let data = command.data::<SendPublishRequestsCommandData>();
-
+impl CommandHandler<SendPublishRequestsCommandData> for SendPublishRequestsCommandHandler {
+    async fn execute(&self, data: &SendPublishRequestsCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;
         let dataset_root = &data.dataset_root;

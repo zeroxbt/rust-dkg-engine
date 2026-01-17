@@ -10,7 +10,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     commands::{
-        command::{Command, CommandBuilder},
+        command_executor::CommandExecutionRequest, command_registry::Command,
         protocols::publish::handle_publish_request_command::HandlePublishRequestCommandData,
     },
     context::Context,
@@ -26,7 +26,7 @@ pub struct StoreRpcController {
     publish_operation_manager: Arc<OperationManager>,
     repository_manager: Arc<RepositoryManager>,
     session_manager: Arc<SessionManager<StoreResponseData>>,
-    schedule_command_tx: Sender<Command>,
+    schedule_command_tx: Sender<CommandExecutionRequest>,
 }
 
 impl StoreRpcController {
@@ -67,19 +67,24 @@ impl StoreRpcController {
         };
 
         // Schedule command with dataset passed inline
-        let command = CommandBuilder::new("handlePublishRequestCommand")
-            .data(HandlePublishRequestCommandData::new(
-                data.blockchain().clone(),
-                operation_id,
-                data.dataset_root().to_owned(),
-                remote_peer_id,
-                dataset,
-            ))
-            .build();
+        let command = Command::HandlePublishRequest(HandlePublishRequestCommandData::new(
+            data.blockchain().clone(),
+            operation_id,
+            data.dataset_root().to_owned(),
+            remote_peer_id,
+            dataset,
+        ));
 
-        let command_name = command.name.clone();
-        if let Err(e) = self.schedule_command_tx.send(command).await {
-            tracing::error!(operation_id = %operation_id, error = %e, command_name = %command_name, "Failed to schedule command.");
+        let request = CommandExecutionRequest::new(command);
+
+        let command_name = request.command.name();
+        if let Err(e) = self.schedule_command_tx.send(request).await {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                command_name = %command_name,
+                "Failed to schedule command."
+            );
         }
     }
 

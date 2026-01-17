@@ -7,7 +7,7 @@ use validator::Validate;
 
 use crate::{
     commands::{
-        command::CommandBuilder,
+        command_executor::CommandExecutionRequest, command_registry::Command,
         protocols::publish::send_publish_requests_command::SendPublishRequestsCommandData,
     },
     context::Context,
@@ -25,10 +25,8 @@ impl PublishHttpApiController {
     ) -> impl IntoResponse {
         match req.validate() {
             Ok(_) => {
-                // Generate operation ID and create DB record immediately
                 let operation_id = Uuid::new_v4();
 
-                // Create operation record in DB before spawning
                 if let Err(e) = context
                     .publish_operation_manager()
                     .create_operation(operation_id)
@@ -44,24 +42,21 @@ impl PublishHttpApiController {
 
                 tracing::info!(operation_id = %operation_id, "Publish request received");
 
-                // Schedule the command with dataset passed inline
+                let command = Command::SendPublishRequests(SendPublishRequestsCommandData::new(
+                    operation_id,
+                    req.blockchain,
+                    req.dataset_root,
+                    req.minimum_number_of_node_replications
+                        .unwrap_or(MIN_ACK_RESPONSES),
+                    req.dataset,
+                ));
 
-                let command = CommandBuilder::new("sendPublishRequestsCommand")
-                    .data(SendPublishRequestsCommandData::new(
-                        operation_id,
-                        req.blockchain,
-                        req.dataset_root,
-                        req.minimum_number_of_node_replications
-                            .unwrap_or(MIN_ACK_RESPONSES),
-                        req.dataset,
-                    ))
-                    .build();
+                let request = CommandExecutionRequest::new(command);
 
-                if let Err(e) = context.schedule_command_tx().send(command).await {
+                if let Err(e) = context.schedule_command_tx().send(request).await {
                     tracing::error!(operation_id = %operation_id, error = %e, "Failed to schedule SendPublishRequestsCommand");
                 }
 
-                // Return operation ID immediately
                 Json(PublishResponse::new(operation_id)).into_response()
             }
             Err(e) => {

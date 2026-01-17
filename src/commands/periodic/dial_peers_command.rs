@@ -5,11 +5,10 @@ use libp2p::PeerId;
 use network::NetworkManager;
 use repository::RepositoryManager;
 
-use super::command::Command;
 use crate::{
+    commands::{command::CommandHandler, command_executor::CommandExecutionResult},
     context::Context,
     network::NetworkProtocols,
-    types::traits::command::{CommandExecutionResult, CommandHandler, ScheduleConfig},
 };
 
 const DIAL_PEERS_COMMAND_PERIOD_MS: i64 = 10_000;
@@ -30,17 +29,12 @@ impl DialPeersCommandHandler {
     }
 }
 
+#[derive(Clone, Default)]
+pub struct DialPeersCommandData;
+
 #[async_trait]
-impl CommandHandler for DialPeersCommandHandler {
-    fn name(&self) -> &'static str {
-        "dialPeersCommand"
-    }
-
-    fn schedule_config(&self) -> ScheduleConfig {
-        ScheduleConfig::periodic_with_delay(DIAL_PEERS_COMMAND_PERIOD_MS, 0)
-    }
-
-    async fn execute(&self, _: &Command) -> CommandExecutionResult {
+impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
+    async fn execute(&self, _: &DialPeersCommandData) -> CommandExecutionResult {
         let peer_id = self.network_manager.peer_id().to_base58();
 
         let potential_peer_ids = self
@@ -69,6 +63,8 @@ impl CommandHandler for DialPeersCommandHandler {
             let _ = self.network_manager.dial_peers(peers).await;
         }
 
-        CommandExecutionResult::Repeat
+        CommandExecutionResult::Repeat {
+            delay_ms: DIAL_PEERS_COMMAND_PERIOD_MS,
+        }
     }
 }

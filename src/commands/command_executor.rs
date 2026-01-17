@@ -1,21 +1,54 @@
 use std::{cmp::min, sync::Arc, time::Duration};
 
+use chrono::Utc;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::{Mutex, Semaphore, mpsc};
 
 use super::{
-    command::Command,
-    command_resolver::CommandResolver,
-    constants::{
-        COMMAND_QUEUE_PARALLELISM, DEFAULT_COMMAND_REPEAT_INTERVAL_MS, MAX_COMMAND_DELAY_MS,
-    },
+    command_registry::Command,
+    constants::{COMMAND_QUEUE_PARALLELISM, MAX_COMMAND_DELAY_MS, MAX_COMMAND_LIFETIME_MS},
 };
-use crate::{context::Context, types::traits::command::CommandExecutionResult};
+use crate::{
+    commands::command_registry::{CommandResolver, default_command_requests},
+    context::Context,
+};
+
+pub enum CommandExecutionResult {
+    Completed,
+    Repeat { delay_ms: i64 },
+}
+
+#[derive(Clone)]
+pub struct CommandExecutionRequest {
+    pub command: Command,
+    pub delay_ms: i64,
+    pub created_at: i64,
+}
+
+impl CommandExecutionRequest {
+    pub fn new(command: Command) -> Self {
+        Self {
+            command,
+            delay_ms: 0,
+            created_at: Utc::now().timestamp_millis(),
+        }
+    }
+
+    pub fn with_delay(mut self, delay_ms: i64) -> Self {
+        self.delay_ms = delay_ms;
+        self
+    }
+
+    pub fn is_expired(&self) -> bool {
+        let now = Utc::now().timestamp_millis();
+        now - self.created_at > MAX_COMMAND_LIFETIME_MS
+    }
+}
 
 pub struct CommandExecutor {
     pub command_resolver: CommandResolver,
-    pub process_command_tx: mpsc::Sender<Command>,
-    pub process_command_rx: Arc<Mutex<mpsc::Receiver<Command>>>,
+    pub process_command_tx: mpsc::Sender<CommandExecutionRequest>,
+    pub process_command_rx: Arc<Mutex<mpsc::Receiver<CommandExecutionRequest>>>,
     pub semaphore: Arc<Semaphore>,
 }
 
@@ -26,7 +59,7 @@ pub struct CommandExecutor {
 
 impl CommandExecutor {
     pub async fn new(context: Arc<Context>) -> Self {
-        let (tx, rx) = mpsc::channel::<Command>(COMMAND_QUEUE_PARALLELISM);
+        let (tx, rx) = mpsc::channel::<CommandExecutionRequest>(COMMAND_QUEUE_PARALLELISM);
 
         Self {
             command_resolver: CommandResolver::new(context),
@@ -50,10 +83,10 @@ impl CommandExecutor {
                 }
                 command = locked_rx.recv() => {
                     match command {
-                        Some(command) => {
+                        Some(request) => {
                             drop(locked_rx);
                             let permit = self.semaphore.clone().acquire_owned().await.unwrap();
-                            pending_tasks.push(self.execute(command, permit));
+                            pending_tasks.push(self.execute(request, permit));
                         }
                         None => {
                             tracing::error!("Command channel closed, shutting down executor");
@@ -66,95 +99,65 @@ impl CommandExecutor {
     }
 
     async fn schedule_default_commands(&self) {
-        for command in self.command_resolver.periodic_commands() {
-            self.add(command, 0).await.unwrap();
+        for request in default_command_requests() {
+            self.enqueue(request).await.unwrap();
         }
     }
 
     pub async fn listen_and_schedule_commands(
         &self,
-        mut schedule_command_rx: mpsc::Receiver<Command>,
+        mut schedule_command_rx: mpsc::Receiver<CommandExecutionRequest>,
     ) {
         loop {
-            if let Some(command) = schedule_command_rx.recv().await {
-                let delay = command.delay;
-
-                self.add(command, delay).await.unwrap();
+            if let Some(request) = schedule_command_rx.recv().await {
+                self.enqueue(request).await.unwrap();
             }
         }
     }
 
-    async fn add(
+    async fn enqueue(
         &self,
-        command: Command,
-        delay: i64,
-    ) -> Result<(), mpsc::error::SendError<Command>> {
-        let delay = min(delay as u64, MAX_COMMAND_DELAY_MS as u64);
+        request: CommandExecutionRequest,
+    ) -> Result<(), mpsc::error::SendError<CommandExecutionRequest>> {
+        let delay = min(request.delay_ms.max(0) as u64, MAX_COMMAND_DELAY_MS as u64);
 
         if delay > 0 {
             let process_command_tx = self.process_command_tx.clone();
+            let mut delayed_request = request;
+            delayed_request.delay_ms = 0;
 
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(delay)).await;
-                let _ = process_command_tx.send(command).await;
+                let _ = process_command_tx.send(delayed_request).await;
             });
 
             Ok(())
         } else {
-            self.process_command_tx.send(command).await
+            self.process_command_tx.send(request).await
         }
     }
 
-    async fn execute(&self, command: Command, _permit: tokio::sync::OwnedSemaphorePermit) {
-        let now = chrono::Utc::now().timestamp_millis();
-
-        if let Some(deadline_at) = command.deadline_at {
-            if deadline_at <= now {
-                tracing::warn!(
-                    "Command ${:?} and ID ${} is too late...",
-                    command.name,
-                    command.id
-                )
-            }
-
+    async fn execute(
+        &self,
+        request: CommandExecutionRequest,
+        _permit: tokio::sync::OwnedSemaphorePermit,
+    ) {
+        // Check if command has expired
+        if request.is_expired() {
+            tracing::warn!("Command {} expired, dropping", request.command.name());
             return;
         }
 
-        let delay = command.ready_at + command.delay - now;
-
-        if delay > 0 {
-            self.add(command, delay).await.unwrap();
-
-            return;
-        }
-
-        let Some(command_handler) = self.command_resolver.resolve(&command.name.to_string()) else {
-            tracing::error!("Unknown command: {}", command.name);
-            return;
-        };
-
-        let result = command_handler.execute(&command).await;
+        let result = self.command_resolver.execute(&request.command).await;
 
         match result {
-            CommandExecutionResult::Retry => {
-                if command.retries > 0 {
-                    let mut retry_command = command.clone();
-                    retry_command.retries -= 1;
-                    let delay = retry_command.period.unwrap_or_default();
-                    self.add(retry_command, delay).await.unwrap();
-                } else {
-                    command_handler.retry_finished().await;
-                }
-            }
-            CommandExecutionResult::Repeat => {
-                let repeat_command = command.clone();
-                let period = repeat_command
-                    .period
-                    .unwrap_or(DEFAULT_COMMAND_REPEAT_INTERVAL_MS);
-                self.add(repeat_command, period).await.unwrap();
+            CommandExecutionResult::Repeat { delay_ms } => {
+                let new_request =
+                    CommandExecutionRequest::new(request.command).with_delay(delay_ms);
+                self.enqueue(new_request).await.unwrap();
             }
             CommandExecutionResult::Completed => {
-                tracing::trace!("Command {} completed", command.name);
+                tracing::trace!("Command {} completed", request.command.name());
             }
         }
     }
