@@ -42,14 +42,14 @@ impl BlockchainRepository {
             .map_err(|_| DbErr::Custom("last_checked_block exceeds i64::MAX".to_string()))?;
 
         let model = ActiveModel {
-            blockchain_id: ActiveValue::Set(blockchain_id.to_owned()),
+            id: ActiveValue::Set(blockchain_id.to_owned()),
             contract: ActiveValue::Set(contract.to_owned()),
             last_checked_block: ActiveValue::Set(last_checked_block),
             last_checked_timestamp: ActiveValue::Set(last_checked_timestamp),
         };
         Entity::insert(model)
             .on_conflict(
-                OnConflict::columns([Column::BlockchainId, Column::Contract])
+                OnConflict::columns([Column::Id, Column::Contract])
                     .update_columns([Column::LastCheckedBlock, Column::LastCheckedTimestamp])
                     .to_owned(),
             )

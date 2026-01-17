@@ -8,7 +8,7 @@ use sea_orm_migration::{
 #[derive(Iden)]
 enum Blockchain {
     Table,
-    BlockchainId,
+    Id,
     Contract,
     LastCheckedBlock,
     LastCheckedTimestamp,
@@ -25,13 +25,13 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Blockchain::Table)
                     .if_not_exists()
-                    .col(string(Blockchain::BlockchainId))
+                    .col(string(Blockchain::Id))
                     .col(string_len(Blockchain::Contract, 42))
                     .col(big_integer(Blockchain::LastCheckedBlock).default("0"))
                     .col(date_time(Blockchain::LastCheckedTimestamp).default("1970-01-01 00:00:00"))
                     .primary_key(
                         Index::create()
-                            .col(Blockchain::BlockchainId)
+                            .col(Blockchain::Id)
                             .col(Blockchain::Contract),
                     )
                     .to_owned(),

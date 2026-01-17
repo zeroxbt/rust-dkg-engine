@@ -9,7 +9,7 @@ use sea_orm::{
 #[sea_orm(table_name = "blockchain")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub blockchain_id: String,
+    pub id: String,
     #[sea_orm(primary_key)]
     pub contract: String,
     #[sea_orm(default_value = "0")]
