@@ -209,20 +209,20 @@ impl BlockchainEventController {
             let a_log = a.log();
             let b_log = b.log();
 
-            let a_block = a_log.block_number.unwrap_or_default().as_u64();
-            let b_block = b_log.block_number.unwrap_or_default().as_u64();
+            let a_block = a_log.block_number.unwrap_or_default();
+            let b_block = b_log.block_number.unwrap_or_default();
             if a_block != b_block {
                 return a_block.cmp(&b_block);
             }
 
-            let a_tx_index = a_log.transaction_index.unwrap_or_default().as_u64();
-            let b_tx_index = b_log.transaction_index.unwrap_or_default().as_u64();
+            let a_tx_index = a_log.transaction_index.unwrap_or_default();
+            let b_tx_index = b_log.transaction_index.unwrap_or_default();
             if a_tx_index != b_tx_index {
                 return a_tx_index.cmp(&b_tx_index);
             }
 
-            let a_log_index = a_log.log_index.unwrap_or_default().as_u64();
-            let b_log_index = b_log.log_index.unwrap_or_default().as_u64();
+            let a_log_index = a_log.log_index.unwrap_or_default();
+            let b_log_index = b_log.log_index.unwrap_or_default();
             a_log_index.cmp(&b_log_index)
         });
 
@@ -236,7 +236,7 @@ impl BlockchainEventController {
 
     /// Process a single event - dispatch to appropriate handler
     async fn process_event(&self, blockchain: &BlockchainId, event: EventLog) {
-        let block_number = event.log().block_number.unwrap_or_default().as_u64();
+        let block_number = event.log().block_number.unwrap_or_default();
         tracing::trace!(
             "Processing event {:?} in block {}",
             event.event_name(),
@@ -270,12 +270,16 @@ impl BlockchainEventController {
     // === Event Handlers (aligned with JS) ===
 
     async fn handle_parameter_changed_event(&self, blockchain: &BlockchainId, event: EventLog) {
-        let filter = blockchain::utils::decode_event_log::<ParameterChangedFilter>(event);
+        let Ok(filter) = blockchain::utils::decode_event_log::<ParameterChangedFilter>(&event)
+        else {
+            tracing::warn!("Failed to decode ParameterChanged event");
+            return;
+        };
         tracing::debug!(
             "ParameterChanged on {}: {} = {}",
             blockchain,
-            filter.parameter_name,
-            filter.parameter_value
+            filter.parameterName,
+            filter.parameterValue
         );
         // TODO: Update contract call cache with new parameter values
         // In JS: blockchainModuleManager.setContractCallCache(blockchain,
@@ -283,12 +287,15 @@ impl BlockchainEventController {
     }
 
     async fn handle_new_contract_event(&self, blockchain: &BlockchainId, event: EventLog) {
-        let filter = blockchain::utils::decode_event_log::<NewContractFilter>(event);
+        let Ok(filter) = blockchain::utils::decode_event_log::<NewContractFilter>(&event) else {
+            tracing::warn!("Failed to decode NewContract event");
+            return;
+        };
         tracing::info!(
             "NewContract on {}: {} at {:?}",
             blockchain,
-            filter.contract_name,
-            filter.new_contract_address
+            filter.contractName,
+            filter.newContractAddress
         );
 
         // Silently skip contracts not tracked by this node
@@ -296,50 +303,62 @@ impl BlockchainEventController {
             .blockchain_manager
             .re_initialize_contract(
                 blockchain,
-                filter.contract_name.clone(),
-                filter.new_contract_address,
+                filter.contractName.clone(),
+                filter.newContractAddress,
             )
             .await;
     }
 
     async fn handle_contract_changed_event(&self, blockchain: &BlockchainId, event: EventLog) {
-        let filter = blockchain::utils::decode_event_log::<ContractChangedFilter>(event);
+        let Ok(filter) = blockchain::utils::decode_event_log::<ContractChangedFilter>(&event)
+        else {
+            tracing::warn!("Failed to decode ContractChanged event");
+            return;
+        };
 
         // Silently skip contracts not tracked by this node
         let _ = self
             .blockchain_manager
             .re_initialize_contract(
                 blockchain,
-                filter.contract_name.clone(),
-                filter.new_contract_address,
+                filter.contractName.clone(),
+                filter.newContractAddress,
             )
             .await;
     }
 
     async fn handle_new_asset_storage_event(&self, blockchain: &BlockchainId, event: EventLog) {
-        let filter = blockchain::utils::decode_event_log::<NewAssetStorageFilter>(event);
+        let Ok(filter) = blockchain::utils::decode_event_log::<NewAssetStorageFilter>(&event)
+        else {
+            tracing::warn!("Failed to decode NewAssetStorage event");
+            return;
+        };
 
         // Silently skip contracts not tracked by this node
         let _ = self
             .blockchain_manager
             .re_initialize_contract(
                 blockchain,
-                filter.contract_name.clone(),
-                filter.new_contract_address,
+                filter.contractName.clone(),
+                filter.newContractAddress,
             )
             .await;
     }
 
     async fn handle_asset_storage_changed_event(&self, blockchain: &BlockchainId, event: EventLog) {
-        let filter = blockchain::utils::decode_event_log::<AssetStorageChangedFilter>(event);
+        let Ok(filter) = blockchain::utils::decode_event_log::<AssetStorageChangedFilter>(&event)
+        else {
+            tracing::warn!("Failed to decode AssetStorageChanged event");
+            return;
+        };
 
         // Silently skip contracts not tracked by this node
         let _ = self
             .blockchain_manager
             .re_initialize_contract(
                 blockchain,
-                filter.contract_name.clone(),
-                filter.new_contract_address,
+                filter.contractName.clone(),
+                filter.newContractAddress,
             )
             .await;
     }
@@ -349,13 +368,18 @@ impl BlockchainEventController {
         blockchain: &BlockchainId,
         event: EventLog,
     ) {
-        let filter = blockchain::utils::decode_event_log::<KnowledgeCollectionCreatedFilter>(event);
+        let Ok(filter) =
+            blockchain::utils::decode_event_log::<KnowledgeCollectionCreatedFilter>(&event)
+        else {
+            tracing::warn!("Failed to decode KnowledgeCollectionCreated event");
+            return;
+        };
         tracing::info!(
             "KnowledgeCollectionCreated on {}: id={}, merkleRoot=0x{}, byteSize={}",
             blockchain,
             filter.id,
-            to_hex_string(filter.merkle_root.to_vec()),
-            filter.byte_size
+            to_hex_string(filter.merkleRoot),
+            filter.byteSize
         );
 
         // TODO: Queue publishFinalizationCommand

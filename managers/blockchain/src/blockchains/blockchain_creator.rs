@@ -1,137 +1,185 @@
-abigen!(Hub, "../../abi/Hub.json");
-abigen!(Staking, "../../abi/Staking.json");
-abigen!(IdentityStorage, "../../abi/IdentityStorage.json");
-abigen!(ParametersStorage, "../../abi/ParametersStorage.json");
-abigen!(
+use std::sync::Arc;
+
+use alloy::{
+    network::{Ethereum, EthereumWallet},
+    primitives::Address,
+    providers::{DynProvider, Provider, ProviderBuilder},
+    signers::local::PrivateKeySigner,
+    sol,
+};
+
+use crate::{BlockchainConfig, ContractName, error::BlockchainError};
+
+sol!(
+    #[sol(rpc)]
+    Hub,
+    "../../abi/Hub.json"
+);
+
+sol!(
+    #[sol(rpc)]
+    Staking,
+    "../../abi/Staking.json"
+);
+
+sol!(
+    #[sol(rpc)]
+    IdentityStorage,
+    "../../abi/IdentityStorage.json"
+);
+
+sol!(
+    #[sol(rpc)]
+    ParametersStorage,
+    "../../abi/ParametersStorage.json"
+);
+
+sol!(
+    #[sol(rpc)]
     KnowledgeCollectionStorage,
     "../../abi/KnowledgeCollectionStorage.json"
 );
-abigen!(Profile, "../../abi/Profile.json");
-abigen!(ShardingTable, "../../abi/ShardingTable.json");
-abigen!(ShardingTableStorage, "../../abi/ShardingTableStorage.json");
-abigen!(Token, "../../abi/Token.json");
 
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+sol!(
+    #[sol(rpc)]
+    Profile,
+    "../../abi/Profile.json"
+);
 
-use ethers::{
-    abi::Address,
-    contract::{Contract as EthersContract, abigen},
-    middleware::{Middleware, MiddlewareBuilder, NonceManagerMiddleware, SignerMiddleware},
-    providers::{Http, Provider},
-    signers::{LocalWallet, Signer},
-};
-pub use sharding_table::NodeInfo as ShardingTableNode;
+sol!(
+    #[sol(rpc)]
+    Token,
+    "../../abi/Token.json"
+);
 
-use crate::{BlockchainConfig, ContractName, error::BlockchainError};
-// abigen!(
-// ServiceAgreementStorageProxy,
-// "../../abi/ServiceAgreementStorageProxy.json"
-// );
-// abigen!(
-// UnfinalizedStateStorage,
-// "../../abi/UnfinalizedStateStorage.json"
-// );
+// Wrap each ABI in its own module to avoid duplicate ShardingTableLib definitions.
+pub mod sharding_table {
+    use alloy::sol;
 
-pub type BlockchainProvider = NonceManagerMiddleware<SignerMiddleware<Provider<Http>, LocalWallet>>;
+    sol!(
+        #[sol(rpc)]
+        ShardingTable,
+        "../../abi/ShardingTable.json"
+    );
+}
+
+pub mod sharding_table_storage {
+    use alloy::sol;
+
+    sol!(
+        #[sol(rpc)]
+        ShardingTableStorage,
+        "../../abi/ShardingTableStorage.json"
+    );
+}
+
+// Use Arc<DynProvider> for thread-safe sharing
+pub type BlockchainProvider = Arc<DynProvider<Ethereum>>;
 
 pub struct Contracts {
-    hub: Hub<BlockchainProvider>,
-    knowledge_collection_storages: HashMap<Address, KnowledgeCollectionStorage<BlockchainProvider>>,
-    staking: Staking<BlockchainProvider>,
-    identity_storage: IdentityStorage<BlockchainProvider>,
-    parameters_storage: ParametersStorage<BlockchainProvider>,
-    profile: Profile<BlockchainProvider>,
-    sharding_table: ShardingTable<BlockchainProvider>,
-    sharding_table_storage: ShardingTableStorage<BlockchainProvider>,
-    token: Token<BlockchainProvider>,
+    hub: Hub::HubInstance<BlockchainProvider>,
+    knowledge_collection_storage:
+        Option<KnowledgeCollectionStorage::KnowledgeCollectionStorageInstance<BlockchainProvider>>,
+    staking: Staking::StakingInstance<BlockchainProvider>,
+    identity_storage: IdentityStorage::IdentityStorageInstance<BlockchainProvider>,
+    parameters_storage: ParametersStorage::ParametersStorageInstance<BlockchainProvider>,
+    profile: Profile::ProfileInstance<BlockchainProvider>,
+    sharding_table: sharding_table::ShardingTable::ShardingTableInstance<BlockchainProvider>,
+    sharding_table_storage:
+        sharding_table_storage::ShardingTableStorage::ShardingTableStorageInstance<
+            BlockchainProvider,
+        >,
+    token: Token::TokenInstance<BlockchainProvider>,
 }
 
 impl Contracts {
-    pub fn identity_storage(&self) -> &IdentityStorage<BlockchainProvider> {
+    pub fn identity_storage(
+        &self,
+    ) -> &IdentityStorage::IdentityStorageInstance<BlockchainProvider> {
         &self.identity_storage
     }
 
-    pub fn profile(&self) -> &Profile<BlockchainProvider> {
+    pub fn profile(&self) -> &Profile::ProfileInstance<BlockchainProvider> {
         &self.profile
     }
 
-    pub fn sharding_table(&self) -> &ShardingTable<BlockchainProvider> {
+    pub fn sharding_table(
+        &self,
+    ) -> &sharding_table::ShardingTable::ShardingTableInstance<BlockchainProvider> {
         &self.sharding_table
     }
 
-    pub fn sharding_table_storage(&self) -> &ShardingTableStorage<BlockchainProvider> {
+    pub fn sharding_table_storage(
+        &self,
+    ) -> &sharding_table_storage::ShardingTableStorage::ShardingTableStorageInstance<
+        BlockchainProvider,
+    > {
         &self.sharding_table_storage
     }
 
-    pub fn staking(&self) -> &Staking<BlockchainProvider> {
+    pub fn staking(&self) -> &Staking::StakingInstance<BlockchainProvider> {
         &self.staking
     }
 
-    pub fn token(&self) -> &Token<BlockchainProvider> {
+    pub fn token(&self) -> &Token::TokenInstance<BlockchainProvider> {
         &self.token
     }
 
-    pub fn get(
-        &self,
-        contract_name: &ContractName,
-    ) -> Result<&EthersContract<BlockchainProvider>, BlockchainError> {
+    pub fn get_address(&self, contract_name: &ContractName) -> Result<Address, BlockchainError> {
         match contract_name {
-            ContractName::Hub => Ok(&self.hub),
-            ContractName::ShardingTable => Ok(&self.sharding_table),
-            ContractName::ShardingTableStorage => Ok(&self.sharding_table_storage),
-            ContractName::Staking => Ok(&self.staking),
-            ContractName::Profile => Ok(&self.profile),
-            ContractName::ParametersStorage => Ok(&self.parameters_storage),
-            ContractName::KnowledgeCollectionStorage => Err(BlockchainError::Custom(
-                "KnowledgeCollectionStorage contracts must be accessed via get_knowledge_collection_storage"
-                    .to_string(),
-            )),
+            ContractName::Hub => Ok(*self.hub.address()),
+            ContractName::ShardingTable => Ok(*self.sharding_table.address()),
+            ContractName::ShardingTableStorage => Ok(*self.sharding_table_storage.address()),
+            ContractName::Staking => Ok(*self.staking.address()),
+            ContractName::Profile => Ok(*self.profile.address()),
+            ContractName::ParametersStorage => Ok(*self.parameters_storage.address()),
+            ContractName::KnowledgeCollectionStorage => self
+                .knowledge_collection_storage
+                .as_ref()
+                .map(|storage| *storage.address())
+                .ok_or_else(|| {
+                    BlockchainError::Custom(
+                        "KnowledgeCollectionStorage contract is not initialized".to_string(),
+                    )
+                }),
         }
-    }
-
-    pub fn get_knowledge_collection_storage(
-        &self,
-        address: &Address,
-    ) -> Option<&KnowledgeCollectionStorage<BlockchainProvider>> {
-        self.knowledge_collection_storages.get(address)
-    }
-
-    pub fn get_knowledge_collection_storage_addresses(&self) -> Vec<Address> {
-        self.knowledge_collection_storages.keys().cloned().collect()
     }
 
     pub async fn replace_contract(
         &mut self,
-        provider: &Arc<BlockchainProvider>,
+        provider: &BlockchainProvider,
         contract_name: ContractName,
         contract_address: Address,
     ) -> Result<(), BlockchainError> {
         match contract_name {
             ContractName::Profile => {
-                self.profile = Profile::new(contract_address, Arc::clone(provider))
+                self.profile = Profile::new(contract_address, provider.clone())
             }
             ContractName::ShardingTable => {
-                self.sharding_table = ShardingTable::new(contract_address, Arc::clone(provider))
+                self.sharding_table =
+                    sharding_table::ShardingTable::new(contract_address, provider.clone())
             }
             ContractName::ShardingTableStorage => {
-                self.sharding_table_storage =
-                    ShardingTableStorage::new(contract_address, Arc::clone(provider))
+                self.sharding_table_storage = sharding_table_storage::ShardingTableStorage::new(
+                    contract_address,
+                    provider.clone(),
+                )
             }
             ContractName::Hub => {
-                self.hub = Hub::new(contract_address, Arc::clone(provider));
+                self.hub = Hub::new(contract_address, provider.clone());
             }
             ContractName::Staking => {
-                self.staking = Staking::new(contract_address, Arc::clone(provider));
+                self.staking = Staking::new(contract_address, provider.clone());
             }
             ContractName::ParametersStorage => {
                 self.parameters_storage =
-                    ParametersStorage::new(contract_address, Arc::clone(provider));
+                    ParametersStorage::new(contract_address, provider.clone());
             }
             ContractName::KnowledgeCollectionStorage => {
-                self.knowledge_collection_storages.insert(
+                self.knowledge_collection_storage = Some(KnowledgeCollectionStorage::new(
                     contract_address,
-                    KnowledgeCollectionStorage::new(contract_address, Arc::clone(provider)),
-                );
+                    provider.clone(),
+                ));
             }
         };
 
@@ -143,52 +191,56 @@ impl Contracts {
 pub(crate) trait BlockchainCreator {
     async fn new(config: BlockchainConfig) -> Self;
 
-    async fn initialize_ethers_provider(
+    async fn initialize_provider(
         config: &BlockchainConfig,
-    ) -> Result<Arc<BlockchainProvider>, BlockchainError> {
+    ) -> Result<BlockchainProvider, BlockchainError> {
         let mut tries = 0;
         let mut rpc_number = 0;
 
-        let signer = config
-            .evm_operational_wallet_private_key
-            .parse::<LocalWallet>()
-            .map_err(|e| BlockchainError::InvalidPrivateKey {
-                key_length: config.evm_operational_wallet_private_key.len(),
-                source: e,
-            })?
-            .with_chain_id(config.chain_id);
-        let signer_address = signer.address();
+        let signer: PrivateKeySigner =
+            config
+                .evm_operational_wallet_private_key
+                .parse()
+                .map_err(|e| BlockchainError::InvalidPrivateKey {
+                    key_length: config.evm_operational_wallet_private_key.len(),
+                    source: e,
+                })?;
+        let wallet = EthereumWallet::from(signer);
 
         while tries < config.rpc_endpoints.len() {
-            let cloned_signer = signer.clone();
             let endpoint = &config.rpc_endpoints[rpc_number];
 
-            let current_provider = if endpoint.starts_with("ws") {
+            if endpoint.starts_with("ws") {
                 return Err(BlockchainError::Custom(
                     "websocket RPCs not supported yet".to_string(),
                 ));
-            } else {
-                let http = Http::from_str(endpoint).map_err(|e| {
-                    BlockchainError::HttpProviderCreation {
+            }
+
+            let endpoint_url =
+                endpoint
+                    .parse()
+                    .map_err(|e| BlockchainError::HttpProviderCreation {
                         endpoint: endpoint.clone(),
                         source: Box::new(e),
-                    }
-                })?;
-                Arc::new(
-                    Provider::new(http)
-                        .with_signer(cloned_signer)
-                        .nonce_manager(signer_address),
-                )
-            };
+                    })?;
 
-            if current_provider.get_block_number().await.is_ok() {
-                tracing::info!("Blockchain provider initialized with rpc: {}", endpoint);
+            let provider = Arc::new(
+                ProviderBuilder::new()
+                    .wallet(wallet.clone())
+                    .connect_http(endpoint_url)
+                    .erased(),
+            );
 
-                return Ok(current_provider);
-            } else {
-                tracing::warn!("Unable to connect to blockchain rpc: {}", endpoint);
-                tries += 1;
-                rpc_number = (rpc_number + 1) % config.rpc_endpoints.len();
+            match provider.get_block_number().await {
+                Ok(_) => {
+                    tracing::info!("Blockchain provider initialized with rpc: {}", endpoint);
+                    return Ok(provider);
+                }
+                Err(_) => {
+                    tracing::warn!("Unable to connect to blockchain rpc: {}", endpoint);
+                    tries += 1;
+                    rpc_number = (rpc_number + 1) % config.rpc_endpoints.len();
+                }
             }
         }
 
@@ -199,74 +251,88 @@ pub(crate) trait BlockchainCreator {
 
     async fn initialize_contracts(
         config: &BlockchainConfig,
-        provider: &Arc<BlockchainProvider>,
+        provider: &BlockchainProvider,
     ) -> Result<Contracts, BlockchainError> {
-        let address = config
-            .hub_contract_address
-            .parse::<Address>()
-            .map_err(|_| BlockchainError::InvalidAddress {
-                address: config.hub_contract_address.clone(),
-            })?;
+        let address: Address =
+            config
+                .hub_contract_address
+                .parse()
+                .map_err(|_| BlockchainError::InvalidAddress {
+                    address: config.hub_contract_address.clone(),
+                })?;
         let hub = Hub::new(address, provider.clone());
 
-        let asset_storages_addresses = hub.get_all_asset_storages().call().await?;
+        let asset_storages_addresses = hub.getAllAssetStorages().call().await?;
 
-        let knowledge_collection_storages: HashMap<
-            Address,
-            KnowledgeCollectionStorage<BlockchainProvider>,
-        > = asset_storages_addresses
-            .iter()
-            .filter_map(|contract| match contract.name.parse::<ContractName>() {
-                Ok(ContractName::KnowledgeCollectionStorage) => Some((
-                    contract.addr,
-                    KnowledgeCollectionStorage::new(contract.addr, Arc::clone(provider)),
-                )),
+        let knowledge_collection_storage_addr = asset_storages_addresses.iter().rev().find_map(
+            |contract| match contract.name.parse::<ContractName>() {
+                Ok(ContractName::KnowledgeCollectionStorage) => Some(contract.addr),
                 _ => None,
-            })
-            .collect();
+            },
+        );
+        let knowledge_collection_storage = knowledge_collection_storage_addr
+            .map(|addr| KnowledgeCollectionStorage::new(addr, provider.clone()));
 
         Ok(Contracts {
             hub: hub.clone(),
-            knowledge_collection_storages,
+            knowledge_collection_storage,
             staking: Staking::new(
-                hub.get_contract_address("Staking".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
+                Address::from(
+                    hub.getContractAddress("Staking".to_string())
+                        .call()
+                        .await?
+                        .0,
+                ),
+                provider.clone(),
             ),
             identity_storage: IdentityStorage::new(
-                hub.get_contract_address("IdentityStorage".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
+                Address::from(
+                    hub.getContractAddress("IdentityStorage".to_string())
+                        .call()
+                        .await?
+                        .0,
+                ),
+                provider.clone(),
             ),
             parameters_storage: ParametersStorage::new(
-                hub.get_contract_address("ParametersStorage".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
+                Address::from(
+                    hub.getContractAddress("ParametersStorage".to_string())
+                        .call()
+                        .await?
+                        .0,
+                ),
+                provider.clone(),
             ),
             profile: Profile::new(
-                hub.get_contract_address("Profile".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
+                Address::from(
+                    hub.getContractAddress("Profile".to_string())
+                        .call()
+                        .await?
+                        .0,
+                ),
+                provider.clone(),
             ),
-            sharding_table: ShardingTable::new(
-                hub.get_contract_address("ShardingTable".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
+            sharding_table: sharding_table::ShardingTable::new(
+                Address::from(
+                    hub.getContractAddress("ShardingTable".to_string())
+                        .call()
+                        .await?
+                        .0,
+                ),
+                provider.clone(),
             ),
-            sharding_table_storage: ShardingTableStorage::new(
-                hub.get_contract_address("ShardingTableStorage".to_string())
-                    .call()
-                    .await?,
-                Arc::clone(provider),
+            sharding_table_storage: sharding_table_storage::ShardingTableStorage::new(
+                Address::from(
+                    hub.getContractAddress("ShardingTableStorage".to_string())
+                        .call()
+                        .await?
+                        .0,
+                ),
+                provider.clone(),
             ),
             token: Token::new(
-                hub.get_contract_address("Token".to_string()).call().await?,
-                Arc::clone(provider),
+                Address::from(hub.getContractAddress("Token".to_string()).call().await?.0),
+                provider.clone(),
             ),
         })
     }

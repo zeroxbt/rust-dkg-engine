@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
@@ -13,7 +11,7 @@ use crate::{
 
 pub struct HardhatBlockchain {
     config: BlockchainConfig,
-    provider: Arc<BlockchainProvider>,
+    provider: BlockchainProvider,
     contracts: RwLock<Contracts>,
     identity_id: Option<u128>,
 }
@@ -26,7 +24,7 @@ impl AbstractBlockchain for HardhatBlockchain {
     fn config(&self) -> &BlockchainConfig {
         &self.config
     }
-    fn provider(&self) -> &Arc<BlockchainProvider> {
+    fn provider(&self) -> &BlockchainProvider {
         &self.provider
     }
 
@@ -45,7 +43,7 @@ impl AbstractBlockchain for HardhatBlockchain {
 
 impl BlockchainCreator for HardhatBlockchain {
     async fn new(config: BlockchainConfig) -> Self {
-        let provider = Self::initialize_ethers_provider(&config)
+        let provider = Self::initialize_provider(&config)
             .await
             .expect("Failed to initialize blockchain provider");
         let contracts = Self::initialize_contracts(&config, &provider)

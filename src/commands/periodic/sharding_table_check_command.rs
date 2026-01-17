@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use blockchain::{
-    BlockchainId, BlockchainManager, ShardingTableNode,
+    BlockchainId, BlockchainManager,
+    blockchains::blockchain_creator::sharding_table::ShardingTableLib::NodeInfo,
     utils::{from_wei, sha256_hex},
 };
 use futures::future::join_all;
@@ -98,11 +99,11 @@ impl ShardingTableCheckCommandHandler {
 
             // Check if we've reached the end of the linked list
             let last_node = nodes.last().expect("non-empty nodes");
-            if last_node.identity_id == 0 || last_node.identity_id == starting_identity_id {
+            if last_node.identityId == 0 || last_node.identityId == starting_identity_id {
                 break;
             }
 
-            starting_identity_id = last_node.identity_id;
+            starting_identity_id = last_node.identityId.to();
             page_index += 1;
         }
 
@@ -117,12 +118,12 @@ impl ShardingTableCheckCommandHandler {
     fn append_shard_records(
         &self,
         blockchain: &BlockchainId,
-        nodes: &[ShardingTableNode],
+        nodes: &[NodeInfo],
         slice_start: usize,
         records: &mut Vec<ShardRecordInput>,
     ) {
         for node in nodes.iter().skip(slice_start) {
-            if node.node_id.is_empty() {
+            if node.nodeId.is_empty() {
                 tracing::warn!(
                     blockchain = %blockchain,
                     "Skipping sharding table node with empty node id bytes"
@@ -132,7 +133,7 @@ impl ShardingTableCheckCommandHandler {
 
             // The node_id is stored on-chain as UTF-8 bytes of the base58 peer ID string,
             // so we need to convert to string first, then parse as PeerId
-            let peer_id_str = match std::str::from_utf8(&node.node_id) {
+            let peer_id_str = match std::str::from_utf8(&node.nodeId) {
                 Ok(s) => s,
                 Err(err) => {
                     tracing::warn!(

@@ -35,7 +35,7 @@ use urdna2015::URDNA2015;
 /// ```
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let jsonld = r#"{ "@context": { "@vocab": "http://example.org/" }, "example": "data" }"#;
-/// let nquads = urdna2015::canonize(jsonld).await?;
+/// let nquads = rdf_canonize::canonize(jsonld).await?;
 /// println!("Canonicalized N-Quads: {}", nquads);
 /// # Ok(())
 /// # }

@@ -250,16 +250,18 @@ fn initialize_controllers(
 }
 
 async fn initialize_dev_environment(blockchain_manager: &Arc<BlockchainManager>) {
-    use ethers::utils::parse_ether;
+    use alloy::primitives::utils::parse_ether;
 
     // 50,000 tokens for stake
-    let stake_wei = parse_ether(50_000u64)
+    let stake_wei: u128 = parse_ether("50000")
         .expect("Failed to parse stake amount")
-        .as_u128();
+        .try_into()
+        .expect("Stake amount too large");
     // 0.2 tokens for ask
-    let ask_wei = parse_ether("0.2")
+    let ask_wei: u128 = parse_ether("0.2")
         .expect("Failed to parse ask amount")
-        .as_u128();
+        .try_into()
+        .expect("Ask amount too large");
 
     for blockchain_id in blockchain_manager.get_blockchain_ids() {
         if let Err(e) = blockchain_manager.set_stake(blockchain_id, stake_wei).await {

@@ -6,18 +6,24 @@ use std::collections::HashMap;
 use blockchains::{abstract_blockchain::AbstractBlockchain, blockchain_creator::BlockchainCreator};
 pub use blockchains::{
     abstract_blockchain::{ContractName, EventLog, EventName},
-    blockchain_creator::{
-        AssetStorageChangedFilter, ContractChangedFilter, KnowledgeCollectionCreatedFilter,
-        NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter, ShardingTableNode,
-    },
+    blockchain_creator::{Hub, KnowledgeCollectionStorage, ParametersStorage},
 };
-pub use ethers::{
-    abi::Token,
-    types::{Address, H256, U256},
-};
+
+// Re-export event types for use by consumers
+// In alloy's sol! macro, events are nested under the contract module
+pub type NewContractFilter = Hub::NewContract;
+pub type ContractChangedFilter = Hub::ContractChanged;
+pub type NewAssetStorageFilter = Hub::NewAssetStorage;
+pub type AssetStorageChangedFilter = Hub::AssetStorageChanged;
+pub type ParameterChangedFilter = ParametersStorage::ParameterChanged;
+pub type KnowledgeCollectionCreatedFilter = KnowledgeCollectionStorage::KnowledgeCollectionCreated;
+pub use alloy::primitives::{Address, B256 as H256, U256};
 use serde::{Deserialize, Serialize};
 
-use crate::error::BlockchainError;
+use crate::{
+    blockchains::blockchain_creator::sharding_table::ShardingTableLib::NodeInfo,
+    error::BlockchainError,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(transparent)]
@@ -261,7 +267,7 @@ impl BlockchainManager {
         blockchain: &BlockchainId,
         starting_identity_id: u128,
         nodes_num: u128,
-    ) -> Result<Vec<ShardingTableNode>, BlockchainError> {
+    ) -> Result<Vec<NodeInfo>, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
                 blockchain: blockchain.as_str().to_string(),

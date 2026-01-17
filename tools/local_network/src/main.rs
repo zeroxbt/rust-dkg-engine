@@ -192,9 +192,17 @@ async fn main() {
         .unwrap();
 
     // Stagger node startups to avoid overwhelming the local blockchain with concurrent transactions
-    const NODE_STARTUP_DELAY_MS: u64 = 1000;
+    const NODE_STARTUP_DELAY_MS: u64 = 2000;
 
     for i in 0..nodes {
+        // Add delay between node startups to prevent transaction conflicts on the local blockchain
+
+        println!(
+            "Waiting {}ms before starting next node...",
+            NODE_STARTUP_DELAY_MS
+        );
+        tokio::time::sleep(tokio::time::Duration::from_millis(NODE_STARTUP_DELAY_MS)).await;
+
         // Drop the database for this config
         let database_name = format!("operationaldb{}", i);
         drop_database(&database_name);
@@ -204,14 +212,5 @@ async fn main() {
             "cd {} && {} --config {}",
             current_dir_str, binary_path, config_path
         ));
-
-        // Add delay between node startups to prevent transaction conflicts on the local blockchain
-        if i < nodes - 1 {
-            println!(
-                "Waiting {}ms before starting next node...",
-                NODE_STARTUP_DELAY_MS
-            );
-            tokio::time::sleep(tokio::time::Duration::from_millis(NODE_STARTUP_DELAY_MS)).await;
-        }
     }
 }

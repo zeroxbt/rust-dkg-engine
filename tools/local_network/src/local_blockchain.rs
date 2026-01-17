@@ -1,30 +1,40 @@
-use std::{convert::TryFrom, fs::read_to_string, net::TcpStream, sync::Arc, time::Duration};
+use std::{fs::read_to_string, net::TcpStream, sync::Arc, time::Duration};
 
-use ethers::{
-    abi::{Abi, Token},
-    core::{k256::ecdsa::SigningKey, types::Address},
-    middleware::{MiddlewareBuilder, SignerMiddleware},
-    providers::{Http, Provider},
-    signers::{LocalWallet, Signer, Wallet},
-    types::{Bytes, U256},
+use alloy::{
+    network::EthereumWallet,
+    primitives::{Address, Bytes, U256, Uint},
+    providers::ProviderBuilder,
+    signers::local::PrivateKeySigner,
+    sol,
 };
 
-const HARDHAT_CHAIN_ID: u64 = 31337;
 const HUB_CONTRACT_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";
-const PARAMETERS_STORAGE_ABI_PATH: &str = "./abi/ParametersStorage.json";
 const LOCAL_BLOCKCHAIN_SCRIPT: &str = "tools/local-network-setup/run-local-blockchain.js";
 
-ethers::contract::abigen!(Hub, "../../abi/Hub.json");
-ethers::contract::abigen!(ParametersStorage, "../../abi/ParametersStorage.json");
+sol!(
+    #[sol(rpc)]
+    Hub,
+    "../../abi/Hub.json"
+);
+
+sol!(
+    #[sol(rpc)]
+    ParametersStorage,
+    "../../abi/ParametersStorage.json"
+);
 
 pub struct TestParametersStorageParams {
-    epoch_length: u64,                 // 6 minutes
-    commit_window_duration_perc: u64,  // 2 minutes
-    min_proof_window_offset_perc: u64, // 4 minutes
-    max_proof_window_offset_perc: u64, // 4 minutes
-    proof_window_duration_perc: u64,   // 2 minutes
-    finalization_commits_number: u64,
+    ask_lower_bound_factor: u128,
+    ask_upper_bound_factor: u128,
+    maximum_stake: u128,
+    minimum_stake: u128,
+    stake_withdrawal_delay: u128,
+    node_ask_update_delay: u128,
+    operator_fee_update_delay: u128,
+    op_wallets_limit_on_profile_creation: u16,
+    sharding_table_size_limit: u16,
+    v81_release_epoch: u128,
 }
 
 pub struct LocalBlockchain;
@@ -42,80 +52,107 @@ impl LocalBlockchain {
 
         let private_keys: Vec<String> = serde_json::from_str(&read_to_string(PRIVATE_KEYS_PATH)?)?;
 
-        let signer = private_keys
+        let signer: PrivateKeySigner = private_keys
             .first()
             .ok_or("No private keys found")?
-            .parse::<LocalWallet>()?
-            .with_chain_id(HARDHAT_CHAIN_ID);
+            .parse()?;
+        let wallet = EthereumWallet::from(signer);
+
+        let endpoint_url = format!("http://localhost:{port}").parse()?;
         let provider = Arc::new(
-            Provider::<Http>::try_from(format!("http://localhost:{port}"))?.with_signer(signer),
+            ProviderBuilder::new()
+                .wallet(wallet)
+                .connect_http(endpoint_url),
         );
 
-        let hub_contract = Hub::new(
-            HUB_CONTRACT_ADDRESS.parse::<Address>()?,
-            Arc::clone(&provider),
-        );
+        let hub_contract = Hub::new(HUB_CONTRACT_ADDRESS.parse::<Address>()?, provider.clone());
         let parameters_storage_address: Address = hub_contract
-            .get_contract_address("ParametersStorage".to_string())
+            .getContractAddress("ParametersStorage".to_string())
             .call()
-            .await?;
-        let parameters_storage_interface: Abi =
-            serde_json::from_str(&read_to_string(PARAMETERS_STORAGE_ABI_PATH)?)?;
+            .await?
+            .0
+            .into();
 
         Self::set_parameters_storage_params(
             &hub_contract,
-            &parameters_storage_interface,
             parameters_storage_address,
             TestParametersStorageParams {
-                epoch_length: 6 * 60,
-                commit_window_duration_perc: 33,
-                min_proof_window_offset_perc: 66,
-                max_proof_window_offset_perc: 66,
-                proof_window_duration_perc: 33,
-                finalization_commits_number: 3,
+                ask_lower_bound_factor: 533_000_000_000_000_000,
+                ask_upper_bound_factor: 1_467_000_000_000_000_000,
+                maximum_stake: 2_000_000_000_000_000_000_000_000,
+                minimum_stake: 50_000_000_000_000_000_000_000,
+                stake_withdrawal_delay: 60,
+                node_ask_update_delay: 60,
+                operator_fee_update_delay: 60,
+                op_wallets_limit_on_profile_creation: 50,
+                sharding_table_size_limit: 500,
+                v81_release_epoch: 1,
             },
         )
         .await
     }
 
-    async fn set_parameters_storage_params(
-        hub_contract: &Hub<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>,
-        parameters_storage_interface: &Abi,
+    async fn set_parameters_storage_params<P>(
+        hub_contract: &Hub::HubInstance<P>,
         parameters_storage_address: Address,
         params: TestParametersStorageParams,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let parameter_methods = [
-            ("setEpochLength", params.epoch_length),
-            (
-                "setCommitWindowDurationPerc",
-                params.commit_window_duration_perc,
-            ),
-            (
-                "setMinProofWindowOffsetPerc",
-                params.min_proof_window_offset_perc,
-            ),
-            (
-                "setMaxProofWindowOffsetPerc",
-                params.max_proof_window_offset_perc,
-            ),
-            (
-                "setProofWindowDurationPerc",
-                params.proof_window_duration_perc,
-            ),
-            (
-                "setFinalizationCommitsNumber",
-                params.finalization_commits_number,
-            ),
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        P: alloy::providers::Provider + Clone,
+    {
+        let parameters_storage =
+            ParametersStorage::new(parameters_storage_address, hub_contract.provider().clone());
+
+        // Set each parameter by encoding the call and forwarding through hub
+        let parameter_calls: Vec<Bytes> = vec![
+            parameters_storage
+                .setAskLowerBoundFactor(U256::from(params.ask_lower_bound_factor))
+                .calldata()
+                .clone(),
+            parameters_storage
+                .setAskUpperBoundFactor(U256::from(params.ask_upper_bound_factor))
+                .calldata()
+                .clone(),
+            parameters_storage
+                .setMaximumStake(Uint::<96, 2>::from(params.maximum_stake))
+                .calldata()
+                .clone(),
+            parameters_storage
+                .setMinimumStake(Uint::<96, 2>::from(params.minimum_stake))
+                .calldata()
+                .clone(),
+            parameters_storage
+                .setStakeWithdrawalDelay(U256::from(params.stake_withdrawal_delay))
+                .calldata()
+                .clone(),
+            parameters_storage
+                .setNodeAskUpdateDelay(U256::from(params.node_ask_update_delay))
+                .calldata()
+                .clone(),
+            parameters_storage
+                .setOperatorFeeUpdateDelay(U256::from(params.operator_fee_update_delay))
+                .calldata()
+                .clone(),
+            parameters_storage
+                .setOpWalletsLimitOnProfileCreation(params.op_wallets_limit_on_profile_creation)
+                .calldata()
+                .clone(),
+            parameters_storage
+                .setShardingTableSizeLimit(params.sharding_table_size_limit)
+                .calldata()
+                .clone(),
+            parameters_storage
+                .setV81ReleaseEpoch(U256::from(params.v81_release_epoch))
+                .calldata()
+                .clone(),
         ];
 
-        for (method, value) in &parameter_methods {
-            let encoded_data = parameters_storage_interface
-                .function(method)?
-                .encode_input(&[Token::Uint(U256::from(*value))])?;
+        for calldata in parameter_calls {
             hub_contract
-                .forward_call(parameters_storage_address, Bytes::from(encoded_data))
+                .forwardCall(parameters_storage_address, calldata)
                 .send()
                 .await?
+                .get_receipt()
                 .await?;
         }
 

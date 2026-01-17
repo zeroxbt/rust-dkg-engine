@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use blockchain::{BlockchainId, BlockchainManager, H256, Token, utils::keccak256_encode_packed};
+use blockchain::{BlockchainId, BlockchainManager, H256, utils::keccak256_encode_packed};
 use futures::future::join_all;
 use libp2p::PeerId;
 use network::{
@@ -110,21 +110,17 @@ impl SendPublishRequestsCommandHandler {
         // encoding
         let identity_bytes = {
             let bytes = identity_id.to_be_bytes(); // u128 = 16 bytes
-            bytes[16 - 9..].to_vec() // Take last 9 bytes for uint72
+            let mut out = [0u8; 9];
+            out.copy_from_slice(&bytes[16 - 9..]); // Take last 9 bytes for uint72
+            out
         };
-        let tokens = vec![
-            Token::FixedBytes(identity_bytes),
-            Token::FixedBytes(dataset_root_h256.as_bytes().to_vec()),
-        ];
-        let message_hash = keccak256_encode_packed(&tokens)?;
+        let message_hash =
+            keccak256_encode_packed(&[&identity_bytes, dataset_root_h256.as_slice()]);
         let signature = self
             .blockchain_manager
             .sign_message(
                 blockchain,
-                &format!(
-                    "0x{}",
-                    blockchain::utils::to_hex_string(message_hash.to_vec())
-                ),
+                &format!("0x{}", blockchain::utils::to_hex_string(message_hash)),
             )
             .await?;
         let signature = blockchain::utils::split_signature(signature)?;

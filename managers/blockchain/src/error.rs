@@ -1,9 +1,9 @@
-use crate::blockchains::blockchain_creator::BlockchainProvider;
+use alloy::{contract::Error as ContractError, signers::local::LocalSignerError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlockchainError {
     #[error("Contract error: {0}")]
-    Contract(#[from] ethers::contract::ContractError<BlockchainProvider>),
+    Contract(#[from] ContractError),
 
     #[error("Failed to decode message")]
     Decode,
@@ -16,7 +16,7 @@ pub enum BlockchainError {
         key_length: usize,
         #[source]
         #[allow(unused)]
-        source: ethers::signers::WalletError,
+        source: LocalSignerError,
     },
 
     #[error("RPC connection failed after trying {attempts} endpoint(s)")]

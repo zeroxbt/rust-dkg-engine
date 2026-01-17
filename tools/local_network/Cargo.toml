@@ -8,5 +8,5 @@ tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 clap.workspace = true
-ethers.workspace = true
+alloy.workspace = true
 libp2p.workspace = true

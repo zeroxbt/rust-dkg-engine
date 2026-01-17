@@ -1,19 +1,23 @@
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
-use async_trait::async_trait;
-use ethers::{
-    abi::Address,
-    middleware::Middleware,
-    prelude::Contract,
-    types::{Bytes, Filter, Log},
+use alloy::{
+    network::EthereumWallet,
+    primitives::{Address, Bytes, B256, hex},
+    providers::{Provider, ProviderBuilder},
+    rpc::types::Filter,
+    signers::local::PrivateKeySigner,
+    sol_types::SolEvent,
 };
+use async_trait::async_trait;
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
     BlockchainConfig, BlockchainId,
     blockchains::blockchain_creator::{
-        BlockchainProvider, Contracts, ShardingTableNode, Staking, Token,
+        BlockchainProvider, Contracts, Staking, Token, sharding_table::ShardingTableLib::NodeInfo,
     },
+    AssetStorageChangedFilter, ContractChangedFilter, KnowledgeCollectionCreatedFilter,
+    NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter,
     error::BlockchainError,
     utils::handle_contract_call,
 };
@@ -91,11 +95,15 @@ impl EventName {
 pub struct EventLog {
     contract_name: ContractName,
     event_name: EventName,
-    log: Log,
+    log: alloy::rpc::types::Log,
 }
 
 impl EventLog {
-    pub fn new(contract_name: ContractName, event_name: EventName, log: Log) -> Self {
+    pub fn new(
+        contract_name: ContractName,
+        event_name: EventName,
+        log: alloy::rpc::types::Log,
+    ) -> Self {
         Self {
             contract_name,
             event_name,
@@ -111,7 +119,7 @@ impl EventLog {
         &self.event_name
     }
 
-    pub fn log(&self) -> &Log {
+    pub fn log(&self) -> &alloy::rpc::types::Log {
         &self.log
     }
 }
@@ -122,7 +130,7 @@ impl EventLog {
 pub trait AbstractBlockchain: Send + Sync {
     fn blockchain_id(&self) -> &BlockchainId;
     fn config(&self) -> &BlockchainConfig;
-    fn provider(&self) -> &Arc<BlockchainProvider>;
+    fn provider(&self) -> &BlockchainProvider;
     async fn contracts(&self) -> RwLockReadGuard<'_, Contracts>;
     async fn contracts_mut(&self) -> RwLockWriteGuard<'_, Contracts>;
     fn set_identity_id(&mut self, id: u128);
@@ -150,7 +158,7 @@ pub trait AbstractBlockchain: Send + Sync {
             .await
             .map_err(|_| BlockchainError::GetLogs)?;
 
-        Ok(block_number.as_u64())
+        Ok(block_number)
     }
 
     async fn get_event_logs(
@@ -160,130 +168,108 @@ pub trait AbstractBlockchain: Send + Sync {
         from_block: u64,
         current_block: u64,
     ) -> Result<Vec<EventLog>, BlockchainError> {
-        let contracts = self.contracts().await;
-        if *contract_name == ContractName::KnowledgeCollectionStorage {
-            let storage_addresses = contracts.get_knowledge_collection_storage_addresses();
-            let mut all_events = Vec::new();
-
-            for address in storage_addresses {
-                let Some(contract) = contracts.get_knowledge_collection_storage(&address) else {
-                    continue;
-                };
-                let mut from_block = from_block;
-                while from_block <= current_block {
-                    let to_block = std::cmp::min(
-                        from_block + MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH - 1,
-                        current_block,
-                    );
-                    let new_events = self
-                        .process_block_range(
-                            from_block,
-                            to_block,
-                            contract,
-                            contract_name,
-                            events_to_filter,
-                        )
-                        .await?;
-                    all_events.extend(new_events);
-                    from_block = to_block + 1;
+        let mut topic_map: std::collections::HashMap<B256, EventName> = std::collections::HashMap::new();
+        for event in events_to_filter {
+            let signature_hash = match event {
+                EventName::NewContract => NewContractFilter::SIGNATURE_HASH,
+                EventName::ContractChanged => ContractChangedFilter::SIGNATURE_HASH,
+                EventName::NewAssetStorage => NewAssetStorageFilter::SIGNATURE_HASH,
+                EventName::AssetStorageChanged => AssetStorageChangedFilter::SIGNATURE_HASH,
+                EventName::ParameterChanged => ParameterChangedFilter::SIGNATURE_HASH,
+                EventName::KnowledgeCollectionCreated => {
+                    KnowledgeCollectionCreatedFilter::SIGNATURE_HASH
                 }
+            };
+            topic_map.insert(signature_hash, event.clone());
+        }
+
+        let topic_signatures: Vec<B256> = topic_map.keys().copied().collect();
+
+        let contracts = self.contracts().await;
+
+        let addresses: Vec<Address> = vec![contracts.get_address(contract_name)?];
+        drop(contracts);
+
+        let mut all_events = Vec::new();
+
+        for address in addresses {
+            let mut block = from_block;
+            while block <= current_block {
+                let to_block = std::cmp::min(
+                    block + MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH - 1,
+                    current_block,
+                );
+
+                let mut filter = Filter::new()
+                    .address(address)
+                    .from_block(block)
+                    .to_block(to_block);
+                if !topic_signatures.is_empty() {
+                    filter = filter.event_signature(topic_signatures.clone());
+                }
+
+                let logs = self
+                    .provider()
+                    .get_logs(&filter)
+                    .await
+                    .map_err(|_| BlockchainError::GetLogs)?;
+
+                for log in logs {
+                    let Some(topic0) = log.topic0() else {
+                        continue;
+                    };
+                    let Some(event_name) = topic_map.get(topic0) else {
+                        continue;
+                    };
+                    all_events.push(EventLog::new(
+                        contract_name.clone(),
+                        event_name.clone(),
+                        log,
+                    ));
+                }
+
+                block = to_block + 1;
             }
-
-            return Ok(all_events);
         }
 
-        let contract = contracts.get(contract_name)?;
-
-        let mut events = Vec::new();
-        let mut from_block = from_block;
-        while from_block <= current_block {
-            let to_block = std::cmp::min(
-                from_block + MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH - 1,
-                current_block,
-            );
-            let new_events = self
-                .process_block_range(
-                    from_block,
-                    to_block,
-                    contract,
-                    contract_name,
-                    events_to_filter,
-                )
-                .await?;
-            events.extend(new_events);
-            from_block = to_block + 1;
-        }
-
-        Ok(events)
+        Ok(all_events)
     }
 
     async fn get_sharding_table_head(&self) -> Result<u128, BlockchainError> {
+        use alloy::primitives::Uint;
         let contracts = self.contracts().await;
-        let head = contracts.sharding_table_storage().head().call().await?;
-        Ok(head)
+        let head: Uint<72, 2> = contracts.sharding_table_storage().head().call().await?;
+        Ok(head.to::<u128>())
     }
 
     async fn get_sharding_table_length(&self) -> Result<u128, BlockchainError> {
+        use alloy::primitives::Uint;
         let contracts = self.contracts().await;
-        let nodes_count = contracts
+        let nodes_count: Uint<72, 2> = contracts
             .sharding_table_storage()
-            .nodes_count()
+            .nodesCount()
             .call()
             .await?;
-        Ok(nodes_count)
+        Ok(nodes_count.to::<u128>())
     }
 
     async fn get_sharding_table_page(
         &self,
         starting_identity_id: u128,
         nodes_num: u128,
-    ) -> Result<Vec<ShardingTableNode>, BlockchainError> {
+    ) -> Result<Vec<NodeInfo>, BlockchainError> {
+        use alloy::primitives::Uint;
         let contracts = self.contracts().await;
         let nodes = contracts
             .sharding_table()
-            .get_sharding_table_with_starting_identity_id_and_nodes_number(
-                starting_identity_id,
-                nodes_num,
+            .getShardingTable_1(
+                Uint::<72, 2>::from(starting_identity_id),
+                Uint::<72, 2>::from(nodes_num),
             )
             .call()
             .await?;
 
         Ok(nodes)
-    }
-
-    async fn process_block_range(
-        &self,
-        from_block: u64,
-        to_block: u64,
-        contract: &Contract<BlockchainProvider>,
-        contract_name: &ContractName,
-        events_to_filter: &Vec<EventName>,
-    ) -> Result<Vec<EventLog>, BlockchainError> {
-        let mut all_events = Vec::new();
-
-        for event_name in events_to_filter {
-            let filter = contract
-                .event_for_name::<Filter>(event_name.as_str())
-                .map_err(|_| BlockchainError::EventNotFound {
-                    event_name: event_name.as_str().to_string(),
-                })?
-                .filter;
-            let logs = self
-                .provider()
-                .get_logs(&filter.from_block(from_block).to_block(to_block))
-                .await
-                .map_err(|_| BlockchainError::GetLogs)?;
-
-            for log in logs {
-                all_events.push(EventLog::new(
-                    contract_name.clone(),
-                    event_name.clone(),
-                    log,
-                ));
-            }
-        }
-
-        Ok(all_events)
     }
 
     async fn get_identity_id(&self) -> Option<u128> {
@@ -299,12 +285,12 @@ pub trait AbstractBlockchain: Send + Sync {
 
         let result = contracts
             .identity_storage()
-            .get_identity_id(evm_operational_address)
+            .getIdentityId(evm_operational_address)
             .call()
             .await;
 
         match result {
-            Ok(id) if id != 0 => Some(id),
+            Ok(id) if !id.is_zero() => Some(id.to::<u128>()),
             _ => None,
         }
     }
@@ -329,9 +315,9 @@ pub trait AbstractBlockchain: Send + Sync {
 
         let contracts = self.contracts().await;
 
-        // Profile ABI: create_profile(adminWallet, operationalWallets, nodeName, nodeId,
+        // Profile ABI: createProfile(adminWallet, operationalWallets, nodeName, nodeId,
         // initialOperatorFee)
-        let create_profile_call = contracts.profile().create_profile(
+        let create_profile_call = contracts.profile().createProfile(
             admin_wallet,
             vec![],
             shares_token_name.clone(), // nodeName
@@ -378,11 +364,7 @@ pub trait AbstractBlockchain: Send + Sync {
     /// Sets the stake for this node's identity (dev environment only).
     /// Requires management wallet private key to be configured.
     async fn set_stake(&self, stake_wei: u128) -> Result<(), BlockchainError> {
-        use ethers::{
-            middleware::MiddlewareBuilder,
-            providers::{Http, Provider},
-            signers::{LocalWallet, Signer},
-        };
+        use alloy::primitives::{U256, Uint};
 
         let config = self.config();
 
@@ -394,30 +376,28 @@ pub trait AbstractBlockchain: Send + Sync {
         })?;
 
         // Create a provider with the management wallet for staking operations
-        let management_wallet = management_pk
-            .parse::<LocalWallet>()
-            .map_err(|e| BlockchainError::Custom(format!("Invalid management wallet key: {}", e)))?
-            .with_chain_id(config.chain_id());
-        let management_address = management_wallet.address();
-
-        let http = Http::from_str(&config.rpc_endpoints()[0]).map_err(|e| {
-            BlockchainError::Custom(format!("Failed to create HTTP provider: {}", e))
+        let management_signer: PrivateKeySigner = management_pk.parse().map_err(|e| {
+            BlockchainError::Custom(format!("Invalid management wallet key: {}", e))
         })?;
-        let management_provider = Arc::new(
-            Provider::new(http)
-                .with_signer(management_wallet)
-                .nonce_manager(management_address),
-        );
+        let management_wallet = EthereumWallet::from(management_signer);
+
+        let endpoint_url = config.rpc_endpoints()[0]
+            .parse()
+            .map_err(|e| BlockchainError::Custom(format!("Failed to parse RPC endpoint: {}", e)))?;
+
+        let management_provider = ProviderBuilder::new()
+            .wallet(management_wallet)
+            .connect_http(endpoint_url);
 
         // Get contract addresses from existing contracts
         let contracts = self.contracts().await;
-        let staking_address = contracts.staking().address();
-        let token_address = contracts.token().address();
+        let staking_address = *contracts.staking().address();
+        let token_address = *contracts.token().address();
         drop(contracts);
 
         // Create contracts with management wallet provider
-        let staking = Staking::new(staking_address, Arc::clone(&management_provider));
-        let token = Token::new(token_address, Arc::clone(&management_provider));
+        let staking = Staking::new(staking_address, &management_provider);
+        let token = Token::new(token_address, &management_provider);
 
         // Get identity ID
         let identity_id = self.get_identity_id().await.ok_or_else(|| {
@@ -425,14 +405,16 @@ pub trait AbstractBlockchain: Send + Sync {
         })?;
 
         // Approve token spending
-        let approve_call =
-            token.increase_allowance(staking_address, ethers::types::U256::from(stake_wei));
+        let approve_call = token.increaseAllowance(staking_address, U256::from(stake_wei));
         let approve_result = approve_call.send().await;
 
         handle_contract_call(approve_result).await?;
 
-        // Stake tokens
-        let stake_call = staking.stake(identity_id, stake_wei);
+        // Stake tokens - identity_id is uint72, stake_wei is uint96
+        let stake_call = staking.stake(
+            Uint::<72, 2>::from(identity_id),
+            Uint::<96, 2>::from(stake_wei),
+        );
         let stake_result = stake_call.send().await;
 
         handle_contract_call(stake_result).await?;
@@ -443,6 +425,8 @@ pub trait AbstractBlockchain: Send + Sync {
 
     /// Sets the ask price for this node's identity (dev environment only).
     async fn set_ask(&self, ask_wei: u128) -> Result<(), BlockchainError> {
+        use alloy::primitives::Uint;
+
         let contracts = self.contracts().await;
 
         // Get identity ID
@@ -450,8 +434,11 @@ pub trait AbstractBlockchain: Send + Sync {
             BlockchainError::Custom("Identity ID not found for set_ask".to_string())
         })?;
 
-        // Update ask via Profile contract
-        let update_ask_call = contracts.profile().update_ask(identity_id, ask_wei);
+        // Update ask via Profile contract - identity_id is uint72, ask_wei is uint96
+        let update_ask_call = contracts.profile().updateAsk(
+            Uint::<72, 2>::from(identity_id),
+            Uint::<96, 2>::from(ask_wei),
+        );
         let update_ask_result = update_ask_call.send().await;
 
         handle_contract_call(update_ask_result).await?;
@@ -461,7 +448,7 @@ pub trait AbstractBlockchain: Send + Sync {
     }
 
     async fn sign_message(&self, message_hash: &str) -> Result<Vec<u8>, BlockchainError> {
-        use ethers::{signers::Signer, utils::hex};
+        use alloy::signers::Signer;
 
         // Decode the hex message hash
         let message_bytes = hex::decode(message_hash.strip_prefix("0x").unwrap_or(message_hash))
@@ -469,11 +456,12 @@ pub trait AbstractBlockchain: Send + Sync {
                 BlockchainError::Custom(format!("Failed to decode message hash: {}", e))
             })?;
 
-        // Access the signer through the provider's inner middleware
-        // BlockchainProvider is NonceManagerMiddleware<SignerMiddleware<Provider<Http>,
-        // LocalWallet>>
-        let provider = self.provider();
-        let signer = provider.inner().signer();
+        // Re-create signer from config since we can't easily access it from the provider
+        let config = self.config();
+        let signer: PrivateKeySigner = config
+            .evm_operational_wallet_private_key
+            .parse()
+            .map_err(|e| BlockchainError::Custom(format!("Failed to parse private key: {}", e)))?;
 
         // Sign the message
         let signature = signer
@@ -481,7 +469,7 @@ pub trait AbstractBlockchain: Send + Sync {
             .await
             .map_err(|e| BlockchainError::Custom(format!("Failed to sign message: {}", e)))?;
 
-        // Return the flat signature as bytes
-        Ok(signature.to_vec())
+        // Return the signature as bytes (r, s, v format - 65 bytes total)
+        Ok(signature.as_bytes().to_vec())
     }
 }

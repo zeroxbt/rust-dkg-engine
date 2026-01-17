@@ -1,7 +1,4 @@
-use ethers::{
-    core::k256::sha2::{Digest, Sha256},
-    utils::hex,
-};
+use sha2::{Digest, Sha256};
 
 /// Provides a mechanism for hashing data using the SHA-256 hashing algorithm.
 ///
@@ -26,6 +23,7 @@ impl MessageDigest {
 
     /// Finalizes the hashing process and returns the resulting hex-encoded string.
     pub fn digest(&mut self) -> String {
-        hex::encode(self.hasher.clone().finalize())
+        let result = self.hasher.clone().finalize();
+        result.iter().map(|b| format!("{:02x}", b)).collect()
     }
 }

@@ -1,9 +1,10 @@
-use ethers::{
-    abi::{encode_packed, Token},
-    types::U256,
-    utils::{hex, keccak256},
+use alloy::{
+    primitives::{hex, keccak256, B256, U256},
+    sol_types::SolValue,
 };
 use serde::Deserialize;
+
+const CHUNK_SIZE: usize = 32;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ValidationManagerConfig {}
@@ -15,81 +16,71 @@ impl ValidationManager {
         Self
     }
 
-    /// Splits concatenated quads into fixed-size byte chunks.
-    fn split_into_chunks(&self, quads: &[String], chunk_size_bytes: usize) -> Vec<String> {
+    pub fn split_into_chunks(&self, quads: &[String]) -> Vec<String> {
         let concatenated = quads.join("\n");
         let bytes = concatenated.as_bytes();
 
-        bytes
-            .chunks(chunk_size_bytes)
-            .map(|chunk| String::from_utf8_lossy(chunk).into_owned())
-            .collect()
+        let mut chunks = Vec::new();
+        let mut start = 0usize;
+
+        while start < bytes.len() {
+            let end = (start + CHUNK_SIZE).min(bytes.len());
+            chunks.push(String::from_utf8_lossy(&bytes[start..end]).into_owned());
+            start = end;
+        }
+
+        chunks
     }
 
-    /// Converts a usize index to a 32-byte big-endian representation (uint256).
-    /// Used with Token::FixedBytes to ensure encode_packed outputs exactly 32 bytes,
-    /// matching Solidity's abi.encodePacked behavior for uint256.
-    fn index_to_uint256_bytes(index: usize) -> Vec<u8> {
-        let mut bytes = [0u8; 32];
-        U256::from(index).to_big_endian(&mut bytes);
-        bytes.to_vec()
+    fn leaf_hash(&self, chunk: &str, index: usize) -> B256 {
+        let packed = (chunk.to_string(), U256::from(index)).abi_encode_packed();
+        keccak256(packed)
     }
 
-    /// Calculates the Merkle root of the given quads using keccak256 hashing.
-    /// This matches the Solidity/ethers.js implementation using solidityKeccak256.
     pub fn calculate_merkle_root(&self, quads: &[String]) -> String {
-        let chunks = self.split_into_chunks(quads, 32);
+        let chunks = self.split_into_chunks(quads);
 
-        // Create leaves by hashing each chunk with its index using Solidity's packed encoding
-        // This matches ethers.js solidityKeccak256(["string", "uint256"], [chunk, index])
-        // Note: We use Token::FixedBytes for the index because ethers-rs encode_packed
-        // strips leading zeros from Token::Uint, but Solidity uses full 32 bytes for uint256.
-        let mut leaves: Vec<[u8; 32]> = chunks
+        let mut leaves: Vec<B256> = chunks
             .iter()
             .enumerate()
-            .map(|(index, chunk)| {
-                let packed = encode_packed(&[
-                    Token::String(chunk.clone()),
-                    Token::FixedBytes(Self::index_to_uint256_bytes(index)),
-                ])
-                .expect("Failed to encode packed data");
-                keccak256(packed)
-            })
+            .map(|(i, c)| self.leaf_hash(c, i))
             .collect();
 
-        // Build the Merkle tree
-        while leaves.len() > 1 {
-            let mut next_level = Vec::new();
+        if leaves.is_empty() {
+            return "0x".to_string();
+        }
 
-            let mut i = 0;
+        while leaves.len() > 1 {
+            let mut next = Vec::with_capacity(leaves.len().div_ceil(2));
+
+            let mut i = 0usize;
             while i < leaves.len() {
                 let left = leaves[i];
 
                 if i + 1 >= leaves.len() {
-                    // Odd number of leaves, promote the last one
-                    next_level.push(left);
+                    next.push(left); // carry
                     break;
                 }
 
                 let right = leaves[i + 1];
+                let (a, b) = if left <= right {
+                    (left, right)
+                } else {
+                    (right, left)
+                };
 
-                // Sort the pair for consistent ordering (like Buffer.compare in JS)
-                let mut combined = [left, right];
-                combined.sort();
+                let mut buf = [0u8; 64];
+                buf[..32].copy_from_slice(a.as_slice());
+                buf[32..].copy_from_slice(b.as_slice());
 
-                // Concatenate and hash
-                let mut concat = Vec::with_capacity(64);
-                concat.extend_from_slice(&combined[0]);
-                concat.extend_from_slice(&combined[1]);
-                next_level.push(keccak256(&concat));
-
+                next.push(keccak256(buf));
                 i += 2;
             }
 
-            leaves = next_level;
+            leaves = next;
         }
 
-        format!("0x{}", hex::encode(leaves[0]))
+        format!("0x{}", hex::encode(leaves[0].as_slice()))
     }
 }
 
@@ -98,66 +89,56 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_calculate_merkle_root() {
+        let vm = ValidationManager;
+
+        let quads:Vec<String> = [
+            "<urn:us-cities:data:new-york> <http://schema.org/averageIncome> \"$63,998\" .",
+            "<urn:us-cities:data:new-york> <http://schema.org/crimeRate> \"Low\" .",
+            "<urn:us-cities:data:new-york> <http://schema.org/infrastructureScore> \"8.5\" .",
+            "<urn:us-cities:data:new-york> <http://schema.org/relatedCities> <urn:us-cities:info:chicago> .",
+            "<urn:us-cities:data:new-york> <http://schema.org/relatedCities> <urn:us-cities:info:los-angeles> .",
+            "<urn:us-cities:data:new-york> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/CityPrivateData> .",
+            "<urn:us-cities:info:chicago> <http://schema.org/name> \"Chicago\" .",
+            "<urn:us-cities:info:los-angeles> <http://schema.org/name> \"Los Angeles\" ."
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let root = vm.calculate_merkle_root(&quads);
+        assert_eq!(
+            root,
+            "0xaac2a420672a1eb77506c544ff01beed2be58c0ee3576fe037c846f97481cefd".to_string()
+        );
+
+        let quads = ["<urn:us-cities:info:new-york> <http://schema.org/area> \"468.9 sq mi\" .",
+            "<urn:us-cities:info:new-york> <http://schema.org/name> \"New York\" .",
+            "<urn:us-cities:info:new-york> <http://schema.org/population> \"8,336,817\" .",
+            "<urn:us-cities:info:new-york> <http://schema.org/state> \"New York\" .",
+            "<urn:us-cities:info:new-york> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/City> .",
+            "<uuid:1e91a527-a3ef-430e-819e-64710ab0f797> <https://ontology.origintrail.io/dkg/1.0#privateMerkleRoot> \"0xaac2a420672a1eb77506c544ff01beed2be58c0ee3576fe037c846f97481cefd\" .",
+            "<https://ontology.origintrail.io/dkg/1.0#metadata-hash:0x5cb6421dd41c7a62a84c223779303919e7293753d8a1f6f49da2e598013fe652> <https://ontology.origintrail.io/dkg/1.0#representsPrivateResource> <uuid:b88ffefd-ce8e-42fb-8a49-7b91d77c71bf> .",
+            "<https://ontology.origintrail.io/dkg/1.0#metadata-hash:0x6a2292b30c844d2f8f2910bf11770496a3a79d5a6726d1b2fd3ddd18e09b5850> <https://ontology.origintrail.io/dkg/1.0#representsPrivateResource> <uuid:88a388be-5822-49e9-8663-8820e02707ab> .",
+            "<https://ontology.origintrail.io/dkg/1.0#metadata-hash:0xc1f682b783b1b93c9d5386eb1730c9647cf4b55925ec24f5e949e7457ba7bfac> <https://ontology.origintrail.io/dkg/1.0#representsPrivateResource> <uuid:dcb5abcf-66c4-4e63-9dbe-db9da20cb22a> ."].iter().map(|s|s.to_string()).collect::<Vec<String>>();
+        let root = vm.calculate_merkle_root(&quads);
+        assert_eq!(
+            root,
+            "0x66ca3160277b181d0307262a0127f5f570f1d8c1b3276e8fe3b0e19ba8edcc35".to_string()
+        );
+    }
+
+    #[test]
     fn test_split_into_chunks() {
         let vm = ValidationManager;
 
         // Test that quads are joined with newline and split into 32-byte chunks
         let quads = vec!["hello".to_string()];
-        let chunks = vm.split_into_chunks(&quads, 32);
+        let chunks = vm.split_into_chunks(&quads);
         assert_eq!(chunks, vec!["hello"]);
 
         // Test with multiple quads
         let quads = vec!["a".to_string(), "b".to_string()];
-        let chunks = vm.split_into_chunks(&quads, 32);
+        let chunks = vm.split_into_chunks(&quads);
         assert_eq!(chunks, vec!["a\nb"]);
-    }
-
-    #[test]
-    fn test_index_to_uint256_bytes() {
-        // Test that index is converted to 32-byte big-endian
-        let bytes = ValidationManager::index_to_uint256_bytes(0);
-        assert_eq!(bytes.len(), 32);
-        assert_eq!(bytes, vec![0u8; 32]);
-
-        let bytes = ValidationManager::index_to_uint256_bytes(1);
-        assert_eq!(bytes.len(), 32);
-        assert_eq!(bytes[31], 1);
-        assert_eq!(&bytes[..31], &[0u8; 31]);
-
-        let bytes = ValidationManager::index_to_uint256_bytes(256);
-        assert_eq!(bytes.len(), 32);
-        assert_eq!(bytes[30], 1);
-        assert_eq!(bytes[31], 0);
-    }
-
-    #[test]
-    fn test_encode_packed_produces_correct_length() {
-        // Verify that using FixedBytes produces correct 36-byte output
-        let packed = encode_packed(&[
-            Token::String("test".to_string()),
-            Token::FixedBytes(ValidationManager::index_to_uint256_bytes(0)),
-        ])
-        .unwrap();
-
-        // For "test" + uint256(0):
-        // - "test" = 0x74657374 (4 bytes)
-        // - uint256(0) = 0x0000...0000 (32 bytes of zeros)
-        // Total should be 36 bytes
-        assert_eq!(packed.len(), 36);
-        assert_eq!(&packed[..4], b"test");
-        assert_eq!(&packed[4..], &[0u8; 32]);
-    }
-
-    #[test]
-    fn test_merkle_root_single_leaf() {
-        let vm = ValidationManager;
-
-        // Single leaf should return the hash of that leaf
-        let quads = vec!["test".to_string()];
-        let root = vm.calculate_merkle_root(&quads);
-
-        // Verify root is a valid hex string
-        assert!(root.starts_with("0x"));
-        assert_eq!(root.len(), 66); // "0x" + 64 hex chars
     }
 }

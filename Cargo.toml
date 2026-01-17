@@ -43,8 +43,9 @@ uuid = { version = "1.19.0", features = ["serde", "v4"] }
 
 # Other shared dependencies
 clap = "4.5.54"
-ethers = { version = "2.0.14", features = ["openssl", "ws"] }
+alloy = { version = "1.4.3", features = ["full", "signer-local"] }
 libp2p = { version = "0.56.0", features = ["macros"] }
+sha2 = "0.10"
 
 # Main binary specific (can be referenced by others if needed)
 futures = "0.3.31"
@@ -83,7 +84,7 @@ validator_derive.workspace = true
 figment.workspace = true
 thiserror.workspace = true
 libp2p.workspace = true
-ethers.workspace = true
+alloy.workspace = true
 dashmap = "6.1.0"
 
 [dev-dependencies]
