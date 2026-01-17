@@ -40,7 +40,6 @@ tracing = "0.1.44"
 thiserror = "2.0.17"
 chrono = "0.4.43"
 uuid = { version = "1.19.0", features = ["serde", "v4"] }
-async-trait = "0.1.89"
 
 # Other shared dependencies
 clap = "4.5.54"
@@ -83,7 +82,6 @@ validator.workspace = true
 validator_derive.workspace = true
 figment.workspace = true
 thiserror.workspace = true
-async-trait.workspace = true
 libp2p.workspace = true
 ethers.workspace = true
 dashmap = "6.1.0"

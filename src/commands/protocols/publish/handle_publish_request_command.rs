@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use blockchain::{BlockchainId, BlockchainManager};
 use libp2p::PeerId;
 use network::{
@@ -13,7 +12,7 @@ use uuid::Uuid;
 use validation::ValidationManager;
 
 use crate::{
-    commands::{command::CommandHandler, command_executor::CommandExecutionResult},
+    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     network::{NetworkProtocols, ProtocolResponse, SessionManager},
     services::operation_manager::OperationManager,
@@ -108,7 +107,6 @@ impl HandlePublishRequestCommandHandler {
     }
 }
 
-#[async_trait]
 impl CommandHandler<HandlePublishRequestCommandData> for HandlePublishRequestCommandHandler {
     async fn execute(&self, data: &HandlePublishRequestCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;

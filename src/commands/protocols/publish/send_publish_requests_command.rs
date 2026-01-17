@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use blockchain::{BlockchainId, BlockchainManager, H256, Token, utils::keccak256_encode_packed};
 use futures::future::join_all;
 use libp2p::PeerId;
@@ -12,7 +11,7 @@ use repository::RepositoryManager;
 use uuid::Uuid;
 
 use crate::{
-    commands::{command::CommandHandler, command_executor::CommandExecutionResult},
+    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     network::{NetworkProtocols, ProtocolRequest},
     services::operation_manager::OperationManager,
@@ -146,7 +145,6 @@ impl SendPublishRequestsCommandHandler {
     }
 }
 
-#[async_trait]
 impl CommandHandler<SendPublishRequestsCommandData> for SendPublishRequestsCommandHandler {
     async fn execute(&self, data: &SendPublishRequestsCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;

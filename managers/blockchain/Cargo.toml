@@ -9,4 +9,4 @@ ethers.workspace = true
 serde.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
-async-trait.workspace = true  # Required for AbstractBlockchain trait (used with trait objects)
+async-trait = "0.1.89"

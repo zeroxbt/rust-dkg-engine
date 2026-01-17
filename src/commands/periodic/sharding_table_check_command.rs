@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use blockchain::{
     BlockchainId, BlockchainManager, ShardingTableNode,
     utils::{from_wei, sha256_hex},
@@ -9,7 +8,7 @@ use futures::future::join_all;
 use repository::{RepositoryManager, ShardRecordInput};
 
 use crate::{
-    commands::{command::CommandHandler, command_executor::CommandExecutionResult},
+    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
 };
 
@@ -176,7 +175,6 @@ impl ShardingTableCheckCommandHandler {
 #[derive(Clone, Default)]
 pub struct ShardingTableCheckCommandData;
 
-#[async_trait]
 impl CommandHandler<ShardingTableCheckCommandData> for ShardingTableCheckCommandHandler {
     async fn execute(&self, _: &ShardingTableCheckCommandData) -> CommandExecutionResult {
         let blockchain_ids = self.blockchain_manager.get_blockchain_ids();

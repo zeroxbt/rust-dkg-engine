@@ -4819,7 +4819,6 @@ dependencies = [
 name = "repository"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "chrono",
  "sea-orm",
  "sea-orm-migration",
@@ -5023,7 +5022,6 @@ dependencies = [
 name = "rust-ot-node"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "axum",
  "blockchain",
  "chrono",

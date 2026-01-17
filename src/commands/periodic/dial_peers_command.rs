@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use libp2p::PeerId;
 use network::NetworkManager;
 use repository::RepositoryManager;
 
 use crate::{
-    commands::{command::CommandHandler, command_executor::CommandExecutionResult},
+    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     network::NetworkProtocols,
 };
@@ -32,7 +31,6 @@ impl DialPeersCommandHandler {
 #[derive(Clone, Default)]
 pub struct DialPeersCommandData;
 
-#[async_trait]
 impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
     async fn execute(&self, _: &DialPeersCommandData) -> CommandExecutionResult {
         let peer_id = self.network_manager.peer_id().to_base58();

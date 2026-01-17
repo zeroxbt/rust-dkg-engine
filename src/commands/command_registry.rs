@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use super::{
+    command_executor::CommandExecutionRequest,
     periodic::{
         dial_peers_command::{DialPeersCommandData, DialPeersCommandHandler},
         sharding_table_check_command::{
@@ -15,12 +16,8 @@ use super::{
             SendPublishRequestsCommandData, SendPublishRequestsCommandHandler,
         },
     },
-    command_executor::CommandExecutionRequest,
 };
-use crate::{
-    commands::{command::CommandHandler, command_executor::CommandExecutionResult},
-    context::Context,
-};
+use crate::{commands::command_executor::CommandExecutionResult, context::Context};
 
 macro_rules! command_registry {
     (
@@ -71,6 +68,10 @@ macro_rules! command_registry {
 
         }
     };
+}
+
+pub trait CommandHandler<D: Send + Sync + 'static>: Send + Sync {
+    async fn execute(&self, data: &D) -> CommandExecutionResult;
 }
 
 // Command registry usage:
