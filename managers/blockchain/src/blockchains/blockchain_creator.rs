@@ -66,18 +66,24 @@ sol!(
     "../../abi/Token.json"
 );
 
-use std::sync::Arc;
+use std::{num::NonZeroUsize, sync::Arc};
 
 use alloy::{
     network::{Ethereum, EthereumWallet},
     primitives::Address,
     providers::{DynProvider, Provider, ProviderBuilder},
+    rpc::client::RpcClient,
     signers::local::PrivateKeySigner,
     sol,
+    transports::{
+        http::{Http, reqwest::Url},
+        layers::FallbackLayer,
+    },
 };
 pub use knowledge_collection_storage::KnowledgeCollectionStorage;
 pub use sharding_table::ShardingTable;
 pub use sharding_table_storage::ShardingTableStorage;
+use tower::ServiceBuilder;
 
 use crate::{BlockchainConfig, ContractName, error::BlockchainError};
 
@@ -188,9 +194,6 @@ impl Contracts {
 pub(crate) async fn initialize_provider(
     config: &BlockchainConfig,
 ) -> Result<BlockchainProvider, BlockchainError> {
-    let mut tries = 0;
-    let mut rpc_number = 0;
-
     let signer: PrivateKeySigner =
         config
             .evm_operational_wallet_private_key
@@ -201,45 +204,67 @@ pub(crate) async fn initialize_provider(
             })?;
     let wallet = EthereumWallet::from(signer);
 
-    while tries < config.rpc_endpoints.len() {
-        let endpoint = &config.rpc_endpoints[rpc_number];
+    // Collect all valid HTTP transports
+    let mut transports = Vec::new();
+    let mut valid_endpoints = Vec::new();
 
+    for endpoint in &config.rpc_endpoints {
         if endpoint.starts_with("ws") {
-            return Err(BlockchainError::Custom(
-                "websocket RPCs not supported yet".to_string(),
-            ));
+            tracing::warn!("Skipping WebSocket RPC (not yet supported): {}", endpoint);
+            continue;
         }
 
-        let endpoint_url = endpoint
-            .parse()
-            .map_err(|e| BlockchainError::HttpProviderCreation {
-                endpoint: endpoint.clone(),
-                source: Box::new(e),
-            })?;
-
-        let provider = Arc::new(
-            ProviderBuilder::new()
-                .wallet(wallet.clone())
-                .connect_http(endpoint_url)
-                .erased(),
-        );
-
-        match provider.get_block_number().await {
-            Ok(_) => {
-                tracing::info!("Blockchain provider initialized with rpc: {}", endpoint);
-                return Ok(provider);
+        match endpoint.parse::<Url>() {
+            Ok(url) => {
+                transports.push(Http::new(url));
+                valid_endpoints.push(endpoint.clone());
             }
-            Err(_) => {
-                tracing::warn!("Unable to connect to blockchain rpc: {}", endpoint);
-                tries += 1;
-                rpc_number = (rpc_number + 1) % config.rpc_endpoints.len();
+            Err(e) => {
+                tracing::warn!("Invalid RPC URL '{}': {}", endpoint, e);
             }
         }
     }
 
-    Err(BlockchainError::RpcConnectionFailed {
-        attempts: config.rpc_endpoints.len(),
-    })
+    if transports.is_empty() {
+        return Err(BlockchainError::RpcConnectionFailed {
+            attempts: config.rpc_endpoints.len(),
+        });
+    }
+
+    // Configure fallback layer:
+    // - Queries 1 transport at a time (pure failover, no parallel requests)
+    // - Falls back to next transport only on failure
+    let fallback_layer = FallbackLayer::default().with_active_transport_count(NonZeroUsize::MIN);
+
+    // Build the fallback transport
+    let transport = ServiceBuilder::new()
+        .layer(fallback_layer)
+        .service(transports);
+
+    // Create RPC client with fallback transport
+    let client = RpcClient::builder().transport(transport, false);
+
+    // Build provider with wallet
+    let provider = ProviderBuilder::new().wallet(wallet).connect_client(client);
+
+    // Verify connectivity
+    match provider.get_block_number().await {
+        Ok(block) => {
+            tracing::info!(
+                "Blockchain provider initialized with {} RPC endpoints (block: {}): {:?}",
+                valid_endpoints.len(),
+                block,
+                valid_endpoints
+            );
+            Ok(Arc::new(provider.erased()))
+        }
+        Err(e) => {
+            tracing::error!("All RPC endpoints failed connectivity check: {}", e);
+            Err(BlockchainError::RpcConnectionFailed {
+                attempts: valid_endpoints.len(),
+            })
+        }
+    }
 }
 
 pub(crate) async fn initialize_contracts(
