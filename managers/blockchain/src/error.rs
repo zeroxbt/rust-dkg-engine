@@ -96,6 +96,12 @@ pub enum BlockchainError {
     #[error("Contract initialization failed: {reason}")]
     ContractInit { reason: String },
 
+    #[error("EVM account mapping required for {wallet_type} wallet {wallet_address}")]
+    EvmAccountMappingRequired {
+        wallet_type: String,
+        wallet_address: String,
+    },
+
     #[error("{0}")]
     Custom(String),
 }

@@ -2,6 +2,7 @@ pub mod blockchains;
 pub mod error;
 pub mod error_utils;
 pub mod gas;
+pub mod substrate;
 pub mod utils;
 
 use std::collections::HashMap;

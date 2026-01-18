@@ -19,6 +19,7 @@ use crate::{
     error::BlockchainError,
     error_utils::handle_contract_call,
     gas::fetch_gas_price_from_oracle,
+    substrate::validate_evm_wallets,
 };
 
 const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
@@ -147,15 +148,32 @@ impl EvmChain {
             native_token_decimals
         );
 
-        // Warn if this chain requires EVM account mapping (NeuroWeb)
-        // Full validation would require Substrate integration (subxt)
+        // Validate EVM account mappings for chains that require it (NeuroWeb)
         if requires_evm_account_mapping {
-            tracing::warn!(
-                "{}: This chain requires EVM account mapping validation. \
-                 Ensure operational wallets are properly mapped to Substrate accounts. \
-                 (Substrate integration for automatic validation not yet implemented)",
-                config.blockchain_id()
-            );
+            // Get Substrate RPC endpoints - can use same endpoints as EVM or dedicated ones
+            let substrate_endpoints = config
+                .substrate_rpc_endpoints()
+                .cloned()
+                .unwrap_or_else(|| config.rpc_endpoints().clone());
+
+            if substrate_endpoints.is_empty() {
+                tracing::warn!(
+                    "{}: No Substrate RPC endpoints configured for EVM account mapping validation. \
+                     Skipping validation - ensure wallets are properly mapped.",
+                    config.blockchain_id()
+                );
+            } else {
+                tracing::info!(
+                    "{}: Validating EVM account mappings via Substrate RPC...",
+                    config.blockchain_id()
+                );
+                validate_evm_wallets(
+                    &substrate_endpoints,
+                    config.evm_management_wallet_public_key(),
+                    config.evm_operational_wallet_public_key(),
+                )
+                .await?;
+            }
         }
 
         Ok(Self {

@@ -46,6 +46,7 @@ clap = "4.5.54"
 alloy = { version = "1.4.3", features = ["full", "signer-local"] }
 libp2p = { version = "0.56.0", features = ["macros"] }
 sha2 = "0.10"
+subxt = "0.38"
 
 # Main binary specific (can be referenced by others if needed)
 futures = "0.3.31"

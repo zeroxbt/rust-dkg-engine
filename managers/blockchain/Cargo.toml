@@ -12,4 +12,7 @@ tracing.workspace = true
 thiserror.workspace = true
 sha2.workspace = true
 tower.workspace = true
+subxt.workspace = true
+twox-hash = "2.1"
+blake2b_simd = "1.0"
 reqwest = { version = "0.12", features = ["json"] }
