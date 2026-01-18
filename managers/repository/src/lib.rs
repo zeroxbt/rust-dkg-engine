@@ -8,8 +8,10 @@ use std::sync::Arc;
 use error::RepositoryError;
 pub use repositories::shard_repository::ShardRecordInput;
 use repositories::{
-    blockchain_repository::BlockchainRepository, operation_repository::OperationRepository,
-    shard_repository::ShardRepository, signature_repository::SignatureRepository,
+    blockchain_repository::BlockchainRepository,
+    finality_status_repository::FinalityStatusRepository,
+    operation_repository::OperationRepository, shard_repository::ShardRepository,
+    signature_repository::SignatureRepository,
 };
 pub use sea_orm::ActiveValue;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
@@ -23,6 +25,7 @@ pub struct RepositoryManager {
     blockchain_repository: BlockchainRepository,
     operation_repository: OperationRepository,
     signature_repository: SignatureRepository,
+    finality_status_repository: FinalityStatusRepository,
 }
 
 impl RepositoryManager {
@@ -62,6 +65,7 @@ impl RepositoryManager {
             blockchain_repository: BlockchainRepository::new(Arc::clone(&conn)),
             operation_repository: OperationRepository::new(Arc::clone(&conn)),
             signature_repository: SignatureRepository::new(Arc::clone(&conn)),
+            finality_status_repository: FinalityStatusRepository::new(Arc::clone(&conn)),
         })
     }
 
@@ -79,6 +83,10 @@ impl RepositoryManager {
 
     pub fn signature_repository(&self) -> &SignatureRepository {
         &self.signature_repository
+    }
+
+    pub fn finality_status_repository(&self) -> &FinalityStatusRepository {
+        &self.finality_status_repository
     }
 }
 

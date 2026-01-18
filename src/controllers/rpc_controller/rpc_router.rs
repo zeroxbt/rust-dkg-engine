@@ -6,7 +6,9 @@ use network::{NestedBehaviourEvent, NetworkManager, SwarmEvent, identify, reques
 use repository::RepositoryManager;
 use tokio::sync::{Semaphore, mpsc};
 
-use super::constants::NETWORK_EVENT_QUEUE_PARALLELISM;
+use super::{
+    constants::NETWORK_EVENT_QUEUE_PARALLELISM, finality_rpc_controller::FinalityRpcController,
+};
 use crate::{
     context::Context,
     controllers::rpc_controller::store_rpc_controller::StoreRpcController,
@@ -21,6 +23,7 @@ pub struct RpcRouter {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     store_controller: Arc<StoreRpcController>,
+    finality_controller: Arc<FinalityRpcController>,
     semaphore: Arc<Semaphore>,
 }
 
@@ -30,6 +33,7 @@ impl RpcRouter {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
             store_controller: Arc::new(StoreRpcController::new(Arc::clone(&context))),
+            finality_controller: Arc::new(FinalityRpcController::new(Arc::clone(&context))),
             semaphore: Arc::new(Semaphore::new(NETWORK_EVENT_QUEUE_PARALLELISM)),
         }
     }
@@ -94,6 +98,28 @@ impl RpcRouter {
                         }
                         request_response::Event::Message { .. } => {
                             // self.get_controller.handle_message(message, peer).await;
+                        }
+                        _ => {}
+                    },
+                    NetworkProtocolsEvent::Finality(inner_event) => match inner_event {
+                        request_response::Event::Message { message, peer, .. } => {
+                            match message {
+                                Message::Request {
+                                    request, channel, ..
+                                } => {
+                                    self.finality_controller
+                                        .handle_request(request, channel, peer)
+                                        .await;
+                                }
+                                Message::Response { response, .. } => {
+                                    self.finality_controller
+                                        .handle_response(response, peer)
+                                        .await;
+                                }
+                            };
+                        }
+                        request_response::Event::OutboundFailure { error, .. } => {
+                            tracing::error!("Finality request failed: {}", error)
                         }
                         _ => {}
                     },

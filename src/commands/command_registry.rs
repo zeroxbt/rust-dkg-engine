@@ -4,6 +4,24 @@ use blockchain::BlockchainId;
 
 use super::{
     command_executor::CommandExecutionRequest,
+    operations::publish::protocols::{
+        finality::{
+            handle_finality_request_command::{
+                HandleFinalityRequestCommandData, HandleFinalityRequestCommandHandler,
+            },
+            send_finality_request_command::{
+                SendFinalityRequestCommandData, SendFinalityRequestCommandHandler,
+            },
+        },
+        store::{
+            handle_store_request_command::{
+                HandleStoreRequestCommandData, HandleStoreRequestCommandHandler,
+            },
+            send_store_requests_command::{
+                SendStoreRequestsCommandData, SendStoreRequestsCommandHandler,
+            },
+        },
+    },
     periodic::{
         blockchain_event_listener_command::{
             BlockchainEventListenerCommandData, BlockchainEventListenerCommandHandler,
@@ -13,24 +31,8 @@ use super::{
             ShardingTableCheckCommandData, ShardingTableCheckCommandHandler,
         },
     },
-    protocols::publish::{
-        handle_publish_request_command::{
-            HandlePublishRequestCommandData, HandlePublishRequestCommandHandler,
-        },
-        send_publish_requests_command::{
-            SendPublishRequestsCommandData, SendPublishRequestsCommandHandler,
-        },
-    },
 };
-use crate::{
-    commands::{
-        command_executor::CommandExecutionResult,
-        protocols::publish::finalize_publish_operation_command::{
-            FinalizePublishOperationCommandData, FinalizePublishOperationCommandHandler,
-        },
-    },
-    context::Context,
-};
+use crate::{commands::command_executor::CommandExecutionResult, context::Context};
 
 macro_rules! command_registry {
     (
@@ -103,17 +105,21 @@ command_registry! {
         data: ShardingTableCheckCommandData,
         handler: ShardingTableCheckCommandHandler
     },
-    send_publish_requests: SendPublishRequests => {
-        data: SendPublishRequestsCommandData,
-        handler: SendPublishRequestsCommandHandler
+    send_store_requests: SendStoreRequests => {
+        data: SendStoreRequestsCommandData,
+        handler: SendStoreRequestsCommandHandler
     },
-    handle_publish_request: HandlePublishRequest => {
-        data: HandlePublishRequestCommandData,
-        handler: HandlePublishRequestCommandHandler
+    handle_store_request: HandleStoreRequest => {
+        data: HandleStoreRequestCommandData,
+        handler: HandleStoreRequestCommandHandler
     },
-    finalize_publish_operation_command: FinalizePublishOperation => {
-        data: FinalizePublishOperationCommandData,
-        handler: FinalizePublishOperationCommandHandler
+    send_finality_request: SendFinalityRequest => {
+        data: SendFinalityRequestCommandData,
+        handler: SendFinalityRequestCommandHandler
+    },
+    handle_finality_request: HandleFinalityRequest => {
+        data: HandleFinalityRequestCommandData,
+        handler: HandleFinalityRequestCommandHandler
     }
 }
 

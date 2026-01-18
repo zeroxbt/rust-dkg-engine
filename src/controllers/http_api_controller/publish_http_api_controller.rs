@@ -8,7 +8,7 @@ use validator::Validate;
 use crate::{
     commands::{
         command_executor::CommandExecutionRequest, command_registry::Command,
-        protocols::publish::send_publish_requests_command::SendPublishRequestsCommandData,
+        operations::publish::protocols::store::send_store_requests_command::SendStoreRequestsCommandData,
     },
     context::Context,
     types::dto::publish::{PublishRequest, PublishResponse},
@@ -42,7 +42,7 @@ impl PublishHttpApiController {
 
                 tracing::info!(operation_id = %operation_id, "Publish request received");
 
-                let command = Command::SendPublishRequests(SendPublishRequestsCommandData::new(
+                let command = Command::SendStoreRequests(SendStoreRequestsCommandData::new(
                     operation_id,
                     req.blockchain,
                     req.dataset_root,

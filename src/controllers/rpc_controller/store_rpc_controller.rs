@@ -11,7 +11,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     commands::{
         command_executor::CommandExecutionRequest, command_registry::Command,
-        protocols::publish::handle_publish_request_command::HandlePublishRequestCommandData,
+        operations::publish::protocols::store::handle_store_request_command::HandleStoreRequestCommandData,
     },
     context::Context,
     network::SessionManager,
@@ -67,7 +67,7 @@ impl StoreRpcController {
         };
 
         // Schedule command with dataset passed inline
-        let command = Command::HandlePublishRequest(HandlePublishRequestCommandData::new(
+        let command = Command::HandleStoreRequest(HandleStoreRequestCommandData::new(
             data.blockchain().clone(),
             operation_id,
             data.dataset_root().to_owned(),

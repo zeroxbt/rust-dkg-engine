@@ -2,7 +2,8 @@ use network::{PeerId, ProtocolDispatch, RequestMessage, ResponseMessage, request
 
 use super::behaviour::NetworkProtocols;
 use crate::types::protocol::{
-    GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
+    FinalityRequestData, FinalityResponseData, GetRequestData, GetResponseData, StoreRequestData,
+    StoreResponseData,
 };
 
 pub enum ProtocolRequest {
@@ -14,6 +15,10 @@ pub enum ProtocolRequest {
         peer: PeerId,
         message: RequestMessage<GetRequestData>,
     },
+    Finality {
+        peer: PeerId,
+        message: RequestMessage<FinalityRequestData>,
+    },
 }
 
 impl ProtocolRequest {
@@ -23,6 +28,10 @@ impl ProtocolRequest {
 
     pub fn get(peer: PeerId, message: RequestMessage<GetRequestData>) -> Self {
         Self::Get { peer, message }
+    }
+
+    pub fn finality(peer: PeerId, message: RequestMessage<FinalityRequestData>) -> Self {
+        Self::Finality { peer, message }
     }
 }
 
@@ -34,6 +43,10 @@ pub enum ProtocolResponse {
     Get {
         channel: request_response::ResponseChannel<ResponseMessage<GetResponseData>>,
         message: ResponseMessage<GetResponseData>,
+    },
+    Finality {
+        channel: request_response::ResponseChannel<ResponseMessage<FinalityResponseData>>,
+        message: ResponseMessage<FinalityResponseData>,
     },
 }
 
@@ -51,6 +64,13 @@ impl ProtocolResponse {
     ) -> Self {
         Self::Get { channel, message }
     }
+
+    pub fn finality(
+        channel: request_response::ResponseChannel<ResponseMessage<FinalityResponseData>>,
+        message: ResponseMessage<FinalityResponseData>,
+    ) -> Self {
+        Self::Finality { channel, message }
+    }
 }
 
 impl ProtocolDispatch for NetworkProtocols {
@@ -65,6 +85,9 @@ impl ProtocolDispatch for NetworkProtocols {
             ProtocolRequest::Get { peer, message } => {
                 let _ = self.get.send_request(&peer, message);
             }
+            ProtocolRequest::Finality { peer, message } => {
+                let _ = self.finality.send_request(&peer, message);
+            }
         }
     }
 
@@ -75,6 +98,9 @@ impl ProtocolDispatch for NetworkProtocols {
             }
             ProtocolResponse::Get { channel, message } => {
                 let _ = self.get.send_response(channel, message);
+            }
+            ProtocolResponse::Finality { channel, message } => {
+                let _ = self.finality.send_response(channel, message);
             }
         }
     }

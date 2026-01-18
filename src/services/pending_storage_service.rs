@@ -13,14 +13,15 @@ use crate::{
 pub struct PendingStorageData {
     dataset_root: String,
     dataset: Assertion,
-    // TODO: add remote_peer_id, only if later deemed necessary
+    publisher_peer_id: String,
 }
 
 impl PendingStorageData {
-    pub fn new(dataset_root: String, dataset: Assertion) -> Self {
+    pub fn new(dataset_root: String, dataset: Assertion, publisher_peer_id: String) -> Self {
         Self {
             dataset_root,
             dataset,
+            publisher_peer_id,
         }
     }
 
@@ -30,6 +31,10 @@ impl PendingStorageData {
 
     pub fn dataset(&self) -> &Assertion {
         &self.dataset
+    }
+
+    pub fn publisher_peer_id(&self) -> &str {
+        &self.publisher_peer_id
     }
 }
 
@@ -49,10 +54,12 @@ impl PendingStorageService {
         operation_id: Uuid,
         dataset_root: &str,
         dataset: &Assertion,
+        publisher_peer_id: &str,
     ) -> Result<(), NodeError> {
         tracing::debug!(
             operation_id = %operation_id,
             dataset_root = %dataset_root,
+            publisher_peer_id = %publisher_peer_id,
             "Storing dataset in pending storage"
         );
 
@@ -61,7 +68,11 @@ impl PendingStorageService {
             .write_json(
                 dir,
                 &operation_id.to_string(),
-                &PendingStorageData::new(dataset_root.to_owned(), dataset.clone()),
+                &PendingStorageData::new(
+                    dataset_root.to_owned(),
+                    dataset.clone(),
+                    publisher_peer_id.to_owned(),
+                ),
             )
             .await
             .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;

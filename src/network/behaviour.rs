@@ -4,12 +4,13 @@ use network::{
 };
 
 use crate::types::protocol::{
-    GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
+    FinalityRequestData, FinalityResponseData, GetRequestData, GetResponseData, StoreRequestData,
+    StoreResponseData,
 };
 
 /// Application-specific protocols
 ///
-/// Only contains app-specific protocols (store, get).
+/// Only contains app-specific protocols (store, get, finality).
 /// Base protocols (kad, identify, ping) are provided by NetworkManager via NetworkBehaviour.
 #[derive(NetworkBehaviour)]
 pub struct NetworkProtocols {
@@ -20,6 +21,10 @@ pub struct NetworkProtocols {
     pub get: request_response::json::Behaviour<
         RequestMessage<GetRequestData>,
         ResponseMessage<GetResponseData>,
+    >,
+    pub finality: request_response::json::Behaviour<
+        RequestMessage<FinalityRequestData>,
+        ResponseMessage<FinalityResponseData>,
     >,
 }
 
@@ -42,7 +47,22 @@ impl NetworkProtocols {
             request_response::Config::default(),
         );
 
-        Self { store, get }
+        let finality = request_response::json::Behaviour::<
+            RequestMessage<FinalityRequestData>,
+            ResponseMessage<FinalityResponseData>,
+        >::new(
+            [(
+                StreamProtocol::new("/finality/1.0.0"),
+                ProtocolSupport::Full,
+            )],
+            request_response::Config::default(),
+        );
+
+        Self {
+            store,
+            get,
+            finality,
+        }
     }
 }
 

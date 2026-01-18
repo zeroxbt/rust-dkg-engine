@@ -12,7 +12,7 @@ use crate::{
     commands::{
         command_executor::{CommandExecutionRequest, CommandExecutionResult},
         command_registry::{Command, CommandHandler},
-        protocols::publish::finalize_publish_operation_command::FinalizePublishOperationCommandData,
+        operations::publish::protocols::finality::send_finality_request_command::SendFinalityRequestCommandData,
     },
     context::Context,
 };
@@ -370,7 +370,7 @@ impl BlockchainEventListenerCommandHandler {
         // byteSize is uint88 in the contract, convert to u128
         let byte_size: u128 = filter.byteSize.to();
 
-        let command = Command::FinalizePublishOperation(FinalizePublishOperationCommandData::new(
+        let command = Command::SendFinalityRequest(SendFinalityRequestCommandData::new(
             blockchain_id.to_owned(),
             filter.publishOperationId.clone(),
             filter.id,

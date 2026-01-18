@@ -37,6 +37,21 @@ impl ValidationManager {
         keccak256(packed)
     }
 
+    /// Calculate the byte size of an assertion based on its chunks.
+    /// This matches the on-chain byteSize calculation: numberOfChunks * CHUNK_SIZE
+    ///
+    /// The calculation:
+    /// 1. Join quads with newline
+    /// 2. Encode as UTF-8 bytes
+    /// 3. numberOfChunks = ceil(totalBytes / CHUNK_SIZE)
+    /// 4. byteSize = numberOfChunks * CHUNK_SIZE
+    pub fn calculate_assertion_size(&self, quads: &[String]) -> usize {
+        let concatenated = quads.join("\n");
+        let total_bytes = concatenated.as_bytes().len();
+        let num_chunks = total_bytes.div_ceil(CHUNK_SIZE);
+        num_chunks * CHUNK_SIZE
+    }
+
     pub fn calculate_merkle_root(&self, quads: &[String]) -> String {
         let chunks = self.split_into_chunks(quads);
 

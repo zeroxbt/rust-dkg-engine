@@ -63,6 +63,7 @@ async fn main() {
 
     let store_session_manager = Arc::new(network::SessionManager::new());
     let get_session_manager = Arc::new(network::SessionManager::new());
+    let finality_session_manager = Arc::new(network::SessionManager::new());
 
     let context = Arc::new(Context::new(
         config.clone(),
@@ -76,6 +77,7 @@ async fn main() {
         Arc::clone(&pending_storage_service),
         Arc::clone(&store_session_manager),
         Arc::clone(&get_session_manager),
+        Arc::clone(&finality_session_manager),
     ));
 
     if config.is_dev_env {

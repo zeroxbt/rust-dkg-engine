@@ -24,7 +24,7 @@ use crate::{
 /// Command data for handling incoming publish/store requests.
 /// Dataset is passed inline; channel is retrieved from session manager.
 #[derive(Clone)]
-pub struct HandlePublishRequestCommandData {
+pub struct HandleStoreRequestCommandData {
     pub blockchain: BlockchainId,
     pub operation_id: Uuid,
     pub dataset_root: String,
@@ -32,7 +32,7 @@ pub struct HandlePublishRequestCommandData {
     pub dataset: Assertion,
 }
 
-impl HandlePublishRequestCommandData {
+impl HandleStoreRequestCommandData {
     pub fn new(
         blockchain: BlockchainId,
         operation_id: Uuid,
@@ -50,7 +50,7 @@ impl HandlePublishRequestCommandData {
     }
 }
 
-pub struct HandlePublishRequestCommandHandler {
+pub struct HandleStoreRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     publish_operation_manager: Arc<OperationManager>,
@@ -60,7 +60,7 @@ pub struct HandlePublishRequestCommandHandler {
     pending_storage_service: Arc<PendingStorageService>,
 }
 
-impl HandlePublishRequestCommandHandler {
+impl HandleStoreRequestCommandHandler {
     pub fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
@@ -111,8 +111,8 @@ impl HandlePublishRequestCommandHandler {
     }
 }
 
-impl CommandHandler<HandlePublishRequestCommandData> for HandlePublishRequestCommandHandler {
-    async fn execute(&self, data: &HandlePublishRequestCommandData) -> CommandExecutionResult {
+impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommandHandler {
+    async fn execute(&self, data: &HandleStoreRequestCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;
         let dataset_root = &data.dataset_root;
@@ -340,7 +340,12 @@ impl CommandHandler<HandlePublishRequestCommandData> for HandlePublishRequestCom
 
         if let Err(e) = self
             .pending_storage_service
-            .store_dataset(operation_id, dataset_root, dataset)
+            .store_dataset(
+                operation_id,
+                dataset_root,
+                dataset,
+                &remote_peer_id.to_base58(),
+            )
             .await
         {
             tracing::error!(

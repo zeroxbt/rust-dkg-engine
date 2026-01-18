@@ -14,7 +14,7 @@ use crate::{
         operation_manager::OperationManager, pending_storage_service::PendingStorageService,
         ual_service::UalService,
     },
-    types::protocol::{GetResponseData, StoreResponseData},
+    types::protocol::{FinalityResponseData, GetResponseData, StoreResponseData},
 };
 
 pub struct Context {
@@ -29,9 +29,11 @@ pub struct Context {
     pending_storage_service: Arc<PendingStorageService>,
     store_session_manager: Arc<SessionManager<StoreResponseData>>,
     get_session_manager: Arc<SessionManager<GetResponseData>>,
+    finality_session_manager: Arc<SessionManager<FinalityResponseData>>,
 }
 
 impl Context {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: Arc<Config>,
         schedule_command_tx: Sender<CommandExecutionRequest>,
@@ -44,6 +46,7 @@ impl Context {
         pending_storage_service: Arc<PendingStorageService>,
         store_session_manager: Arc<SessionManager<StoreResponseData>>,
         get_session_manager: Arc<SessionManager<GetResponseData>>,
+        finality_session_manager: Arc<SessionManager<FinalityResponseData>>,
     ) -> Self {
         Self {
             config,
@@ -57,6 +60,7 @@ impl Context {
             pending_storage_service,
             store_session_manager,
             get_session_manager,
+            finality_session_manager,
         }
     }
 
@@ -102,5 +106,9 @@ impl Context {
 
     pub fn get_session_manager(&self) -> &Arc<SessionManager<GetResponseData>> {
         &self.get_session_manager
+    }
+
+    pub fn finality_session_manager(&self) -> &Arc<SessionManager<FinalityResponseData>> {
+        &self.finality_session_manager
     }
 }
