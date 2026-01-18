@@ -269,7 +269,10 @@ mod tests {
     fn test_bump_factor_matches_js() {
         // JS: gasPrice = Math.ceil(gasPrice * 1.2) in web3-service.js
         let config = GasConfig::gnosis(None);
-        assert_eq!(config.bump_factor, 1.2, "Bump factor should be 1.2 (20% increase)");
+        assert_eq!(
+            config.bump_factor, 1.2,
+            "Bump factor should be 1.2 (20% increase)"
+        );
 
         // Test the actual calculation matches JS behavior
         // JS: Math.ceil(1000000000 * 1.2) = Math.ceil(1200000000) = 1200000000
@@ -346,8 +349,8 @@ mod tests {
     #[test]
     fn test_oracle_price_validation_logic() {
         // This test documents the JS gnosis-service.js validation behavior:
-        // if (gasPrice && ethers.utils.parseUnits(gasPrice.toString(), 'gwei').gt(this.defaultGasPrice))
-        //     return gasPrice;
+        // if (gasPrice && ethers.utils.parseUnits(gasPrice.toString(),
+        // 'gwei').gt(this.defaultGasPrice))     return gasPrice;
         // return this.defaultGasPrice;
 
         let config = GasConfig::gnosis(None);
@@ -393,12 +396,19 @@ mod tests {
         // Gnosis: can have oracle, default 1 gwei
         let gnosis_no_oracle = GasConfig::gnosis(None);
         assert!(gnosis_no_oracle.oracle_url.is_none());
-        assert_eq!(gnosis_no_oracle.default_gas_price, U256::from(1_000_000_000u64));
+        assert_eq!(
+            gnosis_no_oracle.default_gas_price,
+            U256::from(1_000_000_000u64)
+        );
 
-        let gnosis_with_oracle =
-            GasConfig::gnosis(Some("https://gnosis.blockscout.com/api/v1/gas-price-oracle".into()));
+        let gnosis_with_oracle = GasConfig::gnosis(Some(
+            "https://gnosis.blockscout.com/api/v1/gas-price-oracle".into(),
+        ));
         assert!(gnosis_with_oracle.oracle_url.is_some());
-        assert_eq!(gnosis_with_oracle.default_gas_price, U256::from(1_000_000_000u64));
+        assert_eq!(
+            gnosis_with_oracle.default_gas_price,
+            U256::from(1_000_000_000u64)
+        );
 
         // NeuroWeb: can have oracle, default 8 wei
         let neuro = GasConfig::neuroweb(None);
@@ -408,7 +418,10 @@ mod tests {
         // Base: can have oracle, default 1 gwei (provider-based)
         let base_no_oracle = GasConfig::base(None);
         assert!(base_no_oracle.oracle_url.is_none());
-        assert_eq!(base_no_oracle.default_gas_price, U256::from(1_000_000_000u64));
+        assert_eq!(
+            base_no_oracle.default_gas_price,
+            U256::from(1_000_000_000u64)
+        );
 
         let base_with_oracle = GasConfig::base(Some("https://example.com/gas".into()));
         assert!(base_with_oracle.oracle_url.is_some());

@@ -4,7 +4,6 @@ pub mod error_utils;
 pub mod gas;
 pub mod utils;
 
-pub use gas::{GasConfig, GasOracleError};
 use std::collections::HashMap;
 
 use blockchains::evm_chain::EvmChain;
@@ -12,6 +11,7 @@ pub use blockchains::{
     blockchain_creator::{Hub, KnowledgeCollectionStorage, ParametersStorage},
     evm_chain::{ContractLog, ContractName},
 };
+pub use gas::{GasConfig, GasOracleError};
 
 // Re-export event types for use by consumers
 // In alloy's sol! macro, events are nested under the contract module
@@ -174,7 +174,10 @@ impl Blockchain {
 
     /// Creates the appropriate gas configuration for this blockchain.
     pub fn gas_config(&self) -> GasConfig {
-        let oracle_url = self.get_config().gas_price_oracle_url().map(|s| s.to_string());
+        let oracle_url = self
+            .get_config()
+            .gas_price_oracle_url()
+            .map(|s| s.to_string());
         match self {
             Blockchain::Hardhat(_) => GasConfig::hardhat(),
             Blockchain::Gnosis(_) => GasConfig::gnosis(oracle_url),
@@ -205,8 +208,7 @@ impl BlockchainManager {
             });
             config.blockchain_id = Some(blockchain_id.clone());
 
-            let evm_chain =
-                blockchains::evm_chain::EvmChain::new(config, gas_config).await?;
+            let evm_chain = blockchains::evm_chain::EvmChain::new(config, gas_config).await?;
 
             blockchains.insert(blockchain_id, evm_chain);
         }
@@ -407,10 +409,7 @@ impl BlockchainManager {
     }
 
     /// Get the gas configuration for a blockchain.
-    pub fn get_gas_config(
-        &self,
-        blockchain: &BlockchainId,
-    ) -> Result<&GasConfig, BlockchainError> {
+    pub fn get_gas_config(&self, blockchain: &BlockchainId) -> Result<&GasConfig, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
                 blockchain_id: blockchain.as_str().to_string(),

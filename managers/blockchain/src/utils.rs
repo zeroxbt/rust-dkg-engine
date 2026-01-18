@@ -46,4 +46,3 @@ pub fn sha256_hex(input: &[u8]) -> String {
     let digest = hasher.finalize();
     to_hex_string(digest)
 }
-

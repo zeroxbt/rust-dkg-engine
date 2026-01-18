@@ -1,7 +1,5 @@
 use alloy::{
-    contract::Error as ContractError,
-    primitives::Bytes,
-    providers::PendingTransactionBuilder,
+    contract::Error as ContractError, primitives::Bytes, providers::PendingTransactionBuilder,
     rpc::types::TransactionReceipt,
 };
 
@@ -87,8 +85,9 @@ pub fn decode_panic(data: &Bytes) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloy::primitives::bytes;
+
+    use super::*;
 
     #[test]
     fn test_decode_revert_string() {

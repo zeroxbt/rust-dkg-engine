@@ -588,12 +588,10 @@ impl EvmChain {
         use alloy::signers::Signer;
 
         // Decode the hex message hash
-        let message_bytes =
-            hex::decode(message_hash.strip_prefix("0x").unwrap_or(message_hash)).map_err(|e| {
-                BlockchainError::HexDecode {
-                    context: "message hash".to_string(),
-                    source: e,
-                }
+        let message_bytes = hex::decode(message_hash.strip_prefix("0x").unwrap_or(message_hash))
+            .map_err(|e| BlockchainError::HexDecode {
+                context: "message hash".to_string(),
+                source: e,
             })?;
 
         // Re-create signer from config since we can't easily access it from the provider
@@ -621,7 +619,8 @@ impl EvmChain {
         let s_bytes = signature.s().to_be_bytes::<32>();
         let s = format!("0x{}", hex::encode(s_bytes));
 
-        // Compute vs (compact signature format: s with the parity bit from v encoded in the high bit)
+        // Compute vs (compact signature format: s with the parity bit from v encoded in the high
+        // bit)
         let mut vs_bytes = s_bytes;
         if v == 28 {
             vs_bytes[0] |= 0x80;
