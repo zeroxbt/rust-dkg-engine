@@ -1,19 +1,23 @@
 use std::sync::Arc;
 
-mod blockchain_event_spec;
-
 use blockchain::{
     AssetStorageChangedFilter, BlockchainId, BlockchainManager, ContractChangedFilter, ContractLog,
     ContractName, KnowledgeCollectionCreatedFilter, NewAssetStorageFilter, NewContractFilter,
     ParameterChangedFilter, error::BlockchainError, utils::to_hex_string,
 };
-use blockchain_event_spec::{ContractEvent, decode_contract_event, monitored_contract_events};
 use repository::RepositoryManager;
 
-use crate::context::Context;
+use crate::{
+    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    context::Context,
+};
 
-const EVENT_FETCH_INTERVAL_MAINNET_MS: u64 = 10_000;
-const EVENT_FETCH_INTERVAL_DEV_MS: u64 = 4_000;
+mod blockchain_event_spec;
+
+use blockchain_event_spec::{ContractEvent, decode_contract_event, monitored_contract_events};
+
+const EVENT_FETCH_INTERVAL_MAINNET_MS: i64 = 10_000;
+const EVENT_FETCH_INTERVAL_DEV_MS: i64 = 4_000;
 
 /// Maximum number of blocks we can sync historically.
 /// If the node has been offline for longer than this (in blocks), we skip missed events.
@@ -22,16 +26,16 @@ const EVENT_FETCH_INTERVAL_DEV_MS: u64 = 4_000;
 const MAX_BLOCKS_TO_SYNC_MAINNET: u64 = 300; // ~1 hour at 12s blocks
 const MAX_BLOCKS_TO_SYNC_DEV: u64 = u64::MAX; // unlimited for dev
 
-pub struct BlockchainEventController {
+pub struct BlockchainEventListenerCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
     /// Polling interval in milliseconds
-    poll_interval_ms: u64,
+    poll_interval_ms: i64,
     /// Maximum number of blocks to sync historically (beyond this, events are skipped)
     max_blocks_to_sync: u64,
 }
 
-impl BlockchainEventController {
+impl BlockchainEventListenerCommandHandler {
     pub fn new(context: Arc<Context>) -> Self {
         let is_dev_env = context.config().is_dev_env;
 
@@ -55,46 +59,12 @@ impl BlockchainEventController {
         }
     }
 
-    /// Main event loop - polls for blockchain events at regular intervals
-    pub async fn listen_and_handle_events(&self) {
-        let mut interval =
-            tokio::time::interval(tokio::time::Duration::from_millis(self.poll_interval_ms));
-
-        let max_blocks_display = if self.max_blocks_to_sync == u64::MAX {
-            "unlimited".to_string()
-        } else {
-            self.max_blocks_to_sync.to_string()
-        };
-
-        tracing::info!(
-            "Starting blockchain event listener (poll_interval: {}ms, max_blocks_to_sync: {})",
-            self.poll_interval_ms,
-            max_blocks_display
-        );
-
-        loop {
-            interval.tick().await;
-
-            // Process each blockchain sequentially (as in JS EventListenerCommand)
-            for blockchain in self.blockchain_manager.get_blockchain_ids() {
-                if let Err(e) = self.fetch_and_handle_blockchain_events(blockchain).await {
-                    tracing::error!(
-                        "Error processing blockchain events for {}: {:?}",
-                        blockchain,
-                        e
-                    );
-                }
-            }
-        }
-    }
-
     /// Fetch and handle events for a single blockchain
-    /// Corresponds to BlockchainEventListenerCommand.fetchAndHandleBlockchainEvents in JS
     async fn fetch_and_handle_blockchain_events(
         &self,
         blockchain: &BlockchainId,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Get current block (JS uses: currentBlock - 2 for finality safety)
+        // Get current block (use -2 for finality safety)
         let current_block = self
             .blockchain_manager
             .get_block_number(blockchain)
@@ -166,7 +136,7 @@ impl BlockchainEventController {
                 blockchain
             );
 
-            // Sort events by (blockNumber, transactionIndex, logIndex) as in JS
+            // Sort events by (blockNumber, transactionIndex, logIndex)
             all_events.sort_by(|a, b| {
                 let a_log = a.log();
                 let b_log = b.log();
@@ -188,7 +158,7 @@ impl BlockchainEventController {
                 a_log_index.cmp(&b_log_index)
             });
 
-            // Process all events sequentially (all dependent in current JS implementation)
+            // Process all events sequentially
             for event in all_events {
                 self.process_event(blockchain, event).await?;
             }
@@ -269,7 +239,7 @@ impl BlockchainEventController {
         Ok(())
     }
 
-    // === Event Handlers (aligned with JS) ===
+    // === Event Handlers ===
 
     async fn handle_parameter_changed_event(
         &self,
@@ -283,8 +253,6 @@ impl BlockchainEventController {
             filter.parameterValue
         );
         // TODO: Update contract call cache with new parameter values
-        // In JS: blockchainModuleManager.setContractCallCache(blockchain,
-        // CONTRACTS.PARAMETERS_STORAGE, parameterName, parameterValue)
         Ok(())
     }
 
@@ -385,7 +353,41 @@ impl BlockchainEventController {
         );
 
         // TODO: Queue publishFinalizationCommand
-        // In JS: commandExecutor.add({ name: 'publishFinalizationCommand', data: { event }, ... })
         Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct BlockchainEventListenerCommandData {
+    pub blockchain_id: BlockchainId,
+}
+
+impl BlockchainEventListenerCommandData {
+    pub fn new(blockchain_id: BlockchainId) -> Self {
+        Self { blockchain_id }
+    }
+}
+
+impl CommandHandler<BlockchainEventListenerCommandData> for BlockchainEventListenerCommandHandler {
+    async fn execute(&self, data: &BlockchainEventListenerCommandData) -> CommandExecutionResult {
+        let blockchain = &data.blockchain_id;
+
+        tracing::trace!(
+            blockchain = %blockchain,
+            poll_interval_ms = self.poll_interval_ms,
+            "Running blockchain event listener"
+        );
+
+        if let Err(error) = self.fetch_and_handle_blockchain_events(blockchain).await {
+            tracing::error!(
+                blockchain = %blockchain,
+                error = %error,
+                "Error fetching/processing blockchain events"
+            );
+        }
+
+        CommandExecutionResult::Repeat {
+            delay_ms: self.poll_interval_ms,
+        }
     }
 }

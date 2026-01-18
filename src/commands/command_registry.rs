@@ -3,6 +3,9 @@ use std::sync::Arc;
 use super::{
     command_executor::CommandExecutionRequest,
     periodic::{
+        blockchain_event_listener_command::{
+            BlockchainEventListenerCommandData, BlockchainEventListenerCommandHandler,
+        },
         dial_peers_command::{DialPeersCommandData, DialPeersCommandHandler},
         sharding_table_check_command::{
             ShardingTableCheckCommandData, ShardingTableCheckCommandHandler,
@@ -17,6 +20,8 @@ use super::{
         },
     },
 };
+use blockchain::BlockchainId;
+
 use crate::{commands::command_executor::CommandExecutionResult, context::Context};
 
 macro_rules! command_registry {
@@ -78,6 +83,10 @@ pub trait CommandHandler<D: Send + Sync + 'static>: Send + Sync {
 // - Add one entry per command with a data payload type and handler type.
 // - Default scheduling is declared explicitly below for clarity.
 command_registry! {
+    blockchain_event_listener: BlockchainEventListener => {
+        data: BlockchainEventListenerCommandData,
+        handler: BlockchainEventListenerCommandHandler
+    },
     dial_peers: DialPeers => {
         data: DialPeersCommandData,
         handler: DialPeersCommandHandler
@@ -97,11 +106,22 @@ command_registry! {
 }
 
 /// Default commands scheduled at startup. Keep this list explicit for clarity.
-pub fn default_command_requests() -> Vec<CommandExecutionRequest> {
-    vec![
+pub fn default_command_requests(blockchain_ids: &[BlockchainId]) -> Vec<CommandExecutionRequest> {
+    let mut requests = vec![
         CommandExecutionRequest::new(Command::DialPeers(DialPeersCommandData::default())),
         CommandExecutionRequest::new(Command::ShardingTableCheck(
             ShardingTableCheckCommandData::default(),
         )),
-    ]
+    ];
+
+    // Schedule one blockchain event listener per blockchain
+    for blockchain_id in blockchain_ids {
+        requests.push(CommandExecutionRequest::new(
+            Command::BlockchainEventListener(BlockchainEventListenerCommandData::new(
+                blockchain_id.clone(),
+            )),
+        ));
+    }
+
+    requests
 }

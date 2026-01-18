@@ -8,10 +8,7 @@ use super::{
     command_registry::Command,
     constants::{COMMAND_QUEUE_PARALLELISM, MAX_COMMAND_DELAY_MS, MAX_COMMAND_LIFETIME_MS},
 };
-use crate::{
-    commands::command_registry::{CommandResolver, default_command_requests},
-    context::Context,
-};
+use crate::{commands::command_registry::CommandResolver, context::Context};
 
 pub enum CommandExecutionResult {
     Completed,
@@ -58,7 +55,7 @@ pub struct CommandExecutor {
 //   - add error handling
 
 impl CommandExecutor {
-    pub async fn new(context: Arc<Context>) -> Self {
+    pub fn new(context: Arc<Context>) -> Self {
         let (tx, rx) = mpsc::channel::<CommandExecutionRequest>(COMMAND_QUEUE_PARALLELISM);
 
         Self {
@@ -69,10 +66,15 @@ impl CommandExecutor {
         }
     }
 
+    /// Schedule initial commands to be executed
+    pub async fn schedule_commands(&self, requests: Vec<CommandExecutionRequest>) {
+        for request in requests {
+            self.enqueue(request).await.unwrap();
+        }
+    }
+
     pub async fn listen_and_execute_commands(&self) {
         let mut pending_tasks = FuturesUnordered::new();
-
-        self.schedule_default_commands().await;
 
         loop {
             let mut locked_rx = self.process_command_rx.lock().await;
@@ -95,12 +97,6 @@ impl CommandExecutor {
                     }
                 }
             }
-        }
-    }
-
-    async fn schedule_default_commands(&self) {
-        for request in default_command_requests() {
-            self.enqueue(request).await.unwrap();
         }
     }
 
