@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use alloy::{
     network::EthereumWallet,
-    primitives::{Address, B256, Bytes, hex},
+    primitives::{Address, B256, Bytes, U256, hex},
     providers::Provider,
     rpc::types::Filter,
     signers::local::{LocalSignerError, PrivateKeySigner},
@@ -10,7 +10,7 @@ use alloy::{
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
-    BlockchainConfig, BlockchainId,
+    BlockchainConfig, BlockchainId, GasConfig,
     blockchains::blockchain_creator::{
         BlockchainProvider, Contracts, Profile, Staking, Token, initialize_contracts,
         initialize_provider, initialize_provider_with_wallet,
@@ -18,6 +18,7 @@ use crate::{
     },
     error::BlockchainError,
     error_utils::handle_contract_call,
+    gas::fetch_gas_price_from_oracle,
 };
 
 const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
@@ -88,10 +89,14 @@ pub struct EvmChain {
     provider: BlockchainProvider,
     contracts: RwLock<Contracts>,
     identity_id: Option<u128>,
+    gas_config: GasConfig,
 }
 
 impl EvmChain {
-    pub async fn new(config: BlockchainConfig) -> Result<Self, BlockchainError> {
+    pub async fn new(
+        config: BlockchainConfig,
+        gas_config: GasConfig,
+    ) -> Result<Self, BlockchainError> {
         let provider =
             initialize_provider(&config)
                 .await
@@ -105,11 +110,19 @@ impl EvmChain {
                 reason: e.to_string(),
             })?;
 
+        tracing::info!(
+            "Initialized {} blockchain with gas config: default={} wei, max={} wei",
+            config.blockchain_id(),
+            gas_config.default_gas_price,
+            gas_config.max_gas_price
+        );
+
         Ok(Self {
             provider,
             config,
             contracts: RwLock::new(contracts),
             identity_id: None,
+            gas_config,
         })
     }
 
@@ -135,6 +148,70 @@ impl EvmChain {
 
     pub fn set_identity_id(&mut self, id: u128) {
         self.identity_id = Some(id);
+    }
+
+    pub fn gas_config(&self) -> &GasConfig {
+        &self.gas_config
+    }
+
+    /// Get the current gas price.
+    ///
+    /// Tries sources in order:
+    /// 1. Gas price oracle (if configured) - only used if price > default
+    /// 2. Provider's gas price estimate - only used if price >= default
+    /// 3. Default gas price from config
+    ///
+    /// This matches the JS implementation behavior where:
+    /// - Gnosis validates oracle price > default before using it
+    /// - Provider price must be >= default to be used
+    pub async fn get_gas_price(&self) -> U256 {
+        let default_price = self.gas_config.default_gas_price;
+
+        // Try oracle first if configured
+        if let Some(oracle_url) = self.config.gas_price_oracle_url() {
+            match fetch_gas_price_from_oracle(oracle_url).await {
+                Ok(price) => {
+                    tracing::debug!("Gas price from oracle: {} wei", price);
+                    // JS behavior: only use oracle price if > default (uses .gt(), not .gte())
+                    // See gnosis-service.js: gasPrice.gt(this.defaultGasPrice)
+                    if price > default_price {
+                        return price;
+                    }
+                    tracing::debug!(
+                        "Oracle price {} <= default {}, using default",
+                        price,
+                        default_price
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to fetch gas price from oracle: {}", e);
+                }
+            }
+        }
+
+        // Try provider's gas price estimate
+        match self.provider.get_gas_price().await {
+            Ok(price) => {
+                let price = U256::from(price);
+                tracing::debug!("Gas price from provider: {} wei", price);
+                // Ensure we don't return less than the default
+                if price >= default_price {
+                    return price;
+                }
+                tracing::debug!(
+                    "Provider price {} < default {}, using default",
+                    price,
+                    default_price
+                );
+            }
+            Err(e) => {
+                tracing::warn!("Failed to get gas price from provider: {}", e);
+            }
+        }
+
+        // Fall back to default
+        tracing::debug!("Using default gas price: {} wei", default_price);
+        default_price
     }
 
     pub async fn re_initialize_contract(
@@ -289,15 +366,21 @@ impl EvmChain {
 
         let contracts = self.contracts().await;
 
+        // Get gas price before sending transaction
+        let gas_price = self.get_gas_price().await;
+
         // Profile ABI: createProfile(adminWallet, operationalWallets, nodeName, nodeId,
         // initialOperatorFee)
-        let create_profile_call = contracts.profile().createProfile(
-            admin_wallet,
-            vec![],
-            shares_token_name.clone(), // nodeName
-            peer_id_bytes,             // nodeId
-            0u16,                      // initialOperatorFee
-        );
+        let create_profile_call = contracts
+            .profile()
+            .createProfile(
+                admin_wallet,
+                vec![],
+                shares_token_name.clone(), // nodeName
+                peer_id_bytes,             // nodeId
+                0u16,                      // initialOperatorFee
+            )
+            .gas_price(gas_price.to::<u128>());
 
         let result = create_profile_call.send().await;
 
@@ -411,8 +494,13 @@ impl EvmChain {
             .await
             .ok_or(BlockchainError::IdentityIdNotFound)?;
 
+        // Get gas price before sending transactions
+        let gas_price = self.get_gas_price().await;
+
         // Approve token spending
-        let approve_call = token.increaseAllowance(staking_address, U256::from(stake_wei));
+        let approve_call = token
+            .increaseAllowance(staking_address, U256::from(stake_wei))
+            .gas_price(gas_price.to::<u128>());
         match approve_call.send().await {
             Ok(pending_tx) => {
                 handle_contract_call(Ok(pending_tx)).await?;
@@ -428,10 +516,12 @@ impl EvmChain {
         }
 
         // Stake tokens - identity_id is uint72, stake_wei is uint96
-        let stake_call = staking.stake(
-            Uint::<72, 2>::from(identity_id),
-            Uint::<96, 2>::from(stake_wei),
-        );
+        let stake_call = staking
+            .stake(
+                Uint::<72, 2>::from(identity_id),
+                Uint::<96, 2>::from(stake_wei),
+            )
+            .gas_price(gas_price.to::<u128>());
 
         match stake_call.send().await {
             Ok(pending_tx) => {
@@ -462,11 +552,17 @@ impl EvmChain {
             .await
             .ok_or(BlockchainError::IdentityIdNotFound)?;
 
+        // Get gas price before sending transaction
+        let gas_price = self.get_gas_price().await;
+
         // Update ask via Profile contract - identity_id is uint72, ask_wei is uint96
-        let update_ask_call = contracts.profile().updateAsk(
-            Uint::<72, 2>::from(identity_id),
-            Uint::<96, 2>::from(ask_wei),
-        );
+        let update_ask_call = contracts
+            .profile()
+            .updateAsk(
+                Uint::<72, 2>::from(identity_id),
+                Uint::<96, 2>::from(ask_wei),
+            )
+            .gas_price(gas_price.to::<u128>());
 
         match update_ask_call.send().await {
             Ok(pending_tx) => {

@@ -1,7 +1,10 @@
 pub mod blockchains;
 pub mod error;
 pub mod error_utils;
+pub mod gas;
 pub mod utils;
+
+pub use gas::{GasConfig, GasOracleError};
 use std::collections::HashMap;
 
 use blockchains::evm_chain::EvmChain;
@@ -80,6 +83,9 @@ pub struct BlockchainConfig {
     rpc_endpoints: Vec<String>,
     shares_token_name: String,
     shares_token_symbol: String,
+    /// URL for gas price oracle (optional).
+    #[serde(default)]
+    gas_price_oracle_url: Option<String>,
 }
 
 impl BlockchainConfig {
@@ -124,17 +130,56 @@ impl BlockchainConfig {
     pub fn shares_token_symbol(&self) -> &str {
         &self.shares_token_symbol
     }
+
+    pub fn gas_price_oracle_url(&self) -> Option<&str> {
+        self.gas_price_oracle_url.as_deref()
+    }
 }
 
+/// Supported blockchain types.
+///
+/// Each variant represents a different blockchain network with its own
+/// gas price configuration and RPC endpoints.
 #[derive(Debug, Deserialize, Clone)]
 pub enum Blockchain {
+    /// Local Hardhat network for development/testing
     Hardhat(BlockchainConfig),
+    /// Gnosis Chain (formerly xDai) - mainnet chain_id: 100, testnet (Chiado): 10200
+    Gnosis(BlockchainConfig),
+    /// NeuroWeb (OT Parachain) - mainnet chain_id: 2043, testnet: 20430
+    NeuroWeb(BlockchainConfig),
+    /// Base (Coinbase L2) - mainnet chain_id: 8453, testnet (Sepolia): 84532
+    Base(BlockchainConfig),
 }
 
 impl Blockchain {
     pub fn get_config(&self) -> &BlockchainConfig {
         match self {
             Blockchain::Hardhat(config) => config,
+            Blockchain::Gnosis(config) => config,
+            Blockchain::NeuroWeb(config) => config,
+            Blockchain::Base(config) => config,
+        }
+    }
+
+    /// Returns the default blockchain ID prefix for this blockchain type.
+    pub fn default_id_prefix(&self) -> &'static str {
+        match self {
+            Blockchain::Hardhat(_) => "hardhat",
+            Blockchain::Gnosis(_) => "gnosis",
+            Blockchain::NeuroWeb(_) => "neuroweb",
+            Blockchain::Base(_) => "base",
+        }
+    }
+
+    /// Creates the appropriate gas configuration for this blockchain.
+    pub fn gas_config(&self) -> GasConfig {
+        let oracle_url = self.get_config().gas_price_oracle_url().map(|s| s.to_string());
+        match self {
+            Blockchain::Hardhat(_) => GasConfig::hardhat(),
+            Blockchain::Gnosis(_) => GasConfig::gnosis(oracle_url),
+            Blockchain::NeuroWeb(_) => GasConfig::neuroweb(oracle_url),
+            Blockchain::Base(_) => GasConfig::base(oracle_url),
         }
     }
 }
@@ -150,18 +195,20 @@ impl BlockchainManager {
     pub async fn new(config: &BlockchainManagerConfig) -> Result<Self, BlockchainError> {
         let mut blockchains = HashMap::new();
         for blockchain in config.0.iter() {
-            match blockchain {
-                Blockchain::Hardhat(blockchain_config) => {
-                    let mut config = blockchain_config.clone();
-                    let blockchain_id = config.blockchain_id.clone().unwrap_or_else(|| {
-                        BlockchainId::new(format!("hardhat:{}", config.chain_id()))
-                    });
-                    config.blockchain_id = Some(blockchain_id.clone());
-                    let blockchain = blockchains::evm_chain::EvmChain::new(config).await?;
+            let blockchain_config = blockchain.get_config();
+            let id_prefix = blockchain.default_id_prefix();
+            let gas_config = blockchain.gas_config();
 
-                    blockchains.insert(blockchain_id, blockchain);
-                }
-            }
+            let mut config = blockchain_config.clone();
+            let blockchain_id = config.blockchain_id.clone().unwrap_or_else(|| {
+                BlockchainId::new(format!("{}:{}", id_prefix, config.chain_id()))
+            });
+            config.blockchain_id = Some(blockchain_id.clone());
+
+            let evm_chain =
+                blockchains::evm_chain::EvmChain::new(config, gas_config).await?;
+
+            blockchains.insert(blockchain_id, evm_chain);
         }
 
         Ok(Self { blockchains })
@@ -347,5 +394,28 @@ impl BlockchainManager {
             }
         })?;
         blockchain_impl.set_ask(ask_wei).await
+    }
+
+    /// Get the current gas price for a blockchain.
+    pub async fn get_gas_price(&self, blockchain: &BlockchainId) -> Result<U256, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        Ok(blockchain_impl.get_gas_price().await)
+    }
+
+    /// Get the gas configuration for a blockchain.
+    pub fn get_gas_config(
+        &self,
+        blockchain: &BlockchainId,
+    ) -> Result<&GasConfig, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        Ok(blockchain_impl.gas_config())
     }
 }
