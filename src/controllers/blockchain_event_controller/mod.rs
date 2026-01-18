@@ -1,9 +1,11 @@
 use std::{collections::HashMap, sync::Arc};
 
+use alloy::sol_types::SolEvent;
 use blockchain::{
-    AssetStorageChangedFilter, BlockchainId, BlockchainManager, ContractChangedFilter,
-    ContractName, EventLog, EventName, KnowledgeCollectionCreatedFilter, NewAssetStorageFilter,
-    NewContractFilter, ParameterChangedFilter, utils::to_hex_string,
+    AssetStorageChangedFilter, BlockchainId, BlockchainManager, ContractChangedFilter, ContractLog,
+    ContractName, H256, Hub, KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorage,
+    NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter, ParametersStorage,
+    utils::{decode_event, to_hex_string},
 };
 use repository::RepositoryManager;
 
@@ -25,24 +27,24 @@ const MAX_BLOCKS_TO_SYNC_DEV: u64 = u64::MAX; // unlimited for dev
 ///     ParametersStorage: ['ParameterChanged'],
 ///     KnowledgeCollectionStorage: ['KnowledgeCollectionCreated'],
 /// }
-fn get_monitored_contract_events() -> HashMap<ContractName, Vec<EventName>> {
+fn get_monitored_contract_events() -> HashMap<ContractName, Vec<H256>> {
     let mut map = HashMap::new();
     map.insert(
         ContractName::Hub,
         vec![
-            EventName::NewContract,
-            EventName::ContractChanged,
-            EventName::NewAssetStorage,
-            EventName::AssetStorageChanged,
+            NewContractFilter::SIGNATURE_HASH,
+            ContractChangedFilter::SIGNATURE_HASH,
+            NewAssetStorageFilter::SIGNATURE_HASH,
+            AssetStorageChangedFilter::SIGNATURE_HASH,
         ],
     );
     map.insert(
         ContractName::ParametersStorage,
-        vec![EventName::ParameterChanged],
+        vec![ParameterChangedFilter::SIGNATURE_HASH],
     );
     map.insert(
         ContractName::KnowledgeCollectionStorage,
-        vec![EventName::KnowledgeCollectionCreated],
+        vec![KnowledgeCollectionCreatedFilter::SIGNATURE_HASH],
     );
     map
 }
@@ -235,46 +237,76 @@ impl BlockchainEventController {
     }
 
     /// Process a single event - dispatch to appropriate handler
-    async fn process_event(&self, blockchain: &BlockchainId, event: EventLog) {
+    async fn process_event(&self, blockchain: &BlockchainId, event: ContractLog) {
         let block_number = event.log().block_number.unwrap_or_default();
         tracing::trace!(
-            "Processing event {:?} in block {}",
-            event.event_name(),
+            "Processing event from {} in block {}",
+            event.contract_name().as_str(),
             block_number
         );
 
-        match event.event_name() {
-            EventName::NewContract => {
-                self.handle_new_contract_event(blockchain, event).await;
+        match event.contract_name() {
+            ContractName::KnowledgeCollectionStorage => {
+                let Some(decoded) = decode_event::<
+                    KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents,
+                >(event.log()) else {
+                    tracing::warn!("Failed to decode KnowledgeCollectionStorage event");
+                    return;
+                };
+                if let KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents::KnowledgeCollectionCreated(
+                        filter,
+                    ) = decoded {
+                    self.handle_knowledge_collection_created_event(blockchain, &filter)
+                        .await;
+                }
             }
-            EventName::ContractChanged => {
-                self.handle_contract_changed_event(blockchain, event).await;
-            }
-            EventName::NewAssetStorage => {
-                self.handle_new_asset_storage_event(blockchain, event).await;
-            }
-            EventName::AssetStorageChanged => {
-                self.handle_asset_storage_changed_event(blockchain, event)
+            ContractName::ParametersStorage => {
+                let Some(decoded) =
+                    decode_event::<ParametersStorage::ParametersStorageEvents>(event.log())
+                else {
+                    tracing::warn!("Failed to decode ParametersStorage event");
+                    return;
+                };
+                let ParametersStorage::ParametersStorageEvents::ParameterChanged(filter) = decoded;
+
+                self.handle_parameter_changed_event(blockchain, &filter)
                     .await;
             }
-            EventName::ParameterChanged => {
-                self.handle_parameter_changed_event(blockchain, event).await;
+            ContractName::Hub => {
+                let Some(decoded) = decode_event::<Hub::HubEvents>(event.log()) else {
+                    tracing::warn!("Failed to decode Hub event");
+                    return;
+                };
+                match decoded {
+                    Hub::HubEvents::NewContract(filter) => {
+                        self.handle_new_contract_event(blockchain, &filter).await;
+                    }
+                    Hub::HubEvents::ContractChanged(filter) => {
+                        self.handle_contract_changed_event(blockchain, &filter)
+                            .await;
+                    }
+                    Hub::HubEvents::NewAssetStorage(filter) => {
+                        self.handle_new_asset_storage_event(blockchain, &filter)
+                            .await;
+                    }
+                    Hub::HubEvents::AssetStorageChanged(filter) => {
+                        self.handle_asset_storage_changed_event(blockchain, &filter)
+                            .await;
+                    }
+                    _ => {}
+                }
             }
-            EventName::KnowledgeCollectionCreated => {
-                self.handle_knowledge_collection_created_event(blockchain, event)
-                    .await;
-            }
+            _ => {}
         }
     }
 
     // === Event Handlers (aligned with JS) ===
 
-    async fn handle_parameter_changed_event(&self, blockchain: &BlockchainId, event: EventLog) {
-        let Ok(filter) = blockchain::utils::decode_event_log::<ParameterChangedFilter>(&event)
-        else {
-            tracing::warn!("Failed to decode ParameterChanged event");
-            return;
-        };
+    async fn handle_parameter_changed_event(
+        &self,
+        blockchain: &BlockchainId,
+        filter: &ParameterChangedFilter,
+    ) {
         tracing::debug!(
             "ParameterChanged on {}: {} = {}",
             blockchain,
@@ -286,11 +318,11 @@ impl BlockchainEventController {
         // CONTRACTS.PARAMETERS_STORAGE, parameterName, parameterValue)
     }
 
-    async fn handle_new_contract_event(&self, blockchain: &BlockchainId, event: EventLog) {
-        let Ok(filter) = blockchain::utils::decode_event_log::<NewContractFilter>(&event) else {
-            tracing::warn!("Failed to decode NewContract event");
-            return;
-        };
+    async fn handle_new_contract_event(
+        &self,
+        blockchain: &BlockchainId,
+        filter: &NewContractFilter,
+    ) {
         tracing::info!(
             "NewContract on {}: {} at {:?}",
             blockchain,
@@ -309,13 +341,11 @@ impl BlockchainEventController {
             .await;
     }
 
-    async fn handle_contract_changed_event(&self, blockchain: &BlockchainId, event: EventLog) {
-        let Ok(filter) = blockchain::utils::decode_event_log::<ContractChangedFilter>(&event)
-        else {
-            tracing::warn!("Failed to decode ContractChanged event");
-            return;
-        };
-
+    async fn handle_contract_changed_event(
+        &self,
+        blockchain: &BlockchainId,
+        filter: &ContractChangedFilter,
+    ) {
         // Silently skip contracts not tracked by this node
         let _ = self
             .blockchain_manager
@@ -327,13 +357,11 @@ impl BlockchainEventController {
             .await;
     }
 
-    async fn handle_new_asset_storage_event(&self, blockchain: &BlockchainId, event: EventLog) {
-        let Ok(filter) = blockchain::utils::decode_event_log::<NewAssetStorageFilter>(&event)
-        else {
-            tracing::warn!("Failed to decode NewAssetStorage event");
-            return;
-        };
-
+    async fn handle_new_asset_storage_event(
+        &self,
+        blockchain: &BlockchainId,
+        filter: &NewAssetStorageFilter,
+    ) {
         // Silently skip contracts not tracked by this node
         let _ = self
             .blockchain_manager
@@ -345,13 +373,11 @@ impl BlockchainEventController {
             .await;
     }
 
-    async fn handle_asset_storage_changed_event(&self, blockchain: &BlockchainId, event: EventLog) {
-        let Ok(filter) = blockchain::utils::decode_event_log::<AssetStorageChangedFilter>(&event)
-        else {
-            tracing::warn!("Failed to decode AssetStorageChanged event");
-            return;
-        };
-
+    async fn handle_asset_storage_changed_event(
+        &self,
+        blockchain: &BlockchainId,
+        filter: &AssetStorageChangedFilter,
+    ) {
         // Silently skip contracts not tracked by this node
         let _ = self
             .blockchain_manager
@@ -366,14 +392,8 @@ impl BlockchainEventController {
     async fn handle_knowledge_collection_created_event(
         &self,
         blockchain: &BlockchainId,
-        event: EventLog,
+        filter: &KnowledgeCollectionCreatedFilter,
     ) {
-        let Ok(filter) =
-            blockchain::utils::decode_event_log::<KnowledgeCollectionCreatedFilter>(&event)
-        else {
-            tracing::warn!("Failed to decode KnowledgeCollectionCreated event");
-            return;
-        };
         tracing::info!(
             "KnowledgeCollectionCreated on {}: id={}, merkleRoot=0x{}, byteSize={}",
             blockchain,

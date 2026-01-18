@@ -3,9 +3,9 @@ pub mod error;
 pub mod utils;
 use std::collections::HashMap;
 
-use blockchains::{abstract_blockchain::AbstractBlockchain, blockchain_creator::BlockchainCreator};
+use blockchains::evm_chain::EvmChain;
 pub use blockchains::{
-    abstract_blockchain::{ContractName, EventLog, EventName},
+    evm_chain::{ContractLog, ContractName},
     blockchain_creator::{Hub, KnowledgeCollectionStorage, ParametersStorage},
 };
 
@@ -133,7 +133,7 @@ impl Blockchain {
 pub struct BlockchainManagerConfig(pub Vec<Blockchain>);
 
 pub struct BlockchainManager {
-    blockchains: HashMap<BlockchainId, Box<dyn AbstractBlockchain>>,
+    blockchains: HashMap<BlockchainId, EvmChain>,
 }
 
 impl BlockchainManager {
@@ -147,10 +147,9 @@ impl BlockchainManager {
                         BlockchainId::new(format!("hardhat:{}", config.chain_id()))
                     });
                     config.blockchain_id = Some(blockchain_id.clone());
-                    let blockchain = blockchains::hardhat::HardhatBlockchain::new(config).await;
-                    let trait_object: Box<dyn AbstractBlockchain> = Box::new(blockchain);
+                    let blockchain = blockchains::evm_chain::EvmChain::new(config).await;
 
-                    blockchains.insert(blockchain_id, trait_object);
+                    blockchains.insert(blockchain_id, blockchain);
                 }
             }
         }
@@ -210,17 +209,17 @@ impl BlockchainManager {
         &self,
         blockchain: &BlockchainId,
         contract_name: &ContractName,
-        events_to_filter: &Vec<EventName>,
+        event_signatures: &[H256],
         from_block: u64,
         current_block: u64,
-    ) -> Result<Vec<EventLog>, BlockchainError> {
+    ) -> Result<Vec<ContractLog>, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
                 blockchain: blockchain.as_str().to_string(),
             }
         })?;
         blockchain_impl
-            .get_event_logs(contract_name, events_to_filter, from_block, current_block)
+            .get_event_logs(contract_name, event_signatures, from_block, current_block)
             .await
     }
 

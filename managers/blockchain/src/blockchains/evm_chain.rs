@@ -6,17 +6,14 @@ use alloy::{
     providers::{Provider, ProviderBuilder},
     rpc::types::Filter,
     signers::local::PrivateKeySigner,
-    sol_types::SolEvent,
 };
-use async_trait::async_trait;
-use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
+use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
-    AssetStorageChangedFilter, BlockchainConfig, BlockchainId, ContractChangedFilter,
-    KnowledgeCollectionCreatedFilter, NewAssetStorageFilter, NewContractFilter,
-    ParameterChangedFilter,
+    BlockchainConfig, BlockchainId,
     blockchains::blockchain_creator::{
-        BlockchainProvider, Contracts, Staking, Token, sharding_table::ShardingTableLib::NodeInfo,
+        BlockchainProvider, Contracts, Staking, Token, initialize_contracts, initialize_provider,
+        sharding_table::ShardingTableLib::NodeInfo,
     },
     error::BlockchainError,
     utils::handle_contract_call,
@@ -33,19 +30,6 @@ pub enum ContractName {
     Profile,
     ParametersStorage,
     KnowledgeCollectionStorage,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum EventName {
-    // Hub events
-    NewContract,
-    ContractChanged,
-    NewAssetStorage,
-    AssetStorageChanged,
-    // ParametersStorage events
-    ParameterChanged,
-    // KnowledgeCollectionStorage events
-    KnowledgeCollectionCreated,
 }
 
 impl ContractName {
@@ -79,44 +63,18 @@ impl FromStr for ContractName {
     }
 }
 
-impl EventName {
-    pub fn as_str(&self) -> &str {
-        match self {
-            EventName::NewContract => "NewContract",
-            EventName::ContractChanged => "ContractChanged",
-            EventName::NewAssetStorage => "NewAssetStorage",
-            EventName::AssetStorageChanged => "AssetStorageChanged",
-            EventName::ParameterChanged => "ParameterChanged",
-            EventName::KnowledgeCollectionCreated => "KnowledgeCollectionCreated",
-        }
-    }
-}
-
-pub struct EventLog {
+pub struct ContractLog {
     contract_name: ContractName,
-    event_name: EventName,
     log: alloy::rpc::types::Log,
 }
 
-impl EventLog {
-    pub fn new(
-        contract_name: ContractName,
-        event_name: EventName,
-        log: alloy::rpc::types::Log,
-    ) -> Self {
-        Self {
-            contract_name,
-            event_name,
-            log,
-        }
+impl ContractLog {
+    pub fn new(contract_name: ContractName, log: alloy::rpc::types::Log) -> Self {
+        Self { contract_name, log }
     }
 
     pub fn contract_name(&self) -> &ContractName {
         &self.contract_name
-    }
-
-    pub fn event_name(&self) -> &EventName {
-        &self.event_name
     }
 
     pub fn log(&self) -> &alloy::rpc::types::Log {
@@ -124,18 +82,55 @@ impl EventLog {
     }
 }
 
-// Note: Must use async-trait here because this trait is used with trait objects (Box<dyn
-// AbstractBlockchain>) Native async traits are not dyn-compatible yet
-#[async_trait]
-pub trait AbstractBlockchain: Send + Sync {
-    fn blockchain_id(&self) -> &BlockchainId;
-    fn config(&self) -> &BlockchainConfig;
-    fn provider(&self) -> &BlockchainProvider;
-    async fn contracts(&self) -> RwLockReadGuard<'_, Contracts>;
-    async fn contracts_mut(&self) -> RwLockWriteGuard<'_, Contracts>;
-    fn set_identity_id(&mut self, id: u128);
+pub struct EvmChain {
+    config: BlockchainConfig,
+    provider: BlockchainProvider,
+    contracts: RwLock<Contracts>,
+    identity_id: Option<u128>,
+}
 
-    async fn re_initialize_contract(
+impl EvmChain {
+    pub async fn new(config: BlockchainConfig) -> Self {
+        let provider = initialize_provider(&config)
+            .await
+            .expect("Failed to initialize blockchain provider");
+        let contracts = initialize_contracts(&config, &provider)
+            .await
+            .expect("Failed to initialize blockchain contracts");
+
+        Self {
+            provider,
+            config,
+            contracts: RwLock::new(contracts),
+            identity_id: None,
+        }
+    }
+
+    pub fn blockchain_id(&self) -> &BlockchainId {
+        self.config.blockchain_id()
+    }
+
+    pub fn config(&self) -> &BlockchainConfig {
+        &self.config
+    }
+
+    pub fn provider(&self) -> &BlockchainProvider {
+        &self.provider
+    }
+
+    pub async fn contracts(&self) -> RwLockReadGuard<'_, Contracts> {
+        self.contracts.read().await
+    }
+
+    pub async fn contracts_mut(&self) -> RwLockWriteGuard<'_, Contracts> {
+        self.contracts.write().await
+    }
+
+    pub fn set_identity_id(&mut self, id: u128) {
+        self.identity_id = Some(id);
+    }
+
+    pub async fn re_initialize_contract(
         &self,
         contract_name: String,
         contract_address: Address,
@@ -151,7 +146,7 @@ pub trait AbstractBlockchain: Send + Sync {
             .await
     }
 
-    async fn get_block_number(&self) -> Result<u64, BlockchainError> {
+    pub async fn get_block_number(&self) -> Result<u64, BlockchainError> {
         let block_number = self
             .provider()
             .get_block_number()
@@ -161,89 +156,63 @@ pub trait AbstractBlockchain: Send + Sync {
         Ok(block_number)
     }
 
-    async fn get_event_logs(
+    pub async fn get_event_logs(
         &self,
         contract_name: &ContractName,
-        events_to_filter: &Vec<EventName>,
+        event_signatures: &[B256],
         from_block: u64,
         current_block: u64,
-    ) -> Result<Vec<EventLog>, BlockchainError> {
-        let mut topic_map: std::collections::HashMap<B256, EventName> =
-            std::collections::HashMap::new();
-        for event in events_to_filter {
-            let signature_hash = match event {
-                EventName::NewContract => NewContractFilter::SIGNATURE_HASH,
-                EventName::ContractChanged => ContractChangedFilter::SIGNATURE_HASH,
-                EventName::NewAssetStorage => NewAssetStorageFilter::SIGNATURE_HASH,
-                EventName::AssetStorageChanged => AssetStorageChangedFilter::SIGNATURE_HASH,
-                EventName::ParameterChanged => ParameterChangedFilter::SIGNATURE_HASH,
-                EventName::KnowledgeCollectionCreated => {
-                    KnowledgeCollectionCreatedFilter::SIGNATURE_HASH
-                }
-            };
-            topic_map.insert(signature_hash, event.clone());
-        }
-
-        let topic_signatures: Vec<B256> = topic_map.keys().copied().collect();
+    ) -> Result<Vec<ContractLog>, BlockchainError> {
+        let topic_signatures: Vec<B256> = event_signatures.to_vec();
 
         let contracts = self.contracts().await;
 
-        let addresses: Vec<Address> = vec![contracts.get_address(contract_name)?];
+        let address = contracts.get_address(contract_name)?;
         drop(contracts);
 
         let mut all_events = Vec::new();
 
-        for address in addresses {
-            let mut block = from_block;
-            while block <= current_block {
-                let to_block = std::cmp::min(
-                    block + MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH - 1,
-                    current_block,
-                );
+        let mut block = from_block;
+        while block <= current_block {
+            let to_block = std::cmp::min(
+                block + MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH - 1,
+                current_block,
+            );
 
-                let mut filter = Filter::new()
-                    .address(address)
-                    .from_block(block)
-                    .to_block(to_block);
-                if !topic_signatures.is_empty() {
-                    filter = filter.event_signature(topic_signatures.clone());
-                }
-
-                let logs = self
-                    .provider()
-                    .get_logs(&filter)
-                    .await
-                    .map_err(|_| BlockchainError::GetLogs)?;
-
-                for log in logs {
-                    let Some(topic0) = log.topic0() else {
-                        continue;
-                    };
-                    let Some(event_name) = topic_map.get(topic0) else {
-                        continue;
-                    };
-                    all_events.push(EventLog::new(
-                        contract_name.clone(),
-                        event_name.clone(),
-                        log,
-                    ));
-                }
-
-                block = to_block + 1;
+            let mut filter = Filter::new()
+                .address(address)
+                .from_block(block)
+                .to_block(to_block);
+            if !topic_signatures.is_empty() {
+                filter = filter.event_signature(topic_signatures.clone());
             }
+
+            let logs = self
+                .provider()
+                .get_logs(&filter)
+                .await
+                .map_err(|_| BlockchainError::GetLogs)?;
+
+            for log in logs {
+                if log.topic0().is_some() {
+                    all_events.push(ContractLog::new(contract_name.clone(), log));
+                }
+            }
+
+            block = to_block + 1;
         }
 
         Ok(all_events)
     }
 
-    async fn get_sharding_table_head(&self) -> Result<u128, BlockchainError> {
+    pub async fn get_sharding_table_head(&self) -> Result<u128, BlockchainError> {
         use alloy::primitives::Uint;
         let contracts = self.contracts().await;
         let head: Uint<72, 2> = contracts.sharding_table_storage().head().call().await?;
         Ok(head.to::<u128>())
     }
 
-    async fn get_sharding_table_length(&self) -> Result<u128, BlockchainError> {
+    pub async fn get_sharding_table_length(&self) -> Result<u128, BlockchainError> {
         use alloy::primitives::Uint;
         let contracts = self.contracts().await;
         let nodes_count: Uint<72, 2> = contracts
@@ -254,7 +223,7 @@ pub trait AbstractBlockchain: Send + Sync {
         Ok(nodes_count.to::<u128>())
     }
 
-    async fn get_sharding_table_page(
+    pub async fn get_sharding_table_page(
         &self,
         starting_identity_id: u128,
         nodes_num: u128,
@@ -273,7 +242,7 @@ pub trait AbstractBlockchain: Send + Sync {
         Ok(nodes)
     }
 
-    async fn get_identity_id(&self) -> Option<u128> {
+    pub async fn get_identity_id(&self) -> Option<u128> {
         let evm_operational_address = self
             .config()
             .evm_operational_wallet_public_key
@@ -296,13 +265,13 @@ pub trait AbstractBlockchain: Send + Sync {
         }
     }
 
-    async fn identity_id_exists(&self) -> bool {
+    pub async fn identity_id_exists(&self) -> bool {
         let identity_id = self.get_identity_id().await;
 
         identity_id.is_some()
     }
 
-    async fn create_profile(&self, peer_id: &str) -> Result<(), BlockchainError> {
+    pub async fn create_profile(&self, peer_id: &str) -> Result<(), BlockchainError> {
         let config = self.config();
         let admin_wallet = config
             .evm_management_wallet_public_key
@@ -341,7 +310,7 @@ pub trait AbstractBlockchain: Send + Sync {
         }
     }
 
-    async fn initialize_identity(&mut self, peer_id: &str) -> Result<(), BlockchainError> {
+    pub async fn initialize_identity(&mut self, peer_id: &str) -> Result<(), BlockchainError> {
         if !self.identity_id_exists().await {
             self.create_profile(peer_id)
                 .await
@@ -364,7 +333,7 @@ pub trait AbstractBlockchain: Send + Sync {
 
     /// Sets the stake for this node's identity (dev environment only).
     /// Requires management wallet private key to be configured.
-    async fn set_stake(&self, stake_wei: u128) -> Result<(), BlockchainError> {
+    pub async fn set_stake(&self, stake_wei: u128) -> Result<(), BlockchainError> {
         use alloy::primitives::{U256, Uint};
 
         let config = self.config();
@@ -425,7 +394,7 @@ pub trait AbstractBlockchain: Send + Sync {
     }
 
     /// Sets the ask price for this node's identity (dev environment only).
-    async fn set_ask(&self, ask_wei: u128) -> Result<(), BlockchainError> {
+    pub async fn set_ask(&self, ask_wei: u128) -> Result<(), BlockchainError> {
         use alloy::primitives::Uint;
 
         let contracts = self.contracts().await;
@@ -448,7 +417,7 @@ pub trait AbstractBlockchain: Send + Sync {
         Ok(())
     }
 
-    async fn sign_message(&self, message_hash: &str) -> Result<Vec<u8>, BlockchainError> {
+    pub async fn sign_message(&self, message_hash: &str) -> Result<Vec<u8>, BlockchainError> {
         use alloy::signers::Signer;
 
         // Decode the hex message hash

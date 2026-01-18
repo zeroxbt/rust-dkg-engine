@@ -3,18 +3,14 @@ use alloy::{
     primitives::{Address, U256, hex, keccak256},
     providers::PendingTransactionBuilder,
     rpc::types::TransactionReceipt,
+    sol_types::SolEventInterface,
 };
 use sha2::{Digest, Sha256};
 
-use crate::{blockchains::abstract_blockchain::EventLog, error::BlockchainError};
+use crate::error::BlockchainError;
 
-pub fn decode_event_log<D: alloy::sol_types::SolEvent>(
-    event_log: &EventLog,
-) -> Result<D, BlockchainError> {
-    let log = event_log.log();
-    D::decode_log(log.as_ref())
-        .map(|decoded| decoded.data)
-        .map_err(|_| BlockchainError::Decode)
+pub fn decode_event<E: SolEventInterface>(log: &alloy::rpc::types::Log) -> Option<E> {
+    E::decode_log(log.as_ref()).ok().map(|decoded| decoded.data)
 }
 
 pub fn from_wei(wei: &str) -> String {

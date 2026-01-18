@@ -1479,7 +1479,6 @@ name = "blockchain"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "async-trait",
  "serde",
  "sha2",
  "thiserror 2.0.17",

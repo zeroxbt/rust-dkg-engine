@@ -187,154 +187,148 @@ impl Contracts {
     }
 }
 
-// Native async trait (Rust 1.75+)
-pub(crate) trait BlockchainCreator {
-    async fn new(config: BlockchainConfig) -> Self;
+pub(crate) async fn initialize_provider(
+    config: &BlockchainConfig,
+) -> Result<BlockchainProvider, BlockchainError> {
+    let mut tries = 0;
+    let mut rpc_number = 0;
 
-    async fn initialize_provider(
-        config: &BlockchainConfig,
-    ) -> Result<BlockchainProvider, BlockchainError> {
-        let mut tries = 0;
-        let mut rpc_number = 0;
+    let signer: PrivateKeySigner =
+        config
+            .evm_operational_wallet_private_key
+            .parse()
+            .map_err(|e| BlockchainError::InvalidPrivateKey {
+                key_length: config.evm_operational_wallet_private_key.len(),
+                source: e,
+            })?;
+    let wallet = EthereumWallet::from(signer);
 
-        let signer: PrivateKeySigner =
-            config
-                .evm_operational_wallet_private_key
-                .parse()
-                .map_err(|e| BlockchainError::InvalidPrivateKey {
-                    key_length: config.evm_operational_wallet_private_key.len(),
-                    source: e,
-                })?;
-        let wallet = EthereumWallet::from(signer);
+    while tries < config.rpc_endpoints.len() {
+        let endpoint = &config.rpc_endpoints[rpc_number];
 
-        while tries < config.rpc_endpoints.len() {
-            let endpoint = &config.rpc_endpoints[rpc_number];
-
-            if endpoint.starts_with("ws") {
-                return Err(BlockchainError::Custom(
-                    "websocket RPCs not supported yet".to_string(),
-                ));
-            }
-
-            let endpoint_url =
-                endpoint
-                    .parse()
-                    .map_err(|e| BlockchainError::HttpProviderCreation {
-                        endpoint: endpoint.clone(),
-                        source: Box::new(e),
-                    })?;
-
-            let provider = Arc::new(
-                ProviderBuilder::new()
-                    .wallet(wallet.clone())
-                    .connect_http(endpoint_url)
-                    .erased(),
-            );
-
-            match provider.get_block_number().await {
-                Ok(_) => {
-                    tracing::info!("Blockchain provider initialized with rpc: {}", endpoint);
-                    return Ok(provider);
-                }
-                Err(_) => {
-                    tracing::warn!("Unable to connect to blockchain rpc: {}", endpoint);
-                    tries += 1;
-                    rpc_number = (rpc_number + 1) % config.rpc_endpoints.len();
-                }
-            }
+        if endpoint.starts_with("ws") {
+            return Err(BlockchainError::Custom(
+                "websocket RPCs not supported yet".to_string(),
+            ));
         }
 
-        Err(BlockchainError::RpcConnectionFailed {
-            attempts: config.rpc_endpoints.len(),
-        })
+        let endpoint_url = endpoint
+            .parse()
+            .map_err(|e| BlockchainError::HttpProviderCreation {
+                endpoint: endpoint.clone(),
+                source: Box::new(e),
+            })?;
+
+        let provider = Arc::new(
+            ProviderBuilder::new()
+                .wallet(wallet.clone())
+                .connect_http(endpoint_url)
+                .erased(),
+        );
+
+        match provider.get_block_number().await {
+            Ok(_) => {
+                tracing::info!("Blockchain provider initialized with rpc: {}", endpoint);
+                return Ok(provider);
+            }
+            Err(_) => {
+                tracing::warn!("Unable to connect to blockchain rpc: {}", endpoint);
+                tries += 1;
+                rpc_number = (rpc_number + 1) % config.rpc_endpoints.len();
+            }
+        }
     }
 
-    async fn initialize_contracts(
-        config: &BlockchainConfig,
-        provider: &BlockchainProvider,
-    ) -> Result<Contracts, BlockchainError> {
-        let address: Address =
-            config
-                .hub_contract_address
-                .parse()
-                .map_err(|_| BlockchainError::InvalidAddress {
-                    address: config.hub_contract_address.clone(),
-                })?;
-        let hub = Hub::new(address, provider.clone());
+    Err(BlockchainError::RpcConnectionFailed {
+        attempts: config.rpc_endpoints.len(),
+    })
+}
 
-        let asset_storages_addresses = hub.getAllAssetStorages().call().await?;
+pub(crate) async fn initialize_contracts(
+    config: &BlockchainConfig,
+    provider: &BlockchainProvider,
+) -> Result<Contracts, BlockchainError> {
+    let address: Address =
+        config
+            .hub_contract_address
+            .parse()
+            .map_err(|_| BlockchainError::InvalidAddress {
+                address: config.hub_contract_address.clone(),
+            })?;
+    let hub = Hub::new(address, provider.clone());
 
-        let knowledge_collection_storage_addr =
-            asset_storages_addresses.iter().rev().find_map(|contract| {
-                match contract.name.parse::<ContractName>() {
-                    Ok(ContractName::KnowledgeCollectionStorage) => Some(contract.addr),
-                    _ => None,
-                }
-            });
-        let knowledge_collection_storage = knowledge_collection_storage_addr
-            .map(|addr| KnowledgeCollectionStorage::new(addr, provider.clone()));
+    let asset_storages_addresses = hub.getAllAssetStorages().call().await?;
 
-        Ok(Contracts {
-            hub: hub.clone(),
-            knowledge_collection_storage,
-            staking: Staking::new(
-                Address::from(
-                    hub.getContractAddress("Staking".to_string())
-                        .call()
-                        .await?
-                        .0,
-                ),
-                provider.clone(),
+    let knowledge_collection_storage_addr =
+        asset_storages_addresses.iter().rev().find_map(|contract| {
+            match contract.name.parse::<ContractName>() {
+                Ok(ContractName::KnowledgeCollectionStorage) => Some(contract.addr),
+                _ => None,
+            }
+        });
+    let knowledge_collection_storage = knowledge_collection_storage_addr
+        .map(|addr| KnowledgeCollectionStorage::new(addr, provider.clone()));
+
+    Ok(Contracts {
+        hub: hub.clone(),
+        knowledge_collection_storage,
+        staking: Staking::new(
+            Address::from(
+                hub.getContractAddress("Staking".to_string())
+                    .call()
+                    .await?
+                    .0,
             ),
-            identity_storage: IdentityStorage::new(
-                Address::from(
-                    hub.getContractAddress("IdentityStorage".to_string())
-                        .call()
-                        .await?
-                        .0,
-                ),
-                provider.clone(),
+            provider.clone(),
+        ),
+        identity_storage: IdentityStorage::new(
+            Address::from(
+                hub.getContractAddress("IdentityStorage".to_string())
+                    .call()
+                    .await?
+                    .0,
             ),
-            parameters_storage: ParametersStorage::new(
-                Address::from(
-                    hub.getContractAddress("ParametersStorage".to_string())
-                        .call()
-                        .await?
-                        .0,
-                ),
-                provider.clone(),
+            provider.clone(),
+        ),
+        parameters_storage: ParametersStorage::new(
+            Address::from(
+                hub.getContractAddress("ParametersStorage".to_string())
+                    .call()
+                    .await?
+                    .0,
             ),
-            profile: Profile::new(
-                Address::from(
-                    hub.getContractAddress("Profile".to_string())
-                        .call()
-                        .await?
-                        .0,
-                ),
-                provider.clone(),
+            provider.clone(),
+        ),
+        profile: Profile::new(
+            Address::from(
+                hub.getContractAddress("Profile".to_string())
+                    .call()
+                    .await?
+                    .0,
             ),
-            sharding_table: sharding_table::ShardingTable::new(
-                Address::from(
-                    hub.getContractAddress("ShardingTable".to_string())
-                        .call()
-                        .await?
-                        .0,
-                ),
-                provider.clone(),
+            provider.clone(),
+        ),
+        sharding_table: sharding_table::ShardingTable::new(
+            Address::from(
+                hub.getContractAddress("ShardingTable".to_string())
+                    .call()
+                    .await?
+                    .0,
             ),
-            sharding_table_storage: sharding_table_storage::ShardingTableStorage::new(
-                Address::from(
-                    hub.getContractAddress("ShardingTableStorage".to_string())
-                        .call()
-                        .await?
-                        .0,
-                ),
-                provider.clone(),
+            provider.clone(),
+        ),
+        sharding_table_storage: sharding_table_storage::ShardingTableStorage::new(
+            Address::from(
+                hub.getContractAddress("ShardingTableStorage".to_string())
+                    .call()
+                    .await?
+                    .0,
             ),
-            token: Token::new(
-                Address::from(hub.getContractAddress("Token".to_string()).call().await?.0),
-                provider.clone(),
-            ),
-        })
-    }
+            provider.clone(),
+        ),
+        token: Token::new(
+            Address::from(hub.getContractAddress("Token".to_string()).call().await?.0),
+            provider.clone(),
+        ),
+    })
 }
