@@ -1,9 +1,4 @@
-use alloy::{
-    contract::Error as ContractError,
-    primitives::{Address, U256, hex, keccak256},
-    providers::PendingTransactionBuilder,
-    rpc::types::TransactionReceipt,
-};
+use alloy::primitives::{Address, U256, hex, keccak256};
 use sha2::{Digest, Sha256};
 
 use crate::error::BlockchainError;
@@ -92,27 +87,3 @@ pub fn split_signature(flat_signature: Vec<u8>) -> Result<SignatureComponents, B
     Ok(SignatureComponents { v, r, s, vs })
 }
 
-pub(super) async fn handle_contract_call(
-    result: Result<PendingTransactionBuilder<alloy::network::Ethereum>, ContractError>,
-) -> Result<TransactionReceipt, BlockchainError> {
-    match result {
-        Ok(pending_tx) => {
-            let receipt = pending_tx.get_receipt().await;
-            match receipt {
-                Ok(r) => Ok(r),
-                Err(err) => {
-                    tracing::error!("Failed to retrieve transaction receipt: {:?}", err);
-                    Err(BlockchainError::Custom(format!(
-                        "Failed to get transaction receipt: {}",
-                        err
-                    )))
-                }
-            }
-        }
-        Err(err) => {
-            // Log the error
-            tracing::error!("Contract call failed: {:?}", err);
-            Err(BlockchainError::Contract(err))
-        }
-    }
-}

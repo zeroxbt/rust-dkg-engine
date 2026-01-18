@@ -48,6 +48,19 @@ pub enum BlockchainError {
     #[error("Identity not found after profile creation")]
     IdentityNotFound,
 
+    #[error("Transaction failed: {contract}::{function} - {reason}")]
+    TransactionFailed {
+        contract: String,
+        function: String,
+        reason: String,
+    },
+
+    #[error("Contract reverted: {message}")]
+    Revert { message: String },
+
+    #[error("Contract panicked: {reason}")]
+    Panic { reason: &'static str },
+
     #[error("{0}")]
     Custom(String),
 }

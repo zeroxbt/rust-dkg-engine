@@ -12,12 +12,12 @@ use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use crate::{
     BlockchainConfig, BlockchainId,
     blockchains::blockchain_creator::{
-        BlockchainProvider, Contracts, Staking, Token, initialize_contracts, initialize_provider,
-        initialize_provider_with_wallet,
+        BlockchainProvider, Contracts, Profile, Staking, Token, initialize_contracts,
+        initialize_provider, initialize_provider_with_wallet,
         sharding_table::ShardingTableLib::NodeInfo,
     },
     error::BlockchainError,
-    utils::handle_contract_call,
+    error_utils::handle_contract_call,
 };
 
 const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
@@ -298,8 +298,9 @@ impl EvmChain {
 
         let result = create_profile_call.send().await;
 
-        match handle_contract_call(result).await {
-            Ok(_) => {
+        match result {
+            Ok(pending_tx) => {
+                handle_contract_call(Ok(pending_tx)).await?;
                 tracing::info!(
                     "Profile created with token name: {}, token symbol: {}.",
                     shares_token_name,
@@ -307,7 +308,40 @@ impl EvmChain {
                 );
                 Ok(())
             }
-            Err(e) => Err(e),
+            Err(err) => {
+                // Check for "already exists" errors - treat as success (idempotent)
+                if let Some(Profile::IdentityAlreadyExists { identityId, wallet }) =
+                    err.as_decoded_error::<Profile::IdentityAlreadyExists>()
+                {
+                    tracing::info!(
+                        "Profile already exists for identity {} (wallet {})",
+                        identityId,
+                        wallet
+                    );
+                    return Ok(());
+                }
+
+                if let Some(Profile::NodeIdAlreadyExists { nodeId }) =
+                    err.as_decoded_error::<Profile::NodeIdAlreadyExists>()
+                {
+                    tracing::info!(
+                        "Profile already exists for nodeId 0x{}",
+                        hex::encode(&nodeId)
+                    );
+                    return Ok(());
+                }
+
+                if let Some(Profile::NodeNameAlreadyExists { nodeName }) =
+                    err.as_decoded_error::<Profile::NodeNameAlreadyExists>()
+                {
+                    tracing::info!("Profile already exists for nodeName {}", nodeName);
+                    return Ok(());
+                }
+
+                // Log detailed error for other cases
+                tracing::error!("Profile creation failed: {:?}", err);
+                Err(BlockchainError::ProfileCreation)
+            }
         }
     }
 
@@ -373,21 +407,41 @@ impl EvmChain {
 
         // Approve token spending
         let approve_call = token.increaseAllowance(staking_address, U256::from(stake_wei));
-        let approve_result = approve_call.send().await;
-
-        handle_contract_call(approve_result).await?;
+        match approve_call.send().await {
+            Ok(pending_tx) => {
+                handle_contract_call(Ok(pending_tx)).await?;
+            }
+            Err(err) => {
+                tracing::error!("Token approval failed: {:?}", err);
+                return Err(BlockchainError::TransactionFailed {
+                    contract: "Token".to_string(),
+                    function: "increaseAllowance".to_string(),
+                    reason: format!("{:?}", err),
+                });
+            }
+        }
 
         // Stake tokens - identity_id is uint72, stake_wei is uint96
         let stake_call = staking.stake(
             Uint::<72, 2>::from(identity_id),
             Uint::<96, 2>::from(stake_wei),
         );
-        let stake_result = stake_call.send().await;
 
-        handle_contract_call(stake_result).await?;
-
-        tracing::info!("Set stake completed for identity {}", identity_id);
-        Ok(())
+        match stake_call.send().await {
+            Ok(pending_tx) => {
+                handle_contract_call(Ok(pending_tx)).await?;
+                tracing::info!("Set stake completed for identity {}", identity_id);
+                Ok(())
+            }
+            Err(err) => {
+                tracing::error!("Staking failed: {:?}", err);
+                Err(BlockchainError::TransactionFailed {
+                    contract: "Staking".to_string(),
+                    function: "stake".to_string(),
+                    reason: format!("{:?}", err),
+                })
+            }
+        }
     }
 
     /// Sets the ask price for this node's identity (dev environment only).
@@ -406,12 +460,22 @@ impl EvmChain {
             Uint::<72, 2>::from(identity_id),
             Uint::<96, 2>::from(ask_wei),
         );
-        let update_ask_result = update_ask_call.send().await;
 
-        handle_contract_call(update_ask_result).await?;
-
-        tracing::info!("Set ask completed for identity {}", identity_id);
-        Ok(())
+        match update_ask_call.send().await {
+            Ok(pending_tx) => {
+                handle_contract_call(Ok(pending_tx)).await?;
+                tracing::info!("Set ask completed for identity {}", identity_id);
+                Ok(())
+            }
+            Err(err) => {
+                tracing::error!("Set ask failed: {:?}", err);
+                Err(BlockchainError::TransactionFailed {
+                    contract: "Profile".to_string(),
+                    function: "updateAsk".to_string(),
+                    reason: format!("{:?}", err),
+                })
+            }
+        }
     }
 
     pub async fn sign_message(&self, message_hash: &str) -> Result<Vec<u8>, BlockchainError> {
