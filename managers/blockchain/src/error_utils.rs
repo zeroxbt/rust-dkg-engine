@@ -18,10 +18,9 @@ pub async fn handle_contract_call(
                 Ok(r) => Ok(r),
                 Err(err) => {
                     tracing::error!("Failed to retrieve transaction receipt: {:?}", err);
-                    Err(BlockchainError::Custom(format!(
-                        "Failed to get transaction receipt: {}",
-                        err
-                    )))
+                    Err(BlockchainError::ReceiptFailed {
+                        reason: err.to_string(),
+                    })
                 }
             }
         }

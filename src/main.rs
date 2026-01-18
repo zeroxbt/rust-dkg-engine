@@ -189,11 +189,13 @@ async fn initialize_managers(
     );
 
     let repository_manager = Arc::new(RepositoryManager::new(&config.repository).await.unwrap());
-    let mut blockchain_manager = BlockchainManager::new(&config.blockchain).await;
+    let mut blockchain_manager = BlockchainManager::new(&config.blockchain)
+        .await
+        .expect("Failed to initialize blockchain manager");
     blockchain_manager
         .initialize_identities(&network_manager.peer_id().to_base58())
         .await
-        .unwrap();
+        .expect("Failed to initialize blockchain identities");
 
     let blockchain_manager = Arc::new(blockchain_manager);
     let validation_manager = Arc::new(ValidationManager::new().await);

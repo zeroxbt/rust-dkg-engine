@@ -138,7 +138,7 @@ pub struct BlockchainManager {
 }
 
 impl BlockchainManager {
-    pub async fn new(config: &BlockchainManagerConfig) -> Self {
+    pub async fn new(config: &BlockchainManagerConfig) -> Result<Self, BlockchainError> {
         let mut blockchains = HashMap::new();
         for blockchain in config.0.iter() {
             match blockchain {
@@ -148,14 +148,14 @@ impl BlockchainManager {
                         BlockchainId::new(format!("hardhat:{}", config.chain_id()))
                     });
                     config.blockchain_id = Some(blockchain_id.clone());
-                    let blockchain = blockchains::evm_chain::EvmChain::new(config).await;
+                    let blockchain = blockchains::evm_chain::EvmChain::new(config).await?;
 
                     blockchains.insert(blockchain_id, blockchain);
                 }
             }
         }
 
-        Self { blockchains }
+        Ok(Self { blockchains })
     }
 
     pub fn get_blockchain_ids(&self) -> Vec<&BlockchainId> {
@@ -170,7 +170,7 @@ impl BlockchainManager {
             .get(blockchain)
             .map(|b| b.config())
             .ok_or_else(|| BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             })
     }
 
@@ -180,7 +180,7 @@ impl BlockchainManager {
     ) -> Result<bool, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
         Ok(blockchain_impl.identity_id_exists().await)
@@ -192,7 +192,7 @@ impl BlockchainManager {
     ) -> Result<Option<u128>, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
         Ok(blockchain_impl.get_identity_id().await)
@@ -216,7 +216,7 @@ impl BlockchainManager {
     ) -> Result<Vec<ContractLog>, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
         blockchain_impl
@@ -230,7 +230,7 @@ impl BlockchainManager {
     ) -> Result<u64, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
         blockchain_impl.get_block_number().await
@@ -242,7 +242,7 @@ impl BlockchainManager {
     ) -> Result<u128, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
 
@@ -255,7 +255,7 @@ impl BlockchainManager {
     ) -> Result<u128, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
 
@@ -270,7 +270,7 @@ impl BlockchainManager {
     ) -> Result<Vec<NodeInfo>, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
 
@@ -287,7 +287,7 @@ impl BlockchainManager {
     ) -> Result<(), BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
         blockchain_impl
@@ -304,7 +304,7 @@ impl BlockchainManager {
     ) -> Result<Vec<u8>, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
         blockchain_impl.sign_message(message_hash).await
@@ -319,7 +319,7 @@ impl BlockchainManager {
     ) -> Result<(), BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
         blockchain_impl.set_stake(stake_wei).await
@@ -334,7 +334,7 @@ impl BlockchainManager {
     ) -> Result<(), BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
-                blockchain: blockchain.as_str().to_string(),
+                blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
         blockchain_impl.set_ask(ask_wei).await

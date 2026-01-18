@@ -5,7 +5,7 @@ use alloy::{
     primitives::{Address, B256, Bytes, hex},
     providers::Provider,
     rpc::types::Filter,
-    signers::local::PrivateKeySigner,
+    signers::local::{LocalSignerError, PrivateKeySigner},
 };
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
@@ -91,20 +91,26 @@ pub struct EvmChain {
 }
 
 impl EvmChain {
-    pub async fn new(config: BlockchainConfig) -> Self {
-        let provider = initialize_provider(&config)
-            .await
-            .expect("Failed to initialize blockchain provider");
+    pub async fn new(config: BlockchainConfig) -> Result<Self, BlockchainError> {
+        let provider =
+            initialize_provider(&config)
+                .await
+                .map_err(|e| BlockchainError::ProviderInit {
+                    reason: e.to_string(),
+                })?;
+
         let contracts = initialize_contracts(&config, &provider)
             .await
-            .expect("Failed to initialize blockchain contracts");
+            .map_err(|e| BlockchainError::ContractInit {
+                reason: e.to_string(),
+            })?;
 
-        Self {
+        Ok(Self {
             provider,
             config,
             contracts: RwLock::new(contracts),
             identity_id: None,
-        }
+        })
     }
 
     pub fn blockchain_id(&self) -> &BlockchainId {
@@ -148,13 +154,10 @@ impl EvmChain {
     }
 
     pub async fn get_block_number(&self) -> Result<u64, BlockchainError> {
-        let block_number = self
-            .provider()
+        self.provider()
             .get_block_number()
             .await
-            .map_err(|_| BlockchainError::GetLogs)?;
-
-        Ok(block_number)
+            .map_err(BlockchainError::get_block_number)
     }
 
     pub async fn get_event_logs(
@@ -192,7 +195,7 @@ impl EvmChain {
                 .provider()
                 .get_logs(&filter)
                 .await
-                .map_err(|_| BlockchainError::GetLogs)?;
+                .map_err(BlockchainError::get_logs)?;
 
             for log in logs {
                 if log.topic0().is_some() {
@@ -340,16 +343,16 @@ impl EvmChain {
 
                 // Log detailed error for other cases
                 tracing::error!("Profile creation failed: {:?}", err);
-                Err(BlockchainError::ProfileCreation)
+                Err(BlockchainError::ProfileCreation {
+                    reason: format!("{:?}", err),
+                })
             }
         }
     }
 
     pub async fn initialize_identity(&mut self, peer_id: &str) -> Result<(), BlockchainError> {
         if !self.identity_id_exists().await {
-            self.create_profile(peer_id)
-                .await
-                .map_err(|_| BlockchainError::ProfileCreation)?;
+            self.create_profile(peer_id).await?;
         }
 
         let identity_id = self.get_identity_id().await;
@@ -374,16 +377,18 @@ impl EvmChain {
         let config = self.config();
 
         // Get management wallet private key (required for staking)
-        let management_pk = config.evm_management_wallet_private_key().ok_or_else(|| {
-            BlockchainError::Custom(
-                "Management wallet private key required for set_stake".to_string(),
-            )
-        })?;
+        let management_pk = config
+            .evm_management_wallet_private_key()
+            .ok_or(BlockchainError::ManagementKeyRequired)?;
 
         // Create a provider with the management wallet for staking operations
-        let management_signer: PrivateKeySigner = management_pk.parse().map_err(|e| {
-            BlockchainError::Custom(format!("Invalid management wallet key: {}", e))
-        })?;
+        let management_signer: PrivateKeySigner =
+            management_pk.parse().map_err(|e: LocalSignerError| {
+                BlockchainError::InvalidPrivateKey {
+                    key_length: management_pk.len(),
+                    source: e,
+                }
+            })?;
         let management_wallet = EthereumWallet::from(management_signer);
 
         // Create provider with management wallet using same RPC endpoints (HTTP + WS fallback)
@@ -401,9 +406,10 @@ impl EvmChain {
         let token = Token::new(token_address, &management_provider);
 
         // Get identity ID
-        let identity_id = self.get_identity_id().await.ok_or_else(|| {
-            BlockchainError::Custom("Identity ID not found for staking".to_string())
-        })?;
+        let identity_id = self
+            .get_identity_id()
+            .await
+            .ok_or(BlockchainError::IdentityIdNotFound)?;
 
         // Approve token spending
         let approve_call = token.increaseAllowance(staking_address, U256::from(stake_wei));
@@ -451,9 +457,10 @@ impl EvmChain {
         let contracts = self.contracts().await;
 
         // Get identity ID
-        let identity_id = self.get_identity_id().await.ok_or_else(|| {
-            BlockchainError::Custom("Identity ID not found for set_ask".to_string())
-        })?;
+        let identity_id = self
+            .get_identity_id()
+            .await
+            .ok_or(BlockchainError::IdentityIdNotFound)?;
 
         // Update ask via Profile contract - identity_id is uint72, ask_wei is uint96
         let update_ask_call = contracts.profile().updateAsk(
@@ -482,23 +489,31 @@ impl EvmChain {
         use alloy::signers::Signer;
 
         // Decode the hex message hash
-        let message_bytes = hex::decode(message_hash.strip_prefix("0x").unwrap_or(message_hash))
-            .map_err(|e| {
-                BlockchainError::Custom(format!("Failed to decode message hash: {}", e))
+        let message_bytes =
+            hex::decode(message_hash.strip_prefix("0x").unwrap_or(message_hash)).map_err(|e| {
+                BlockchainError::HexDecode {
+                    context: "message hash".to_string(),
+                    source: e,
+                }
             })?;
 
         // Re-create signer from config since we can't easily access it from the provider
         let config = self.config();
-        let signer: PrivateKeySigner = config
-            .evm_operational_wallet_private_key
-            .parse()
-            .map_err(|e| BlockchainError::Custom(format!("Failed to parse private key: {}", e)))?;
+        let signer: PrivateKeySigner =
+            config
+                .evm_operational_wallet_private_key
+                .parse()
+                .map_err(|e: LocalSignerError| BlockchainError::InvalidPrivateKey {
+                    key_length: config.evm_operational_wallet_private_key.len(),
+                    source: e,
+                })?;
 
         // Sign the message
-        let signature = signer
-            .sign_message(&message_bytes)
-            .await
-            .map_err(|e| BlockchainError::Custom(format!("Failed to sign message: {}", e)))?;
+        let signature = signer.sign_message(&message_bytes).await.map_err(|e| {
+            BlockchainError::SigningFailed {
+                reason: e.to_string(),
+            }
+        })?;
 
         // Return the signature as bytes (r, s, v format - 65 bytes total)
         Ok(signature.as_bytes().to_vec())
