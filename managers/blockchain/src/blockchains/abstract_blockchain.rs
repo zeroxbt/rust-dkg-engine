@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use alloy::{
     network::EthereumWallet,
-    primitives::{Address, Bytes, B256, hex},
+    primitives::{Address, B256, Bytes, hex},
     providers::{Provider, ProviderBuilder},
     rpc::types::Filter,
     signers::local::PrivateKeySigner,
@@ -12,12 +12,12 @@ use async_trait::async_trait;
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
-    BlockchainConfig, BlockchainId,
+    AssetStorageChangedFilter, BlockchainConfig, BlockchainId, ContractChangedFilter,
+    KnowledgeCollectionCreatedFilter, NewAssetStorageFilter, NewContractFilter,
+    ParameterChangedFilter,
     blockchains::blockchain_creator::{
         BlockchainProvider, Contracts, Staking, Token, sharding_table::ShardingTableLib::NodeInfo,
     },
-    AssetStorageChangedFilter, ContractChangedFilter, KnowledgeCollectionCreatedFilter,
-    NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter,
     error::BlockchainError,
     utils::handle_contract_call,
 };
@@ -168,7 +168,8 @@ pub trait AbstractBlockchain: Send + Sync {
         from_block: u64,
         current_block: u64,
     ) -> Result<Vec<EventLog>, BlockchainError> {
-        let mut topic_map: std::collections::HashMap<B256, EventName> = std::collections::HashMap::new();
+        let mut topic_map: std::collections::HashMap<B256, EventName> =
+            std::collections::HashMap::new();
         for event in events_to_filter {
             let signature_hash = match event {
                 EventName::NewContract => NewContractFilter::SIGNATURE_HASH,

@@ -264,12 +264,13 @@ pub(crate) trait BlockchainCreator {
 
         let asset_storages_addresses = hub.getAllAssetStorages().call().await?;
 
-        let knowledge_collection_storage_addr = asset_storages_addresses.iter().rev().find_map(
-            |contract| match contract.name.parse::<ContractName>() {
-                Ok(ContractName::KnowledgeCollectionStorage) => Some(contract.addr),
-                _ => None,
-            },
-        );
+        let knowledge_collection_storage_addr =
+            asset_storages_addresses.iter().rev().find_map(|contract| {
+                match contract.name.parse::<ContractName>() {
+                    Ok(ContractName::KnowledgeCollectionStorage) => Some(contract.addr),
+                    _ => None,
+                }
+            });
         let knowledge_collection_storage = knowledge_collection_storage_addr
             .map(|addr| KnowledgeCollectionStorage::new(addr, provider.clone()));
 
