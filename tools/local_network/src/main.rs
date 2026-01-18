@@ -192,7 +192,9 @@ async fn main() {
         .unwrap();
 
     // Stagger node startups to avoid overwhelming the local blockchain with concurrent transactions
-    const NODE_STARTUP_DELAY_MS: u64 = 2000;
+    const NODE_STARTUP_DELAY_MS: u64 = 500;
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
 
     for i in 0..nodes {
         // Add delay between node startups to prevent transaction conflicts on the local blockchain

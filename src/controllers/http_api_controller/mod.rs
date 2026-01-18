@@ -1,4 +1,5 @@
 mod finality_status_http_api_controller;
 pub mod http_api_router;
 mod info_http_api_controller;
+mod operation_result_http_api_controller;
 mod publish_http_api_controller;

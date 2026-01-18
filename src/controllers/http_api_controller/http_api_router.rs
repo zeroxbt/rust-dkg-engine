@@ -15,6 +15,7 @@ use tower_http::cors::*;
 use super::{
     finality_status_http_api_controller::FinalityStatusHttpApiController,
     info_http_api_controller::InfoHttpApiController,
+    operation_result_http_api_controller::OperationResultHttpApiController,
     publish_http_api_controller::PublishHttpApiController,
 };
 use crate::context::Context;
@@ -39,6 +40,10 @@ impl HttpApiRouter {
             .layer(cors_layer)
             .route("/info", get(InfoHttpApiController::handle_request))
             .route("/publish", post(PublishHttpApiController::handle_request))
+            .route(
+                "/publish/{operation_id}",
+                get(OperationResultHttpApiController::handle_publish_result),
+            )
             .route(
                 "/finality",
                 get(FinalityStatusHttpApiController::handle_request),

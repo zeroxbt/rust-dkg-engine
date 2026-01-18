@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, sea_query::Expr,
+    QuerySelect, Set, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -130,48 +130,42 @@ impl OperationRepository {
     }
 
     /// Atomically increment either completed_count or failed_count and return the updated record.
-    /// This avoids race conditions when multiple responses arrive concurrently.
+    /// Uses a transaction with SELECT FOR UPDATE to ensure the increment and fetch are atomic,
+    /// avoiding race conditions when multiple responses arrive concurrently.
     pub async fn atomic_increment_response(
         &self,
         operation_id: Uuid,
         is_success: bool,
     ) -> Result<Model, RepositoryError> {
-        // Atomically increment the appropriate counter
-        let update_result = if is_success {
-            Entity::update_many()
-                .filter(Column::OperationId.eq(operation_id.to_string()))
-                .col_expr(
-                    Column::CompletedCount,
-                    Expr::col(Column::CompletedCount).add(1),
-                )
-                .col_expr(Column::UpdatedAt, Expr::value(Utc::now()))
-                .exec(self.conn.as_ref())
-                .await?
-        } else {
-            Entity::update_many()
-                .filter(Column::OperationId.eq(operation_id.to_string()))
-                .col_expr(Column::FailedCount, Expr::col(Column::FailedCount).add(1))
-                .col_expr(Column::UpdatedAt, Expr::value(Utc::now()))
-                .exec(self.conn.as_ref())
-                .await?
-        };
+        let txn = self.conn.begin().await?;
 
-        if update_result.rows_affected == 0 {
-            return Err(RepositoryError::NotFound(format!(
-                "Operation {} not found",
-                operation_id
-            )));
-        }
-
-        // Fetch the updated record to get the new counts
-        let record = Entity::find_by_id(operation_id.to_string())
-            .one(self.conn.as_ref())
+        // Lock the row with FOR UPDATE to prevent concurrent modifications
+        let existing = Entity::find_by_id(operation_id.to_string())
+            .lock_exclusive()
+            .one(&txn)
             .await?
             .ok_or_else(|| {
                 RepositoryError::NotFound(format!("Operation {} not found", operation_id))
             })?;
 
-        Ok(record)
+        // Increment the appropriate counter
+        let (new_completed, new_failed) = if is_success {
+            (existing.completed_count + 1, existing.failed_count)
+        } else {
+            (existing.completed_count, existing.failed_count + 1)
+        };
+
+        // Update the record
+        let mut active_model: operations::ActiveModel = existing.into();
+        active_model.completed_count = Set(new_completed);
+        active_model.failed_count = Set(new_failed);
+        active_model.updated_at = Set(Utc::now());
+
+        let updated = active_model.update(&txn).await?;
+
+        txn.commit().await?;
+
+        Ok(updated)
     }
 
     /// Initialize progress tracking fields (total_peers, min_ack_responses)

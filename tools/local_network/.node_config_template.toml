@@ -12,13 +12,13 @@ app_data_path = "{{APP_DATA_PATH}}"
 # HTTP API Configuration
 # ============================================
 [http_api]
-port = 0
+port = {{HTTP_PORT}}
 
 # ============================================
 # Network Manager Configuration
 # ============================================
 [managers.network]
-port = 0
+port = {{NETWORK_PORT}}
 data_folder_path = "{{DATA_FOLDER}}"
 
 # Bootstrap nodes
