@@ -67,9 +67,9 @@ password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 #     "wss://lofar-testnet.origin-trail.network"
 # ]
 # operator_fee = 0
-# evm_operational_wallet_public_key = "0x..."
+# evm_operational_wallet_address = "0x..."
 # evm_operational_wallet_private_key = ""  # Use env var
-# evm_management_wallet_public_key = "0x..."
+# evm_management_wallet_address = "0x..."
 # node_name = "TestNode"
 
 # --------------------------------------------
@@ -83,9 +83,9 @@ password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # rpc_endpoints = ["https://rpc.chiadochain.net"]
 # gas_price_oracle_url = "https://blockscout.chiadochain.net/api/v1/gas-price-oracle"
 # operator_fee = 0
-# evm_operational_wallet_public_key = "0x..."
+# evm_operational_wallet_address = "0x..."
 # evm_operational_wallet_private_key = ""  # Use env var
-# evm_management_wallet_public_key = "0x..."
+# evm_management_wallet_address = "0x..."
 # node_name = "TestNode"
 
 # --------------------------------------------
@@ -98,7 +98,7 @@ password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # hub_contract_address = "0xf21CE8f8b01548D97DCFb36869f1ccB0814a4e05"
 # rpc_endpoints = ["https://sepolia.base.org"]
 # operator_fee = 0
-# evm_operational_wallet_public_key = "0x..."
+# evm_operational_wallet_address = "0x..."
 # evm_operational_wallet_private_key = ""  # Use env var
-# evm_management_wallet_public_key = "0x..."
+# evm_management_wallet_address = "0x..."
 # node_name = "TestNode"

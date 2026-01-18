@@ -169,8 +169,8 @@ impl EvmChain {
                 );
                 validate_evm_wallets(
                     &substrate_endpoints,
-                    config.evm_management_wallet_public_key(),
-                    config.evm_operational_wallet_public_key(),
+                    config.evm_management_wallet_address(),
+                    config.evm_operational_wallet_address(),
                 )
                 .await?;
             }
@@ -425,7 +425,7 @@ impl EvmChain {
     pub async fn get_identity_id(&self) -> Option<u128> {
         let evm_operational_address = self
             .config()
-            .evm_operational_wallet_public_key
+            .evm_operational_wallet_address
             .parse::<Address>();
         let Ok(evm_operational_address) = evm_operational_address else {
             return None;
@@ -462,10 +462,10 @@ impl EvmChain {
         }
 
         let admin_wallet = config
-            .evm_management_wallet_public_key()
+            .evm_management_wallet_address()
             .parse::<Address>()
             .map_err(|_| BlockchainError::InvalidAddress {
-                address: config.evm_management_wallet_public_key().to_string(),
+                address: config.evm_management_wallet_address().to_string(),
             })?;
         let peer_id_bytes = Bytes::from(peer_id.as_bytes().to_vec());
         let operator_fee = config.operator_fee().unwrap_or(0);

@@ -87,11 +87,11 @@ pub struct BlockchainConfig {
     /// Private key for the operational wallet (used for transactions).
     evm_operational_wallet_private_key: String,
 
-    /// Public address for the operational wallet.
-    evm_operational_wallet_public_key: String,
+    /// Address for the operational wallet (20-byte EVM address).
+    evm_operational_wallet_address: String,
 
-    /// Public address for the management wallet (admin operations).
-    evm_management_wallet_public_key: String,
+    /// Address for the management wallet (20-byte EVM address, used for admin operations).
+    evm_management_wallet_address: String,
 
     /// Private key for the management wallet (optional, only needed for staking/admin ops).
     evm_management_wallet_private_key: Option<String>,
@@ -150,12 +150,12 @@ impl BlockchainConfig {
         &self.evm_operational_wallet_private_key
     }
 
-    pub fn evm_operational_wallet_public_key(&self) -> &str {
-        &self.evm_operational_wallet_public_key
+    pub fn evm_operational_wallet_address(&self) -> &str {
+        &self.evm_operational_wallet_address
     }
 
-    pub fn evm_management_wallet_public_key(&self) -> &str {
-        &self.evm_management_wallet_public_key
+    pub fn evm_management_wallet_address(&self) -> &str {
+        &self.evm_management_wallet_address
     }
 
     pub fn evm_management_wallet_private_key(&self) -> Option<&String> {
@@ -585,8 +585,8 @@ mod tests {
             blockchain_id: None,
             chain_id: 1,
             evm_operational_wallet_private_key: String::new(),
-            evm_operational_wallet_public_key: String::new(),
-            evm_management_wallet_public_key: String::new(),
+            evm_operational_wallet_address: String::new(),
+            evm_management_wallet_address: String::new(),
             evm_management_wallet_private_key: None,
             hub_contract_address: String::new(),
             rpc_endpoints: vec![],

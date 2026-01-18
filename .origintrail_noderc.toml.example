@@ -74,17 +74,16 @@
 #
 # # IMPORTANT: Set these via environment variables for production!
 # # DO NOT store private keys in this file for production deployments!
-# evm_operational_wallet_public_key = "0xYourPublicKey"
+# evm_operational_wallet_address = "0xYourAddress"
 # evm_operational_wallet_private_key = "0xYourPrivateKey"  # Use env var!
-# evm_management_wallet_public_key = "0xYourManagementPublicKey"
+# evm_management_wallet_address = "0xYourManagementAddress"
 # evm_management_wallet_private_key = "0xYourManagementPrivateKey"  # Use env var!
 #
 # initial_stake_amount = 50_000
 # initial_ask_amount = 0.2
 # operator_fee = 10
 #
-# shares_token_name = "MyNode"
-# shares_token_symbol = "MYN"
+# node_name = "MyNode"
 
 # ============================================
 # Production Security Best Practices

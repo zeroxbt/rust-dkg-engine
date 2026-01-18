@@ -75,9 +75,9 @@ password = "" # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 #     "wss://parachain-rpc.origin-trail.network"
 # ]
 # operator_fee = 0
-# evm_operational_wallet_public_key = "0x..."
+# evm_operational_wallet_address = "0x..."
 # evm_operational_wallet_private_key = ""  # Use env: OT_MANAGERS__BLOCKCHAIN__0__NEUROWEB__EVM_OPERATIONAL_WALLET_PRIVATE_KEY
-# evm_management_wallet_public_key = "0x..."
+# evm_management_wallet_address = "0x..."
 # node_name = "YourNodeName"
 
 # --------------------------------------------
@@ -91,9 +91,9 @@ password = "" # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # rpc_endpoints = ["https://rpc.gnosischain.com"]
 # gas_price_oracle_url = "https://gnosis.blockscout.com/api/v1/gas-price-oracle"
 # operator_fee = 0
-# evm_operational_wallet_public_key = "0x..."
+# evm_operational_wallet_address = "0x..."
 # evm_operational_wallet_private_key = ""  # Use env var
-# evm_management_wallet_public_key = "0x..."
+# evm_management_wallet_address = "0x..."
 # node_name = "YourNodeName"
 
 # --------------------------------------------
@@ -106,7 +106,7 @@ password = "" # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # hub_contract_address = "0x99Aa571fD5e681c2D27ee08A7b7989DB02541d13"
 # rpc_endpoints = ["https://mainnet.base.org"]
 # operator_fee = 0
-# evm_operational_wallet_public_key = "0x..."
+# evm_operational_wallet_address = "0x..."
 # evm_operational_wallet_private_key = ""  # Use env var
-# evm_management_wallet_public_key = "0x..."
+# evm_management_wallet_address = "0x..."
 # node_name = "YourNodeName"

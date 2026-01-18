@@ -65,11 +65,11 @@ initial_ask_amount = 0.2       # 0.2 tokens per unit
 operator_fee = 0
 
 # Operational wallet (used for transactions)
-evm_operational_wallet_public_key = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+evm_operational_wallet_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 evm_operational_wallet_private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
 # Management wallet (used for admin operations like staking)
-evm_management_wallet_public_key = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199"
+evm_management_wallet_address = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199"
 evm_management_wallet_private_key = "0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e"
 
 # Node name (used in profile creation to identify this node on the network)

@@ -48,9 +48,9 @@ initial_stake_amount = 50_000
 initial_ask_amount = 0.2
 
 # Wallets (Hardhat test accounts - DO NOT USE IN PRODUCTION)
-evm_operational_wallet_public_key = "{{OPERATIONAL_WALLET_PUBLIC}}"
+evm_operational_wallet_address = "{{OPERATIONAL_WALLET_PUBLIC}}"
 evm_operational_wallet_private_key = "{{OPERATIONAL_WALLET_PRIVATE}}"
-evm_management_wallet_public_key = "{{MANAGEMENT_WALLET_PUBLIC}}"
+evm_management_wallet_address = "{{MANAGEMENT_WALLET_PUBLIC}}"
 evm_management_wallet_private_key = "{{MANAGEMENT_WALLET_PRIVATE}}"
 
 # RPC endpoints
