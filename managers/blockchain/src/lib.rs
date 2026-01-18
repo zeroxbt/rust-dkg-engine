@@ -58,6 +58,15 @@ impl From<&str> for BlockchainId {
     }
 }
 
+/// ECDSA signature components for EVM transactions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignatureComponents {
+    pub v: u8,
+    pub r: String,
+    pub s: String,
+    pub vs: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct BlockchainConfig {
     #[serde(default)]
@@ -301,7 +310,7 @@ impl BlockchainManager {
         &self,
         blockchain: &BlockchainId,
         message_hash: &str,
-    ) -> Result<Vec<u8>, BlockchainError> {
+    ) -> Result<SignatureComponents, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
                 blockchain_id: blockchain.as_str().to_string(),

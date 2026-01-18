@@ -485,7 +485,10 @@ impl EvmChain {
         }
     }
 
-    pub async fn sign_message(&self, message_hash: &str) -> Result<Vec<u8>, BlockchainError> {
+    pub async fn sign_message(
+        &self,
+        message_hash: &str,
+    ) -> Result<crate::SignatureComponents, BlockchainError> {
         use alloy::signers::Signer;
 
         // Decode the hex message hash
@@ -515,7 +518,20 @@ impl EvmChain {
             }
         })?;
 
-        // Return the signature as bytes (r, s, v format - 65 bytes total)
-        Ok(signature.as_bytes().to_vec())
+        // Extract r, s, v components directly from alloy's Signature type
+        // v() returns bool (y_parity), convert to 27/28 format
+        let v = if signature.v() { 28u8 } else { 27u8 };
+        let r = format!("0x{}", hex::encode(signature.r().to_be_bytes::<32>()));
+        let s_bytes = signature.s().to_be_bytes::<32>();
+        let s = format!("0x{}", hex::encode(s_bytes));
+
+        // Compute vs (compact signature format: s with the parity bit from v encoded in the high bit)
+        let mut vs_bytes = s_bytes;
+        if v == 28 {
+            vs_bytes[0] |= 0x80;
+        }
+        let vs = format!("0x{}", hex::encode(vs_bytes));
+
+        Ok(crate::SignatureComponents { v, r, s, vs })
     }
 }

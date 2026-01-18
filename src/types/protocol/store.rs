@@ -1,4 +1,4 @@
-use blockchain::{BlockchainId, utils::SignatureComponents};
+use blockchain::{BlockchainId, SignatureComponents};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -1,8 +1,6 @@
 use alloy::primitives::{Address, U256, hex, keccak256};
 use sha2::{Digest, Sha256};
 
-use crate::error::BlockchainError;
-
 pub fn from_wei(wei: &str) -> String {
     let wei_value = U256::from_str_radix(wei, 10).unwrap_or(U256::ZERO);
     alloy::primitives::utils::format_ether(wei_value)
@@ -47,43 +45,5 @@ pub fn sha256_hex(input: &[u8]) -> String {
     hasher.update(input);
     let digest = hasher.finalize();
     to_hex_string(digest)
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SignatureComponents {
-    pub v: u8,
-    pub r: String,
-    pub s: String,
-    pub vs: String,
-}
-
-pub fn split_signature(flat_signature: Vec<u8>) -> Result<SignatureComponents, BlockchainError> {
-    if flat_signature.len() != 65 {
-        return Err(BlockchainError::Custom(format!(
-            "Invalid signature length: expected 65 bytes, got {}",
-            flat_signature.len()
-        )));
-    }
-
-    let r_bytes: [u8; 32] = flat_signature[0..32]
-        .try_into()
-        .map_err(|_| BlockchainError::Custom("Invalid r length".to_string()))?;
-    let s_bytes: [u8; 32] = flat_signature[32..64]
-        .try_into()
-        .map_err(|_| BlockchainError::Custom("Invalid s length".to_string()))?;
-    let v = flat_signature[64];
-
-    let r = format!("0x{}", hex::encode(r_bytes));
-    let s = format!("0x{}", hex::encode(s_bytes));
-
-    // Compute vs (compact signature format: s with the parity bit from v encoded in the high bit)
-    let mut vs_bytes = s_bytes;
-    // If v is 28 (or 1 in the 0/1 encoding), set the high bit of s
-    if v == 28 || v == 1 {
-        vs_bytes[0] |= 0x80;
-    }
-    let vs = format!("0x{}", hex::encode(vs_bytes));
-
-    Ok(SignatureComponents { v, r, s, vs })
 }
 

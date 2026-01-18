@@ -75,7 +75,6 @@ impl SendPublishRequestsCommandHandler {
             .blockchain_manager
             .sign_message(blockchain, dataset_root_hex)
             .await?;
-        let signature = blockchain::utils::split_signature(signature)?;
 
         self.repository_manager
             .signature_repository()
@@ -123,7 +122,6 @@ impl SendPublishRequestsCommandHandler {
                 &format!("0x{}", blockchain::utils::to_hex_string(message_hash)),
             )
             .await?;
-        let signature = blockchain::utils::split_signature(signature)?;
 
         self.repository_manager
             .signature_repository()

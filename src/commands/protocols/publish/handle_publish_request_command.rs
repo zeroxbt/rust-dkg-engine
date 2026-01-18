@@ -334,31 +334,6 @@ impl CommandHandler<HandlePublishRequestCommandData> for HandlePublishRequestCom
             }
         };
 
-        let signature = match blockchain::utils::split_signature(signature) {
-            Ok(sig) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    "Signature split successfully"
-                );
-                sig
-            }
-            Err(e) => {
-                tracing::error!(
-                    operation_id = %operation_id,
-                    error = %e,
-                    "Failed to split signature - sending NACK"
-                );
-                self.send_nack(
-                    channel,
-                    operation_id,
-                    &format!("Failed to process signature: {}", e),
-                )
-                .await;
-
-                return CommandExecutionResult::Completed;
-            }
-        };
-
         let message = ResponseMessage {
             header: ResponseMessageHeader {
                 operation_id,
