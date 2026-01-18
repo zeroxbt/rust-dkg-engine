@@ -9,8 +9,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     commands::{
-        command_executor::CommandExecutionRequest,
-        command_registry::Command,
+        command_executor::CommandExecutionRequest, command_registry::Command,
         operations::publish::protocols::finality::handle_finality_request_command::HandleFinalityRequestCommandData,
     },
     context::Context,
@@ -63,9 +62,9 @@ impl FinalityRpcController {
 
         if let Err(e) = self
             .schedule_command_tx
-            .send(CommandExecutionRequest::new(Command::HandleFinalityRequest(
-                command_data,
-            )))
+            .send(CommandExecutionRequest::new(
+                Command::HandleFinalityRequest(command_data),
+            ))
             .await
         {
             tracing::error!(

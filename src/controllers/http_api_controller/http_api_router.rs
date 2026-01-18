@@ -13,6 +13,7 @@ use tokio::{net::TcpListener, sync::Mutex};
 use tower_http::cors::*;
 
 use super::{
+    finality_status_http_api_controller::FinalityStatusHttpApiController,
     info_http_api_controller::InfoHttpApiController,
     publish_http_api_controller::PublishHttpApiController,
 };
@@ -38,6 +39,10 @@ impl HttpApiRouter {
             .layer(cors_layer)
             .route("/info", get(InfoHttpApiController::handle_request))
             .route("/publish", post(PublishHttpApiController::handle_request))
+            .route(
+                "/finality",
+                get(FinalityStatusHttpApiController::handle_request),
+            )
             // .route("/get", post(GetController::handle_request))
             .with_state(Arc::clone(context));
 
