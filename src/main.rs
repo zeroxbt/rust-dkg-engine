@@ -2,6 +2,7 @@ mod commands;
 mod config;
 mod context;
 mod controllers;
+mod blockchain_event_spec;
 mod error;
 mod network;
 mod services;

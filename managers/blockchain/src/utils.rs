@@ -3,15 +3,10 @@ use alloy::{
     primitives::{Address, U256, hex, keccak256},
     providers::PendingTransactionBuilder,
     rpc::types::TransactionReceipt,
-    sol_types::SolEventInterface,
 };
 use sha2::{Digest, Sha256};
 
 use crate::error::BlockchainError;
-
-pub fn decode_event<E: SolEventInterface>(log: &alloy::rpc::types::Log) -> Option<E> {
-    E::decode_log(log.as_ref()).ok().map(|decoded| decoded.data)
-}
 
 pub fn from_wei(wei: &str) -> String {
     let wei_value = U256::from_str_radix(wei, 10).unwrap_or(U256::ZERO);
