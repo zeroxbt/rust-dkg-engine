@@ -57,5 +57,4 @@ evm_management_wallet_private_key = "{{MANAGEMENT_WALLET_PRIVATE}}"
 rpc_endpoints = ["ws://localhost:8545", "http://localhost:8545"]
 
 # Node identity
-shares_token_name = "{{NODE_NAME}}"
-shares_token_symbol = "{{NODE_SYMBOL}}"
+node_name = "{{NODE_NAME}}"

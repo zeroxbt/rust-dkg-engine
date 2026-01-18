@@ -23,6 +23,26 @@ use crate::{
 
 const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
 
+/// Format a balance in wei to a human-readable string with the specified decimals.
+pub fn format_balance(wei: U256, decimals: u8) -> String {
+    let divisor = U256::from(10u64).pow(U256::from(decimals));
+
+    if wei.is_zero() {
+        return "0".to_string();
+    }
+
+    let whole = wei / divisor;
+    let fraction = wei % divisor;
+
+    if fraction.is_zero() {
+        whole.to_string()
+    } else {
+        let fraction_str = format!("{:0>width$}", fraction, width = decimals as usize);
+        let trimmed = fraction_str.trim_end_matches('0');
+        format!("{}.{}", whole, trimmed)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ContractName {
     Hub,
@@ -90,12 +110,20 @@ pub struct EvmChain {
     contracts: RwLock<Contracts>,
     identity_id: Option<u128>,
     gas_config: GasConfig,
+    native_token_decimals: u8,
+    native_token_ticker: &'static str,
+    is_development_chain: bool,
+    requires_evm_account_mapping: bool,
 }
 
 impl EvmChain {
     pub async fn new(
         config: BlockchainConfig,
         gas_config: GasConfig,
+        native_token_decimals: u8,
+        native_token_ticker: &'static str,
+        is_development_chain: bool,
+        requires_evm_account_mapping: bool,
     ) -> Result<Self, BlockchainError> {
         let provider =
             initialize_provider(&config)
@@ -111,11 +139,24 @@ impl EvmChain {
             })?;
 
         tracing::info!(
-            "Initialized {} blockchain with gas config: default={} wei, max={} wei",
+            "Initialized {} blockchain with gas config: default={} wei, max={} wei, native token: {} ({} decimals)",
             config.blockchain_id(),
             gas_config.default_gas_price,
-            gas_config.max_gas_price
+            gas_config.max_gas_price,
+            native_token_ticker,
+            native_token_decimals
         );
+
+        // Warn if this chain requires EVM account mapping (NeuroWeb)
+        // Full validation would require Substrate integration (subxt)
+        if requires_evm_account_mapping {
+            tracing::warn!(
+                "{}: This chain requires EVM account mapping validation. \
+                 Ensure operational wallets are properly mapped to Substrate accounts. \
+                 (Substrate integration for automatic validation not yet implemented)",
+                config.blockchain_id()
+            );
+        }
 
         Ok(Self {
             provider,
@@ -123,6 +164,10 @@ impl EvmChain {
             contracts: RwLock::new(contracts),
             identity_id: None,
             gas_config,
+            native_token_decimals,
+            native_token_ticker,
+            is_development_chain,
+            requires_evm_account_mapping,
         })
     }
 
@@ -152,6 +197,42 @@ impl EvmChain {
 
     pub fn gas_config(&self) -> &GasConfig {
         &self.gas_config
+    }
+
+    /// Returns the number of decimal places for the native token.
+    pub fn native_token_decimals(&self) -> u8 {
+        self.native_token_decimals
+    }
+
+    /// Returns the native token ticker symbol.
+    pub fn native_token_ticker(&self) -> &'static str {
+        self.native_token_ticker
+    }
+
+    /// Returns true if this is a development/test chain.
+    pub fn is_development_chain(&self) -> bool {
+        self.is_development_chain
+    }
+
+    /// Returns true if this chain requires EVM account mapping validation.
+    pub fn requires_evm_account_mapping(&self) -> bool {
+        self.requires_evm_account_mapping
+    }
+
+    /// Get the native token balance formatted with proper decimals.
+    ///
+    /// NeuroWeb uses 12 decimals while most other chains use 18.
+    pub async fn get_native_token_balance(
+        &self,
+        address: Address,
+    ) -> Result<String, BlockchainError> {
+        let balance = self
+            .provider
+            .get_balance(address)
+            .await
+            .map_err(|e| BlockchainError::Custom(format!("Failed to get balance: {}", e)))?;
+
+        Ok(format_balance(balance, self.native_token_decimals))
     }
 
     /// Get the current gas price.
@@ -354,15 +435,22 @@ impl EvmChain {
 
     pub async fn create_profile(&self, peer_id: &str) -> Result<(), BlockchainError> {
         let config = self.config();
+
+        let node_name = config.node_name();
+        if node_name.is_empty() {
+            return Err(BlockchainError::Custom(
+                "Missing node_name in blockchain configuration".to_string(),
+            ));
+        }
+
         let admin_wallet = config
-            .evm_management_wallet_public_key
+            .evm_management_wallet_public_key()
             .parse::<Address>()
             .map_err(|_| BlockchainError::InvalidAddress {
-                address: config.evm_management_wallet_public_key.clone(),
+                address: config.evm_management_wallet_public_key().to_string(),
             })?;
         let peer_id_bytes = Bytes::from(peer_id.as_bytes().to_vec());
-        let shares_token_name = config.shares_token_name.to_string();
-        let shares_token_symbol = config.shares_token_symbol.to_string();
+        let operator_fee = config.operator_fee().unwrap_or(0);
 
         let contracts = self.contracts().await;
 
@@ -375,10 +463,10 @@ impl EvmChain {
             .profile()
             .createProfile(
                 admin_wallet,
-                vec![],
-                shares_token_name.clone(), // nodeName
-                peer_id_bytes,             // nodeId
-                0u16,                      // initialOperatorFee
+                vec![], // additional operational wallets (we only support single wallet)
+                node_name.into(), // nodeName
+                peer_id_bytes, // nodeId (peer ID as bytes)
+                operator_fee as u16,
             )
             .gas_price(gas_price.to::<u128>());
 
@@ -388,9 +476,9 @@ impl EvmChain {
             Ok(pending_tx) => {
                 handle_contract_call(Ok(pending_tx)).await?;
                 tracing::info!(
-                    "Profile created with token name: {}, token symbol: {}.",
-                    shares_token_name,
-                    shares_token_symbol
+                    "Profile created with name: {}, operator fee: {}%",
+                    node_name,
+                    operator_fee
                 );
                 Ok(())
             }

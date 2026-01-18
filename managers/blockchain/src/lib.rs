@@ -70,22 +70,68 @@ pub struct SignatureComponents {
     pub vs: String,
 }
 
+/// Configuration for a blockchain network.
+///
+/// This struct contains all the settings needed to connect to and operate on
+/// a specific blockchain network.
 #[derive(Debug, Clone, Deserialize)]
 pub struct BlockchainConfig {
+    /// Optional explicit blockchain ID. If not provided, derived from chain type and chain_id.
     #[serde(default)]
     blockchain_id: Option<BlockchainId>,
+
+    /// The chain ID (e.g., 31337 for Hardhat, 100 for Gnosis, 2043 for NeuroWeb).
     chain_id: u64,
+
+    /// Private key for the operational wallet (used for transactions).
     evm_operational_wallet_private_key: String,
+
+    /// Public address for the operational wallet.
     evm_operational_wallet_public_key: String,
+
+    /// Public address for the management wallet (admin operations).
     evm_management_wallet_public_key: String,
+
+    /// Private key for the management wallet (optional, only needed for staking/admin ops).
     evm_management_wallet_private_key: Option<String>,
+
+    /// Hub contract address for this network.
     hub_contract_address: String,
+
+    /// RPC endpoints for EVM JSON-RPC calls (supports HTTP and WebSocket).
+    /// Multiple endpoints enable fallback if primary fails.
     rpc_endpoints: Vec<String>,
-    shares_token_name: String,
-    shares_token_symbol: String,
+
+    /// Node name used in profile creation.
+    /// This identifies the node on the network.
+    node_name: String,
+
     /// URL for gas price oracle (optional).
+    /// Used by Gnosis to fetch current gas prices from Blockscout.
     #[serde(default)]
     gas_price_oracle_url: Option<String>,
+
+    /// Operator fee percentage for delegators (0-100).
+    /// This is the percentage of rewards kept by the node operator.
+    /// Only required on first profile creation.
+    #[serde(default)]
+    operator_fee: Option<u8>,
+
+    /// Initial stake amount in whole tokens (e.g., 50000 for 50,000 TRAC).
+    /// Only used in development for automatic staking.
+    #[serde(default)]
+    initial_stake_amount: Option<u64>,
+
+    /// Initial ask price in tokens (e.g., 0.2 TRAC per unit).
+    /// Only used in development for automatic ask setting.
+    #[serde(default)]
+    initial_ask_amount: Option<f64>,
+
+    /// Substrate RPC endpoints for parachain operations (NeuroWeb only).
+    /// Used for EVM account mapping validation.
+    /// Supports WebSocket (wss://) and HTTP (https://) endpoints.
+    #[serde(default)]
+    substrate_rpc_endpoints: Option<Vec<String>>,
 }
 
 impl BlockchainConfig {
@@ -123,16 +169,28 @@ impl BlockchainConfig {
         &self.rpc_endpoints
     }
 
-    pub fn shares_token_name(&self) -> &str {
-        &self.shares_token_name
-    }
-
-    pub fn shares_token_symbol(&self) -> &str {
-        &self.shares_token_symbol
+    pub fn node_name(&self) -> &str {
+        &self.node_name
     }
 
     pub fn gas_price_oracle_url(&self) -> Option<&str> {
         self.gas_price_oracle_url.as_deref()
+    }
+
+    pub fn operator_fee(&self) -> Option<u8> {
+        self.operator_fee
+    }
+
+    pub fn initial_stake_amount(&self) -> Option<u64> {
+        self.initial_stake_amount
+    }
+
+    pub fn initial_ask_amount(&self) -> Option<f64> {
+        self.initial_ask_amount
+    }
+
+    pub fn substrate_rpc_endpoints(&self) -> Option<&Vec<String>> {
+        self.substrate_rpc_endpoints.as_ref()
     }
 }
 
@@ -185,11 +243,51 @@ impl Blockchain {
             Blockchain::Base(_) => GasConfig::base(oracle_url),
         }
     }
+
+    /// Native token decimal places.
+    pub fn native_token_decimals(&self) -> u8 {
+        match self {
+            Blockchain::NeuroWeb(_) => 12, // NEURO uses 12 decimals
+            _ => 18,                       // Standard EVM chains use 18
+        }
+    }
+
+    /// Native token ticker symbol.
+    pub fn native_token_ticker(&self) -> &'static str {
+        match self {
+            Blockchain::Hardhat(_) => "ETH",
+            Blockchain::Gnosis(_) => "xDAI",
+            Blockchain::NeuroWeb(_) => "NEURO",
+            Blockchain::Base(_) => "ETH",
+        }
+    }
+
+    /// Whether this is a development/test chain.
+    pub fn is_development_chain(&self) -> bool {
+        matches!(self, Blockchain::Hardhat(_))
+    }
+
+    /// Whether this chain requires EVM account mapping validation.
+    ///
+    /// On NeuroWeb, EVM addresses must be mapped to Substrate accounts.
+    /// Note: Validation not yet implemented (requires subxt integration).
+    pub fn requires_evm_account_mapping(&self) -> bool {
+        matches!(self, Blockchain::NeuroWeb(_))
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct BlockchainManagerConfig(pub Vec<Blockchain>);
 
+/// Manages multiple blockchain connections.
+///
+/// All EVM chains share the same implementation (`EvmChain`) with chain-specific
+/// behavior determined by the `Blockchain` enum. This keeps the code simple while
+/// still supporting chain-specific differences like:
+/// - Native token decimals (NeuroWeb uses 12, others use 18)
+/// - Native token ticker symbols
+/// - Development chain flag
+/// - EVM account mapping requirements (NeuroWeb)
 pub struct BlockchainManager {
     blockchains: HashMap<BlockchainId, EvmChain>,
 }
@@ -197,6 +295,7 @@ pub struct BlockchainManager {
 impl BlockchainManager {
     pub async fn new(config: &BlockchainManagerConfig) -> Result<Self, BlockchainError> {
         let mut blockchains = HashMap::new();
+
         for blockchain in config.0.iter() {
             let blockchain_config = blockchain.get_config();
             let id_prefix = blockchain.default_id_prefix();
@@ -208,8 +307,15 @@ impl BlockchainManager {
             });
             config.blockchain_id = Some(blockchain_id.clone());
 
-            let evm_chain = blockchains::evm_chain::EvmChain::new(config, gas_config).await?;
-
+            let evm_chain = EvmChain::new(
+                config,
+                gas_config,
+                blockchain.native_token_decimals(),
+                blockchain.native_token_ticker(),
+                blockchain.is_development_chain(),
+                blockchain.requires_evm_account_mapping(),
+            )
+            .await?;
             blockchains.insert(blockchain_id, evm_chain);
         }
 
@@ -353,8 +459,6 @@ impl BlockchainManager {
             .await
     }
 
-    // Note: get_assertion_id_by_index removed - ContentAssetStorage not currently in use
-
     pub async fn sign_message(
         &self,
         blockchain: &BlockchainId,
@@ -416,5 +520,167 @@ impl BlockchainManager {
             }
         })?;
         Ok(blockchain_impl.gas_config())
+    }
+
+    /// Get the native token decimals for a blockchain.
+    pub fn get_native_token_decimals(
+        &self,
+        blockchain: &BlockchainId,
+    ) -> Result<u8, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        Ok(blockchain_impl.native_token_decimals())
+    }
+
+    /// Get the native token ticker for a blockchain.
+    pub fn get_native_token_ticker(
+        &self,
+        blockchain: &BlockchainId,
+    ) -> Result<&'static str, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        Ok(blockchain_impl.native_token_ticker())
+    }
+
+    /// Check if a blockchain is a development chain.
+    pub fn is_development_chain(&self, blockchain: &BlockchainId) -> Result<bool, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        Ok(blockchain_impl.is_development_chain())
+    }
+
+    /// Get the native token balance for an address, formatted with correct decimals.
+    pub async fn get_native_token_balance(
+        &self,
+        blockchain: &BlockchainId,
+        address: Address,
+    ) -> Result<String, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl.get_native_token_balance(address).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use blockchains::evm_chain::format_balance;
+
+    use super::*;
+
+    fn dummy_config() -> BlockchainConfig {
+        BlockchainConfig {
+            blockchain_id: None,
+            chain_id: 1,
+            evm_operational_wallet_private_key: String::new(),
+            evm_operational_wallet_public_key: String::new(),
+            evm_management_wallet_public_key: String::new(),
+            evm_management_wallet_private_key: None,
+            hub_contract_address: String::new(),
+            rpc_endpoints: vec![],
+            node_name: String::new(),
+            gas_price_oracle_url: None,
+            operator_fee: None,
+            initial_stake_amount: None,
+            initial_ask_amount: None,
+            substrate_rpc_endpoints: None,
+        }
+    }
+
+    #[test]
+    fn test_blockchain_native_token_decimals() {
+        assert_eq!(
+            Blockchain::Hardhat(dummy_config()).native_token_decimals(),
+            18
+        );
+        assert_eq!(
+            Blockchain::Gnosis(dummy_config()).native_token_decimals(),
+            18
+        );
+        assert_eq!(
+            Blockchain::NeuroWeb(dummy_config()).native_token_decimals(),
+            12
+        );
+        assert_eq!(Blockchain::Base(dummy_config()).native_token_decimals(), 18);
+    }
+
+    #[test]
+    fn test_blockchain_native_token_ticker() {
+        assert_eq!(
+            Blockchain::Hardhat(dummy_config()).native_token_ticker(),
+            "ETH"
+        );
+        assert_eq!(
+            Blockchain::Gnosis(dummy_config()).native_token_ticker(),
+            "xDAI"
+        );
+        assert_eq!(
+            Blockchain::NeuroWeb(dummy_config()).native_token_ticker(),
+            "NEURO"
+        );
+        assert_eq!(
+            Blockchain::Base(dummy_config()).native_token_ticker(),
+            "ETH"
+        );
+    }
+
+    #[test]
+    fn test_blockchain_is_development_chain() {
+        assert!(Blockchain::Hardhat(dummy_config()).is_development_chain());
+        assert!(!Blockchain::Gnosis(dummy_config()).is_development_chain());
+        assert!(!Blockchain::NeuroWeb(dummy_config()).is_development_chain());
+        assert!(!Blockchain::Base(dummy_config()).is_development_chain());
+    }
+
+    #[test]
+    fn test_blockchain_requires_evm_account_mapping() {
+        assert!(!Blockchain::Hardhat(dummy_config()).requires_evm_account_mapping());
+        assert!(!Blockchain::Gnosis(dummy_config()).requires_evm_account_mapping());
+        assert!(Blockchain::NeuroWeb(dummy_config()).requires_evm_account_mapping());
+        assert!(!Blockchain::Base(dummy_config()).requires_evm_account_mapping());
+    }
+
+    #[test]
+    fn test_format_balance_18_decimals() {
+        // 1 ETH = 10^18 wei
+        let one_eth = U256::from(10u64).pow(U256::from(18u64));
+        assert_eq!(format_balance(one_eth, 18), "1");
+
+        // 1.5 ETH
+        let one_point_five = one_eth + one_eth / U256::from(2u64);
+        assert_eq!(format_balance(one_point_five, 18), "1.5");
+
+        // 0 ETH
+        assert_eq!(format_balance(U256::ZERO, 18), "0");
+
+        // 0.001 ETH = 10^15 wei
+        let small = U256::from(10u64).pow(U256::from(15u64));
+        assert_eq!(format_balance(small, 18), "0.001");
+    }
+
+    #[test]
+    fn test_format_balance_12_decimals() {
+        // 1 NEURO = 10^12 wei (12 decimals)
+        let one_neuro = U256::from(10u64).pow(U256::from(12u64));
+        assert_eq!(format_balance(one_neuro, 12), "1");
+
+        // 1.5 NEURO
+        let one_point_five = one_neuro + one_neuro / U256::from(2u64);
+        assert_eq!(format_balance(one_point_five, 12), "1.5");
+
+        // 0.001 NEURO = 10^9 wei
+        let small = U256::from(10u64).pow(U256::from(9u64));
+        assert_eq!(format_balance(small, 12), "0.001");
     }
 }

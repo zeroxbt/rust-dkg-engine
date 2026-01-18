@@ -54,12 +54,59 @@ password = "" # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # ============================================
 # REQUIRED: Configure your blockchain networks in .origintrail_noderc.toml
 # See config/development.toml for example structure
+#
+# Supported chain types: Hardhat, Gnosis, NeuroWeb, Base
 
-# Example:
+# --------------------------------------------
+# NeuroWeb (OriginTrail Parachain) - Mainnet
+# --------------------------------------------
 # [[managers.blockchain]]
-# [managers.blockchain.OriginTrailParachain]
-# blockchain_id = "origintrail-parachain:2043"
+# [managers.blockchain.NeuroWeb]
+# blockchain_id = "neuroweb:2043"
 # chain_id = 2043
-# hub_contract_address = "0x..."
-# rpc_endpoints = ["https://..."]
-# initial_stake_amount = 50_000
+# hub_contract_address = "0x0957e25BD33034948abc28204ddA54b6E1142D6F"
+# rpc_endpoints = [
+#     "https://astrosat-parachain-rpc.origin-trail.network",
+#     "https://astrosat.origintrail.network/",
+#     "https://astrosat-2.origintrail.network/"
+# ]
+# # Substrate RPC for EVM account mapping validation (required for NeuroWeb)
+# substrate_rpc_endpoints = [
+#     "wss://parachain-rpc.origin-trail.network"
+# ]
+# operator_fee = 0
+# evm_operational_wallet_public_key = "0x..."
+# evm_operational_wallet_private_key = ""  # Use env: OT_MANAGERS__BLOCKCHAIN__0__NEUROWEB__EVM_OPERATIONAL_WALLET_PRIVATE_KEY
+# evm_management_wallet_public_key = "0x..."
+# node_name = "YourNodeName"
+
+# --------------------------------------------
+# Gnosis Chain - Mainnet
+# --------------------------------------------
+# [[managers.blockchain]]
+# [managers.blockchain.Gnosis]
+# blockchain_id = "gnosis:100"
+# chain_id = 100
+# hub_contract_address = "0x882D0BF07F956b1b94BBfe9E77F47c6fc7D4EC8f"
+# rpc_endpoints = ["https://rpc.gnosischain.com"]
+# gas_price_oracle_url = "https://gnosis.blockscout.com/api/v1/gas-price-oracle"
+# operator_fee = 0
+# evm_operational_wallet_public_key = "0x..."
+# evm_operational_wallet_private_key = ""  # Use env var
+# evm_management_wallet_public_key = "0x..."
+# node_name = "YourNodeName"
+
+# --------------------------------------------
+# Base - Mainnet
+# --------------------------------------------
+# [[managers.blockchain]]
+# [managers.blockchain.Base]
+# blockchain_id = "base:8453"
+# chain_id = 8453
+# hub_contract_address = "0x99Aa571fD5e681c2D27ee08A7b7989DB02541d13"
+# rpc_endpoints = ["https://mainnet.base.org"]
+# operator_fee = 0
+# evm_operational_wallet_public_key = "0x..."
+# evm_operational_wallet_private_key = ""  # Use env var
+# evm_management_wallet_public_key = "0x..."
+# node_name = "YourNodeName"
