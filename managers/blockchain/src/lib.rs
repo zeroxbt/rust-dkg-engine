@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use blockchains::evm_chain::EvmChain;
 pub use blockchains::{
-    evm_chain::{ContractLog, ContractName},
     blockchain_creator::{Hub, KnowledgeCollectionStorage, ParametersStorage},
+    evm_chain::{ContractLog, ContractName},
 };
 
 // Re-export event types for use by consumers

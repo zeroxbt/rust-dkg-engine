@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
+mod blockchain_event_spec;
+
 use blockchain::{
     AssetStorageChangedFilter, BlockchainId, BlockchainManager, ContractChangedFilter, ContractLog,
     ContractName, KnowledgeCollectionCreatedFilter, NewAssetStorageFilter, NewContractFilter,
     ParameterChangedFilter, error::BlockchainError, utils::to_hex_string,
 };
+use blockchain_event_spec::{ContractEvent, decode_contract_event, monitored_contract_events};
 use repository::RepositoryManager;
 
-use crate::{
-    blockchain_event_spec::{ContractEvent, decode_contract_event, monitored_contract_events},
-    context::Context,
-};
+use crate::context::Context;
 
 const EVENT_FETCH_INTERVAL_MAINNET_MS: u64 = 10_000;
 const EVENT_FETCH_INTERVAL_DEV_MS: u64 = 4_000;
@@ -21,7 +21,6 @@ const EVENT_FETCH_INTERVAL_DEV_MS: u64 = 4_000;
 /// In dev/test environments, this is set to u64::MAX (effectively unlimited).
 const MAX_BLOCKS_TO_SYNC_MAINNET: u64 = 300; // ~1 hour at 12s blocks
 const MAX_BLOCKS_TO_SYNC_DEV: u64 = u64::MAX; // unlimited for dev
-
 
 pub struct BlockchainEventController {
     blockchain_manager: Arc<BlockchainManager>,

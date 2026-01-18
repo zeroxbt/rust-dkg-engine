@@ -2,7 +2,6 @@ mod commands;
 mod config;
 mod context;
 mod controllers;
-mod blockchain_event_spec;
 mod error;
 mod network;
 mod services;
@@ -12,10 +11,7 @@ use std::sync::Arc;
 
 use ::network::NetworkManager;
 use blockchain::BlockchainManager;
-use commands::{
-    command_executor::{CommandExecutionRequest, CommandExecutor},
-    command_registry::Command,
-};
+use commands::command_executor::{CommandExecutionRequest, CommandExecutor};
 use config::ManagersConfig;
 use context::Context;
 use controllers::{
