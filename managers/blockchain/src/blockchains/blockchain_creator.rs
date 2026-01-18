@@ -71,11 +71,12 @@ use std::{num::NonZeroUsize, sync::Arc};
 use alloy::{
     network::{Ethereum, EthereumWallet},
     primitives::Address,
-    providers::{DynProvider, Provider, ProviderBuilder},
+    providers::{DynProvider, Provider, ProviderBuilder, WsConnect},
     rpc::client::RpcClient,
     signers::local::PrivateKeySigner,
     sol,
     transports::{
+        BoxTransport, IntoBoxTransport,
         http::{Http, reqwest::Url},
         layers::FallbackLayer,
     },
@@ -191,48 +192,54 @@ impl Contracts {
     }
 }
 
-pub(crate) async fn initialize_provider(
-    config: &BlockchainConfig,
+/// Creates a provider with the given wallet and RPC endpoints.
+/// Supports both HTTP and WebSocket endpoints with automatic failover.
+pub(crate) async fn initialize_provider_with_wallet(
+    rpc_endpoints: &[String],
+    wallet: EthereumWallet,
 ) -> Result<BlockchainProvider, BlockchainError> {
-    let signer: PrivateKeySigner =
-        config
-            .evm_operational_wallet_private_key
-            .parse()
-            .map_err(|e| BlockchainError::InvalidPrivateKey {
-                key_length: config.evm_operational_wallet_private_key.len(),
-                source: e,
-            })?;
-    let wallet = EthereumWallet::from(signer);
-
-    // Collect all valid HTTP transports
-    let mut transports = Vec::new();
+    // Collect all valid transports (HTTP and WebSocket)
+    let mut transports: Vec<BoxTransport> = Vec::new();
     let mut valid_endpoints = Vec::new();
 
-    for endpoint in &config.rpc_endpoints {
-        if endpoint.starts_with("ws") {
-            tracing::warn!("Skipping WebSocket RPC (not yet supported): {}", endpoint);
-            continue;
-        }
-
-        match endpoint.parse::<Url>() {
-            Ok(url) => {
-                transports.push(Http::new(url));
-                valid_endpoints.push(endpoint.clone());
+    for endpoint in rpc_endpoints {
+        if endpoint.starts_with("ws://") || endpoint.starts_with("wss://") {
+            // WebSocket endpoint - connect and box the transport
+            let ws_connect = WsConnect::new(endpoint);
+            match RpcClient::connect_pubsub(ws_connect).await {
+                Ok(client) => {
+                    transports.push(client.transport().clone().into_box_transport());
+                    valid_endpoints.push(endpoint.clone());
+                    tracing::debug!("WebSocket RPC endpoint added: {}", endpoint);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to connect to WebSocket RPC '{}': {}", endpoint, e);
+                }
             }
-            Err(e) => {
-                tracing::warn!("Invalid RPC URL '{}': {}", endpoint, e);
+        } else {
+            // HTTP endpoint
+            match endpoint.parse::<Url>() {
+                Ok(url) => {
+                    transports.push(Http::new(url).into_box_transport());
+                    valid_endpoints.push(endpoint.clone());
+                    tracing::debug!("HTTP RPC endpoint added: {}", endpoint);
+                }
+                Err(e) => {
+                    tracing::warn!("Invalid RPC URL '{}': {}", endpoint, e);
+                }
             }
         }
     }
 
     if transports.is_empty() {
         return Err(BlockchainError::RpcConnectionFailed {
-            attempts: config.rpc_endpoints.len(),
+            attempts: rpc_endpoints.len(),
         });
     }
 
     // Configure fallback layer:
     // - Queries 1 transport at a time (pure failover, no parallel requests)
+    // - Automatically ranks by latency + success rate
     // - Falls back to next transport only on failure
     let fallback_layer = FallbackLayer::default().with_active_transport_count(NonZeroUsize::MIN);
 
@@ -265,6 +272,22 @@ pub(crate) async fn initialize_provider(
             })
         }
     }
+}
+
+/// Creates a provider using the operational wallet from config.
+pub(crate) async fn initialize_provider(
+    config: &BlockchainConfig,
+) -> Result<BlockchainProvider, BlockchainError> {
+    let signer: PrivateKeySigner = config
+        .evm_operational_wallet_private_key
+        .parse()
+        .map_err(|e| BlockchainError::InvalidPrivateKey {
+            key_length: config.evm_operational_wallet_private_key.len(),
+            source: e,
+        })?;
+    let wallet = EthereumWallet::from(signer);
+
+    initialize_provider_with_wallet(&config.rpc_endpoints, wallet).await
 }
 
 pub(crate) async fn initialize_contracts(

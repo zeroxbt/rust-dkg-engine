@@ -3,7 +3,7 @@ use std::str::FromStr;
 use alloy::{
     network::EthereumWallet,
     primitives::{Address, B256, Bytes, hex},
-    providers::{Provider, ProviderBuilder},
+    providers::Provider,
     rpc::types::Filter,
     signers::local::PrivateKeySigner,
 };
@@ -13,6 +13,7 @@ use crate::{
     BlockchainConfig, BlockchainId,
     blockchains::blockchain_creator::{
         BlockchainProvider, Contracts, Staking, Token, initialize_contracts, initialize_provider,
+        initialize_provider_with_wallet,
         sharding_table::ShardingTableLib::NodeInfo,
     },
     error::BlockchainError,
@@ -351,13 +352,9 @@ impl EvmChain {
         })?;
         let management_wallet = EthereumWallet::from(management_signer);
 
-        let endpoint_url = config.rpc_endpoints()[0]
-            .parse()
-            .map_err(|e| BlockchainError::Custom(format!("Failed to parse RPC endpoint: {}", e)))?;
-
-        let management_provider = ProviderBuilder::new()
-            .wallet(management_wallet)
-            .connect_http(endpoint_url);
+        // Create provider with management wallet using same RPC endpoints (HTTP + WS fallback)
+        let management_provider =
+            initialize_provider_with_wallet(config.rpc_endpoints(), management_wallet).await?;
 
         // Get contract addresses from existing contracts
         let contracts = self.contracts().await;

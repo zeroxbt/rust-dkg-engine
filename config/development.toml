@@ -21,7 +21,7 @@ port = 9000
 
 # Bootstrap nodes for local development network
 bootstrap = [
-    "/ip4/127.0.0.1/tcp/9102/p2p/12D3KooWF1nhFmNp4F1ni6aL3EHcayULrrEBAuutsgPLVr2poadQ"
+    "/ip4/127.0.0.1/tcp/9102/p2p/12D3KooWF1nhFmNp4F1ni6aL3EHcayULrrEBAuutsgPLVr2poadQ",
 ]
 
 # ============================================
@@ -55,10 +55,10 @@ chain_id = 31337
 hub_contract_address = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
 
 # RPC endpoints
-rpc_endpoints = ["http://127.0.0.1:8545"]
+rpc_endpoints = ["ws://localhost:8545", "http://localhost:8545"]
 
 # Staking configuration
-initial_stake_amount = 50_000  # 50,000 tokens
+initial_stake_amount = 50_000 # 50,000 tokens
 initial_ask_amount = 0.2
 
 # Operational wallet (used for transactions)

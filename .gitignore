@@ -25,7 +25,7 @@ Temporary Items
 
 .env
 .*origintrail_noderc
-.node*_config*
+.node*_config.toml
 data*/
 dkg-engine/*
 contracts/*
