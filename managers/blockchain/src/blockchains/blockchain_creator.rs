@@ -1,15 +1,35 @@
-use std::sync::Arc;
+// Generated bindings include methods with many parameters; allow for this module.
+#[allow(clippy::too_many_arguments)]
+pub mod knowledge_collection_storage {
+    use alloy::sol;
 
-use alloy::{
-    network::{Ethereum, EthereumWallet},
-    primitives::Address,
-    providers::{DynProvider, Provider, ProviderBuilder},
-    signers::local::PrivateKeySigner,
-    sol,
-};
+    sol!(
+        #[sol(rpc)]
+        KnowledgeCollectionStorage,
+        "../../abi/KnowledgeCollectionStorage.json"
+    );
+}
 
-use crate::{BlockchainConfig, ContractName, error::BlockchainError};
+// Wrap each ABI in its own module to avoid duplicate ShardingTableLib definitions.
+pub mod sharding_table {
+    use alloy::sol;
 
+    sol!(
+        #[sol(rpc)]
+        ShardingTable,
+        "../../abi/ShardingTable.json"
+    );
+}
+
+pub mod sharding_table_storage {
+    use alloy::sol;
+
+    sol!(
+        #[sol(rpc)]
+        ShardingTableStorage,
+        "../../abi/ShardingTableStorage.json"
+    );
+}
 sol!(
     #[sol(rpc)]
     Hub,
@@ -36,12 +56,6 @@ sol!(
 
 sol!(
     #[sol(rpc)]
-    KnowledgeCollectionStorage,
-    "../../abi/KnowledgeCollectionStorage.json"
-);
-
-sol!(
-    #[sol(rpc)]
     Profile,
     "../../abi/Profile.json"
 );
@@ -52,26 +66,20 @@ sol!(
     "../../abi/Token.json"
 );
 
-// Wrap each ABI in its own module to avoid duplicate ShardingTableLib definitions.
-pub mod sharding_table {
-    use alloy::sol;
+use std::sync::Arc;
 
-    sol!(
-        #[sol(rpc)]
-        ShardingTable,
-        "../../abi/ShardingTable.json"
-    );
-}
+use alloy::{
+    network::{Ethereum, EthereumWallet},
+    primitives::Address,
+    providers::{DynProvider, Provider, ProviderBuilder},
+    signers::local::PrivateKeySigner,
+    sol,
+};
+pub use knowledge_collection_storage::KnowledgeCollectionStorage;
+pub use sharding_table::ShardingTable;
+pub use sharding_table_storage::ShardingTableStorage;
 
-pub mod sharding_table_storage {
-    use alloy::sol;
-
-    sol!(
-        #[sol(rpc)]
-        ShardingTableStorage,
-        "../../abi/ShardingTableStorage.json"
-    );
-}
+use crate::{BlockchainConfig, ContractName, error::BlockchainError};
 
 // Use Arc<DynProvider> for thread-safe sharing
 pub type BlockchainProvider = Arc<DynProvider<Ethereum>>;
@@ -84,11 +92,8 @@ pub struct Contracts {
     identity_storage: IdentityStorage::IdentityStorageInstance<BlockchainProvider>,
     parameters_storage: ParametersStorage::ParametersStorageInstance<BlockchainProvider>,
     profile: Profile::ProfileInstance<BlockchainProvider>,
-    sharding_table: sharding_table::ShardingTable::ShardingTableInstance<BlockchainProvider>,
-    sharding_table_storage:
-        sharding_table_storage::ShardingTableStorage::ShardingTableStorageInstance<
-            BlockchainProvider,
-        >,
+    sharding_table: ShardingTable::ShardingTableInstance<BlockchainProvider>,
+    sharding_table_storage: ShardingTableStorage::ShardingTableStorageInstance<BlockchainProvider>,
     token: Token::TokenInstance<BlockchainProvider>,
 }
 
@@ -103,17 +108,13 @@ impl Contracts {
         &self.profile
     }
 
-    pub fn sharding_table(
-        &self,
-    ) -> &sharding_table::ShardingTable::ShardingTableInstance<BlockchainProvider> {
+    pub fn sharding_table(&self) -> &ShardingTable::ShardingTableInstance<BlockchainProvider> {
         &self.sharding_table
     }
 
     pub fn sharding_table_storage(
         &self,
-    ) -> &sharding_table_storage::ShardingTableStorage::ShardingTableStorageInstance<
-        BlockchainProvider,
-    > {
+    ) -> &ShardingTableStorage::ShardingTableStorageInstance<BlockchainProvider> {
         &self.sharding_table_storage
     }
 
@@ -156,14 +157,11 @@ impl Contracts {
                 self.profile = Profile::new(contract_address, provider.clone())
             }
             ContractName::ShardingTable => {
-                self.sharding_table =
-                    sharding_table::ShardingTable::new(contract_address, provider.clone())
+                self.sharding_table = ShardingTable::new(contract_address, provider.clone())
             }
             ContractName::ShardingTableStorage => {
-                self.sharding_table_storage = sharding_table_storage::ShardingTableStorage::new(
-                    contract_address,
-                    provider.clone(),
-                )
+                self.sharding_table_storage =
+                    ShardingTableStorage::new(contract_address, provider.clone())
             }
             ContractName::Hub => {
                 self.hub = Hub::new(contract_address, provider.clone());
@@ -308,7 +306,7 @@ pub(crate) async fn initialize_contracts(
             ),
             provider.clone(),
         ),
-        sharding_table: sharding_table::ShardingTable::new(
+        sharding_table: ShardingTable::new(
             Address::from(
                 hub.getContractAddress("ShardingTable".to_string())
                     .call()
@@ -317,7 +315,7 @@ pub(crate) async fn initialize_contracts(
             ),
             provider.clone(),
         ),
-        sharding_table_storage: sharding_table_storage::ShardingTableStorage::new(
+        sharding_table_storage: ShardingTableStorage::new(
             Address::from(
                 hub.getContractAddress("ShardingTableStorage".to_string())
                     .call()
