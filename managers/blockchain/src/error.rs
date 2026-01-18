@@ -105,7 +105,9 @@ pub enum BlockchainError {
     #[error("Duplicate blockchain_id '{blockchain_id}' found in configuration")]
     DuplicateBlockchainId { blockchain_id: String },
 
-    #[error("Invalid blockchain_id format '{blockchain_id}': expected 'chaintype:chainid' (e.g., 'hardhat:31337')")]
+    #[error(
+        "Invalid blockchain_id format '{blockchain_id}': expected 'chaintype:chainid' (e.g., 'hardhat:31337')"
+    )]
     InvalidBlockchainId { blockchain_id: String },
 
     #[error("{0}")]

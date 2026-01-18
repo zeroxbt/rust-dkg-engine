@@ -678,8 +678,13 @@ mod tests {
 
     #[test]
     fn test_blockchain_requires_evm_account_mapping() {
-        assert!(!Blockchain::Hardhat(config_for_chain("hardhat1", 31337)).requires_evm_account_mapping());
-        assert!(!Blockchain::Gnosis(config_for_chain("gnosis", 100)).requires_evm_account_mapping());
+        assert!(
+            !Blockchain::Hardhat(config_for_chain("hardhat1", 31337))
+                .requires_evm_account_mapping()
+        );
+        assert!(
+            !Blockchain::Gnosis(config_for_chain("gnosis", 100)).requires_evm_account_mapping()
+        );
         assert!(Blockchain::NeuroWeb(config_for_chain("otp", 2043)).requires_evm_account_mapping());
         assert!(!Blockchain::Base(config_for_chain("base", 8453)).requires_evm_account_mapping());
     }
