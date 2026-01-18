@@ -62,8 +62,7 @@ password = "" # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # --------------------------------------------
 # [[managers.blockchain]]
 # [managers.blockchain.NeuroWeb]
-# blockchain_id = "neuroweb:2043"
-# chain_id = 2043
+# blockchain_id = "otp:2043"
 # hub_contract_address = "0x0957e25BD33034948abc28204ddA54b6E1142D6F"
 # rpc_endpoints = [
 #     "https://astrosat-parachain-rpc.origin-trail.network",
@@ -86,7 +85,6 @@ password = "" # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # [[managers.blockchain]]
 # [managers.blockchain.Gnosis]
 # blockchain_id = "gnosis:100"
-# chain_id = 100
 # hub_contract_address = "0x882D0BF07F956b1b94BBfe9E77F47c6fc7D4EC8f"
 # rpc_endpoints = ["https://rpc.gnosischain.com"]
 # gas_price_oracle_url = "https://gnosis.blockscout.com/api/v1/gas-price-oracle"
@@ -102,7 +100,6 @@ password = "" # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # [[managers.blockchain]]
 # [managers.blockchain.Base]
 # blockchain_id = "base:8453"
-# chain_id = 8453
 # hub_contract_address = "0x99Aa571fD5e681c2D27ee08A7b7989DB02541d13"
 # rpc_endpoints = ["https://mainnet.base.org"]
 # operator_fee = 0

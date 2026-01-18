@@ -42,6 +42,19 @@ impl BlockchainId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Parse the prefix from the blockchain ID.
+    /// E.g., "hardhat1:31337" -> "hardhat1", "otp:2043" -> "otp"
+    pub fn prefix(&self) -> &str {
+        self.0.split(':').next().unwrap_or(&self.0)
+    }
+
+    /// Parse the chain ID from the blockchain ID.
+    /// E.g., "hardhat1:31337" -> 31337, "otp:2043" -> 2043
+    /// Returns None if the chain ID is missing or not a valid number.
+    pub fn chain_id(&self) -> Option<u64> {
+        self.0.split(':').nth(1).and_then(|s| s.parse().ok())
+    }
 }
 
 impl std::fmt::Display for BlockchainId {
@@ -77,12 +90,11 @@ pub struct SignatureComponents {
 /// a specific blockchain network.
 #[derive(Debug, Clone, Deserialize)]
 pub struct BlockchainConfig {
-    /// Optional explicit blockchain ID. If not provided, derived from chain type and chain_id.
-    #[serde(default)]
-    blockchain_id: Option<BlockchainId>,
-
-    /// The chain ID (e.g., 31337 for Hardhat, 100 for Gnosis, 2043 for NeuroWeb).
-    chain_id: u64,
+    /// Unique identifier for this blockchain instance.
+    /// Format: "chaintype:chainid" (e.g., "hardhat:31337", "gnosis:100", "neuroweb:2043").
+    /// The chain type determines the gas configuration and other chain-specific behavior.
+    /// The chain ID is parsed from this field.
+    blockchain_id: BlockchainId,
 
     /// Private key for the operational wallet (used for transactions).
     evm_operational_wallet_private_key: String,
@@ -137,13 +149,15 @@ pub struct BlockchainConfig {
 
 impl BlockchainConfig {
     pub fn blockchain_id(&self) -> &BlockchainId {
-        self.blockchain_id
-            .as_ref()
-            .expect("blockchain_id must be set before use")
+        &self.blockchain_id
     }
 
+    /// Returns the chain ID parsed from the blockchain_id.
+    /// Panics if the blockchain_id is malformed (should be validated at config load time).
     pub fn chain_id(&self) -> u64 {
-        self.chain_id
+        self.blockchain_id
+            .chain_id()
+            .expect("blockchain_id should contain valid chain_id (format: 'type:chainid')")
     }
 
     pub fn evm_operational_wallet_private_key(&self) -> &str {
@@ -195,10 +209,11 @@ impl BlockchainConfig {
     }
 }
 
-/// Supported blockchain types.
+/// Supported blockchain types for configuration.
 ///
-/// Each variant represents a different blockchain network with its own
-/// gas price configuration and RPC endpoints.
+/// The enum variant determines chain-specific behavior (gas config, token decimals, etc.)
+/// and is used for TOML config structure (e.g., `[managers.blockchain.Hardhat]`).
+/// The `blockchain_id` field is a protocol identifier for network communication.
 #[derive(Debug, Deserialize, Clone)]
 pub enum Blockchain {
     /// Local Hardhat network for development/testing
@@ -214,24 +229,14 @@ pub enum Blockchain {
 impl Blockchain {
     pub fn get_config(&self) -> &BlockchainConfig {
         match self {
-            Blockchain::Hardhat(config) => config,
-            Blockchain::Gnosis(config) => config,
-            Blockchain::NeuroWeb(config) => config,
-            Blockchain::Base(config) => config,
+            Blockchain::Hardhat(config)
+            | Blockchain::Gnosis(config)
+            | Blockchain::NeuroWeb(config)
+            | Blockchain::Base(config) => config,
         }
     }
 
-    /// Returns the default blockchain ID prefix for this blockchain type.
-    pub fn default_id_prefix(&self) -> &'static str {
-        match self {
-            Blockchain::Hardhat(_) => "hardhat",
-            Blockchain::Gnosis(_) => "gnosis",
-            Blockchain::NeuroWeb(_) => "neuroweb",
-            Blockchain::Base(_) => "base",
-        }
-    }
-
-    /// Creates the appropriate gas configuration for this blockchain.
+    /// Creates the appropriate gas configuration based on blockchain type.
     pub fn gas_config(&self) -> GasConfig {
         let oracle_url = self
             .get_config()
@@ -246,10 +251,11 @@ impl Blockchain {
     }
 
     /// Native token decimal places.
+    /// NeuroWeb uses 12 decimals (NEURO), others use standard 18 (ETH/xDAI).
     pub fn native_token_decimals(&self) -> u8 {
         match self {
-            Blockchain::NeuroWeb(_) => 12, // NEURO uses 12 decimals
-            _ => 18,                       // Standard EVM chains use 18
+            Blockchain::NeuroWeb(_) => 12,
+            _ => 18,
         }
     }
 
@@ -271,7 +277,6 @@ impl Blockchain {
     /// Whether this chain requires EVM account mapping validation.
     ///
     /// On NeuroWeb, EVM addresses must be mapped to Substrate accounts.
-    /// Note: Validation not yet implemented (requires subxt integration).
     pub fn requires_evm_account_mapping(&self) -> bool {
         matches!(self, Blockchain::NeuroWeb(_))
     }
@@ -299,18 +304,25 @@ impl BlockchainManager {
 
         for blockchain in config.0.iter() {
             let blockchain_config = blockchain.get_config();
-            let id_prefix = blockchain.default_id_prefix();
-            let gas_config = blockchain.gas_config();
+            let blockchain_id = blockchain_config.blockchain_id().clone();
 
-            let mut config = blockchain_config.clone();
-            let blockchain_id = config.blockchain_id.clone().unwrap_or_else(|| {
-                BlockchainId::new(format!("{}:{}", id_prefix, config.chain_id()))
-            });
-            config.blockchain_id = Some(blockchain_id.clone());
+            // Validate blockchain_id format (must contain chain_id)
+            if blockchain_id.chain_id().is_none() {
+                return Err(BlockchainError::InvalidBlockchainId {
+                    blockchain_id: blockchain_id.to_string(),
+                });
+            }
+
+            // Check for duplicate blockchain IDs
+            if blockchains.contains_key(&blockchain_id) {
+                return Err(BlockchainError::DuplicateBlockchainId {
+                    blockchain_id: blockchain_id.to_string(),
+                });
+            }
 
             let evm_chain = EvmChain::new(
-                config,
-                gas_config,
+                blockchain_config.clone(),
+                blockchain.gas_config(),
                 blockchain.native_token_decimals(),
                 blockchain.native_token_ticker(),
                 blockchain.is_development_chain(),
@@ -580,10 +592,9 @@ mod tests {
 
     use super::*;
 
-    fn dummy_config() -> BlockchainConfig {
+    fn config_for_chain(chain_type: &str, chain_id: u64) -> BlockchainConfig {
         BlockchainConfig {
-            blockchain_id: None,
-            chain_id: 1,
+            blockchain_id: BlockchainId::new(format!("{}:{}", chain_type, chain_id)),
             evm_operational_wallet_private_key: String::new(),
             evm_operational_wallet_address: String::new(),
             evm_management_wallet_address: String::new(),
@@ -600,56 +611,77 @@ mod tests {
     }
 
     #[test]
+    fn test_blockchain_id_parsing() {
+        let id = BlockchainId::new("otp:2043");
+        assert_eq!(id.prefix(), "otp");
+        assert_eq!(id.chain_id(), Some(2043));
+
+        let id = BlockchainId::new("hardhat1:31337");
+        assert_eq!(id.prefix(), "hardhat1");
+        assert_eq!(id.chain_id(), Some(31337));
+
+        // Missing chain_id
+        let id = BlockchainId::new("hardhat1");
+        assert_eq!(id.prefix(), "hardhat1");
+        assert_eq!(id.chain_id(), None);
+    }
+
+    #[test]
     fn test_blockchain_native_token_decimals() {
+        // Using protocol-correct prefixes
         assert_eq!(
-            Blockchain::Hardhat(dummy_config()).native_token_decimals(),
+            Blockchain::Hardhat(config_for_chain("hardhat1", 31337)).native_token_decimals(),
             18
         );
         assert_eq!(
-            Blockchain::Gnosis(dummy_config()).native_token_decimals(),
+            Blockchain::Gnosis(config_for_chain("gnosis", 100)).native_token_decimals(),
             18
         );
         assert_eq!(
-            Blockchain::NeuroWeb(dummy_config()).native_token_decimals(),
+            Blockchain::NeuroWeb(config_for_chain("otp", 2043)).native_token_decimals(),
             12
         );
-        assert_eq!(Blockchain::Base(dummy_config()).native_token_decimals(), 18);
+        assert_eq!(
+            Blockchain::Base(config_for_chain("base", 8453)).native_token_decimals(),
+            18
+        );
     }
 
     #[test]
     fn test_blockchain_native_token_ticker() {
         assert_eq!(
-            Blockchain::Hardhat(dummy_config()).native_token_ticker(),
+            Blockchain::Hardhat(config_for_chain("hardhat1", 31337)).native_token_ticker(),
             "ETH"
         );
         assert_eq!(
-            Blockchain::Gnosis(dummy_config()).native_token_ticker(),
+            Blockchain::Gnosis(config_for_chain("gnosis", 100)).native_token_ticker(),
             "xDAI"
         );
         assert_eq!(
-            Blockchain::NeuroWeb(dummy_config()).native_token_ticker(),
+            Blockchain::NeuroWeb(config_for_chain("otp", 2043)).native_token_ticker(),
             "NEURO"
         );
         assert_eq!(
-            Blockchain::Base(dummy_config()).native_token_ticker(),
+            Blockchain::Base(config_for_chain("base", 8453)).native_token_ticker(),
             "ETH"
         );
     }
 
     #[test]
     fn test_blockchain_is_development_chain() {
-        assert!(Blockchain::Hardhat(dummy_config()).is_development_chain());
-        assert!(!Blockchain::Gnosis(dummy_config()).is_development_chain());
-        assert!(!Blockchain::NeuroWeb(dummy_config()).is_development_chain());
-        assert!(!Blockchain::Base(dummy_config()).is_development_chain());
+        assert!(Blockchain::Hardhat(config_for_chain("hardhat1", 31337)).is_development_chain());
+        assert!(Blockchain::Hardhat(config_for_chain("hardhat2", 31337)).is_development_chain());
+        assert!(!Blockchain::Gnosis(config_for_chain("gnosis", 100)).is_development_chain());
+        assert!(!Blockchain::NeuroWeb(config_for_chain("otp", 2043)).is_development_chain());
+        assert!(!Blockchain::Base(config_for_chain("base", 8453)).is_development_chain());
     }
 
     #[test]
     fn test_blockchain_requires_evm_account_mapping() {
-        assert!(!Blockchain::Hardhat(dummy_config()).requires_evm_account_mapping());
-        assert!(!Blockchain::Gnosis(dummy_config()).requires_evm_account_mapping());
-        assert!(Blockchain::NeuroWeb(dummy_config()).requires_evm_account_mapping());
-        assert!(!Blockchain::Base(dummy_config()).requires_evm_account_mapping());
+        assert!(!Blockchain::Hardhat(config_for_chain("hardhat1", 31337)).requires_evm_account_mapping());
+        assert!(!Blockchain::Gnosis(config_for_chain("gnosis", 100)).requires_evm_account_mapping());
+        assert!(Blockchain::NeuroWeb(config_for_chain("otp", 2043)).requires_evm_account_mapping());
+        assert!(!Blockchain::Base(config_for_chain("base", 8453)).requires_evm_account_mapping());
     }
 
     #[test]

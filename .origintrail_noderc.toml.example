@@ -62,8 +62,8 @@
 
 # Example: Add a production blockchain configuration
 # [[managers.blockchain]]
-# [managers.blockchain.OriginTrailParachain]
-# chain_id = 2043
+# [managers.blockchain.NeuroWeb]
+# blockchain_id = "otp:2043"
 # hub_contract_address = "0x0957e25BD33034948abc28204ddA54b6E1142D6F"
 #
 # rpc_endpoints = [

@@ -55,8 +55,7 @@ password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # --------------------------------------------
 # [[managers.blockchain]]
 # [managers.blockchain.NeuroWeb]
-# blockchain_id = "neuroweb:20430"
-# chain_id = 20430
+# blockchain_id = "otp:20430"
 # hub_contract_address = "0xe233b5b78853a62b1e11ebe88bf083e25b0a57a6"
 # rpc_endpoints = [
 #     "https://lofar-testnet.origin-trail.network",
@@ -78,7 +77,6 @@ password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # [[managers.blockchain]]
 # [managers.blockchain.Gnosis]
 # blockchain_id = "gnosis:10200"
-# chain_id = 10200
 # hub_contract_address = "0x2c08AC4B630c009F709521e56Ac385A6af70650f"
 # rpc_endpoints = ["https://rpc.chiadochain.net"]
 # gas_price_oracle_url = "https://blockscout.chiadochain.net/api/v1/gas-price-oracle"
@@ -94,7 +92,6 @@ password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # [[managers.blockchain]]
 # [managers.blockchain.Base]
 # blockchain_id = "base:84532"
-# chain_id = 84532
 # hub_contract_address = "0xf21CE8f8b01548D97DCFb36869f1ccB0814a4e05"
 # rpc_endpoints = ["https://sepolia.base.org"]
 # operator_fee = 0
