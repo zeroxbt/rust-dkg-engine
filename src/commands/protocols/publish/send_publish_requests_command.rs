@@ -14,7 +14,9 @@ use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     network::{NetworkProtocols, ProtocolRequest},
-    services::operation_manager::OperationManager,
+    services::{
+        operation_manager::OperationManager, pending_storage_service::PendingStorageService,
+    },
     types::{models::Assertion, protocol::StoreRequestData},
 };
 
@@ -52,6 +54,7 @@ pub struct SendPublishRequestsCommandHandler {
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     blockchain_manager: Arc<BlockchainManager>,
     publish_operation_manager: Arc<OperationManager>,
+    pending_storage_service: Arc<PendingStorageService>,
 }
 
 impl SendPublishRequestsCommandHandler {
@@ -61,6 +64,7 @@ impl SendPublishRequestsCommandHandler {
             network_manager: Arc::clone(context.network_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             publish_operation_manager: Arc::clone(context.publish_operation_manager()),
+            pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
     }
 
@@ -262,6 +266,34 @@ impl CommandHandler<SendPublishRequestsCommandData> for SendPublishRequestsComma
             }
         };
 
+        // Store publisher signature
+        if let Err(e) = self
+            .store_publisher_signature(operation_id, blockchain, dataset_root, identity_id)
+            .await
+        {
+            tracing::warn!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to store publisher signature, operation may still succeed with network signatures"
+            );
+        }
+
+        if let Err(e) = self
+            .pending_storage_service
+            .store_dataset(operation_id, dataset_root, dataset)
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to store dataset in pending storage"
+            );
+            self.publish_operation_manager
+                .mark_failed(operation_id, format!("Failed to store dataset: {}", e))
+                .await;
+            return CommandExecutionResult::Completed;
+        }
+
         for node in shard_nodes {
             let remote_peer_id: PeerId = match node.peer_id.parse() {
                 Ok(id) => id,
@@ -359,18 +391,6 @@ impl CommandHandler<SendPublishRequestsCommandData> for SendPublishRequestsComma
             operation_id = %operation_id,
             "All store requests have been sent"
         );
-
-        // Store publisher signature
-        if let Err(e) = self
-            .store_publisher_signature(operation_id, blockchain, dataset_root, identity_id)
-            .await
-        {
-            tracing::warn!(
-                operation_id = %operation_id,
-                error = %e,
-                "Failed to store publisher signature, operation may still succeed with network signatures"
-            );
-        }
 
         CommandExecutionResult::Completed
     }

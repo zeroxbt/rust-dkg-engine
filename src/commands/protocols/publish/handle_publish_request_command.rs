@@ -15,7 +15,9 @@ use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     network::{NetworkProtocols, ProtocolResponse, SessionManager},
-    services::operation_manager::OperationManager,
+    services::{
+        operation_manager::OperationManager, pending_storage_service::PendingStorageService,
+    },
     types::{models::Assertion, protocol::StoreResponseData},
 };
 
@@ -55,6 +57,7 @@ pub struct HandlePublishRequestCommandHandler {
     validation_manager: Arc<ValidationManager>,
     blockchain_manager: Arc<BlockchainManager>,
     session_manager: Arc<SessionManager<StoreResponseData>>,
+    pending_storage_service: Arc<PendingStorageService>,
 }
 
 impl HandlePublishRequestCommandHandler {
@@ -66,6 +69,7 @@ impl HandlePublishRequestCommandHandler {
             validation_manager: Arc::clone(context.validation_manager()),
             publish_operation_manager: Arc::clone(context.publish_operation_manager()),
             session_manager: Arc::clone(context.store_session_manager()),
+            pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
     }
 
@@ -333,6 +337,25 @@ impl CommandHandler<HandlePublishRequestCommandData> for HandlePublishRequestCom
                 return CommandExecutionResult::Completed;
             }
         };
+
+        if let Err(e) = self
+            .pending_storage_service
+            .store_dataset(operation_id, dataset_root, dataset)
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to store dataset in pending storage - sending NACK"
+            );
+            self.send_nack(
+                channel,
+                operation_id,
+                &format!("Failed to store dataset: {}", e),
+            )
+            .await;
+            return CommandExecutionResult::Completed;
+        }
 
         let message = ResponseMessage {
             header: ResponseMessageHeader {
