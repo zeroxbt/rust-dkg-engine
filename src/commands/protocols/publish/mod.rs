@@ -1,2 +1,3 @@
+pub mod finalize_publish_operation_command;
 pub mod handle_publish_request_command;
 pub mod send_publish_requests_command;

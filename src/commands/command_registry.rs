@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use blockchain::BlockchainId;
+
 use super::{
     command_executor::CommandExecutionRequest,
     periodic::{
@@ -20,9 +22,15 @@ use super::{
         },
     },
 };
-use blockchain::BlockchainId;
-
-use crate::{commands::command_executor::CommandExecutionResult, context::Context};
+use crate::{
+    commands::{
+        command_executor::CommandExecutionResult,
+        protocols::publish::finalize_publish_operation_command::{
+            FinalizePublishOperationCommandData, FinalizePublishOperationCommandHandler,
+        },
+    },
+    context::Context,
+};
 
 macro_rules! command_registry {
     (
@@ -103,6 +111,10 @@ command_registry! {
         data: HandlePublishRequestCommandData,
         handler: HandlePublishRequestCommandHandler
     },
+    finalize_publish_operation_command: FinalizePublishOperation => {
+        data: FinalizePublishOperationCommandData,
+        handler: FinalizePublishOperationCommandHandler
+    }
 }
 
 /// Default commands scheduled at startup. Keep this list explicit for clarity.

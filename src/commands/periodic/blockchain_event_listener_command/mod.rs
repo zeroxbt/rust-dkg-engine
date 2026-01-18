@@ -6,9 +6,14 @@ use blockchain::{
     ParameterChangedFilter, error::BlockchainError, utils::to_hex_string,
 };
 use repository::RepositoryManager;
+use tokio::sync::mpsc::Sender;
 
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    commands::{
+        command_executor::{CommandExecutionRequest, CommandExecutionResult},
+        command_registry::{Command, CommandHandler},
+        protocols::publish::finalize_publish_operation_command::FinalizePublishOperationCommandData,
+    },
     context::Context,
 };
 
@@ -29,6 +34,7 @@ const MAX_BLOCKS_TO_SYNC_DEV: u64 = u64::MAX; // unlimited for dev
 pub struct BlockchainEventListenerCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
+    schedule_command_tx: Sender<CommandExecutionRequest>,
     /// Polling interval in milliseconds
     poll_interval_ms: i64,
     /// Maximum number of blocks to sync historically (beyond this, events are skipped)
@@ -54,6 +60,7 @@ impl BlockchainEventListenerCommandHandler {
         Self {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             repository_manager: Arc::clone(context.repository_manager()),
+            schedule_command_tx: context.schedule_command_tx().clone(),
             poll_interval_ms,
             max_blocks_to_sync,
         }
@@ -62,12 +69,12 @@ impl BlockchainEventListenerCommandHandler {
     /// Fetch and handle events for a single blockchain
     async fn fetch_and_handle_blockchain_events(
         &self,
-        blockchain: &BlockchainId,
+        blockchain_id: &BlockchainId,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Get current block (use -2 for finality safety)
         let current_block = self
             .blockchain_manager
-            .get_block_number(blockchain)
+            .get_block_number(blockchain_id)
             .await?
             .saturating_sub(2);
 
@@ -80,7 +87,7 @@ impl BlockchainEventListenerCommandHandler {
             let last_checked_block = self
                 .repository_manager
                 .blockchain_repository()
-                .get_last_checked_block(blockchain.as_str(), contract_name.as_str())
+                .get_last_checked_block(blockchain_id.as_str(), contract_name.as_str())
                 .await?;
 
             let from_block = last_checked_block + 1;
@@ -96,7 +103,7 @@ impl BlockchainEventListenerCommandHandler {
                 tracing::warn!(
                     "Extended downtime detected for {} on {}: {} blocks behind (max: {}). Skipping missed events.",
                     contract_name.as_str(),
-                    blockchain,
+                    blockchain_id,
                     blocks_behind,
                     self.max_blocks_to_sync
                 );
@@ -104,7 +111,7 @@ impl BlockchainEventListenerCommandHandler {
                 self.repository_manager
                     .blockchain_repository()
                     .update_last_checked_block(
-                        blockchain.as_str(),
+                        blockchain_id.as_str(),
                         contract_name.as_str(),
                         current_block,
                         chrono::Utc::now(),
@@ -117,7 +124,7 @@ impl BlockchainEventListenerCommandHandler {
             let events = self
                 .blockchain_manager
                 .get_event_logs(
-                    blockchain,
+                    blockchain_id,
                     contract_name,
                     events_to_filter,
                     from_block,
@@ -133,7 +140,7 @@ impl BlockchainEventListenerCommandHandler {
             tracing::debug!(
                 "Fetched {} events for blockchain {}",
                 all_events.len(),
-                blockchain
+                blockchain_id
             );
 
             // Sort events by (blockNumber, transactionIndex, logIndex)
@@ -160,7 +167,7 @@ impl BlockchainEventListenerCommandHandler {
 
             // Process all events sequentially
             for event in all_events {
-                self.process_event(blockchain, event).await?;
+                self.process_event(blockchain_id, event).await?;
             }
         }
 
@@ -169,7 +176,7 @@ impl BlockchainEventListenerCommandHandler {
             self.repository_manager
                 .blockchain_repository()
                 .update_last_checked_block(
-                    blockchain.as_str(),
+                    blockchain_id.as_str(),
                     contract_name.as_str(),
                     current_block,
                     chrono::Utc::now(),
@@ -183,7 +190,7 @@ impl BlockchainEventListenerCommandHandler {
     /// Process a single event - dispatch to appropriate handler
     async fn process_event(
         &self,
-        blockchain: &BlockchainId,
+        blockchain_id: &BlockchainId,
         event: ContractLog,
     ) -> Result<(), BlockchainError> {
         let block_number = event.log().block_number.unwrap_or_default();
@@ -193,37 +200,38 @@ impl BlockchainEventListenerCommandHandler {
             block_number
         );
 
-        match decode_contract_event(event.contract_name(), event.log()) {
+        let log = event.log();
+        match decode_contract_event(event.contract_name(), log) {
             Some(ContractEvent::KnowledgeCollectionStorage(decoded)) => {
                 if let blockchain::KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents::KnowledgeCollectionCreated(
                     filter,
                 ) = decoded
                 {
-                    self.handle_knowledge_collection_created_event(blockchain, &filter)
-                        .await?;
+                    self.handle_knowledge_collection_created_event(blockchain_id, &filter, log)
+                        .await;
                 }
             }
             Some(ContractEvent::ParametersStorage(decoded)) => {
                 let blockchain::ParametersStorage::ParametersStorageEvents::ParameterChanged(
                     filter,
                 ) = decoded;
-                self.handle_parameter_changed_event(blockchain, &filter)
+                self.handle_parameter_changed_event(blockchain_id, &filter)
                     .await?;
             }
             Some(ContractEvent::Hub(decoded)) => match decoded {
                 blockchain::Hub::HubEvents::NewContract(filter) => {
-                    self.handle_new_contract_event(blockchain, &filter).await?;
+                    self.handle_new_contract_event(blockchain_id, &filter).await?;
                 }
                 blockchain::Hub::HubEvents::ContractChanged(filter) => {
-                    self.handle_contract_changed_event(blockchain, &filter)
+                    self.handle_contract_changed_event(blockchain_id, &filter)
                         .await?;
                 }
                 blockchain::Hub::HubEvents::NewAssetStorage(filter) => {
-                    self.handle_new_asset_storage_event(blockchain, &filter)
+                    self.handle_new_asset_storage_event(blockchain_id, &filter)
                         .await?;
                 }
                 blockchain::Hub::HubEvents::AssetStorageChanged(filter) => {
-                    self.handle_asset_storage_changed_event(blockchain, &filter)
+                    self.handle_asset_storage_changed_event(blockchain_id, &filter)
                         .await?;
                 }
                 _ => {}
@@ -243,12 +251,12 @@ impl BlockchainEventListenerCommandHandler {
 
     async fn handle_parameter_changed_event(
         &self,
-        blockchain: &BlockchainId,
+        blockchain_id: &BlockchainId,
         filter: &ParameterChangedFilter,
     ) -> Result<(), BlockchainError> {
         tracing::debug!(
             "ParameterChanged on {}: {} = {}",
-            blockchain,
+            blockchain_id,
             filter.parameterName,
             filter.parameterValue
         );
@@ -258,12 +266,12 @@ impl BlockchainEventListenerCommandHandler {
 
     async fn handle_new_contract_event(
         &self,
-        blockchain: &BlockchainId,
+        blockchain_id: &BlockchainId,
         filter: &NewContractFilter,
     ) -> Result<(), BlockchainError> {
         tracing::info!(
             "NewContract on {}: {} at {:?}",
-            blockchain,
+            blockchain_id,
             filter.contractName,
             filter.newContractAddress
         );
@@ -274,7 +282,7 @@ impl BlockchainEventListenerCommandHandler {
         };
         self.blockchain_manager
             .re_initialize_contract(
-                blockchain,
+                blockchain_id,
                 filter.contractName.clone(),
                 filter.newContractAddress,
             )
@@ -284,7 +292,7 @@ impl BlockchainEventListenerCommandHandler {
 
     async fn handle_contract_changed_event(
         &self,
-        blockchain: &BlockchainId,
+        blockchain_id: &BlockchainId,
         filter: &ContractChangedFilter,
     ) -> Result<(), BlockchainError> {
         // Silently skip contracts not tracked by this node
@@ -293,7 +301,7 @@ impl BlockchainEventListenerCommandHandler {
         };
         self.blockchain_manager
             .re_initialize_contract(
-                blockchain,
+                blockchain_id,
                 filter.contractName.clone(),
                 filter.newContractAddress,
             )
@@ -303,7 +311,7 @@ impl BlockchainEventListenerCommandHandler {
 
     async fn handle_new_asset_storage_event(
         &self,
-        blockchain: &BlockchainId,
+        blockchain_id: &BlockchainId,
         filter: &NewAssetStorageFilter,
     ) -> Result<(), BlockchainError> {
         // Silently skip contracts not tracked by this node
@@ -312,7 +320,7 @@ impl BlockchainEventListenerCommandHandler {
         };
         self.blockchain_manager
             .re_initialize_contract(
-                blockchain,
+                blockchain_id,
                 filter.contractName.clone(),
                 filter.newContractAddress,
             )
@@ -322,7 +330,7 @@ impl BlockchainEventListenerCommandHandler {
 
     async fn handle_asset_storage_changed_event(
         &self,
-        blockchain: &BlockchainId,
+        blockchain_id: &BlockchainId,
         filter: &AssetStorageChangedFilter,
     ) -> Result<(), BlockchainError> {
         // Silently skip contracts not tracked by this node
@@ -331,7 +339,7 @@ impl BlockchainEventListenerCommandHandler {
         };
         self.blockchain_manager
             .re_initialize_contract(
-                blockchain,
+                blockchain_id,
                 filter.contractName.clone(),
                 filter.newContractAddress,
             )
@@ -341,19 +349,48 @@ impl BlockchainEventListenerCommandHandler {
 
     async fn handle_knowledge_collection_created_event(
         &self,
-        blockchain: &BlockchainId,
+        blockchain_id: &BlockchainId,
         filter: &KnowledgeCollectionCreatedFilter,
-    ) -> Result<(), BlockchainError> {
+        log: &alloy::rpc::types::Log,
+    ) {
         tracing::info!(
             "KnowledgeCollectionCreated on {}: id={}, merkleRoot=0x{}, byteSize={}",
-            blockchain,
+            blockchain_id,
             filter.id,
             to_hex_string(filter.merkleRoot),
             filter.byteSize
         );
 
-        // TODO: Queue publishFinalizationCommand
-        Ok(())
+        // Extract minimal data from the log - parsing happens in the command handler
+        let Some(transaction_hash) = log.transaction_hash else {
+            tracing::error!("Missing transaction hash in KnowledgeCollectionCreated log");
+            return;
+        };
+
+        // byteSize is uint88 in the contract, convert to u128
+        let byte_size: u128 = filter.byteSize.to();
+
+        let command = Command::FinalizePublishOperation(FinalizePublishOperationCommandData::new(
+            blockchain_id.to_owned(),
+            filter.publishOperationId.clone(),
+            filter.id,
+            log.address(),
+            byte_size,
+            filter.merkleRoot,
+            transaction_hash,
+            log.block_number.unwrap_or_default(),
+            log.block_timestamp.unwrap_or_default(),
+        ));
+
+        let request = CommandExecutionRequest::new(command);
+
+        if let Err(e) = self.schedule_command_tx.send(request).await {
+            tracing::error!(
+                publish_operation_id = %filter.publishOperationId,
+                error = %e,
+                "Failed to schedule FinalizePublishOperationCommand"
+            );
+        }
     }
 }
 

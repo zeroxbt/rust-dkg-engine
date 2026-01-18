@@ -413,6 +413,20 @@ impl BlockchainManager {
         blockchain_impl.get_block_number().await
     }
 
+    /// Get the sender address of a transaction by its hash.
+    pub async fn get_transaction_sender(
+        &self,
+        blockchain: &BlockchainId,
+        tx_hash: H256,
+    ) -> Result<Option<Address>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl.get_transaction_sender(tx_hash).await
+    }
+
     pub async fn get_sharding_table_head(
         &self,
         blockchain: &BlockchainId,

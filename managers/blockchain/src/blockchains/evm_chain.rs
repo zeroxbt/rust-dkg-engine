@@ -336,6 +336,20 @@ impl EvmChain {
             .map_err(BlockchainError::get_block_number)
     }
 
+    /// Get the sender address of a transaction by its hash.
+    pub async fn get_transaction_sender(
+        &self,
+        tx_hash: B256,
+    ) -> Result<Option<Address>, BlockchainError> {
+        let tx = self
+            .provider()
+            .get_transaction_by_hash(tx_hash)
+            .await
+            .map_err(|e| BlockchainError::Custom(format!("Failed to get transaction: {}", e)))?;
+
+        Ok(tx.map(|t| t.inner.signer()))
+    }
+
     pub async fn get_event_logs(
         &self,
         contract_name: &ContractName,
