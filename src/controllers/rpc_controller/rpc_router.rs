@@ -12,7 +12,8 @@ use super::{
 use crate::{
     context::Context,
     controllers::rpc_controller::store_rpc_controller::StoreRpcController,
-    network::{NetworkProtocols, NetworkProtocolsEvent},
+    network::{NetworkProtocols, NetworkProtocolsEvent, RequestTracker},
+    services::operation_manager::OperationManager,
 };
 
 // Type alias for the complete behaviour and its event type
@@ -22,6 +23,8 @@ type BehaviourEvent = <Behaviour as network::NetworkBehaviour>::ToSwarm;
 pub struct RpcRouter {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    request_tracker: Arc<RequestTracker>,
+    publish_operation_manager: Arc<OperationManager>,
     store_controller: Arc<StoreRpcController>,
     finality_controller: Arc<FinalityRpcController>,
     semaphore: Arc<Semaphore>,
@@ -32,6 +35,8 @@ impl RpcRouter {
         RpcRouter {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
+            request_tracker: Arc::clone(context.request_tracker()),
+            publish_operation_manager: Arc::clone(context.publish_operation_manager()),
             store_controller: Arc::new(StoreRpcController::new(Arc::clone(&context))),
             finality_controller: Arc::new(FinalityRpcController::new(Arc::clone(&context))),
             semaphore: Arc::new(Semaphore::new(NETWORK_EVENT_QUEUE_PARALLELISM)),
@@ -83,23 +88,153 @@ impl RpcRouter {
                                         .handle_request(request, channel, peer)
                                         .await;
                                 }
-                                Message::Response { response, .. } => {
-                                    self.store_controller.handle_response(response, peer).await;
+                                Message::Response {
+                                    response,
+                                    request_id,
+                                } => {
+                                    // Check if this response arrived after a timeout was already
+                                    // processed
+                                    if self.request_tracker.handle_response(request_id).is_some() {
+                                        // Valid response - process it
+                                        self.store_controller.handle_response(response, peer).await;
+                                    } else {
+                                        // Late response after timeout, or unknown request
+                                        tracing::debug!(
+                                            %peer,
+                                            ?request_id,
+                                            "Ignoring late store response (already timed out or unknown)"
+                                        );
+                                    }
                                 }
                             };
                         }
-                        x => {
-                            println!("{:?}", x)
+                        // OutboundFailure: We sent a store request and it failed (timeout,
+                        // connection closed, etc.) This is treated as a
+                        // NACK for replication counting.
+                        request_response::Event::OutboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                            ..
+                        } => {
+                            tracing::warn!(
+                                %peer,
+                                ?request_id,
+                                ?error,
+                                "Store request failed"
+                            );
+
+                            // Look up operation_id and mark as timed out to ignore late responses
+                            if let Some((operation_id, _peer)) =
+                                self.request_tracker.handle_timeout(request_id)
+                            {
+                                // Record as NACK (failed response)
+                                if let Err(e) = self
+                                    .publish_operation_manager
+                                    .record_response(operation_id, false)
+                                    .await
+                                {
+                                    tracing::error!(
+                                        %operation_id,
+                                        error = %e,
+                                        "Failed to record timeout as NACK"
+                                    );
+                                }
+                            } else {
+                                tracing::debug!(
+                                    ?request_id,
+                                    "OutboundFailure for unknown request_id (not tracked)"
+                                );
+                            }
+                        }
+                        // InboundFailure: Someone sent us a store request and we failed to respond.
+                        // This is informational - the requester will see OutboundFailure on their
+                        // end. Common causes:
+                        //   - Timeout: Our command handler took too long to call send_response
+                        //   - ResponseOmission: SessionManager channel was dropped without
+                        //     responding
+                        //   - ConnectionClosed: Requester disconnected before we could respond
+                        request_response::Event::InboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                            ..
+                        } => {
+                            tracing::warn!(
+                                %peer,
+                                ?request_id,
+                                ?error,
+                                "Failed to respond to store request from peer"
+                            );
+                        }
+                        // ResponseSent: Confirms our response was successfully sent.
+                        // Useful for debugging/metrics but no action needed.
+                        request_response::Event::ResponseSent {
+                            peer, request_id, ..
+                        } => {
+                            tracing::trace!(
+                                %peer,
+                                ?request_id,
+                                "Store response sent successfully"
+                            );
                         }
                     },
                     NetworkProtocolsEvent::Get(inner_event) => match inner_event {
-                        request_response::Event::OutboundFailure { error, .. } => {
-                            tracing::error!("Failed to get: {}", error)
+                        request_response::Event::Message { message, peer, .. } => {
+                            match message {
+                                Message::Request {
+                                    request: _,
+                                    channel: _,
+                                    ..
+                                } => {
+                                    // TODO: Implement get request handler
+                                    tracing::debug!(%peer, "Get request received - not yet implemented");
+                                }
+                                // TODO: Track request_id to detect late responses after timeout.
+                                Message::Response { response: _, .. } => {
+                                    // TODO: Implement get response handler
+                                    tracing::debug!(%peer, "Get response received - not yet implemented");
+                                }
+                            };
                         }
-                        request_response::Event::Message { .. } => {
-                            // self.get_controller.handle_message(message, peer).await;
+                        // OutboundFailure: We sent a get request and it failed.
+                        // TODO: Handle similarly to store - record as failed response.
+                        request_response::Event::OutboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                            ..
+                        } => {
+                            tracing::warn!(
+                                %peer,
+                                ?request_id,
+                                ?error,
+                                "Get request failed - should record as NACK"
+                            );
                         }
-                        _ => {}
+                        // InboundFailure: Someone sent us a get request and we failed to respond.
+                        request_response::Event::InboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                            ..
+                        } => {
+                            tracing::warn!(
+                                %peer,
+                                ?request_id,
+                                ?error,
+                                "Failed to respond to get request from peer"
+                            );
+                        }
+                        request_response::Event::ResponseSent {
+                            peer, request_id, ..
+                        } => {
+                            tracing::trace!(
+                                %peer,
+                                ?request_id,
+                                "Get response sent successfully"
+                            );
+                        }
                     },
                     NetworkProtocolsEvent::Finality(inner_event) => match inner_event {
                         request_response::Event::Message { message, peer, .. } => {
@@ -111,6 +246,7 @@ impl RpcRouter {
                                         .handle_request(request, channel, peer)
                                         .await;
                                 }
+                                // TODO: Track request_id to detect late responses after timeout.
                                 Message::Response { response, .. } => {
                                     self.finality_controller
                                         .handle_response(response, peer)
@@ -118,10 +254,47 @@ impl RpcRouter {
                                 }
                             };
                         }
-                        request_response::Event::OutboundFailure { error, .. } => {
-                            tracing::error!("Finality request failed: {}", error)
+                        // OutboundFailure: We sent a finality request and it failed.
+                        // Note: Finality is typically a notification, so failure handling
+                        // may differ from store protocol (no replication counting).
+                        // TODO: Decide if finality failures need specific handling.
+                        request_response::Event::OutboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                            ..
+                        } => {
+                            tracing::warn!(
+                                %peer,
+                                ?request_id,
+                                ?error,
+                                "Finality request failed"
+                            );
                         }
-                        _ => {}
+                        // InboundFailure: Someone sent us a finality request and we failed to
+                        // respond.
+                        request_response::Event::InboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                            ..
+                        } => {
+                            tracing::warn!(
+                                %peer,
+                                ?request_id,
+                                ?error,
+                                "Failed to respond to finality request from peer"
+                            );
+                        }
+                        request_response::Event::ResponseSent {
+                            peer, request_id, ..
+                        } => {
+                            tracing::trace!(
+                                %peer,
+                                ?request_id,
+                                "Finality response sent successfully"
+                            );
+                        }
                     },
                 },
                 NestedBehaviourEvent::Identify(identify::Event::Received {

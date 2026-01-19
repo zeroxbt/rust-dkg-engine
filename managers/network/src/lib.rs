@@ -28,7 +28,8 @@ pub trait ProtocolDispatch {
     type Request: Send;
     type Response: Send;
 
-    fn send_request(&mut self, request: Self::Request);
+    /// Send a request and return the OutboundRequestId for tracking.
+    fn send_request(&mut self, request: Self::Request) -> request_response::OutboundRequestId;
     fn send_response(&mut self, response: Self::Response);
 }
 
@@ -43,6 +44,8 @@ where
     },
     SendProtocolRequest {
         request: B::Request,
+        /// Channel to return the OutboundRequestId for tracking
+        response_tx: tokio::sync::oneshot::Sender<request_response::OutboundRequestId>,
     },
     SendProtocolResponse {
         response: B::Response,
@@ -267,8 +270,10 @@ where
                                     swarm.behaviour_mut().kad.add_address(&peer_id, address);
                                 }
                             }
-                            NetworkAction::SendProtocolRequest { request } => {
-                                swarm.behaviour_mut().protocols.send_request(request);
+                            NetworkAction::SendProtocolRequest { request, response_tx } => {
+                                let request_id = swarm.behaviour_mut().protocols.send_request(request);
+                                // Send back the request_id for tracking (ignore if receiver dropped)
+                                let _ = response_tx.send(request_id);
                             }
                             NetworkAction::SendProtocolResponse { response } => {
                                 swarm.behaviour_mut().protocols.send_response(response);
@@ -311,9 +316,21 @@ where
     }
 
     /// Enqueue a protocol request for dispatch by the swarm.
-    pub async fn send_protocol_request(&self, request: B::Request) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::SendProtocolRequest { request })
+    /// Returns the OutboundRequestId which can be used to track the request
+    /// and correlate it with timeout/response events.
+    pub async fn send_protocol_request(
+        &self,
+        request: B::Request,
+    ) -> Result<request_response::OutboundRequestId, NetworkError> {
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+        self.enqueue_action(NetworkAction::SendProtocolRequest {
+            request,
+            response_tx,
+        })
+        .await?;
+        response_rx
             .await
+            .map_err(|_| NetworkError::RequestIdChannelClosed)
     }
 
     /// Enqueue a protocol response for dispatch by the swarm.

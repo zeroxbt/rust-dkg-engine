@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use blockchain::{BlockchainId, BlockchainManager};
 use libp2p::PeerId;
@@ -118,6 +118,8 @@ impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommand
         let dataset_root = &data.dataset_root;
         let remote_peer_id = &data.remote_peer_id;
         let dataset = &data.dataset;
+
+        tokio::time::sleep(Duration::from_secs(8)).await;
 
         tracing::info!(
             operation_id = %operation_id,

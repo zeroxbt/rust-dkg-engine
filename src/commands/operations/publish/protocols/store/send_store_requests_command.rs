@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    network::{NetworkProtocols, ProtocolRequest},
+    network::{NetworkProtocols, ProtocolRequest, RequestTracker},
     services::{
         operation_manager::OperationManager, pending_storage_service::PendingStorageService,
     },
@@ -55,6 +55,7 @@ pub struct SendStoreRequestsCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     publish_operation_manager: Arc<OperationManager>,
     pending_storage_service: Arc<PendingStorageService>,
+    request_tracker: Arc<RequestTracker>,
 }
 
 impl SendStoreRequestsCommandHandler {
@@ -65,6 +66,7 @@ impl SendStoreRequestsCommandHandler {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             publish_operation_manager: Arc::clone(context.publish_operation_manager()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
+            request_tracker: Arc::clone(context.request_tracker()),
         }
     }
 
@@ -346,6 +348,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
                 };
 
                 let op_id = operation_id;
+                let request_tracker = Arc::clone(&self.request_tracker);
                 send_futures.push(async move {
                     tracing::debug!(
                         operation_id = %op_id,
@@ -359,10 +362,13 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
                         })
                         .await
                     {
-                        Ok(_) => {
+                        Ok(request_id) => {
+                            // Track the request for timeout/response correlation
+                            request_tracker.track(request_id, op_id, remote_peer_id);
                             tracing::info!(
                                 operation_id = %op_id,
                                 peer = %remote_peer_id,
+                                ?request_id,
                                 "Store request sent successfully to peer"
                             );
                         }

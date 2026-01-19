@@ -61,6 +61,7 @@ async fn main() {
         &network_manager,
     );
 
+    let request_tracker = Arc::new(network::RequestTracker::new());
     let store_session_manager = Arc::new(network::SessionManager::new());
     let get_session_manager = Arc::new(network::SessionManager::new());
     let finality_session_manager = Arc::new(network::SessionManager::new());
@@ -75,6 +76,7 @@ async fn main() {
         Arc::clone(&ual_service),
         Arc::clone(&publish_operation_manager),
         Arc::clone(&pending_storage_service),
+        Arc::clone(&request_tracker),
         Arc::clone(&store_session_manager),
         Arc::clone(&get_session_manager),
         Arc::clone(&finality_session_manager),

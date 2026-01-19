@@ -9,7 +9,7 @@ use validation::ValidationManager;
 use crate::{
     commands::command_executor::CommandExecutionRequest,
     config::Config,
-    network::{NetworkProtocols, SessionManager},
+    network::{NetworkProtocols, RequestTracker, SessionManager},
     services::{
         operation_manager::OperationManager, pending_storage_service::PendingStorageService,
         ual_service::UalService,
@@ -27,6 +27,7 @@ pub struct Context {
     ual_service: Arc<UalService>,
     publish_operation_manager: Arc<OperationManager>,
     pending_storage_service: Arc<PendingStorageService>,
+    request_tracker: Arc<RequestTracker>,
     store_session_manager: Arc<SessionManager<StoreResponseData>>,
     get_session_manager: Arc<SessionManager<GetResponseData>>,
     finality_session_manager: Arc<SessionManager<FinalityResponseData>>,
@@ -44,6 +45,7 @@ impl Context {
         ual_service: Arc<UalService>,
         publish_operation_manager: Arc<OperationManager>,
         pending_storage_service: Arc<PendingStorageService>,
+        request_tracker: Arc<RequestTracker>,
         store_session_manager: Arc<SessionManager<StoreResponseData>>,
         get_session_manager: Arc<SessionManager<GetResponseData>>,
         finality_session_manager: Arc<SessionManager<FinalityResponseData>>,
@@ -58,6 +60,7 @@ impl Context {
             ual_service,
             publish_operation_manager,
             pending_storage_service,
+            request_tracker,
             store_session_manager,
             get_session_manager,
             finality_session_manager,
@@ -98,6 +101,10 @@ impl Context {
 
     pub fn schedule_command_tx(&self) -> &Sender<CommandExecutionRequest> {
         &self.schedule_command_tx
+    }
+
+    pub fn request_tracker(&self) -> &Arc<RequestTracker> {
+        &self.request_tracker
     }
 
     pub fn store_session_manager(&self) -> &Arc<SessionManager<StoreResponseData>> {

@@ -77,16 +77,12 @@ impl ProtocolDispatch for NetworkProtocols {
     type Request = ProtocolRequest;
     type Response = ProtocolResponse;
 
-    fn send_request(&mut self, request: Self::Request) {
+    fn send_request(&mut self, request: Self::Request) -> request_response::OutboundRequestId {
         match request {
-            ProtocolRequest::Store { peer, message } => {
-                let _ = self.store.send_request(&peer, message);
-            }
-            ProtocolRequest::Get { peer, message } => {
-                let _ = self.get.send_request(&peer, message);
-            }
+            ProtocolRequest::Store { peer, message } => self.store.send_request(&peer, message),
+            ProtocolRequest::Get { peer, message } => self.get.send_request(&peer, message),
             ProtocolRequest::Finality { peer, message } => {
-                let _ = self.finality.send_request(&peer, message);
+                self.finality.send_request(&peer, message)
             }
         }
     }

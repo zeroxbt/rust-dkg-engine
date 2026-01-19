@@ -3,6 +3,7 @@ use network::{
     request_response,
 };
 
+use super::constants::ProtocolTimeouts;
 use crate::types::protocol::{
     FinalityRequestData, FinalityResponseData, GetRequestData, GetResponseData, StoreRequestData,
     StoreResponseData,
@@ -29,23 +30,37 @@ pub struct NetworkProtocols {
 }
 
 impl NetworkProtocols {
-    /// Creates a new instance of application protocols
+    /// Creates a new instance of application protocols with configured timeouts.
+    ///
+    /// Timeouts match the JS implementation:
+    /// - Store: 15 seconds
+    /// - Get: 15 seconds
+    /// - Finality: 60 seconds
     pub fn new() -> Self {
+        let store_config =
+            request_response::Config::default().with_request_timeout(ProtocolTimeouts::STORE);
+
         let store = request_response::json::Behaviour::<
             RequestMessage<StoreRequestData>,
             ResponseMessage<StoreResponseData>,
         >::new(
             [(StreamProtocol::new("/store/1.0.0"), ProtocolSupport::Full)],
-            request_response::Config::default(),
+            store_config,
         );
+
+        let get_config =
+            request_response::Config::default().with_request_timeout(ProtocolTimeouts::GET);
 
         let get = request_response::json::Behaviour::<
             RequestMessage<GetRequestData>,
             ResponseMessage<GetResponseData>,
         >::new(
             [(StreamProtocol::new("/get/1.0.0"), ProtocolSupport::Full)],
-            request_response::Config::default(),
+            get_config,
         );
+
+        let finality_config =
+            request_response::Config::default().with_request_timeout(ProtocolTimeouts::FINALITY);
 
         let finality = request_response::json::Behaviour::<
             RequestMessage<FinalityRequestData>,
@@ -53,9 +68,10 @@ impl NetworkProtocols {
         >::new(
             [(
                 StreamProtocol::new("/finality/1.0.0"),
+                // TODO: verify with js nodes if this can be outbound only
                 ProtocolSupport::Full,
             )],
-            request_response::Config::default(),
+            finality_config,
         );
 
         Self {

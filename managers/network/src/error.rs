@@ -60,6 +60,10 @@ pub enum NetworkError {
     #[error("Swarm action channel closed.")]
     ActionChannelClosed,
 
+    /// Request ID response channel closed (event loop shut down before returning request ID)
+    #[error("Request ID channel closed before receiving response.")]
+    RequestIdChannelClosed,
+
     /// Key management error
     #[error("Key conversion failed: {0}")]
     KeyConversion(#[from] libp2p::identity::OtherVariantError),
