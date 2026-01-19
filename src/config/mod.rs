@@ -9,6 +9,7 @@ use network::NetworkManagerConfig;
 use repository::RepositoryManagerConfig;
 use serde::Deserialize;
 use thiserror::Error;
+use triple_store::TripleStoreManagerConfig;
 use validation::ValidationManagerConfig;
 
 use crate::controllers::http_api_controller::http_api_router::HttpApiConfig;
@@ -42,6 +43,7 @@ pub struct ManagersConfig {
     pub repository: RepositoryManagerConfig,
     pub blockchain: BlockchainManagerConfig,
     pub validation: ValidationManagerConfig,
+    pub triple_store: TripleStoreManagerConfig,
 }
 
 pub fn initialize_configuration() -> Config {

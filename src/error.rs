@@ -15,6 +15,10 @@ pub enum NodeError {
     #[error("Repository error: {0}")]
     Repository(#[from] repository::error::RepositoryError),
 
+    /// Triple store errors
+    #[error("Triple store error: {0}")]
+    TripleStore(#[from] triple_store::error::TripleStoreError),
+
     /// Service layer errors
     #[error("Service error: {0}")]
     Service(ServiceError),

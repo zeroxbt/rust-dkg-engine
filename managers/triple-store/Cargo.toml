@@ -1,0 +1,19 @@
+[package]
+name = "triple-store"
+version = "0.1.0"
+edition = "2024"
+
+[lints]
+workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+reqwest = { version = "0.13.1", features = ["json"] }
+async-trait = "0.1"
+
+[dev-dependencies]
+uuid.workspace = true

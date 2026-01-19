@@ -31,6 +31,7 @@ use tokio::{
     join,
     sync::mpsc::{Receiver, Sender},
 };
+use triple_store::TripleStoreManager;
 use validation::ValidationManager;
 
 use crate::{
@@ -51,8 +52,13 @@ async fn main() {
     // Channels for network manager event loop
     let (network_event_tx, network_event_rx) = tokio::sync::mpsc::channel(1024);
 
-    let (network_manager, repository_manager, blockchain_manager, validation_manager) =
-        initialize_managers(&config.managers).await;
+    let (
+        network_manager,
+        repository_manager,
+        blockchain_manager,
+        validation_manager,
+        triple_store_manager,
+    ) = initialize_managers(&config.managers).await;
     let (ual_service, publish_operation_manager, pending_storage_service) = initialize_services(
         &config,
         &blockchain_manager,
@@ -73,6 +79,7 @@ async fn main() {
         Arc::clone(&network_manager),
         Arc::clone(&blockchain_manager),
         Arc::clone(&validation_manager),
+        Arc::clone(&triple_store_manager),
         Arc::clone(&ual_service),
         Arc::clone(&publish_operation_manager),
         Arc::clone(&pending_storage_service),
@@ -184,6 +191,7 @@ async fn initialize_managers(
     Arc<RepositoryManager>,
     Arc<BlockchainManager>,
     Arc<ValidationManager>,
+    Arc<TripleStoreManager>,
 ) {
     // NetworkManager creates base protocols (kad, identify, ping) and handles bootstraps
     // Application creates its own protocol behaviours
@@ -205,12 +213,18 @@ async fn initialize_managers(
 
     let blockchain_manager = Arc::new(blockchain_manager);
     let validation_manager = Arc::new(ValidationManager::new().await);
+    let triple_store_manager = Arc::new(
+        TripleStoreManager::new(&config.triple_store)
+            .await
+            .expect("Failed to initialize triple store manager"),
+    );
 
     (
         network_manager,
         repository_manager,
         blockchain_manager,
         validation_manager,
+        triple_store_manager,
     )
 }
 

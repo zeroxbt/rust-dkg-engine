@@ -4,6 +4,7 @@ use blockchain::BlockchainManager;
 use network::NetworkManager;
 use repository::RepositoryManager;
 use tokio::sync::mpsc::Sender;
+use triple_store::TripleStoreManager;
 use validation::ValidationManager;
 
 use crate::{
@@ -24,6 +25,7 @@ pub struct Context {
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     blockchain_manager: Arc<BlockchainManager>,
     validation_manager: Arc<ValidationManager>,
+    triple_store_manager: Arc<TripleStoreManager>,
     ual_service: Arc<UalService>,
     publish_operation_manager: Arc<OperationManager>,
     pending_storage_service: Arc<PendingStorageService>,
@@ -42,6 +44,7 @@ impl Context {
         network_manager: Arc<NetworkManager<NetworkProtocols>>,
         blockchain_manager: Arc<BlockchainManager>,
         validation_manager: Arc<ValidationManager>,
+        triple_store_manager: Arc<TripleStoreManager>,
         ual_service: Arc<UalService>,
         publish_operation_manager: Arc<OperationManager>,
         pending_storage_service: Arc<PendingStorageService>,
@@ -57,6 +60,7 @@ impl Context {
             network_manager,
             blockchain_manager,
             validation_manager,
+            triple_store_manager,
             ual_service,
             publish_operation_manager,
             pending_storage_service,
@@ -85,6 +89,10 @@ impl Context {
 
     pub fn validation_manager(&self) -> &Arc<ValidationManager> {
         &self.validation_manager
+    }
+
+    pub fn triple_store_manager(&self) -> &Arc<TripleStoreManager> {
+        &self.triple_store_manager
     }
 
     pub fn ual_service(&self) -> &Arc<UalService> {

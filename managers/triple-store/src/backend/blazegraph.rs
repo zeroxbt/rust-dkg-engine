@@ -1,0 +1,415 @@
+use std::{collections::HashMap, time::Duration};
+
+use async_trait::async_trait;
+use reqwest::Client;
+use serde::Deserialize;
+
+use super::{SelectResult, SelectRow, SelectValue, TripleStoreBackend};
+use crate::{
+    config::TripleStoreManagerConfig,
+    error::{Result, TripleStoreError},
+};
+
+/// Blazegraph triple store backend implementation
+pub struct BlazegraphBackend {
+    client: Client,
+    config: TripleStoreManagerConfig,
+}
+
+impl BlazegraphBackend {
+    /// Create a new Blazegraph backend
+    pub fn new(config: TripleStoreManagerConfig) -> Result<Self> {
+        let client = Client::builder()
+            // Connection pooling: keep up to 10 idle connections per host
+            .pool_max_idle_per_host(10)
+            // Close idle connections after 30 seconds
+            .pool_idle_timeout(Duration::from_secs(30))
+            // TCP keepalive to detect dead connections
+            .tcp_keepalive(Duration::from_secs(60))
+            // Timeout for establishing new connections
+            .connect_timeout(Duration::from_secs(10))
+            // Default request timeout (overridden per-request)
+            .timeout(Duration::from_millis(config.timeouts.query_ms))
+            .build()?;
+
+        Ok(Self { client, config })
+    }
+
+    /// Build request with optional authentication
+    fn auth_headers(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match (&self.config.username, &self.config.password) {
+            (Some(user), Some(pass)) => builder.basic_auth(user, Some(pass)),
+            _ => builder,
+        }
+    }
+
+    /// Decode Blazegraph's escaped Unicode sequences (\Uxxxxxxxx)
+    fn decode_unicode_escapes(input: &str) -> String {
+        let mut result = String::with_capacity(input.len());
+        let mut chars = input.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                match chars.peek() {
+                    Some('U') => {
+                        chars.next(); // consume 'U'
+                        let hex: String = chars.by_ref().take(8).collect();
+                        if hex.len() == 8
+                            && let Ok(code) = u32::from_str_radix(&hex, 16)
+                            && let Some(decoded) = char::from_u32(code)
+                        {
+                            result.push(decoded);
+                            continue;
+                        }
+                        // Fallback: keep original
+                        result.push('\\');
+                        result.push('U');
+                        result.push_str(&hex);
+                    }
+                    Some('u') => {
+                        chars.next(); // consume 'u'
+                        let hex: String = chars.by_ref().take(4).collect();
+                        if hex.len() == 4
+                            && let Ok(code) = u32::from_str_radix(&hex, 16)
+                            && let Some(decoded) = char::from_u32(code)
+                        {
+                            result.push(decoded);
+                            continue;
+                        }
+                        // Fallback: keep original
+                        result.push('\\');
+                        result.push('u');
+                        result.push_str(&hex);
+                    }
+                    _ => result.push(c),
+                }
+            } else {
+                result.push(c);
+            }
+        }
+
+        result
+    }
+}
+
+#[async_trait]
+impl TripleStoreBackend for BlazegraphBackend {
+    fn name(&self) -> &'static str {
+        "blazegraph"
+    }
+
+    async fn health_check(&self) -> Result<bool> {
+        let url = self.config.status_endpoint();
+
+        let response = self
+            .auth_headers(self.client.get(&url))
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+
+        Ok(response.status().is_success())
+    }
+
+    async fn repository_exists(&self) -> Result<bool> {
+        let url = format!(
+            "{}/{}",
+            self.config.namespace_endpoint(),
+            self.config.repository
+        );
+
+        let response = self
+            .auth_headers(self.client.get(&url))
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?;
+
+        Ok(response.status().is_success())
+    }
+
+    async fn create_repository(&self) -> Result<()> {
+        let url = self.config.namespace_endpoint();
+
+        // Blazegraph namespace configuration properties (Java properties format)
+        let properties = format!(
+            r#"com.bigdata.rdf.sail.namespace={namespace}
+            com.bigdata.rdf.store.AbstractTripleStore.textIndex=false
+            com.bigdata.rdf.store.AbstractTripleStore.axiomsClass=com.bigdata.rdf.axioms.NoAxioms
+            com.bigdata.rdf.sail.truthMaintenance=false
+            com.bigdata.rdf.sail.isolatableIndices=false
+            com.bigdata.rdf.store.AbstractTripleStore.justify=false
+            com.bigdata.rdf.store.AbstractTripleStore.statementIdentifiers=false
+            com.bigdata.rdf.store.AbstractTripleStore.quads=true
+            com.bigdata.rdf.store.AbstractTripleStore.geoSpatial=false
+            com.bigdata.journal.Journal.groupCommit=false
+            com.bigdata.btree.writeRetentionQueue.capacity=4000
+            com.bigdata.btree.BTree.branchingFactor=128
+            com.bigdata.journal.AbstractJournal.initialExtent=209715200
+            com.bigdata.journal.AbstractJournal.maximumExtent=209715200"#,
+            namespace = self.config.repository
+        );
+
+        // Blazegraph expects properties as text/plain body
+        let response = self
+            .auth_headers(self.client.post(&url))
+            .header("Content-Type", "text/plain")
+            .body(properties)
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await?;
+
+        if response.status().is_success() || response.status().as_u16() == 201 {
+            tracing::info!(
+                repository = %self.config.repository,
+                "Created Blazegraph namespace"
+            );
+            Ok(())
+        } else {
+            let status = response.status().as_u16();
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(TripleStoreError::Backend { status, message })
+        }
+    }
+
+    async fn delete_repository(&self) -> Result<()> {
+        let url = format!(
+            "{}/{}",
+            self.config.namespace_endpoint(),
+            self.config.repository
+        );
+
+        let response = self
+            .auth_headers(self.client.delete(&url))
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            tracing::info!(
+                repository = %self.config.repository,
+                "Deleted Blazegraph namespace"
+            );
+            Ok(())
+        } else {
+            let status = response.status().as_u16();
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(TripleStoreError::Backend { status, message })
+        }
+    }
+
+    /* async fn construct(&self, query: &str, timeout_ms: u64) -> Result<String> {
+        let url = self.config.sparql_endpoint();
+
+        let response = self
+            .auth_headers(self.client.post(&url))
+            .header("Content-Type", "application/sparql-query")
+            .header("Accept", "application/n-quads")
+            .header("X-BIGDATA-MAX-QUERY-MILLIS", timeout_ms.to_string())
+            .timeout(Duration::from_millis(timeout_ms + 5000))
+            .body(query.to_string())
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let body = response.text().await?;
+            Ok(Self::decode_unicode_escapes(&body))
+        } else {
+            let status = response.status().as_u16();
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(TripleStoreError::Backend { status, message })
+        }
+    }
+
+    async fn select(&self, query: &str, timeout_ms: u64) -> Result<SelectResult> {
+        let url = self.config.sparql_endpoint();
+
+        let response = self
+            .auth_headers(self.client.post(&url))
+            .header("Content-Type", "application/sparql-query")
+            .header("Accept", "application/sparql-results+json")
+            .header("X-BIGDATA-MAX-QUERY-MILLIS", timeout_ms.to_string())
+            .timeout(Duration::from_millis(timeout_ms + 5000))
+            .body(query.to_string())
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let body = response.text().await?;
+            parse_select_json(&body)
+        } else {
+            let status = response.status().as_u16();
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(TripleStoreError::Backend { status, message })
+        }
+    }
+
+    async fn ask(&self, query: &str, timeout_ms: u64) -> Result<bool> {
+        let url = self.config.sparql_endpoint();
+
+        let response = self
+            .auth_headers(self.client.post(&url))
+            .header("Content-Type", "application/sparql-query")
+            .header("Accept", "application/sparql-results+json")
+            .header("X-BIGDATA-MAX-QUERY-MILLIS", timeout_ms.to_string())
+            .timeout(Duration::from_millis(timeout_ms + 5000))
+            .body(query.to_string())
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let body = response.text().await?;
+            parse_ask_json(&body)
+        } else {
+            let status = response.status().as_u16();
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(TripleStoreError::Backend { status, message })
+        }
+    }
+
+    async fn update(&self, query: &str, timeout_ms: u64) -> Result<()> {
+        let url = self.config.sparql_endpoint();
+
+        let response = self
+            .auth_headers(self.client.post(&url))
+            .header("Content-Type", "application/sparql-update")
+            .header("X-BIGDATA-MAX-QUERY-MILLIS", timeout_ms.to_string())
+            .timeout(Duration::from_millis(timeout_ms + 5000))
+            .body(query.to_string())
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let status = response.status().as_u16();
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(TripleStoreError::Backend { status, message })
+        }
+    } */
+}
+
+// JSON response structures for SPARQL results
+#[derive(Deserialize)]
+struct SparqlSelectResponse {
+    head: SparqlHead,
+    results: SparqlResults,
+}
+
+#[derive(Deserialize)]
+struct SparqlHead {
+    vars: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct SparqlResults {
+    bindings: Vec<HashMap<String, SparqlBinding>>,
+}
+
+#[derive(Deserialize)]
+struct SparqlBinding {
+    #[serde(rename = "type")]
+    binding_type: String,
+    value: String,
+    datatype: Option<String>,
+    #[serde(rename = "xml:lang")]
+    language: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SparqlAskResponse {
+    boolean: bool,
+}
+
+fn parse_select_json(json: &str) -> Result<SelectResult> {
+    let response: SparqlSelectResponse =
+        serde_json::from_str(json).map_err(|e| TripleStoreError::ParseError {
+            reason: format!("Failed to parse SELECT response: {e}"),
+        })?;
+
+    let rows = response
+        .results
+        .bindings
+        .into_iter()
+        .map(|binding| {
+            let bindings = binding
+                .into_iter()
+                .map(|(key, val)| {
+                    let value = match val.binding_type.as_str() {
+                        "uri" => SelectValue::Uri(val.value),
+                        "bnode" => SelectValue::BlankNode(val.value),
+                        _ => SelectValue::Literal {
+                            value: val.value,
+                            datatype: val.datatype,
+                            language: val.language,
+                        },
+                    };
+                    (key, value)
+                })
+                .collect();
+            SelectRow { bindings }
+        })
+        .collect();
+
+    Ok(SelectResult {
+        variables: response.head.vars,
+        rows,
+    })
+}
+
+fn parse_ask_json(json: &str) -> Result<bool> {
+    let response: SparqlAskResponse =
+        serde_json::from_str(json).map_err(|e| TripleStoreError::ParseError {
+            reason: format!("Failed to parse ASK response: {e}"),
+        })?;
+
+    Ok(response.boolean)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_unicode_escapes() {
+        // Test \U escape (8 hex digits)
+        assert_eq!(
+            BlazegraphBackend::decode_unicode_escapes("Hello\\U00000041World"),
+            "HelloAWorld"
+        );
+
+        // Test \u escape (4 hex digits)
+        assert_eq!(
+            BlazegraphBackend::decode_unicode_escapes("Hello\\u0041World"),
+            "HelloAWorld"
+        );
+
+        // Test no escapes
+        assert_eq!(
+            BlazegraphBackend::decode_unicode_escapes("Hello World"),
+            "Hello World"
+        );
+
+        // Test emoji
+        assert_eq!(
+            BlazegraphBackend::decode_unicode_escapes("\\U0001F600"),
+            "\u{1F600}"
+        );
+    }
+}

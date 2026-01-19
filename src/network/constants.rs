@@ -8,15 +8,12 @@ pub struct ProtocolTimeouts;
 
 impl ProtocolTimeouts {
     /// Store protocol timeout (used during publish operations)
-    /// JS: PUBLISH.REQUEST = 15 * 1000
-    pub const STORE: Duration = Duration::from_secs(5);
+    pub const STORE: Duration = Duration::from_secs(15);
 
     /// Get protocol timeout
-    /// JS: GET.REQUEST = 15 * 1000
     pub const GET: Duration = Duration::from_secs(15);
 
     /// Finality protocol timeout
-    /// JS: FINALITY.REQUEST = 60 * 1000
     pub const FINALITY: Duration = Duration::from_secs(60);
 
     // Future protocols (not yet implemented in Rust):

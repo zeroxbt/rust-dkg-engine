@@ -43,6 +43,20 @@ min_connections = 1
 # Validation settings here
 
 # ============================================
+# Triple Store Manager Configuration
+# ============================================
+[managers.triple_store]
+url = "http://localhost:9999"
+repository = "DKG"
+connect_max_retries = 10
+connect_retry_frequency_ms = 10000
+
+[managers.triple_store.timeouts]
+query_ms = 60000
+insert_ms = 300000
+ask_ms = 10000
+
+# ============================================
 # Blockchain Configuration - Hardhat (Local)
 # ============================================
 # Note: This configuration uses Hardhat's default test accounts

@@ -5,6 +5,7 @@ members = [
     "./managers/repository",
     "./managers/blockchain",
     "./managers/validation",
+    "./managers/triple-store",
     "./tools/local_network",
     "./rdf-canonize",
 ]
@@ -23,6 +24,7 @@ blockchain = { path = "./managers/blockchain" }
 network = { path = "./managers/network" }
 repository = { path = "./managers/repository" }
 validation = { path = "./managers/validation" }
+triple-store = { path = "./managers/triple-store" }
 rdf-canonize = { path = "./rdf-canonize" }
 
 # Common dependencies shared across workspace
@@ -65,6 +67,7 @@ blockchain.workspace = true
 network.workspace = true
 repository.workspace = true
 validation.workspace = true
+triple-store.workspace = true
 rdf-canonize.workspace = true
 tokio.workspace = true
 futures.workspace = true
