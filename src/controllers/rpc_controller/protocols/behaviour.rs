@@ -4,7 +4,7 @@ use network::{
 };
 
 use super::constants::ProtocolTimeouts;
-use crate::types::protocol::{
+use crate::controllers::rpc_controller::messages::{
     FinalityRequestData, FinalityResponseData, GetRequestData, GetResponseData, StoreRequestData,
     StoreResponseData,
 };
@@ -82,5 +82,8 @@ impl NetworkProtocols {
     }
 }
 
-// No type alias needed - use NetworkManager<NetworkProtocols> directly
-// The NetworkBehaviour wrapping is done inside NetworkManager
+impl Default for NetworkProtocols {
+    fn default() -> Self {
+        Self::new()
+    }
+}

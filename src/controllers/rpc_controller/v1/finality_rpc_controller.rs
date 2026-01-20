@@ -13,19 +13,19 @@ use crate::{
         operations::publish::protocols::finality::handle_finality_request_command::HandleFinalityRequestCommandData,
     },
     context::Context,
-    network::SessionManager,
-    types::protocol::{FinalityRequestData, FinalityResponseData},
+    controllers::rpc_controller::messages::{FinalityRequestData, FinalityResponseData},
+    services::ResponseChannels,
 };
 
 pub struct FinalityRpcController {
-    session_manager: Arc<SessionManager<FinalityResponseData>>,
+    response_channels: Arc<ResponseChannels<FinalityResponseData>>,
     schedule_command_tx: Sender<CommandExecutionRequest>,
 }
 
 impl FinalityRpcController {
     pub fn new(context: Arc<Context>) -> Self {
         Self {
-            session_manager: Arc::clone(context.finality_session_manager()),
+            response_channels: Arc::clone(context.finality_response_channels()),
             schedule_command_tx: context.schedule_command_tx().clone(),
         }
     }
@@ -48,9 +48,9 @@ impl FinalityRpcController {
             "Finality request received"
         );
 
-        // Store channel in session manager for later retrieval by command handler
-        self.session_manager
-            .store_channel(&remote_peer_id, operation_id, channel);
+        // Store channel for later retrieval by command handler
+        self.response_channels
+            .store(&remote_peer_id, operation_id, channel);
 
         // Schedule the HandleFinalityRequest command
         let command_data = HandleFinalityRequestCommandData::new(

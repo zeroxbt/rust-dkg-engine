@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use blockchain::{BlockchainId, BlockchainManager};
 use libp2p::PeerId;
@@ -14,11 +14,11 @@ use validation::ValidationManager;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    network::{NetworkProtocols, ProtocolResponse, SessionManager},
+    controllers::rpc_controller::{messages::StoreResponseData, NetworkProtocols, ProtocolResponse},
     services::{
-        operation_manager::OperationManager, pending_storage_service::PendingStorageService,
+        pending_storage_service::PendingStorageService, OperationService, ResponseChannels,
     },
-    types::{models::Assertion, protocol::StoreResponseData},
+    types::models::Assertion,
 };
 
 /// Command data for handling incoming publish/store requests.
@@ -53,10 +53,10 @@ impl HandleStoreRequestCommandData {
 pub struct HandleStoreRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    publish_operation_manager: Arc<OperationManager>,
+    publish_operation_manager: Arc<OperationService>,
     validation_manager: Arc<ValidationManager>,
     blockchain_manager: Arc<BlockchainManager>,
-    session_manager: Arc<SessionManager<StoreResponseData>>,
+    response_channels: Arc<ResponseChannels<StoreResponseData>>,
     pending_storage_service: Arc<PendingStorageService>,
 }
 
@@ -68,7 +68,7 @@ impl HandleStoreRequestCommandHandler {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             validation_manager: Arc::clone(context.validation_manager()),
             publish_operation_manager: Arc::clone(context.publish_operation_manager()),
-            session_manager: Arc::clone(context.store_session_manager()),
+            response_channels: Arc::clone(context.store_response_channels()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
     }
@@ -128,27 +128,27 @@ impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommand
             "Starting HandlePublishRequest command"
         );
 
-        // Retrieve the channel from session manager
+        // Retrieve the response channel
         tracing::debug!(
             operation_id = %operation_id,
             peer = %remote_peer_id,
-            "Attempting to retrieve channel from session manager"
+            "Attempting to retrieve response channel"
         );
         let Some(channel) = self
-            .session_manager
-            .retrieve_channel(remote_peer_id, operation_id)
+            .response_channels
+            .retrieve(remote_peer_id, operation_id)
         else {
             tracing::error!(
                 operation_id = %operation_id,
                 peer = %remote_peer_id,
-                "No cached session found. Session may have expired."
+                "No cached response channel found. Channel may have expired."
             );
             return CommandExecutionResult::Completed;
         };
         tracing::debug!(
             operation_id = %operation_id,
             peer = %remote_peer_id,
-            "Channel retrieved successfully from session manager"
+            "Response channel retrieved successfully"
         );
 
         tracing::debug!(

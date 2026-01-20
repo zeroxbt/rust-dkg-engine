@@ -16,10 +16,13 @@ use validation::ValidationManager;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
+    controllers::rpc_controller::{
+        NetworkProtocols, ProtocolRequest, messages::FinalityRequestData,
+    },
     error::NodeError,
-    network::{NetworkProtocols, ProtocolRequest},
-    services::{pending_storage_service::PendingStorageService, ual_service::UalService},
-    types::{models::Assertion, protocol::FinalityRequestData},
+    services::pending_storage_service::PendingStorageService,
+    types::models::Assertion,
+    utils::ual::derive_ual,
 };
 
 /// Raw event data from KnowledgeCollectionCreated event.
@@ -355,7 +358,7 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
         );
 
         // Derive UAL for the knowledge collection
-        let ual = UalService::derive_ual(
+        let ual = derive_ual(
             &data.blockchain,
             &data.knowledge_collection_storage_address,
             knowledge_collection_id,

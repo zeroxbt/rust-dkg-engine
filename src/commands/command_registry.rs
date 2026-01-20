@@ -126,10 +126,8 @@ command_registry! {
 /// Default commands scheduled at startup. Keep this list explicit for clarity.
 pub fn default_command_requests(blockchain_ids: &[BlockchainId]) -> Vec<CommandExecutionRequest> {
     let mut requests = vec![
-        CommandExecutionRequest::new(Command::DialPeers(DialPeersCommandData::default())),
-        CommandExecutionRequest::new(Command::ShardingTableCheck(
-            ShardingTableCheckCommandData::default(),
-        )),
+        CommandExecutionRequest::new(Command::DialPeers(DialPeersCommandData)),
+        CommandExecutionRequest::new(Command::ShardingTableCheck(ShardingTableCheckCommandData)),
     ];
 
     // Schedule one blockchain event listener per blockchain

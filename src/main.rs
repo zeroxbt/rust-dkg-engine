@@ -3,9 +3,9 @@ mod config;
 mod context;
 mod controllers;
 mod error;
-mod network;
 mod services;
 mod types;
+mod utils;
 
 use std::sync::Arc;
 
@@ -23,10 +23,7 @@ use controllers::{
 };
 use dotenvy::dotenv;
 use repository::RepositoryManager;
-use services::{
-    operation_manager::{OperationConfig, OperationManager},
-    ual_service::UalService,
-};
+use services::operation_service::{OperationConfig, OperationService};
 use tokio::{
     join,
     sync::mpsc::{Receiver, Sender},
@@ -36,8 +33,11 @@ use validation::ValidationManager;
 
 use crate::{
     config::Config,
-    network::NetworkProtocols,
-    services::{file_service::FileService, pending_storage_service::PendingStorageService},
+    controllers::rpc_controller::NetworkProtocols,
+    services::{
+        RequestTracker, ResponseChannels, file_service::FileService,
+        pending_storage_service::PendingStorageService,
+    },
 };
 
 #[tokio::main]
@@ -59,18 +59,13 @@ async fn main() {
         validation_manager,
         triple_store_manager,
     ) = initialize_managers(&config.managers).await;
-    let (ual_service, publish_operation_manager, pending_storage_service) = initialize_services(
-        &config,
-        &blockchain_manager,
-        &repository_manager,
-        &validation_manager,
-        &network_manager,
-    );
+    let (publish_operation_manager, pending_storage_service) =
+        initialize_services(&config, &repository_manager);
 
-    let request_tracker = Arc::new(network::RequestTracker::new());
-    let store_session_manager = Arc::new(network::SessionManager::new());
-    let get_session_manager = Arc::new(network::SessionManager::new());
-    let finality_session_manager = Arc::new(network::SessionManager::new());
+    let request_tracker = Arc::new(RequestTracker::new());
+    let store_response_channels = Arc::new(ResponseChannels::new());
+    let get_response_channels = Arc::new(ResponseChannels::new());
+    let finality_response_channels = Arc::new(ResponseChannels::new());
 
     let context = Arc::new(Context::new(
         config.clone(),
@@ -80,13 +75,12 @@ async fn main() {
         Arc::clone(&blockchain_manager),
         Arc::clone(&validation_manager),
         Arc::clone(&triple_store_manager),
-        Arc::clone(&ual_service),
         Arc::clone(&publish_operation_manager),
         Arc::clone(&pending_storage_service),
         Arc::clone(&request_tracker),
-        Arc::clone(&store_session_manager),
-        Arc::clone(&get_session_manager),
-        Arc::clone(&finality_session_manager),
+        Arc::clone(&store_response_channels),
+        Arc::clone(&get_response_channels),
+        Arc::clone(&finality_response_channels),
     ));
 
     if config.is_dev_env {
@@ -231,20 +225,12 @@ async fn initialize_managers(
 
 fn initialize_services(
     config: &Config,
-    blockchain_manager: &Arc<BlockchainManager>,
     repository_manager: &Arc<RepositoryManager>,
-    _validation_manager: &Arc<ValidationManager>,
-    _network_manager: &Arc<NetworkManager<NetworkProtocols>>,
-) -> (
-    Arc<UalService>,
-    Arc<OperationManager>,
-    Arc<PendingStorageService>,
-) {
+) -> (Arc<OperationService>, Arc<PendingStorageService>) {
     let file_service = Arc::new(FileService::new(config.app_data_path.clone()));
     let pending_storage_service = Arc::new(PendingStorageService::new(Arc::clone(&file_service)));
-    let ual_service = Arc::new(UalService::new(Arc::clone(blockchain_manager)));
 
-    let publish_operation_manager = Arc::new(OperationManager::new(
+    let publish_operation_manager = Arc::new(OperationService::new(
         Arc::clone(repository_manager),
         Arc::clone(&file_service),
         OperationConfig {
@@ -252,11 +238,7 @@ fn initialize_services(
         },
     ));
 
-    (
-        ual_service,
-        publish_operation_manager,
-        pending_storage_service,
-    )
+    (publish_operation_manager, pending_storage_service)
 }
 
 fn initialize_controllers(

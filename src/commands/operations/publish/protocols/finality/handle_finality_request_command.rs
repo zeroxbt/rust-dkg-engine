@@ -12,8 +12,8 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    network::{NetworkProtocols, ProtocolResponse, SessionManager},
-    types::protocol::FinalityResponseData,
+    controllers::rpc_controller::{messages::FinalityResponseData, NetworkProtocols, ProtocolResponse},
+    services::ResponseChannels,
 };
 
 /// Command data for handling incoming finality requests from storage nodes.
@@ -49,7 +49,7 @@ impl HandleFinalityRequestCommandData {
 pub struct HandleFinalityRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    session_manager: Arc<SessionManager<FinalityResponseData>>,
+    response_channels: Arc<ResponseChannels<FinalityResponseData>>,
 }
 
 impl HandleFinalityRequestCommandHandler {
@@ -57,7 +57,7 @@ impl HandleFinalityRequestCommandHandler {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            session_manager: Arc::clone(context.finality_session_manager()),
+            response_channels: Arc::clone(context.finality_response_channels()),
         }
     }
 
@@ -132,15 +132,15 @@ impl CommandHandler<HandleFinalityRequestCommandData> for HandleFinalityRequestC
             "Handling finality request from storage node"
         );
 
-        // Retrieve the channel from session manager
+        // Retrieve the response channel
         let Some(channel) = self
-            .session_manager
-            .retrieve_channel(remote_peer_id, operation_id)
+            .response_channels
+            .retrieve(remote_peer_id, operation_id)
         else {
             tracing::error!(
                 operation_id = %operation_id,
                 peer = %remote_peer_id,
-                "No cached session found for finality request. Session may have expired."
+                "No cached response channel found for finality request. Channel may have expired."
             );
             return CommandExecutionResult::Completed;
         };

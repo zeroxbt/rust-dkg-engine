@@ -9,9 +9,9 @@ use crate::{
     types::models::operation::OperationStatus,
 };
 
-/// Consolidated operation state manager.
+/// Consolidated operation state service.
 /// The database is the single source of truth for all operation state.
-pub struct OperationManager {
+pub struct OperationService {
     repository: Arc<RepositoryManager>,
     file_service: Arc<FileService>,
     config: OperationConfig,
@@ -21,7 +21,7 @@ pub struct OperationConfig {
     pub operation_name: &'static str,
 }
 
-impl OperationManager {
+impl OperationService {
     pub fn new(
         repository: Arc<RepositoryManager>,
         file_service: Arc<FileService>,

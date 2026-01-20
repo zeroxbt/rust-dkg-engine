@@ -1,4 +1,7 @@
 mod constants;
-mod finality_rpc_controller;
+pub mod messages;
+pub mod protocols;
 pub mod rpc_router;
-mod store_rpc_controller;
+mod v1;
+
+pub use protocols::{NetworkProtocols, ProtocolRequest, ProtocolResponse};

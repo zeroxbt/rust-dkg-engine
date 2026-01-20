@@ -1,10 +1,4 @@
 use serde::{Deserialize, Serialize};
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ProtocolOperation {
-    Publish,
-    Get,
-    Update,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OperationStatus {
@@ -27,7 +21,7 @@ impl OperationStatus {
             "IN_PROGRESS" => Self::InProgress,
             "COMPLETED" => Self::Completed,
             "FAILED" => Self::Failed,
-            _ => Self::InProgress, // Default to InProgress for unknown values
+            _ => Self::InProgress,
         }
     }
 }

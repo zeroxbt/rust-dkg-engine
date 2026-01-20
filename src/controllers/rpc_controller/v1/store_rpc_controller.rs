@@ -14,18 +14,15 @@ use crate::{
         operations::publish::protocols::store::handle_store_request_command::HandleStoreRequestCommandData,
     },
     context::Context,
-    network::SessionManager,
-    services::operation_manager::OperationManager,
-    types::{
-        models::Assertion,
-        protocol::{StoreRequestData, StoreResponseData},
-    },
+    controllers::rpc_controller::messages::{StoreRequestData, StoreResponseData},
+    services::{OperationService, ResponseChannels},
+    types::models::Assertion,
 };
 
 pub struct StoreRpcController {
-    publish_operation_manager: Arc<OperationManager>,
+    publish_operation_manager: Arc<OperationService>,
     repository_manager: Arc<RepositoryManager>,
-    session_manager: Arc<SessionManager<StoreResponseData>>,
+    response_channels: Arc<ResponseChannels<StoreResponseData>>,
     schedule_command_tx: Sender<CommandExecutionRequest>,
 }
 
@@ -34,7 +31,7 @@ impl StoreRpcController {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             publish_operation_manager: Arc::clone(context.publish_operation_manager()),
-            session_manager: Arc::clone(context.store_session_manager()),
+            response_channels: Arc::clone(context.store_response_channels()),
             schedule_command_tx: context.schedule_command_tx().clone(),
         }
     }
@@ -56,9 +53,9 @@ impl StoreRpcController {
             "Store request received"
         );
 
-        // Store channel in session manager for later retrieval by command handler
-        self.session_manager
-            .store_channel(&remote_peer_id, operation_id, channel);
+        // Store channel for later retrieval by command handler
+        self.response_channels
+            .store(&remote_peer_id, operation_id, channel);
 
         // Create dataset from request data
         let dataset = Assertion {

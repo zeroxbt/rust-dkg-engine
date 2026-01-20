@@ -7,13 +7,15 @@ use repository::RepositoryManager;
 use tokio::sync::{Semaphore, mpsc};
 
 use super::{
-    constants::NETWORK_EVENT_QUEUE_PARALLELISM, finality_rpc_controller::FinalityRpcController,
+    constants::NETWORK_EVENT_QUEUE_PARALLELISM,
+    protocols::{NetworkProtocols, NetworkProtocolsEvent},
 };
 use crate::{
     context::Context,
-    controllers::rpc_controller::store_rpc_controller::StoreRpcController,
-    network::{NetworkProtocols, NetworkProtocolsEvent, RequestTracker},
-    services::operation_manager::OperationManager,
+    controllers::rpc_controller::v1::{
+        finality_rpc_controller::FinalityRpcController, store_rpc_controller::StoreRpcController,
+    },
+    services::{OperationService, RequestTracker},
 };
 
 // Type alias for the complete behaviour and its event type
@@ -24,7 +26,7 @@ pub struct RpcRouter {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     request_tracker: Arc<RequestTracker>,
-    publish_operation_manager: Arc<OperationManager>,
+    publish_operation_manager: Arc<OperationService>,
     store_controller: Arc<StoreRpcController>,
     finality_controller: Arc<FinalityRpcController>,
     semaphore: Arc<Semaphore>,

@@ -1,10 +1,9 @@
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::Deserialize;
 
-use super::{SelectResult, SelectRow, SelectValue, TripleStoreBackend};
+use super::TripleStoreBackend;
 use crate::{
     config::TripleStoreManagerConfig,
     error::{Result, TripleStoreError},
@@ -43,7 +42,7 @@ impl BlazegraphBackend {
         }
     }
 
-    /// Decode Blazegraph's escaped Unicode sequences (\Uxxxxxxxx)
+    /*  /// Decode Blazegraph's escaped Unicode sequences (\Uxxxxxxxx)
     fn decode_unicode_escapes(input: &str) -> String {
         let mut result = String::with_capacity(input.len());
         let mut chars = input.chars().peekable();
@@ -89,7 +88,7 @@ impl BlazegraphBackend {
         }
 
         result
-    }
+    } */
 }
 
 #[async_trait]
@@ -312,7 +311,7 @@ impl TripleStoreBackend for BlazegraphBackend {
         }
     }
 }
-
+/*
 // JSON response structures for SPARQL results
 #[derive(Deserialize)]
 struct SparqlSelectResponse {
@@ -389,7 +388,7 @@ fn parse_ask_json(json: &str) -> Result<bool> {
 
     Ok(response.boolean)
 }
-
+ *//*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,3 +420,4 @@ mod tests {
         );
     }
 }
+ */

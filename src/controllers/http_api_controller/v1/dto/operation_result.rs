@@ -43,13 +43,6 @@ impl OperationResultResponse {
         }
     }
 
-    pub fn in_progress() -> Self {
-        Self {
-            status: "IN_PROGRESS".to_string(),
-            data: None,
-        }
-    }
-
     pub fn in_progress_with_data(min_acks_reached: bool) -> Self {
         Self {
             status: "IN_PROGRESS".to_string(),

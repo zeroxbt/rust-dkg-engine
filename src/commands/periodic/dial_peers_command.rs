@@ -7,7 +7,7 @@ use repository::RepositoryManager;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    network::NetworkProtocols,
+    controllers::rpc_controller::NetworkProtocols,
 };
 
 const DIAL_PEERS_COMMAND_PERIOD_MS: i64 = 10_000;

@@ -10,12 +10,14 @@ use validation::ValidationManager;
 use crate::{
     commands::command_executor::CommandExecutionRequest,
     config::Config,
-    network::{NetworkProtocols, RequestTracker, SessionManager},
-    services::{
-        operation_manager::OperationManager, pending_storage_service::PendingStorageService,
-        ual_service::UalService,
+    controllers::rpc_controller::{
+        NetworkProtocols,
+        messages::{FinalityResponseData, GetResponseData, StoreResponseData},
     },
-    types::protocol::{FinalityResponseData, GetResponseData, StoreResponseData},
+    services::{
+        OperationService, RequestTracker, ResponseChannels,
+        pending_storage_service::PendingStorageService,
+    },
 };
 
 pub struct Context {
@@ -26,13 +28,12 @@ pub struct Context {
     blockchain_manager: Arc<BlockchainManager>,
     validation_manager: Arc<ValidationManager>,
     triple_store_manager: Arc<TripleStoreManager>,
-    ual_service: Arc<UalService>,
-    publish_operation_manager: Arc<OperationManager>,
+    publish_operation_manager: Arc<OperationService>,
     pending_storage_service: Arc<PendingStorageService>,
     request_tracker: Arc<RequestTracker>,
-    store_session_manager: Arc<SessionManager<StoreResponseData>>,
-    get_session_manager: Arc<SessionManager<GetResponseData>>,
-    finality_session_manager: Arc<SessionManager<FinalityResponseData>>,
+    store_response_channels: Arc<ResponseChannels<StoreResponseData>>,
+    get_response_channels: Arc<ResponseChannels<GetResponseData>>,
+    finality_response_channels: Arc<ResponseChannels<FinalityResponseData>>,
 }
 
 impl Context {
@@ -45,13 +46,12 @@ impl Context {
         blockchain_manager: Arc<BlockchainManager>,
         validation_manager: Arc<ValidationManager>,
         triple_store_manager: Arc<TripleStoreManager>,
-        ual_service: Arc<UalService>,
-        publish_operation_manager: Arc<OperationManager>,
+        publish_operation_manager: Arc<OperationService>,
         pending_storage_service: Arc<PendingStorageService>,
         request_tracker: Arc<RequestTracker>,
-        store_session_manager: Arc<SessionManager<StoreResponseData>>,
-        get_session_manager: Arc<SessionManager<GetResponseData>>,
-        finality_session_manager: Arc<SessionManager<FinalityResponseData>>,
+        store_response_channels: Arc<ResponseChannels<StoreResponseData>>,
+        get_response_channels: Arc<ResponseChannels<GetResponseData>>,
+        finality_response_channels: Arc<ResponseChannels<FinalityResponseData>>,
     ) -> Self {
         Self {
             config,
@@ -61,13 +61,12 @@ impl Context {
             blockchain_manager,
             validation_manager,
             triple_store_manager,
-            ual_service,
             publish_operation_manager,
             pending_storage_service,
             request_tracker,
-            store_session_manager,
-            get_session_manager,
-            finality_session_manager,
+            store_response_channels,
+            get_response_channels,
+            finality_response_channels,
         }
     }
 
@@ -95,11 +94,7 @@ impl Context {
         &self.triple_store_manager
     }
 
-    pub fn ual_service(&self) -> &Arc<UalService> {
-        &self.ual_service
-    }
-
-    pub fn publish_operation_manager(&self) -> &Arc<OperationManager> {
+    pub fn publish_operation_manager(&self) -> &Arc<OperationService> {
         &self.publish_operation_manager
     }
 
@@ -115,15 +110,15 @@ impl Context {
         &self.request_tracker
     }
 
-    pub fn store_session_manager(&self) -> &Arc<SessionManager<StoreResponseData>> {
-        &self.store_session_manager
+    pub fn store_response_channels(&self) -> &Arc<ResponseChannels<StoreResponseData>> {
+        &self.store_response_channels
     }
 
-    pub fn get_session_manager(&self) -> &Arc<SessionManager<GetResponseData>> {
-        &self.get_session_manager
+    pub fn get_response_channels(&self) -> &Arc<ResponseChannels<GetResponseData>> {
+        &self.get_response_channels
     }
 
-    pub fn finality_session_manager(&self) -> &Arc<SessionManager<FinalityResponseData>> {
-        &self.finality_session_manager
+    pub fn finality_response_channels(&self) -> &Arc<ResponseChannels<FinalityResponseData>> {
+        &self.finality_response_channels
     }
 }

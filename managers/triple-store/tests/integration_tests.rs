@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 //! Integration tests for the Triple Store Manager.
 //!
 //! These tests require a running Blazegraph instance for Blazegraph tests.

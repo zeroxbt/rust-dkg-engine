@@ -47,7 +47,7 @@ impl ValidationManager {
     /// 4. byteSize = numberOfChunks * CHUNK_SIZE
     pub fn calculate_assertion_size(&self, quads: &[String]) -> usize {
         let concatenated = quads.join("\n");
-        let total_bytes = concatenated.as_bytes().len();
+        let total_bytes = concatenated.len();
         let num_chunks = total_bytes.div_ceil(CHUNK_SIZE);
         num_chunks * CHUNK_SIZE
     }

@@ -1,7 +1,7 @@
 use network::{PeerId, ProtocolDispatch, RequestMessage, ResponseMessage, request_response};
 
 use super::behaviour::NetworkProtocols;
-use crate::types::protocol::{
+use crate::controllers::rpc_controller::messages::{
     FinalityRequestData, FinalityResponseData, GetRequestData, GetResponseData, StoreRequestData,
     StoreResponseData,
 };
@@ -21,20 +21,6 @@ pub enum ProtocolRequest {
     },
 }
 
-impl ProtocolRequest {
-    pub fn store(peer: PeerId, message: RequestMessage<StoreRequestData>) -> Self {
-        Self::Store { peer, message }
-    }
-
-    pub fn get(peer: PeerId, message: RequestMessage<GetRequestData>) -> Self {
-        Self::Get { peer, message }
-    }
-
-    pub fn finality(peer: PeerId, message: RequestMessage<FinalityRequestData>) -> Self {
-        Self::Finality { peer, message }
-    }
-}
-
 pub enum ProtocolResponse {
     Store {
         channel: request_response::ResponseChannel<ResponseMessage<StoreResponseData>>,
@@ -48,29 +34,6 @@ pub enum ProtocolResponse {
         channel: request_response::ResponseChannel<ResponseMessage<FinalityResponseData>>,
         message: ResponseMessage<FinalityResponseData>,
     },
-}
-
-impl ProtocolResponse {
-    pub fn store(
-        channel: request_response::ResponseChannel<ResponseMessage<StoreResponseData>>,
-        message: ResponseMessage<StoreResponseData>,
-    ) -> Self {
-        Self::Store { channel, message }
-    }
-
-    pub fn get(
-        channel: request_response::ResponseChannel<ResponseMessage<GetResponseData>>,
-        message: ResponseMessage<GetResponseData>,
-    ) -> Self {
-        Self::Get { channel, message }
-    }
-
-    pub fn finality(
-        channel: request_response::ResponseChannel<ResponseMessage<FinalityResponseData>>,
-        message: ResponseMessage<FinalityResponseData>,
-    ) -> Self {
-        Self::Finality { channel, message }
-    }
 }
 
 impl ProtocolDispatch for NetworkProtocols {

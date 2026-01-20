@@ -13,11 +13,11 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    network::{NetworkProtocols, ProtocolRequest, RequestTracker},
+    controllers::rpc_controller::{messages::StoreRequestData, NetworkProtocols, ProtocolRequest},
     services::{
-        operation_manager::OperationManager, pending_storage_service::PendingStorageService,
+        pending_storage_service::PendingStorageService, OperationService, RequestTracker,
     },
-    types::{models::Assertion, protocol::StoreRequestData},
+    types::models::Assertion,
 };
 
 /// Command data for sending publish requests to network nodes.
@@ -53,7 +53,7 @@ pub struct SendStoreRequestsCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     blockchain_manager: Arc<BlockchainManager>,
-    publish_operation_manager: Arc<OperationManager>,
+    publish_operation_manager: Arc<OperationService>,
     pending_storage_service: Arc<PendingStorageService>,
     request_tracker: Arc<RequestTracker>,
 }

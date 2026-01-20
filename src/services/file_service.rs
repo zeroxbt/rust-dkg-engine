@@ -178,22 +178,6 @@ impl FileService {
         self.data_path.join("operation_result_cache")
     }
 
-    //  pub fn operation_request_cache_dir(&self) -> PathBuf {
-    // self.operation_cache_dir().join("request")
-    // }
-
-    // pub fn operation_response_cache_dir(&self) -> PathBuf {
-    // self.operation_cache_dir().join("response")
-    // }
-
-    // pub fn operation_request_cache_path(&self, operation_id: &str) -> PathBuf {
-    // self.operation_request_cache_dir().join(operation_id)
-    // }
-
-    // pub fn operation_response_cache_path(&self, operation_id: &str) -> PathBuf {
-    // self.operation_response_cache_dir().join(operation_id)
-    // }
-
     pub fn operation_result_cache_path(&self, operation_id: &str) -> PathBuf {
         self.operation_result_cache_dir().join(operation_id)
     }
@@ -204,27 +188,6 @@ impl FileService {
 
     pub fn pending_storage_path(&self, operation_id: &str) -> PathBuf {
         self.pending_storage_cache_dir().join(operation_id)
-    }
-
-    pub fn signature_storage_cache_dir(&self) -> PathBuf {
-        self.data_path.join("signature_storage_cache")
-    }
-
-    pub fn signature_storage_folder(&self, folder_name: &str) -> PathBuf {
-        self.signature_storage_cache_dir().join(folder_name)
-    }
-
-    pub fn signature_storage_path(&self, folder_name: &str, operation_id: &str) -> PathBuf {
-        self.signature_storage_folder(folder_name)
-            .join(operation_id)
-    }
-
-    pub fn migration_dir(&self) -> PathBuf {
-        self.data_path.join("migrations")
-    }
-
-    pub fn update_file_path(&self) -> PathBuf {
-        self.data_path.join("UPDATED")
     }
 }
 

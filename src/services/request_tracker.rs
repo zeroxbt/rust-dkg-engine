@@ -10,7 +10,7 @@ use uuid::Uuid;
 /// 1. Looking up operation context when receiving responses or timeouts
 /// 2. Detecting late responses that arrive after a timeout was already processed
 ///
-/// Unlike SessionManager (which is protocol-specific due to generic channel types),
+/// Unlike SessionStore (which is protocol-specific due to generic channel types),
 /// RequestTracker only stores protocol-agnostic IDs, so a single instance can be
 /// shared across all protocols.
 pub struct RequestTracker {
@@ -128,7 +128,6 @@ impl Default for RequestTracker {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
 
     use super::*;
 

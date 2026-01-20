@@ -377,7 +377,7 @@ mod tests {
         // JS behavior: uses .gt() (greater than), not .gte() (greater than or equal)
         // So equal values should still use default
         assert!(
-            !(oracle_price_equal > default),
+            (oracle_price_equal <= default),
             "1 gwei oracle price should NOT be greater than 1 gwei default (JS uses .gt())"
         );
     }
