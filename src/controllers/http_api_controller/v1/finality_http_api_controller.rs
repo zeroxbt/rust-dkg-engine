@@ -37,15 +37,7 @@ impl FinalityStatusHttpApiController {
             .get_finality_acks_count(&req.ual)
             .await
         {
-            Ok(count) => {
-                if count == 0 {
-                    // Check if the UAL exists at all - if count is 0, it might not have been
-                    // published
-                    (StatusCode::OK, Json(FinalityStatusResponse::new(count))).into_response()
-                } else {
-                    (StatusCode::OK, Json(FinalityStatusResponse::new(count))).into_response()
-                }
-            }
+            Ok(count) => (StatusCode::OK, Json(FinalityStatusResponse::new(count))).into_response(),
             Err(e) => {
                 tracing::error!(ual = %req.ual, error = %e, "Failed to get finality acks count");
                 (
