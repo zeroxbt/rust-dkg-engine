@@ -10,12 +10,10 @@ use uuid::Uuid;
 
 use crate::{
     context::Context,
-    types::{
-        dto::operation_result::{
-            OperationResultErrorResponse, OperationResultResponse, SignatureData,
-        },
-        models::operation::OperationStatus,
+    controllers::http_api_controller::v1::schemas::operation_result::{
+        OperationResultErrorResponse, OperationResultResponse, SignatureData,
     },
+    types::models::operation::OperationStatus,
 };
 
 pub struct OperationResultHttpApiController;

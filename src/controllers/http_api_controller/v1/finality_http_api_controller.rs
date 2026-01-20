@@ -9,7 +9,7 @@ use hyper::StatusCode;
 
 use crate::{
     context::Context,
-    types::dto::finality_status::{
+    controllers::http_api_controller::v1::schemas::finality::{
         FinalityRequest, FinalityStatusErrorResponse, FinalityStatusResponse,
     },
 };

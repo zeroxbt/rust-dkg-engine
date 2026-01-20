@@ -1,6 +1,6 @@
 use axum::Json;
 
-use crate::types::dto::info::InfoResponse;
+use crate::controllers::http_api_controller::v1::schemas::info::InfoResponse;
 
 pub struct InfoHttpApiController;
 

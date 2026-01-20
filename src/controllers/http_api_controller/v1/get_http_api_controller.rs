@@ -6,7 +6,10 @@ use axum::{
     response::IntoResponse,
 };
 
-use crate::{context::Context, types::dto::get::GetRequest};
+use crate::{
+    context::Context,
+    controllers::http_api_controller::v1::schemas::get::{GetRequest, GetResponse},
+};
 pub struct GetHttpApiController;
 
 impl GetHttpApiController {
