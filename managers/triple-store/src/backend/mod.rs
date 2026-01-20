@@ -1,9 +1,11 @@
 mod blazegraph;
+mod oxigraph_backend;
 
 use std::collections::HashMap;
 
 use async_trait::async_trait;
 pub use blazegraph::BlazegraphBackend;
+pub use oxigraph_backend::OxigraphBackend;
 
 use crate::error::Result;
 

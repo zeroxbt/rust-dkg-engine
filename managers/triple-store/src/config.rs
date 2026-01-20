@@ -1,26 +1,51 @@
+use std::path::PathBuf;
+
 use serde::Deserialize;
+
+/// Backend type for the triple store
+#[derive(Debug, Deserialize, Clone, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TripleStoreBackendType {
+    /// Blazegraph HTTP-based backend (requires running Blazegraph server)
+    Blazegraph,
+    /// Oxigraph embedded Rust-native backend (faster, no external service needed)
+    #[default]
+    Oxigraph,
+}
 
 /// Configuration for the Triple Store Manager
 #[derive(Debug, Deserialize, Clone)]
 pub struct TripleStoreManagerConfig {
+    /// Backend type to use (default: "blazegraph")
+    #[serde(default)]
+    pub backend: TripleStoreBackendType,
+
     /// Base URL of the triple store service (e.g., "http://localhost:9999")
+    /// Required for Blazegraph, ignored for Oxigraph
+    #[serde(default)]
     pub url: String,
 
     /// Repository/namespace name (default: "DKG")
+    /// For Blazegraph: namespace name
+    /// For Oxigraph: subdirectory name under data_path
     #[serde(default = "default_repository")]
     pub repository: String,
 
-    /// Optional username for authentication
+    /// Path for Oxigraph persistent storage (default: "{app_data_path}/triple-store")
+    /// Only used when backend = "oxigraph"
+    pub data_path: Option<PathBuf>,
+
+    /// Optional username for authentication (Blazegraph only)
     pub username: Option<String>,
 
-    /// Optional password for authentication
+    /// Optional password for authentication (Blazegraph only)
     pub password: Option<String>,
 
-    /// Maximum number of connection retries on startup
+    /// Maximum number of connection retries on startup (Blazegraph only)
     #[serde(default = "default_connect_max_retries")]
     pub connect_max_retries: u32,
 
-    /// Delay between connection retry attempts in milliseconds
+    /// Delay between connection retry attempts in milliseconds (Blazegraph only)
     #[serde(default = "default_connect_retry_frequency_ms")]
     pub connect_retry_frequency_ms: u64,
 

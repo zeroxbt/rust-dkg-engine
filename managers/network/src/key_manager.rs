@@ -42,12 +42,9 @@ impl KeyManager {
     async fn read_private_key_from_file(
         data_folder_path: &Path,
     ) -> io::Result<libp2p::identity::ed25519::Keypair> {
-        println!("reading private key from file...");
+        tracing::trace!("Reading private key from file");
         let mut key_bytes = fs::read(Self::get_key_path(data_folder_path)).await?;
-        // let mut der_format = general_purpose::STANDARD
-        // .decode(base64_encoded)
-        // .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        println!("Creating keypair...");
+        tracing::trace!("Creating keypair from bytes");
         libp2p::identity::ed25519::Keypair::try_from_bytes(&mut key_bytes)
             .map_err(|e| io::Error::other(e.to_string()))
     }

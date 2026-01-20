@@ -62,10 +62,16 @@ node_name = "{{NODE_NAME}}"
 # Triple Store Manager Configuration
 # ============================================
 [managers.triple_store]
-url = "http://localhost:9999"
+# Use embedded Oxigraph (faster, no external service needed)
+backend = "oxigraph"
 repository = "{{TRIPLE_STORE_REPOSITORY}}"
-connect_max_retries = 10
-connect_retry_frequency_ms = 10000
+data_path = "{{DATA_FOLDER}}/triple-store"
+
+# For Blazegraph (requires running Blazegraph server), use:
+# backend = "blazegraph"
+# url = "http://localhost:9999"
+# connect_max_retries = 10
+# connect_retry_frequency_ms = 10000
 
 [managers.triple_store.timeouts]
 query_ms = 60000

@@ -5,9 +5,9 @@ pub mod query;
 pub mod rdf;
 pub mod types;
 
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
-use backend::{BlazegraphBackend, TripleStoreBackend};
+use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
 
@@ -60,7 +60,7 @@ fn days_to_ymd(days: i64) -> (i32, u32, u32) {
 
 // Re-export commonly used types for convenience
 pub use backend::{SelectResult, SelectRow, SelectValue};
-pub use config::TripleStoreManagerConfig;
+pub use config::{TripleStoreBackendType, TripleStoreManagerConfig};
 pub use error::TripleStoreError as Error;
 pub use rdf::{extract_subject, group_nquads_by_subject};
 pub use types::{KnowledgeAsset, Visibility};
@@ -118,23 +118,67 @@ pub struct TripleStoreManager {
 impl TripleStoreManager {
     /// Create a new Triple Store Manager
     ///
-    /// Establishes connection to the triple store with retry logic and ensures
-    /// the repository exists.
+    /// Creates the appropriate backend based on configuration and ensures
+    /// the repository/store is ready.
     pub async fn new(config: &TripleStoreManagerConfig) -> Result<Self> {
-        let backend = Box::new(BlazegraphBackend::new(config.clone())?);
+        let backend: Box<dyn TripleStoreBackend> = match config.backend {
+            TripleStoreBackendType::Blazegraph => Box::new(BlazegraphBackend::new(config.clone())?),
+            TripleStoreBackendType::Oxigraph => {
+                let path = config
+                    .data_path
+                    .clone()
+                    .unwrap_or_else(|| PathBuf::from("data/triple-store"));
+
+                // Create full path with repository name
+                let store_path = path.join(&config.repository);
+
+                // Ensure the directory exists
+                if let Some(parent) = store_path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        TripleStoreError::Other(format!(
+                            "Failed to create Oxigraph store directory: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Box::new(OxigraphBackend::open(store_path)?)
+            }
+        };
 
         let manager = Self {
             backend,
             config: config.clone(),
         };
 
-        // Attempt connection with retries
-        manager.connect_with_retry().await?;
+        // For Blazegraph, attempt connection with retries
+        // For Oxigraph, this is essentially a no-op (always healthy)
+        if config.backend == TripleStoreBackendType::Blazegraph {
+            manager.connect_with_retry().await?;
+        }
 
-        // Ensure the repository exists
+        // Ensure the repository exists (no-op for Oxigraph)
         manager.ensure_repository().await?;
 
         Ok(manager)
+    }
+
+    /// Create an in-memory Triple Store Manager (for testing)
+    pub fn in_memory() -> Result<Self> {
+        let backend = Box::new(OxigraphBackend::in_memory()?);
+        let config = TripleStoreManagerConfig {
+            backend: TripleStoreBackendType::Oxigraph,
+            url: String::new(),
+            repository: "test".to_string(),
+            data_path: None,
+            username: None,
+            password: None,
+            connect_max_retries: 0,
+            connect_retry_frequency_ms: 0,
+            timeouts: Default::default(),
+        };
+
+        Ok(Self { backend, config })
     }
 
     /// Connect to triple store with retry logic

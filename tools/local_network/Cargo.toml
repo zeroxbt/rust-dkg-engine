@@ -10,4 +10,3 @@ serde_json.workspace = true
 clap.workspace = true
 alloy.workspace = true
 libp2p.workspace = true
-reqwest.workspace = true

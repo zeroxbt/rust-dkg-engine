@@ -12,7 +12,6 @@ const HARDHAT_BLOCKCHAIN_ID: &str = "hardhat1:31337";
 const BOOTSTRAP_NODE_INDEX: usize = 0;
 const BOOTSTRAP_KEY_FILENAME: &str = "private_key";
 const BINARY_NAME: &str = "rust-ot-node";
-const BLAZEGRAPH_URL: &str = "http://localhost:9999";
 
 const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";
 const PUBLIC_KEYS_PATH: &str = "./tools/local_network/src/public_keys.json";
@@ -47,30 +46,19 @@ fn drop_database(database_name: &str) {
     }
 }
 
-async fn delete_blazegraph_repository(repository_name: &str) {
-    let url = format!(
-        "{}/blazegraph/namespace/{}",
-        BLAZEGRAPH_URL, repository_name
-    );
+fn clear_oxigraph_store(data_folder: &str, repository_name: &str) {
+    let store_path = Path::new(data_folder)
+        .join("triple-store")
+        .join(repository_name);
 
-    let client = reqwest::Client::new();
-    match client.delete(&url).send().await {
-        Ok(response) => {
-            if response.status().is_success() || response.status().as_u16() == 404 {
-                println!("Deleted Blazegraph repository: {}", repository_name);
-            } else {
-                eprintln!(
-                    "Failed to delete Blazegraph repository '{}': {}",
-                    repository_name,
-                    response.status()
-                );
-            }
-        }
-        Err(e) => {
-            eprintln!(
-                "Failed to connect to Blazegraph to delete '{}': {}",
-                repository_name, e
-            );
+    if store_path.exists() {
+        match fs::remove_dir_all(&store_path) {
+            Ok(_) => println!("Cleared Oxigraph store: {}", store_path.display()),
+            Err(e) => eprintln!(
+                "Failed to clear Oxigraph store '{}': {}",
+                store_path.display(),
+                e
+            ),
         }
     }
 }
@@ -240,9 +228,10 @@ async fn main() {
         let database_name = format!("operationaldb{}", i);
         drop_database(&database_name);
 
-        // Delete the Blazegraph repository for this config
+        // Clear the Oxigraph store for this config
+        let data_folder = format!("data{}", i);
         let triple_store_repository = format!("DKG-{}", i);
-        delete_blazegraph_repository(&triple_store_repository).await;
+        clear_oxigraph_store(&data_folder, &triple_store_repository);
 
         let config_path = format!("tools/local_network/.node{}_config.toml", i);
         open_terminal_with_command(&format!(

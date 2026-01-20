@@ -82,7 +82,6 @@ fn load_configuration() -> Result<Config, ConfigError> {
     let config: Config = figment.extract()?;
 
     tracing::info!("Configuration loaded successfully");
-    tracing::debug!("Configuration: {:?}", config);
 
     Ok(config)
 }

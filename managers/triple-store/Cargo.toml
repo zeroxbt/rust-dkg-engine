@@ -14,6 +14,7 @@ tracing.workspace = true
 thiserror.workspace = true
 reqwest = { version = "0.13.1", features = ["json"] }
 async-trait = "0.1"
+oxigraph = "0.4"
 
 [dev-dependencies]
 uuid.workspace = true
