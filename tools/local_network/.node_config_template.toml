@@ -57,3 +57,23 @@ rpc_endpoints = ["ws://localhost:8545", "http://localhost:8545"]
 
 # Node identity
 node_name = "{{NODE_NAME}}"
+
+# ============================================
+# Triple Store Manager Configuration
+# ============================================
+[managers.triple_store]
+url = "http://localhost:9999"
+repository = "{{TRIPLE_STORE_REPOSITORY}}"
+connect_max_retries = 10
+connect_retry_frequency_ms = 10000
+
+[managers.triple_store.timeouts]
+query_ms = 60000
+insert_ms = 300000
+ask_ms = 10000
+
+# ============================================
+# Validation Manager Configuration
+# ============================================
+[managers.validation]
+# Validation settings here

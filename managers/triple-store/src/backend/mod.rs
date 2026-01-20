@@ -78,23 +78,8 @@ pub trait TripleStoreBackend: Send + Sync {
     /// Delete the repository/namespace
     async fn delete_repository(&self) -> Result<()>;
 
-    /* /// Execute a SPARQL CONSTRUCT query
-    ///
-    /// Returns N-Quads formatted string
-    async fn construct(&self, query: &str, timeout_ms: u64) -> Result<String>;
-
-    /// Execute a SPARQL SELECT query
-    ///
-    /// Returns parsed result bindings
-    async fn select(&self, query: &str, timeout_ms: u64) -> Result<SelectResult>;
-
-    /// Execute a SPARQL ASK query
-    ///
-    /// Returns boolean result
-    async fn ask(&self, query: &str, timeout_ms: u64) -> Result<bool>;
-
     /// Execute a SPARQL UPDATE query (INSERT/DELETE)
     ///
     /// Returns nothing on success
-    async fn update(&self, query: &str, timeout_ms: u64) -> Result<()>; */
+    async fn update(&self, query: &str, timeout_ms: u64) -> Result<()>;
 }

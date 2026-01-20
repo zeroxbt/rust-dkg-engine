@@ -3,14 +3,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator_derive::Validate;
 
-use crate::types::models::Assertion;
+use crate::types::models::Dataset;
 
 #[derive(Deserialize, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishRequest {
     #[validate(length(equal = 66))]
     pub dataset_root: String,
-    pub dataset: Assertion,
+    pub dataset: Dataset,
     pub blockchain: BlockchainId,
     #[validate(range(min = 1))]
     pub hash_function_id: Option<u8>,

@@ -17,7 +17,7 @@ use crate::{
     services::{
         operation_manager::OperationManager, pending_storage_service::PendingStorageService,
     },
-    types::{models::Assertion, protocol::StoreRequestData},
+    types::{models::Dataset, protocol::StoreRequestData},
 };
 
 /// Command data for sending publish requests to network nodes.
@@ -28,7 +28,7 @@ pub struct SendStoreRequestsCommandData {
     pub blockchain: BlockchainId,
     pub dataset_root: String,
     pub min_ack_responses: u8,
-    pub dataset: Assertion,
+    pub dataset: Dataset,
 }
 
 impl SendStoreRequestsCommandData {
@@ -37,7 +37,7 @@ impl SendStoreRequestsCommandData {
         blockchain: BlockchainId,
         dataset_root: String,
         min_ack_responses: u8,
-        dataset: Assertion,
+        dataset: Dataset,
     ) -> Self {
         Self {
             operation_id,

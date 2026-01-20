@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::types::models::Dataset;
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenIds {
@@ -16,12 +18,6 @@ pub struct GetRequestData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Assertion {
-    pub public: Vec<String>,
-    pub private: Option<Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum GetResponseData {
     #[serde(rename_all = "camelCase")]
@@ -29,6 +25,6 @@ pub enum GetResponseData {
         error_message: String,
     },
     Data {
-        data: Assertion,
+        data: Dataset,
     },
 }

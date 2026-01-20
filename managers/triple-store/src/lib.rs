@@ -2,6 +2,7 @@ pub mod backend;
 pub mod config;
 pub mod error;
 pub mod query;
+pub mod rdf;
 pub mod types;
 
 use std::time::Duration;
@@ -61,16 +62,48 @@ fn days_to_ymd(days: i64) -> (i32, u32, u32) {
 pub use backend::{SelectResult, SelectRow, SelectValue};
 pub use config::TripleStoreManagerConfig;
 pub use error::TripleStoreError as Error;
-pub use types::Visibility;
+pub use rdf::{extract_subject, group_nquads_by_subject};
+pub use types::{KnowledgeAsset, Visibility};
 
 /// Metadata for a knowledge collection
 #[derive(Debug, Clone)]
 pub struct KnowledgeCollectionMetadata {
-    pub published_by: String,
-    pub published_at_block: u64,
-    pub publish_tx: String,
-    pub publish_time: u64,
-    pub block_time: u64,
+    publisher_address: String,
+    block_number: u64,
+    transaction_hash: String,
+    block_timestamp: u64,
+}
+
+impl KnowledgeCollectionMetadata {
+    pub fn new(
+        publisher_address: String,
+        block_number: u64,
+        transaction_hash: String,
+        block_timestamp: u64,
+    ) -> Self {
+        Self {
+            publisher_address,
+            block_number,
+            transaction_hash,
+            block_timestamp,
+        }
+    }
+
+    pub fn publisher_address(&self) -> &str {
+        &self.publisher_address
+    }
+
+    pub fn block_number(&self) -> u64 {
+        self.block_number
+    }
+
+    pub fn transaction_hash(&self) -> &str {
+        &self.transaction_hash
+    }
+
+    pub fn block_timestamp(&self) -> u64 {
+        self.block_timestamp
+    }
 }
 
 /// Triple Store Manager
@@ -85,7 +118,8 @@ pub struct TripleStoreManager {
 impl TripleStoreManager {
     /// Create a new Triple Store Manager
     ///
-    /// Establishes connection to the triple store with retry logic.
+    /// Establishes connection to the triple store with retry logic and ensures
+    /// the repository exists.
     pub async fn new(config: &TripleStoreManagerConfig) -> Result<Self> {
         let backend = Box::new(BlazegraphBackend::new(config.clone())?);
 
@@ -96,6 +130,9 @@ impl TripleStoreManager {
 
         // Attempt connection with retries
         manager.connect_with_retry().await?;
+
+        // Ensure the repository exists
+        manager.ensure_repository().await?;
 
         Ok(manager)
     }
@@ -161,7 +198,219 @@ impl TripleStoreManager {
         Ok(())
     }
 
-    /*  // ========== Knowledge Collection Operations ==========
+    // ========== Knowledge Collection Operations ==========
+
+    /// Insert a knowledge collection into the triple store.
+    ///
+    /// This method handles the RDF serialization and SPARQL query building.
+    /// It creates:
+    /// - Named graphs for each knowledge asset's public/private triples
+    /// - Metadata graph entries for the knowledge collection
+    /// - Current graph entries tracking named graphs
+    ///
+    /// # Arguments
+    ///
+    /// * `kc_ual` - The UAL of the knowledge collection
+    /// * `knowledge_assets` - The list of knowledge assets with their triples
+    /// * `metadata` - Metadata about the knowledge collection (publisher, block, tx, etc.)
+    ///
+    /// # Returns
+    ///
+    /// The total number of triples inserted (data triples + metadata triples).
+    pub async fn insert_knowledge_collection(
+        &self,
+        kc_ual: &str,
+        knowledge_assets: &[types::KnowledgeAsset],
+        metadata: &KnowledgeCollectionMetadata,
+    ) -> Result<usize> {
+        let mut total_triples = 0;
+
+        // Build public named graphs
+        let mut public_graphs_insert = String::new();
+        let mut current_public_metadata = String::new();
+        let mut connection_public_metadata = String::new();
+
+        for ka in knowledge_assets {
+            let graph_uri = format!("{}/public", ka.ual());
+
+            // GRAPH <ual/public> { triples }
+            public_graphs_insert.push_str(&format!("  GRAPH <{}> {{\n", graph_uri));
+            for triple in ka.public_triples() {
+                public_graphs_insert.push_str(&format!("    {}\n", triple));
+                total_triples += 1;
+            }
+            public_graphs_insert.push_str("  }\n");
+
+            // current:graph hasNamedGraph <ual/public>
+            current_public_metadata.push_str(&format!(
+                "    <{}> <{}> <{}> .\n",
+                named_graphs::CURRENT,
+                predicates::HAS_NAMED_GRAPH,
+                graph_uri
+            ));
+            total_triples += 1; // current metadata triple
+
+            // KC hasKnowledgeAsset KA
+            connection_public_metadata.push_str(&format!(
+                "    <{}> <{}> <{}> .\n",
+                kc_ual,
+                predicates::HAS_KNOWLEDGE_ASSET,
+                ka.ual()
+            ));
+            // KC hasNamedGraph <ual/public>
+            connection_public_metadata.push_str(&format!(
+                "    <{}> <{}> <{}> .\n",
+                kc_ual,
+                predicates::HAS_NAMED_GRAPH,
+                graph_uri
+            ));
+        }
+
+        // Build private named graphs
+        let mut private_graphs_insert = String::new();
+        let mut current_private_metadata = String::new();
+        let mut connection_private_metadata = String::new();
+
+        for ka in knowledge_assets {
+            if let Some(private_triples) = ka.private_triples()
+                && !private_triples.is_empty()
+            {
+                let graph_uri = format!("{}/private", ka.ual());
+
+                private_graphs_insert.push_str(&format!("  GRAPH <{}> {{\n", graph_uri));
+                for triple in private_triples {
+                    private_graphs_insert.push_str(&format!("    {}\n", triple));
+                    total_triples += 1;
+                }
+                private_graphs_insert.push_str("  }\n");
+
+                current_private_metadata.push_str(&format!(
+                    "    <{}> <{}> <{}> .\n",
+                    named_graphs::CURRENT,
+                    predicates::HAS_NAMED_GRAPH,
+                    graph_uri
+                ));
+                total_triples += 1; // current metadata triple
+
+                // KC hasKnowledgeAsset KA (for private)
+                connection_private_metadata.push_str(&format!(
+                    "    <{}> <{}> <{}> .\n",
+                    kc_ual,
+                    predicates::HAS_KNOWLEDGE_ASSET,
+                    ka.ual()
+                ));
+                // KC hasNamedGraph <ual/private>
+                connection_private_metadata.push_str(&format!(
+                    "    <{}> <{}> <{}> .\n",
+                    kc_ual,
+                    predicates::HAS_NAMED_GRAPH,
+                    graph_uri
+                ));
+            }
+        }
+
+        // Build metadata triples
+        let mut metadata_triples = String::new();
+
+        // State triples for each KA
+        for ka in knowledge_assets {
+            metadata_triples.push_str(&format!(
+                "    <{}> <http://schema.org/states> \"{}:0\" .\n",
+                ka.ual(),
+                ka.ual()
+            ));
+        }
+
+        // KC metadata
+        metadata_triples.push_str(&format!(
+            "    <{}> <{}> <did:dkg:publisherKey/{}> .\n",
+            kc_ual,
+            predicates::PUBLISHED_BY,
+            metadata.publisher_address()
+        ));
+        metadata_triples.push_str(&format!(
+            "    <{}> <{}> \"{}\" .\n",
+            kc_ual,
+            predicates::PUBLISHED_AT_BLOCK,
+            metadata.block_number()
+        ));
+        metadata_triples.push_str(&format!(
+            "    <{}> <{}> \"{}\" .\n",
+            kc_ual,
+            predicates::PUBLISH_TX,
+            metadata.transaction_hash()
+        ));
+
+        // Publish time (current time)
+        let publish_time_iso = format_unix_timestamp(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+        );
+        metadata_triples.push_str(&format!(
+            "    <{}> <{}> \"{}\"^^<http://www.w3.org/2001/XMLSchema#dateTime> .\n",
+            kc_ual,
+            predicates::PUBLISH_TIME,
+            publish_time_iso
+        ));
+
+        // Block time
+        let block_time_iso = format_unix_timestamp(metadata.block_timestamp());
+        metadata_triples.push_str(&format!(
+            "    <{}> <{}> \"{}\"^^<http://www.w3.org/2001/XMLSchema#dateTime> .\n",
+            kc_ual,
+            predicates::BLOCK_TIME,
+            block_time_iso
+        ));
+
+        // Build the final INSERT DATA query
+        let insert_query = format!(
+            r#"PREFIX schema: <http://schema.org/>
+INSERT DATA {{
+{}{}  GRAPH <{}> {{
+{}{}  }}
+  GRAPH <{}> {{
+{}{}{}  }}
+}}"#,
+            public_graphs_insert,
+            private_graphs_insert,
+            named_graphs::CURRENT,
+            current_public_metadata,
+            current_private_metadata,
+            named_graphs::METADATA,
+            connection_public_metadata,
+            connection_private_metadata,
+            metadata_triples,
+        );
+
+        tracing::debug!(
+            kc_ual = %kc_ual,
+            query_length = insert_query.len(),
+            "Built INSERT DATA query for knowledge collection"
+        );
+
+        self.backend
+            .update(&insert_query, self.config.timeouts.insert_ms)
+            .await?;
+
+        tracing::debug!(
+            kc_ual = %kc_ual,
+            total_triples = total_triples,
+            "Inserted knowledge collection"
+        );
+
+        Ok(total_triples)
+    }
+
+    /// Execute a raw SPARQL UPDATE query
+    pub async fn update_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<()> {
+        self.backend
+            .update(query, timeout_ms.unwrap_or(self.config.timeouts.insert_ms))
+            .await
+    }
+
+    /*  // ========== Knowledge Collection Operations (OLD) ==========
 
     /// Insert a knowledge collection into the triple store
     ///

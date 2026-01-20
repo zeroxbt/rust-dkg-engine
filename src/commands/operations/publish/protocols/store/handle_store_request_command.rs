@@ -18,7 +18,7 @@ use crate::{
     services::{
         operation_manager::OperationManager, pending_storage_service::PendingStorageService,
     },
-    types::{models::Assertion, protocol::StoreResponseData},
+    types::{models::Dataset, protocol::StoreResponseData},
 };
 
 /// Command data for handling incoming publish/store requests.
@@ -29,7 +29,7 @@ pub struct HandleStoreRequestCommandData {
     pub operation_id: Uuid,
     pub dataset_root: String,
     pub remote_peer_id: PeerId,
-    pub dataset: Assertion,
+    pub dataset: Dataset,
 }
 
 impl HandleStoreRequestCommandData {
@@ -38,7 +38,7 @@ impl HandleStoreRequestCommandData {
         operation_id: Uuid,
         dataset_root: String,
         remote_peer_id: PeerId,
-        dataset: Assertion,
+        dataset: Dataset,
     ) -> Self {
         Self {
             blockchain,

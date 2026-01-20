@@ -111,19 +111,27 @@ impl TripleStoreBackend for BlazegraphBackend {
     }
 
     async fn repository_exists(&self) -> Result<bool> {
+        // Check if namespace exists by querying its properties endpoint
+        // This matches the JS implementation which checks /blazegraph/namespace/{name}/properties
         let url = format!(
-            "{}/{}",
+            "{}/{}/properties?describe-each-named-graph=false",
             self.config.namespace_endpoint(),
             self.config.repository
         );
 
         let response = self
             .auth_headers(self.client.get(&url))
+            .header("Accept", "application/ld+json")
             .timeout(Duration::from_secs(10))
             .send()
             .await?;
 
-        Ok(response.status().is_success())
+        // 404 means namespace doesn't exist, success means it does
+        if response.status().as_u16() == 404 {
+            Ok(false)
+        } else {
+            Ok(response.status().is_success())
+        }
     }
 
     async fn create_repository(&self) -> Result<()> {
@@ -278,7 +286,7 @@ impl TripleStoreBackend for BlazegraphBackend {
                 .unwrap_or_else(|_| "Unknown error".to_string());
             Err(TripleStoreError::Backend { status, message })
         }
-    }
+    } */
 
     async fn update(&self, query: &str, timeout_ms: u64) -> Result<()> {
         let url = self.config.sparql_endpoint();
@@ -302,7 +310,7 @@ impl TripleStoreBackend for BlazegraphBackend {
                 .unwrap_or_else(|_| "Unknown error".to_string());
             Err(TripleStoreError::Backend { status, message })
         }
-    } */
+    }
 }
 
 // JSON response structures for SPARQL results

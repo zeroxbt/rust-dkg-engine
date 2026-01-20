@@ -17,7 +17,7 @@ use crate::{
     network::SessionManager,
     services::operation_manager::OperationManager,
     types::{
-        models::Assertion,
+        models::Dataset,
         protocol::{StoreRequestData, StoreResponseData},
     },
 };
@@ -61,7 +61,7 @@ impl StoreRpcController {
             .store_channel(&remote_peer_id, operation_id, channel);
 
         // Create dataset from request data
-        let dataset = Assertion {
+        let dataset = Dataset {
             public: data.dataset().to_owned(),
             private: None,
         };

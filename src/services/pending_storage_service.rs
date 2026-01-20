@@ -6,18 +6,18 @@ use uuid::Uuid;
 use crate::{
     error::{NodeError, ServiceError},
     services::file_service::FileService,
-    types::models::Assertion,
+    types::models::Dataset,
 };
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PendingStorageData {
     dataset_root: String,
-    dataset: Assertion,
+    dataset: Dataset,
     publisher_peer_id: String,
 }
 
 impl PendingStorageData {
-    pub fn new(dataset_root: String, dataset: Assertion, publisher_peer_id: String) -> Self {
+    pub fn new(dataset_root: String, dataset: Dataset, publisher_peer_id: String) -> Self {
         Self {
             dataset_root,
             dataset,
@@ -29,7 +29,7 @@ impl PendingStorageData {
         &self.dataset_root
     }
 
-    pub fn dataset(&self) -> &Assertion {
+    pub fn dataset(&self) -> &Dataset {
         &self.dataset
     }
 
@@ -53,7 +53,7 @@ impl PendingStorageService {
         &self,
         operation_id: Uuid,
         dataset_root: &str,
-        dataset: &Assertion,
+        dataset: &Dataset,
         publisher_peer_id: &str,
     ) -> Result<(), NodeError> {
         tracing::debug!(

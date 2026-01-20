@@ -148,8 +148,9 @@ async fn main() {
 }
 
 fn initialize_logger() {
-    let filter =
-        tracing_subscriber::EnvFilter::new("blockchain=trace,network=trace,rust_ot_node=trace");
+    let filter = tracing_subscriber::EnvFilter::new(
+        "blockchain=trace,network=trace,rust_ot_node=trace,triple_store=trace,repository=trace",
+    );
     tracing_subscriber::fmt().with_env_filter(filter).init();
 }
 

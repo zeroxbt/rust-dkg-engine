@@ -50,6 +50,9 @@ libp2p = { version = "0.56.0", features = ["macros"] }
 sha2 = "0.10"
 subxt = "0.38"
 
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
 # Main binary specific (can be referenced by others if needed)
 futures = "0.3.31"
 tracing-subscriber = "0.3.22"
@@ -89,6 +92,7 @@ figment.workspace = true
 thiserror.workspace = true
 libp2p.workspace = true
 alloy.workspace = true
+sha2.workspace = true
 dashmap = "6.1.0"
 
 [dev-dependencies]

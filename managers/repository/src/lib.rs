@@ -12,6 +12,7 @@ use repositories::{
     finality_status_repository::FinalityStatusRepository,
     operation_repository::OperationRepository, shard_repository::ShardRepository,
     signature_repository::SignatureRepository,
+    triples_insert_count_repository::TriplesInsertCountRepository,
 };
 pub use sea_orm::ActiveValue;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
@@ -26,6 +27,7 @@ pub struct RepositoryManager {
     operation_repository: OperationRepository,
     signature_repository: SignatureRepository,
     finality_status_repository: FinalityStatusRepository,
+    triples_insert_count_repository: TriplesInsertCountRepository,
 }
 
 impl RepositoryManager {
@@ -66,6 +68,7 @@ impl RepositoryManager {
             operation_repository: OperationRepository::new(Arc::clone(&conn)),
             signature_repository: SignatureRepository::new(Arc::clone(&conn)),
             finality_status_repository: FinalityStatusRepository::new(Arc::clone(&conn)),
+            triples_insert_count_repository: TriplesInsertCountRepository::new(Arc::clone(&conn)),
         })
     }
 
@@ -87,6 +90,10 @@ impl RepositoryManager {
 
     pub fn finality_status_repository(&self) -> &FinalityStatusRepository {
         &self.finality_status_repository
+    }
+
+    pub fn triples_insert_count_repository(&self) -> &TriplesInsertCountRepository {
+        &self.triples_insert_count_repository
     }
 }
 

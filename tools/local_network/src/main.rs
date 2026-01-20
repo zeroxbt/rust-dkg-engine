@@ -12,6 +12,7 @@ const HARDHAT_BLOCKCHAIN_ID: &str = "hardhat1:31337";
 const BOOTSTRAP_NODE_INDEX: usize = 0;
 const BOOTSTRAP_KEY_FILENAME: &str = "private_key";
 const BINARY_NAME: &str = "rust-ot-node";
+const BLAZEGRAPH_URL: &str = "http://localhost:9999";
 
 const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";
 const PUBLIC_KEYS_PATH: &str = "./tools/local_network/src/public_keys.json";
@@ -43,6 +44,34 @@ fn drop_database(database_name: &str) {
 
     if !output.status.success() {
         eprintln!("Failed to drop database '{}'.", database_name);
+    }
+}
+
+async fn delete_blazegraph_repository(repository_name: &str) {
+    let url = format!(
+        "{}/blazegraph/namespace/{}",
+        BLAZEGRAPH_URL, repository_name
+    );
+
+    let client = reqwest::Client::new();
+    match client.delete(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() || response.status().as_u16() == 404 {
+                println!("Deleted Blazegraph repository: {}", repository_name);
+            } else {
+                eprintln!(
+                    "Failed to delete Blazegraph repository '{}': {}",
+                    repository_name,
+                    response.status()
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "Failed to connect to Blazegraph to delete '{}': {}",
+                repository_name, e
+            );
+        }
     }
 }
 
@@ -134,6 +163,7 @@ async fn main() {
         let network_port = NETWORK_PORT_BASE + i;
         let http_port = HTTP_PORT_BASE + i;
         let database_name = format!("operationaldb{}", i);
+        let triple_store_repository = format!("DKG-{}", i);
         let data_folder = format!("data{}", i);
         let node_name = format!("LocalNode{}", i + 1);
         let node_symbol = format!("LN{}", i + 1);
@@ -147,6 +177,7 @@ async fn main() {
             .replace("{{APP_DATA_PATH}}", &data_folder)
             .replace("{{BOOTSTRAP_NODE}}", &bootstrap_multiaddr)
             .replace("{{DATABASE_NAME}}", &database_name)
+            .replace("{{TRIPLE_STORE_REPOSITORY}}", &triple_store_repository)
             .replace("{{BLOCKCHAIN_ID}}", HARDHAT_BLOCKCHAIN_ID)
             .replace(
                 "{{OPERATIONAL_WALLET_PUBLIC}}",
@@ -205,9 +236,13 @@ async fn main() {
         );
         tokio::time::sleep(tokio::time::Duration::from_millis(NODE_STARTUP_DELAY_MS)).await;
 
-        // Drop the database for this config
+        // Drop the MySQL database for this config
         let database_name = format!("operationaldb{}", i);
         drop_database(&database_name);
+
+        // Delete the Blazegraph repository for this config
+        let triple_store_repository = format!("DKG-{}", i);
+        delete_blazegraph_repository(&triple_store_repository).await;
 
         let config_path = format!("tools/local_network/.node{}_config.toml", i);
         open_terminal_with_command(&format!(
