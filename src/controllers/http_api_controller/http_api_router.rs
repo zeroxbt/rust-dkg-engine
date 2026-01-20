@@ -18,7 +18,10 @@ use super::v1::{
     operation_result_http_api_controller::OperationResultHttpApiController,
     publish_http_api_controller::PublishHttpApiController,
 };
-use crate::context::Context;
+use crate::{
+    context::Context,
+    controllers::http_api_controller::v1::get_http_api_controller::GetHttpApiController,
+};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct HttpApiConfig {
@@ -51,7 +54,7 @@ impl HttpApiRouter {
                 "/v1/finality",
                 get(FinalityStatusHttpApiController::handle_request),
             )
-            // .route("/get", post(GetController::handle_request))
+            .route("/get", post(GetHttpApiController::handle_request))
             .with_state(Arc::clone(context));
 
         HttpApiRouter {

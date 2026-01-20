@@ -10,7 +10,7 @@ use hyper::StatusCode;
 use crate::{
     context::Context,
     types::dto::finality_status::{
-        FinalityStatusErrorResponse, FinalityStatusRequest, FinalityStatusResponse,
+        FinalityRequest, FinalityStatusErrorResponse, FinalityStatusResponse,
     },
 };
 
@@ -19,7 +19,7 @@ pub struct FinalityStatusHttpApiController;
 impl FinalityStatusHttpApiController {
     pub async fn handle_request(
         State(context): State<Arc<Context>>,
-        Query(req): Query<FinalityStatusRequest>,
+        Query(req): Query<FinalityRequest>,
     ) -> impl IntoResponse {
         if req.ual.is_empty() {
             return (

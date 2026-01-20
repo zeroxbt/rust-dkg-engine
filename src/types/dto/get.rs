@@ -1,36 +1,13 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use validator::{Validate, ValidationError, ValidationErrors};
 use validator_derive::Validate;
 
 #[derive(Debug, Deserialize)]
-pub enum StateField {
-    StateEnum(GetStates),
-    AssertionId(String),
-}
-
-impl Validate for StateField {
-    fn validate(&self) -> Result<(), ValidationErrors> {
-        match self {
-            StateField::AssertionId(s) if s.starts_with("0x") && s.len() == 66 => Ok(()),
-            StateField::StateEnum(_) => Ok(()),
-            _ => {
-                let mut errors = ValidationErrors::new();
-                let error = ValidationError::new("invalid_state");
-                errors.add("state", error);
-                Err(errors)
-            }
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum GetStates {
-    #[serde(rename = "LATEST")]
-    Latest,
-    #[serde(rename = "FINALIZED")]
-    Finalized,
+#[serde(untagged, rename_all = "lowercase")]
+pub enum GetContentTypes {
+    Public,
+    Private,
+    All,
 }
 
 #[derive(Deserialize, Debug, Validate)]
@@ -38,11 +15,12 @@ pub enum GetStates {
 pub struct GetRequest {
     pub id: String,
 
-    #[validate(nested)]
-    pub state: Option<StateField>,
+    pub include_metadata: bool,
 
-    #[validate(range(min = 1))]
-    pub hash_function_id: Option<u8>,
+    #[serde(rename = "paranetUAL")]
+    pub paranet_ual: Option<String>,
+
+    content_type: GetContentTypes,
 }
 
 #[derive(Serialize, Debug, Clone)]
