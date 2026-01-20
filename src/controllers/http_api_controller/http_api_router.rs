@@ -12,8 +12,8 @@ use serde::Deserialize;
 use tokio::{net::TcpListener, sync::Mutex};
 use tower_http::cors::*;
 
-use super::{
-    finality_status_http_api_controller::FinalityStatusHttpApiController,
+use super::v1::{
+    finality_http_api_controller::FinalityStatusHttpApiController,
     info_http_api_controller::InfoHttpApiController,
     operation_result_http_api_controller::OperationResultHttpApiController,
     publish_http_api_controller::PublishHttpApiController,
@@ -38,14 +38,17 @@ impl HttpApiRouter {
 
         let router = Router::new()
             .layer(cors_layer)
-            .route("/info", get(InfoHttpApiController::handle_request))
-            .route("/publish", post(PublishHttpApiController::handle_request))
+            .route("/v1/info", get(InfoHttpApiController::handle_request))
             .route(
-                "/publish/{operation_id}",
+                "/v1/publish",
+                post(PublishHttpApiController::handle_request),
+            )
+            .route(
+                "/v1/publish/{operation_id}",
                 get(OperationResultHttpApiController::handle_publish_result),
             )
             .route(
-                "/finality",
+                "/v1/finality",
                 get(FinalityStatusHttpApiController::handle_request),
             )
             // .route("/get", post(GetController::handle_request))
