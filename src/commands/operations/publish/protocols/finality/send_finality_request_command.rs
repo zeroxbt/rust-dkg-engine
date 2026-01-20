@@ -19,7 +19,7 @@ use crate::{
     error::NodeError,
     network::{NetworkProtocols, ProtocolRequest},
     services::{pending_storage_service::PendingStorageService, ual_service::UalService},
-    types::{models::Dataset, protocol::FinalityRequestData},
+    types::{models::Assertion, protocol::FinalityRequestData},
 };
 
 /// Raw event data from KnowledgeCollectionCreated event.
@@ -108,7 +108,7 @@ impl SendFinalityRequestCommandHandler {
         operation_id: Uuid,
         publish_operation_id: Uuid,
         knowledge_collection_ual: &str,
-        dataset: &Dataset,
+        dataset: &Assertion,
         metadata: &KnowledgeCollectionMetadata,
     ) -> Result<usize, NodeError> {
         tracing::info!(
@@ -147,7 +147,7 @@ impl SendFinalityRequestCommandHandler {
     fn build_knowledge_assets(
         &self,
         knowledge_collection_ual: &str,
-        dataset: &Dataset,
+        dataset: &Assertion,
     ) -> Vec<KnowledgeAsset> {
         let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
 

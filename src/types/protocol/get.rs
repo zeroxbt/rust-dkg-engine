@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::types::models::Dataset;
+use crate::types::models::Assertion;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +25,6 @@ pub enum GetResponseData {
         error_message: String,
     },
     Data {
-        data: Dataset,
+        data: Assertion,
     },
 }
