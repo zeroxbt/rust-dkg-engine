@@ -8,7 +8,7 @@ use axum::{
 
 use crate::{
     context::Context,
-    controllers::http_api_controller::v1::schemas::get::{GetRequest, GetResponse},
+    controllers::http_api_controller::v1::dto::get::{GetRequest, GetResponse},
 };
 pub struct GetHttpApiController;
 

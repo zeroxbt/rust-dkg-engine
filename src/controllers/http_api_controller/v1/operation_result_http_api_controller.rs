@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     context::Context,
-    controllers::http_api_controller::v1::schemas::operation_result::{
+    controllers::http_api_controller::v1::dto::operation_result::{
         OperationResultErrorResponse, OperationResultResponse, SignatureData,
     },
     types::models::operation::OperationStatus,

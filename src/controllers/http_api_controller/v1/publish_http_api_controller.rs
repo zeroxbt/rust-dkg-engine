@@ -11,7 +11,7 @@ use crate::{
         operations::publish::protocols::store::send_store_requests_command::SendStoreRequestsCommandData,
     },
     context::Context,
-    controllers::http_api_controller::v1::schemas::publish::{PublishRequest, PublishResponse},
+    controllers::http_api_controller::v1::dto::publish::{PublishRequest, PublishResponse},
 };
 
 const MIN_ACK_RESPONSES: u8 = 8;
