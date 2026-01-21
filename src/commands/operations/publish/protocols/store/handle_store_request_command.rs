@@ -10,7 +10,6 @@ use network::{
 use repository::RepositoryManager;
 use triple_store::Assertion;
 use uuid::Uuid;
-use validation::ValidationManager;
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
@@ -19,6 +18,7 @@ use crate::{
         NetworkProtocols, ProtocolResponse, messages::StoreResponseData,
     },
     services::{ResponseChannels, pending_storage_service::PendingStorageService},
+    utils::validation,
 };
 
 /// Command data for handling incoming publish/store requests.
@@ -53,7 +53,6 @@ impl HandleStoreRequestCommandData {
 pub struct HandleStoreRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    validation_manager: Arc<ValidationManager>,
     blockchain_manager: Arc<BlockchainManager>,
     response_channels: Arc<ResponseChannels<StoreResponseData>>,
     pending_storage_service: Arc<PendingStorageService>,
@@ -65,7 +64,6 @@ impl HandleStoreRequestCommandHandler {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
-            validation_manager: Arc::clone(context.validation_manager()),
             response_channels: Arc::clone(context.store_response_channels()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
@@ -204,9 +202,7 @@ impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommand
             operation_id = %operation_id,
             "Calculating merkle root for dataset validation"
         );
-        let computed_dataset_root = self
-            .validation_manager
-            .calculate_merkle_root(&dataset.public);
+        let computed_dataset_root = validation::calculate_merkle_root(&dataset.public);
 
         tracing::info!(
             operation_id = %operation_id,

@@ -5,9 +5,8 @@ use triple_store::{
     Visibility, group_nquads_by_subject,
     query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
 };
-use validation::ValidationManager;
 
-use crate::utils::ual::ParsedUal;
+use crate::utils::{ual::ParsedUal, validation};
 
 /// Service for validating get operation responses.
 ///
@@ -15,19 +14,12 @@ use crate::utils::ual::ParsedUal;
 /// 1. Public assertion merkle root matches on-chain value
 /// 2. Private assertion merkle root (if present) matches the value in public triples
 pub struct GetValidationService {
-    validation_manager: Arc<ValidationManager>,
     blockchain_manager: Arc<BlockchainManager>,
 }
 
 impl GetValidationService {
-    pub fn new(
-        validation_manager: Arc<ValidationManager>,
-        blockchain_manager: Arc<BlockchainManager>,
-    ) -> Self {
-        Self {
-            validation_manager,
-            blockchain_manager,
-        }
+    pub fn new(blockchain_manager: Arc<BlockchainManager>) -> Self {
+        Self { blockchain_manager }
     }
 
     /// Validate a get response (local or network).
@@ -138,7 +130,7 @@ impl GetValidationService {
             .collect();
 
         // Calculate merkle root
-        let calculated_root = self.validation_manager.calculate_merkle_root(&sorted_flat);
+        let calculated_root = validation::calculate_merkle_root(&sorted_flat);
 
         // Get on-chain merkle root
         let on_chain_root = self
@@ -195,9 +187,7 @@ impl GetValidationService {
         let mut sorted_private: Vec<String> = private_triples.to_vec();
         sorted_private.sort();
 
-        let calculated_root = self
-            .validation_manager
-            .calculate_merkle_root(&sorted_private);
+        let calculated_root = validation::calculate_merkle_root(&sorted_private);
 
         if calculated_root != expected_root {
             tracing::debug!(

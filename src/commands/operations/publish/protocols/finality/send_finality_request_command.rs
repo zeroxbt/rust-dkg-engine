@@ -8,7 +8,6 @@ use network::{
 use repository::RepositoryManager;
 use triple_store::KnowledgeCollectionMetadata;
 use uuid::Uuid;
-use validation::ValidationManager;
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
@@ -17,7 +16,7 @@ use crate::{
         NetworkProtocols, ProtocolRequest, messages::FinalityRequestData,
     },
     services::{TripleStoreService, pending_storage_service::PendingStorageService},
-    utils::ual::derive_ual,
+    utils::{ual::derive_ual, validation},
 };
 
 /// Raw event data from KnowledgeCollectionCreated event.
@@ -75,7 +74,6 @@ pub struct SendFinalityRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     blockchain_manager: Arc<BlockchainManager>,
-    validation_manager: Arc<ValidationManager>,
     pending_storage_service: Arc<PendingStorageService>,
     triple_store_service: Arc<TripleStoreService>,
 }
@@ -86,7 +84,6 @@ impl SendFinalityRequestCommandHandler {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
-            validation_manager: Arc::clone(context.validation_manager()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
             triple_store_service: Arc::clone(context.triple_store_service()),
         }
@@ -187,9 +184,7 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
         }
 
         // Validate byte size matches
-        let calculated_size = self
-            .validation_manager
-            .calculate_assertion_size(&pending_data.dataset().public);
+        let calculated_size = validation::calculate_assertion_size(&pending_data.dataset().public);
         if data.byte_size != calculated_size as u128 {
             tracing::error!(
                 operation_id = %operation_id,

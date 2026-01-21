@@ -2,101 +2,89 @@ use alloy::{
     primitives::{hex, keccak256, B256, U256},
     sol_types::SolValue,
 };
-use serde::Deserialize;
 
 const CHUNK_SIZE: usize = 32;
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct ValidationManagerConfig {}
+pub fn calculate_merkle_root(quads: &[String]) -> String {
+    let chunks = split_into_chunks(quads);
 
-pub struct ValidationManager;
+    let mut leaves: Vec<B256> = chunks
+        .iter()
+        .enumerate()
+        .map(|(i, c)| leaf_hash(c, i))
+        .collect();
 
-impl ValidationManager {
-    pub async fn new(_config: &ValidationManagerConfig) -> Self {
-        Self
+    if leaves.is_empty() {
+        return "0x".to_string();
     }
 
-    pub fn split_into_chunks(&self, quads: &[String]) -> Vec<String> {
-        let concatenated = quads.join("\n");
-        let bytes = concatenated.as_bytes();
+    while leaves.len() > 1 {
+        let mut next = Vec::with_capacity(leaves.len().div_ceil(2));
 
-        let mut chunks = Vec::new();
-        let mut start = 0usize;
+        let mut i = 0usize;
+        while i < leaves.len() {
+            let left = leaves[i];
 
-        while start < bytes.len() {
-            let end = (start + CHUNK_SIZE).min(bytes.len());
-            chunks.push(String::from_utf8_lossy(&bytes[start..end]).into_owned());
-            start = end;
-        }
-
-        chunks
-    }
-
-    fn leaf_hash(&self, chunk: &str, index: usize) -> B256 {
-        let packed = (chunk.to_string(), U256::from(index)).abi_encode_packed();
-        keccak256(packed)
-    }
-
-    /// Calculate the byte size of an assertion based on its chunks.
-    /// This matches the on-chain byteSize calculation: numberOfChunks * CHUNK_SIZE
-    ///
-    /// The calculation:
-    /// 1. Join quads with newline
-    /// 2. Encode as UTF-8 bytes
-    /// 3. numberOfChunks = ceil(totalBytes / CHUNK_SIZE)
-    /// 4. byteSize = numberOfChunks * CHUNK_SIZE
-    pub fn calculate_assertion_size(&self, quads: &[String]) -> usize {
-        let concatenated = quads.join("\n");
-        let total_bytes = concatenated.len();
-        let num_chunks = total_bytes.div_ceil(CHUNK_SIZE);
-        num_chunks * CHUNK_SIZE
-    }
-
-    pub fn calculate_merkle_root(&self, quads: &[String]) -> String {
-        let chunks = self.split_into_chunks(quads);
-
-        let mut leaves: Vec<B256> = chunks
-            .iter()
-            .enumerate()
-            .map(|(i, c)| self.leaf_hash(c, i))
-            .collect();
-
-        if leaves.is_empty() {
-            return "0x".to_string();
-        }
-
-        while leaves.len() > 1 {
-            let mut next = Vec::with_capacity(leaves.len().div_ceil(2));
-
-            let mut i = 0usize;
-            while i < leaves.len() {
-                let left = leaves[i];
-
-                if i + 1 >= leaves.len() {
-                    next.push(left); // carry
-                    break;
-                }
-
-                let right = leaves[i + 1];
-                let (a, b) = if left <= right {
-                    (left, right)
-                } else {
-                    (right, left)
-                };
-
-                let mut buf = [0u8; 64];
-                buf[..32].copy_from_slice(a.as_slice());
-                buf[32..].copy_from_slice(b.as_slice());
-
-                next.push(keccak256(buf));
-                i += 2;
+            if i + 1 >= leaves.len() {
+                next.push(left); // carry
+                break;
             }
 
-            leaves = next;
+            let right = leaves[i + 1];
+            let (a, b) = if left <= right {
+                (left, right)
+            } else {
+                (right, left)
+            };
+
+            let mut buf = [0u8; 64];
+            buf[..32].copy_from_slice(a.as_slice());
+            buf[32..].copy_from_slice(b.as_slice());
+
+            next.push(keccak256(buf));
+            i += 2;
         }
 
-        format!("0x{}", hex::encode(leaves[0].as_slice()))
+        leaves = next;
     }
+
+    format!("0x{}", hex::encode(leaves[0].as_slice()))
+}
+
+/// Calculate the byte size of an assertion based on its chunks.
+/// This matches the on-chain byteSize calculation: numberOfChunks * CHUNK_SIZE
+///
+/// The calculation:
+/// 1. Join quads with newline
+/// 2. Encode as UTF-8 bytes
+/// 3. numberOfChunks = ceil(totalBytes / CHUNK_SIZE)
+/// 4. byteSize = numberOfChunks * CHUNK_SIZE
+pub fn calculate_assertion_size(quads: &[String]) -> usize {
+    let concatenated = quads.join("\n");
+    let total_bytes = concatenated.len();
+    let num_chunks = total_bytes.div_ceil(CHUNK_SIZE);
+    num_chunks * CHUNK_SIZE
+}
+
+fn split_into_chunks(quads: &[String]) -> Vec<String> {
+    let concatenated = quads.join("\n");
+    let bytes = concatenated.as_bytes();
+
+    let mut chunks = Vec::new();
+    let mut start = 0usize;
+
+    while start < bytes.len() {
+        let end = (start + CHUNK_SIZE).min(bytes.len());
+        chunks.push(String::from_utf8_lossy(&bytes[start..end]).into_owned());
+        start = end;
+    }
+
+    chunks
+}
+
+fn leaf_hash(chunk: &str, index: usize) -> B256 {
+    let packed = (chunk.to_string(), U256::from(index)).abi_encode_packed();
+    keccak256(packed)
 }
 
 #[cfg(test)]
@@ -105,9 +93,7 @@ mod tests {
 
     #[test]
     fn test_calculate_merkle_root() {
-        let vm = ValidationManager;
-
-        let quads:Vec<String> = [
+        let quads: Vec<String> = [
             "<urn:us-cities:data:new-york> <http://schema.org/averageIncome> \"$63,998\" .",
             "<urn:us-cities:data:new-york> <http://schema.org/crimeRate> \"Low\" .",
             "<urn:us-cities:data:new-york> <http://schema.org/infrastructureScore> \"8.5\" .",
@@ -120,7 +106,7 @@ mod tests {
         .into_iter()
         .map(String::from)
         .collect();
-        let root = vm.calculate_merkle_root(&quads);
+        let root = calculate_merkle_root(&quads);
         assert_eq!(
             root,
             "0xaac2a420672a1eb77506c544ff01beed2be58c0ee3576fe037c846f97481cefd".to_string()
@@ -135,7 +121,7 @@ mod tests {
             "<https://ontology.origintrail.io/dkg/1.0#metadata-hash:0x5cb6421dd41c7a62a84c223779303919e7293753d8a1f6f49da2e598013fe652> <https://ontology.origintrail.io/dkg/1.0#representsPrivateResource> <uuid:b88ffefd-ce8e-42fb-8a49-7b91d77c71bf> .",
             "<https://ontology.origintrail.io/dkg/1.0#metadata-hash:0x6a2292b30c844d2f8f2910bf11770496a3a79d5a6726d1b2fd3ddd18e09b5850> <https://ontology.origintrail.io/dkg/1.0#representsPrivateResource> <uuid:88a388be-5822-49e9-8663-8820e02707ab> .",
             "<https://ontology.origintrail.io/dkg/1.0#metadata-hash:0xc1f682b783b1b93c9d5386eb1730c9647cf4b55925ec24f5e949e7457ba7bfac> <https://ontology.origintrail.io/dkg/1.0#representsPrivateResource> <uuid:dcb5abcf-66c4-4e63-9dbe-db9da20cb22a> ."].iter().map(|s|s.to_string()).collect::<Vec<String>>();
-        let root = vm.calculate_merkle_root(&quads);
+        let root = calculate_merkle_root(&quads);
         assert_eq!(
             root,
             "0x66ca3160277b181d0307262a0127f5f570f1d8c1b3276e8fe3b0e19ba8edcc35".to_string()
@@ -144,16 +130,14 @@ mod tests {
 
     #[test]
     fn test_split_into_chunks() {
-        let vm = ValidationManager;
-
         // Test that quads are joined with newline and split into 32-byte chunks
         let quads = vec!["hello".to_string()];
-        let chunks = vm.split_into_chunks(&quads);
+        let chunks = split_into_chunks(&quads);
         assert_eq!(chunks, vec!["hello"]);
 
         // Test with multiple quads
         let quads = vec!["a".to_string(), "b".to_string()];
-        let chunks = vm.split_into_chunks(&quads);
+        let chunks = split_into_chunks(&quads);
         assert_eq!(chunks, vec!["a\nb"]);
     }
 }

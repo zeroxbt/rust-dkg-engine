@@ -6336,7 +6336,6 @@ dependencies = [
  "tracing-subscriber",
  "triple-store",
  "uuid",
- "validation",
  "validator",
  "validator_derive",
 ]
@@ -8711,14 +8710,6 @@ dependencies = [
  "js-sys",
  "serde_core",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "validation"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "serde",
 ]
 
 [[package]]
