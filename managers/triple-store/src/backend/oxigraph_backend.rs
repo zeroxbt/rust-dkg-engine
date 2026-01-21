@@ -2,7 +2,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use oxigraph::{
-    sparql::{QueryResults, Update},
+    sparql::{QueryResults, SparqlEvaluator},
     store::Store,
 };
 
@@ -58,9 +58,11 @@ impl TripleStoreBackend for OxigraphBackend {
     async fn health_check(&self) -> Result<bool> {
         // Oxigraph is embedded, so if we have a store, it's healthy
         // Do a simple query to verify it's working
-        let result = self
-            .store
-            .query("ASK { ?s ?p ?o }")
+        let result = SparqlEvaluator::new()
+            .parse_query("ASK { ?s ?p ?o }")
+            .map_err(|e| TripleStoreError::Other(format!("Health check query parse failed: {}", e)))?
+            .on_store(&self.store)
+            .execute()
             .map_err(|e| TripleStoreError::Other(format!("Health check query failed: {}", e)))?;
 
         match result {
@@ -93,15 +95,18 @@ impl TripleStoreBackend for OxigraphBackend {
 
     async fn update(&self, query: &str, _timeout_ms: u64) -> Result<()> {
         // Parse the query first (CPU-bound, but fast)
-        let update = Update::parse(query, None).map_err(|e| TripleStoreError::InvalidQuery {
-            reason: format!("Failed to parse SPARQL UPDATE: {}", e),
-        })?;
+        let prepared = SparqlEvaluator::new()
+            .parse_update(query)
+            .map_err(|e| TripleStoreError::InvalidQuery {
+                reason: format!("Failed to parse SPARQL UPDATE: {}", e),
+            })?;
 
         // Execute on blocking thread pool since Oxigraph's update involves disk I/O
         let store = self.store.clone();
         tokio::task::spawn_blocking(move || {
-            store
-                .update(update)
+            prepared
+                .on_store(&store)
+                .execute()
                 .map_err(|e| TripleStoreError::Other(format!("SPARQL UPDATE failed: {}", e)))
         })
         .await
@@ -111,18 +116,19 @@ impl TripleStoreBackend for OxigraphBackend {
     }
 
     async fn construct(&self, query: &str, _timeout_ms: u64) -> Result<String> {
-        use oxigraph::sparql::Query;
-
         // Parse the query
-        let query = Query::parse(query, None).map_err(|e| TripleStoreError::InvalidQuery {
-            reason: format!("Failed to parse SPARQL CONSTRUCT: {}", e),
-        })?;
+        let prepared = SparqlEvaluator::new()
+            .parse_query(query)
+            .map_err(|e| TripleStoreError::InvalidQuery {
+                reason: format!("Failed to parse SPARQL CONSTRUCT: {}", e),
+            })?;
 
         // Execute on blocking thread pool
         let store = self.store.clone();
         tokio::task::spawn_blocking(move || {
-            let result = store
-                .query(query)
+            let result = prepared
+                .on_store(&store)
+                .execute()
                 .map_err(|e| TripleStoreError::Other(format!("SPARQL CONSTRUCT failed: {}", e)))?;
 
             match result {
@@ -151,18 +157,19 @@ impl TripleStoreBackend for OxigraphBackend {
     }
 
     async fn ask(&self, query: &str, _timeout_ms: u64) -> Result<bool> {
-        use oxigraph::sparql::Query;
-
         // Parse the query
-        let query = Query::parse(query, None).map_err(|e| TripleStoreError::InvalidQuery {
-            reason: format!("Failed to parse SPARQL ASK: {}", e),
-        })?;
+        let prepared = SparqlEvaluator::new()
+            .parse_query(query)
+            .map_err(|e| TripleStoreError::InvalidQuery {
+                reason: format!("Failed to parse SPARQL ASK: {}", e),
+            })?;
 
         // Execute on blocking thread pool
         let store = self.store.clone();
         tokio::task::spawn_blocking(move || {
-            let result = store
-                .query(query)
+            let result = prepared
+                .on_store(&store)
+                .execute()
                 .map_err(|e| TripleStoreError::Other(format!("SPARQL ASK failed: {}", e)))?;
 
             match result {
@@ -211,9 +218,11 @@ mod tests {
         backend.update(insert_query, 10000).await.unwrap();
 
         // Verify data was inserted by checking the store directly
-        let count = backend
-            .store
-            .query("SELECT (COUNT(*) as ?count) WHERE { GRAPH ?g { ?s ?p ?o } }")
+        let count = SparqlEvaluator::new()
+            .parse_query("SELECT (COUNT(*) as ?count) WHERE { GRAPH ?g { ?s ?p ?o } }")
+            .unwrap()
+            .on_store(&backend.store)
+            .execute()
             .unwrap();
 
         if let QueryResults::Solutions(mut solutions) = count {
@@ -246,9 +255,8 @@ mod tests {
         backend.update(insert_query, 10000).await.unwrap();
 
         // Query public graph only
-        let result = backend
-            .store
-            .query(
+        let result = SparqlEvaluator::new()
+            .parse_query(
                 r#"
                 SELECT ?name WHERE {
                     GRAPH <did:dkg:test/1/public> {
@@ -257,6 +265,9 @@ mod tests {
                 }
             "#,
             )
+            .unwrap()
+            .on_store(&backend.store)
+            .execute()
             .unwrap();
 
         if let QueryResults::Solutions(mut solutions) = result {
@@ -280,9 +291,11 @@ mod tests {
         backend.delete_repository().await.unwrap();
 
         // Verify empty
-        let result = backend
-            .store
-            .query("ASK { GRAPH ?g { ?s ?p ?o } }")
+        let result = SparqlEvaluator::new()
+            .parse_query("ASK { GRAPH ?g { ?s ?p ?o } }")
+            .unwrap()
+            .on_store(&backend.store)
+            .execute()
             .unwrap();
 
         if let QueryResults::Boolean(exists) = result {

@@ -3,7 +3,7 @@ mod error;
 use std::{path::Path, sync::Arc};
 
 pub use error::KeyValueStoreError;
-use redb::{Database, ReadableTable, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 

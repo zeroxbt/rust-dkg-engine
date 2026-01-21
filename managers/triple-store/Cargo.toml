@@ -12,9 +12,9 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
-reqwest = { version = "0.13.1", features = ["json"] }
+reqwest.workspace = true
 async-trait = "0.1"
-oxigraph = "0.4"
+oxigraph = "0.5.3"
 
 [dev-dependencies]
 uuid.workspace = true
