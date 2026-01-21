@@ -1,14 +1,15 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use chrono::Utc;
 use dashmap::DashMap;
+use key_value_store::{KeyValueStoreManager, Table};
 use repository::{OperationStatus, RepositoryManager};
 use tokio::sync::watch;
 use uuid::Uuid;
 
 use super::{
     context_store::ContextStore,
-    result_store::{ResultStore, ResultStoreError},
+    result_store::{ResultStoreError, TABLE_NAME},
     traits::Operation,
 };
 use crate::{error::NodeError, services::RequestTracker};
@@ -20,33 +21,32 @@ use crate::{error::NodeError, services::RequestTracker};
 ///
 /// # Ownership
 /// - `ContextStore<Op::State>` - owned here
-/// - `ResultStore` - shared reference (shared across all operation types)
+/// - `Table<Op::Result>` - typed table for this operation's results
 /// - Completion signals - owned here
 /// - `RequestTracker` - shared reference
 pub struct OperationService<Op: Operation> {
     repository: Arc<RepositoryManager>,
     context_store: ContextStore<Op::State>,
-    result_store: Arc<ResultStore>,
+    result_table: Table<Op::Result>,
     completion_signals: DashMap<Uuid, watch::Sender<OperationStatus>>,
     request_tracker: Arc<RequestTracker>,
-    _marker: PhantomData<Op>,
 }
 
 impl<Op: Operation> OperationService<Op> {
     /// Create a new operation service.
     pub fn new(
         repository: Arc<RepositoryManager>,
-        result_store: Arc<ResultStore>,
+        kv_store_manager: &KeyValueStoreManager,
         request_tracker: Arc<RequestTracker>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, ResultStoreError> {
+        let result_table = kv_store_manager.table(TABLE_NAME)?;
+        Ok(Self {
             repository,
             context_store: ContextStore::with_default_ttl(),
-            result_store,
+            result_table,
             completion_signals: DashMap::new(),
             request_tracker,
-            _marker: PhantomData,
-        }
+        })
     }
 
     /// Access the shared request tracker.
@@ -191,7 +191,7 @@ impl<Op: Operation> OperationService<Op> {
             self.signal_completion(operation_id, OperationStatus::Failed);
 
             // Clean up result if stored
-            let _ = self.result_store.remove(operation_id);
+            let _ = self.result_table.remove(operation_id);
 
             tracing::warn!(
                 operation_id = %operation_id,
@@ -208,21 +208,27 @@ impl<Op: Operation> OperationService<Op> {
         Ok(None)
     }
 
-    /// Store a result in redb.
+    /// Store a result in the key-value store.
     pub fn store_result(
         &self,
         operation_id: Uuid,
         result: &Op::Result,
     ) -> Result<(), ResultStoreError> {
-        self.result_store.store(operation_id, result)
+        self.result_table.store(operation_id, result)?;
+        tracing::debug!(
+            operation_id = %operation_id,
+            "[{}] Result stored",
+            Op::NAME
+        );
+        Ok(())
     }
 
-    /// Get a cached operation result from redb.
+    /// Get a cached operation result from the key-value store.
     pub fn get_result(&self, operation_id: Uuid) -> Result<Option<Op::Result>, ResultStoreError> {
-        self.result_store.get(operation_id)
+        Ok(self.result_table.get(operation_id)?)
     }
 
-    /// Update a result in redb using a closure.
+    /// Update a result in the key-value store using a closure.
     /// If no result exists, creates one from the default value.
     /// This enables incremental updates (e.g., adding signatures one at a time).
     pub fn update_result<F>(
@@ -234,7 +240,13 @@ impl<Op: Operation> OperationService<Op> {
     where
         F: FnOnce(&mut Op::Result),
     {
-        self.result_store.update(operation_id, default, update_fn)
+        self.result_table.update(operation_id, default, update_fn)?;
+        tracing::trace!(
+            operation_id = %operation_id,
+            "[{}] Result updated",
+            Op::NAME
+        );
+        Ok(())
     }
 
     /// Manually complete an operation (e.g., for local-first completions without network requests).
@@ -275,7 +287,7 @@ impl<Op: Operation> OperationService<Op> {
         self.signal_completion(operation_id, OperationStatus::Failed);
 
         // Clean up
-        let _ = self.result_store.remove(operation_id);
+        let _ = self.result_table.remove(operation_id);
         self.remove_context(&operation_id);
 
         match result {

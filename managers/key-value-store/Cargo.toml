@@ -1,0 +1,15 @@
+[package]
+name = "key-value-store"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+redb = "2.4.0"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

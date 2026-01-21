@@ -6,6 +6,7 @@ members = [
     "./managers/blockchain",
     "./managers/validation",
     "./managers/triple-store",
+    "./managers/key-value-store",
     "./tools/local_network",
     "./rdf-canonize",
 ]
@@ -25,6 +26,7 @@ network = { path = "./managers/network" }
 repository = { path = "./managers/repository" }
 validation = { path = "./managers/validation" }
 triple-store = { path = "./managers/triple-store" }
+key-value-store = { path = "./managers/key-value-store" }
 rdf-canonize = { path = "./rdf-canonize" }
 
 # Common dependencies shared across workspace
@@ -64,6 +66,7 @@ dotenvy = "0.15.7"
 validator = "0.20.0"
 validator_derive = "0.20.0"
 figment = { version = "0.10", features = ["toml"] }
+tempfile = "3.24.0"
 
 [dependencies]
 blockchain.workspace = true
@@ -71,6 +74,7 @@ network.workspace = true
 repository.workspace = true
 validation.workspace = true
 triple-store.workspace = true
+key-value-store.workspace = true
 rdf-canonize.workspace = true
 tokio.workspace = true
 futures.workspace = true
@@ -94,10 +98,9 @@ libp2p.workspace = true
 alloy.workspace = true
 sha2.workspace = true
 dashmap = "6.1.0"
-redb = "2.1"
 
 [dev-dependencies]
-tempfile = "3.24.0"
+tempfile.workspace = true
 
 [workspace.lints]
 rust.unreachable_pub = "warn"

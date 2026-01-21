@@ -171,16 +171,6 @@ impl FileService {
         }
     }
 
-    // Path construction helpers - these are cheap and don't need to be methods,
-    // but keeping them for API consistency with the JS version
-
-    pub fn pending_storage_cache_dir(&self) -> PathBuf {
-        self.data_path.join("pending_storage_cache")
-    }
-
-    pub fn pending_storage_path(&self, operation_id: &str) -> PathBuf {
-        self.pending_storage_cache_dir().join(operation_id)
-    }
 }
 
 #[cfg(test)]

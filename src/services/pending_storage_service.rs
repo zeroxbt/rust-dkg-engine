@@ -1,13 +1,28 @@
-use std::sync::Arc;
-
+use key_value_store::{KeyValueStoreError, KeyValueStoreManager, Table};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use triple_store::Assertion;
 use uuid::Uuid;
 
-use crate::{
-    error::{NodeError, ServiceError},
-    services::file_service::FileService,
-};
+use crate::error::NodeError;
+
+/// Table name for pending storage data.
+const TABLE_NAME: &str = "pending_storage";
+
+#[derive(Error, Debug)]
+pub enum PendingStorageError {
+    #[error("Key-value store error: {0}")]
+    Store(#[from] KeyValueStoreError),
+
+    #[error("Not found: {0}")]
+    NotFound(Uuid),
+}
+
+impl From<PendingStorageError> for NodeError {
+    fn from(err: PendingStorageError) -> Self {
+        NodeError::Other(err.to_string())
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PendingStorageData {
@@ -38,73 +53,152 @@ impl PendingStorageData {
     }
 }
 
+/// Service for storing pending datasets awaiting finality.
 pub struct PendingStorageService {
-    file_service: Arc<FileService>,
+    table: Table<PendingStorageData>,
 }
 
 impl PendingStorageService {
-    pub fn new(file_service: Arc<FileService>) -> Self {
-        Self { file_service }
+    /// Create a new pending storage service from a key-value store manager.
+    pub fn new(kv_store_manager: &KeyValueStoreManager) -> Result<Self, KeyValueStoreError> {
+        let table = kv_store_manager.table(TABLE_NAME)?;
+        Ok(Self { table })
     }
-}
 
-impl PendingStorageService {
-    pub async fn store_dataset(
+    /// Store a dataset pending finality confirmation.
+    pub fn store_dataset(
         &self,
         operation_id: Uuid,
         dataset_root: &str,
         dataset: &Assertion,
         publisher_peer_id: &str,
-    ) -> Result<(), NodeError> {
+    ) -> Result<(), PendingStorageError> {
+        let data = PendingStorageData::new(
+            dataset_root.to_owned(),
+            dataset.clone(),
+            publisher_peer_id.to_owned(),
+        );
+
+        self.table.store(operation_id, &data)?;
+
         tracing::debug!(
             operation_id = %operation_id,
             dataset_root = %dataset_root,
             publisher_peer_id = %publisher_peer_id,
-            "Storing dataset in pending storage"
+            "Dataset stored in pending storage"
         );
-
-        let dir = self.file_service.pending_storage_cache_dir();
-        self.file_service
-            .write_json(
-                dir,
-                &operation_id.to_string(),
-                &PendingStorageData::new(
-                    dataset_root.to_owned(),
-                    dataset.clone(),
-                    publisher_peer_id.to_owned(),
-                ),
-            )
-            .await
-            .map_err(|e| NodeError::Service(ServiceError::Other(e.to_string())))?;
 
         Ok(())
     }
 
-    pub async fn get_dataset(&self, operation_id: Uuid) -> Result<PendingStorageData, NodeError> {
-        tracing::debug!(
-            operation_id = %operation_id,
-            "Retrieving dataset from pending storage"
-        );
-
-        let file_path = self
-            .file_service
-            .pending_storage_path(&operation_id.to_string());
-
-        match self
-            .file_service
-            .read_json::<PendingStorageData>(file_path)
-            .await
-        {
-            Ok(data) => Ok(data),
-            Err(e) => {
+    /// Retrieve a dataset from pending storage.
+    pub fn get_dataset(&self, operation_id: Uuid) -> Result<PendingStorageData, PendingStorageError> {
+        match self.table.get(operation_id)? {
+            Some(data) => {
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    "Dataset retrieved from pending storage"
+                );
+                Ok(data)
+            }
+            None => {
                 tracing::error!(
                     operation_id = %operation_id,
-                    error = %e,
-                    "Failed to retrieve cached dataset"
+                    "Dataset not found in pending storage"
                 );
-
-                Err(NodeError::Service(ServiceError::Other(e.to_string())))
+                Err(PendingStorageError::NotFound(operation_id))
             }
         }
+    }
+
+    /// Remove a dataset from pending storage (after finality is confirmed).
+    pub fn remove(&self, operation_id: Uuid) -> Result<bool, PendingStorageError> {
+        let removed = self.table.remove(operation_id)?;
+
+        if removed {
+            tracing::trace!(
+                operation_id = %operation_id,
+                "Dataset removed from pending storage"
+            );
+        }
+
+        Ok(removed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use key_value_store::KeyValueStoreManager;
+    use tempfile::TempDir;
+
+    use super::*;
+
+    fn create_test_assertion() -> Assertion {
+        Assertion {
+            public: vec!["<s> <p> <o> .".to_string()],
+            private: None,
+        }
+    }
+
+    #[test]
+    fn test_store_and_get() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.redb");
+        let kv_store_manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let service = PendingStorageService::new(&kv_store_manager).unwrap();
+
+        let op_id = Uuid::new_v4();
+        let dataset_root = "0x1234";
+        let dataset = create_test_assertion();
+        let publisher = "peer123";
+
+        service
+            .store_dataset(op_id, dataset_root, &dataset, publisher)
+            .unwrap();
+
+        let retrieved = service.get_dataset(op_id).unwrap();
+        assert_eq!(retrieved.dataset_root(), dataset_root);
+        assert_eq!(retrieved.publisher_peer_id(), publisher);
+        assert_eq!(retrieved.dataset().public, dataset.public);
+    }
+
+    #[test]
+    fn test_get_nonexistent() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.redb");
+        let kv_store_manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let service = PendingStorageService::new(&kv_store_manager).unwrap();
+
+        let op_id = Uuid::new_v4();
+        let result = service.get_dataset(op_id);
+        assert!(matches!(result, Err(PendingStorageError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_remove() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.redb");
+        let kv_store_manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let service = PendingStorageService::new(&kv_store_manager).unwrap();
+
+        let op_id = Uuid::new_v4();
+        let dataset = create_test_assertion();
+
+        service
+            .store_dataset(op_id, "0x1234", &dataset, "peer123")
+            .unwrap();
+
+        let removed = service.remove(op_id).unwrap();
+        assert!(removed);
+
+        // Should not exist anymore
+        assert!(matches!(
+            service.get_dataset(op_id),
+            Err(PendingStorageError::NotFound(_))
+        ));
+
+        // Removing again should return false
+        let removed_again = service.remove(op_id).unwrap();
+        assert!(!removed_again);
     }
 }

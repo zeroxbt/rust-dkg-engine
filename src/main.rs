@@ -35,8 +35,8 @@ use crate::{
     controllers::rpc_controller::NetworkProtocols,
     operations::{GetOperation, PublishOperation},
     services::{
-        GetValidationService, RequestTracker, ResponseChannels, ResultStore, TripleStoreService,
-        file_service::FileService, operation::OperationService as GenericOperationService,
+        GetValidationService, RequestTracker, ResponseChannels, TripleStoreService,
+        operation::OperationService as GenericOperationService,
         pending_storage_service::PendingStorageService,
     },
 };
@@ -238,26 +238,34 @@ fn initialize_services(
     Arc<GenericOperationService<GetOperation>>,
     Arc<PendingStorageService>,
 ) {
-    let file_service = Arc::new(FileService::new(config.app_data_path.clone()));
-    let pending_storage_service = Arc::new(PendingStorageService::new(Arc::clone(&file_service)));
+    // Create shared key-value store manager
+    let kv_store_manager = key_value_store::KeyValueStoreManager::open(
+        config.app_data_path.join("key_value_store.redb"),
+    )
+    .expect("Failed to open key-value store manager");
 
-    // Create result store for operation results
-    let result_store = Arc::new(
-        ResultStore::open(config.app_data_path.join("operation_results.redb"))
-            .expect("Failed to open result store"),
+    let pending_storage_service = Arc::new(
+        PendingStorageService::new(&kv_store_manager)
+            .expect("Failed to create pending storage service"),
     );
     let request_tracker = Arc::new(RequestTracker::new());
 
-    let publish_operation_service = Arc::new(GenericOperationService::<PublishOperation>::new(
-        Arc::clone(repository_manager),
-        Arc::clone(&result_store),
-        Arc::clone(&request_tracker),
-    ));
-    let get_operation_service = Arc::new(GenericOperationService::<GetOperation>::new(
-        Arc::clone(repository_manager),
-        Arc::clone(&result_store),
-        Arc::clone(&request_tracker),
-    ));
+    let publish_operation_service = Arc::new(
+        GenericOperationService::<PublishOperation>::new(
+            Arc::clone(repository_manager),
+            &kv_store_manager,
+            Arc::clone(&request_tracker),
+        )
+        .expect("Failed to create publish operation service"),
+    );
+    let get_operation_service = Arc::new(
+        GenericOperationService::<GetOperation>::new(
+            Arc::clone(repository_manager),
+            &kv_store_manager,
+            Arc::clone(&request_tracker),
+        )
+        .expect("Failed to create get operation service"),
+    );
 
     (
         publish_operation_service,

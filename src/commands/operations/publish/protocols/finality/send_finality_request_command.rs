@@ -160,7 +160,6 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
         let pending_data = match self
             .pending_storage_service
             .get_dataset(publish_operation_id)
-            .await
         {
             Ok(data) => data,
             Err(e) => {

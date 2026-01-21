@@ -4061,6 +4061,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "key-value-store"
+version = "0.1.0"
+dependencies = [
+ "redb",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6335,10 +6348,10 @@ dependencies = [
  "figment",
  "futures",
  "hyper",
+ "key-value-store",
  "libp2p",
  "network",
  "rdf-canonize",
- "redb",
  "repository",
  "serde",
  "serde_json",

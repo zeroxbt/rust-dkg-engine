@@ -340,7 +340,6 @@ impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommand
                 dataset,
                 &remote_peer_id.to_base58(),
             )
-            .await
         {
             tracing::error!(
                 operation_id = %operation_id,
