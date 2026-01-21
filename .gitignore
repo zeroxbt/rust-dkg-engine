@@ -28,4 +28,5 @@ Temporary Items
 .node*_config.toml
 data*/
 dkg-engine/*
+dkg-engine
 contracts/*
