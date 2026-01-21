@@ -4,8 +4,6 @@ pub mod models;
 mod repositories;
 mod types;
 
-pub use types::OperationStatus;
-
 use std::sync::Arc;
 
 use error::RepositoryError;
@@ -21,6 +19,7 @@ pub use sea_orm::ActiveValue;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::Deserialize;
+pub use types::OperationStatus;
 
 use self::migrations::Migrator;
 

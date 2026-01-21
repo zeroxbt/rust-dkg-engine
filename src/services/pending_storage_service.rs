@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
 use triple_store::Assertion;
+use uuid::Uuid;
 
 use crate::{
     error::{NodeError, ServiceError},

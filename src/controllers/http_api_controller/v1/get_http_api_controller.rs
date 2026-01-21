@@ -11,8 +11,7 @@ use validator::Validate;
 
 use crate::{
     commands::{
-        command_executor::CommandExecutionRequest,
-        command_registry::Command,
+        command_executor::CommandExecutionRequest, command_registry::Command,
         operations::get::protocols::get::send_get_requests_command::SendGetRequestsCommandData,
     },
     context::Context,

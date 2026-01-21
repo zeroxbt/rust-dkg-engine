@@ -8,17 +8,14 @@ use network::{
     message::{RequestMessageHeader, RequestMessageType},
 };
 use repository::RepositoryManager;
-use uuid::Uuid;
-
 use triple_store::Assertion;
+use uuid::Uuid;
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{messages::StoreRequestData, NetworkProtocols, ProtocolRequest},
-    services::{
-        pending_storage_service::PendingStorageService, OperationService, RequestTracker,
-    },
+    controllers::rpc_controller::{NetworkProtocols, ProtocolRequest, messages::StoreRequestData},
+    services::{OperationService, RequestTracker, pending_storage_service::PendingStorageService},
 };
 
 /// Command data for sending publish requests to network nodes.

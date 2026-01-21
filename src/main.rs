@@ -35,7 +35,8 @@ use crate::{
     controllers::rpc_controller::NetworkProtocols,
     services::{
         GetOperationContextStore, GetValidationService, RequestTracker, ResponseChannels,
-        TripleStoreService, file_service::FileService, pending_storage_service::PendingStorageService,
+        TripleStoreService, file_service::FileService,
+        pending_storage_service::PendingStorageService,
     },
 };
 
@@ -235,7 +236,11 @@ async fn initialize_managers(
 fn initialize_services(
     config: &Config,
     repository_manager: &Arc<RepositoryManager>,
-) -> (Arc<OperationService>, Arc<OperationService>, Arc<PendingStorageService>) {
+) -> (
+    Arc<OperationService>,
+    Arc<OperationService>,
+    Arc<PendingStorageService>,
+) {
     let file_service = Arc::new(FileService::new(config.app_data_path.clone()));
     let pending_storage_service = Arc::new(PendingStorageService::new(Arc::clone(&file_service)));
 
@@ -255,7 +260,11 @@ fn initialize_services(
         },
     ));
 
-    (publish_operation_manager, get_operation_manager, pending_storage_service)
+    (
+        publish_operation_manager,
+        get_operation_manager,
+        pending_storage_service,
+    )
 }
 
 fn initialize_controllers(

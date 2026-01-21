@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use blockchain::BlockchainManager;
 use triple_store::{
-    Visibility,
-    group_nquads_by_subject,
+    Visibility, group_nquads_by_subject,
     query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
 };
 use validation::ValidationManager;
@@ -35,7 +34,8 @@ impl GetValidationService {
     ///
     /// Follows the same logic as JS validateResponse:
     /// - For single KA: skip validation (return true)
-    /// - For collection: validate public merkle root against on-chain, validate private merkle root if present
+    /// - For collection: validate public merkle root against on-chain, validate private merkle root
+    ///   if present
     ///
     /// Returns true if the response is valid, false otherwise.
     pub async fn validate_response(
@@ -51,7 +51,10 @@ impl GetValidationService {
         }
 
         // If only private content is requested and there's no public, skip validation
-        if public_triples.is_empty() && private_triples.is_some() && visibility == Visibility::Private {
+        if public_triples.is_empty()
+            && private_triples.is_some()
+            && visibility == Visibility::Private
+        {
             return true;
         }
 
@@ -192,7 +195,9 @@ impl GetValidationService {
         let mut sorted_private: Vec<String> = private_triples.to_vec();
         sorted_private.sort();
 
-        let calculated_root = self.validation_manager.calculate_merkle_root(&sorted_private);
+        let calculated_root = self
+            .validation_manager
+            .calculate_merkle_root(&sorted_private);
 
         if calculated_root != expected_root {
             tracing::debug!(
@@ -271,9 +276,7 @@ mod tests {
             &triples
         ));
 
-        let triples_no_private = vec![
-            r#"<subject> <http://schema.org/name> "Test" ."#.to_string(),
-        ];
+        let triples_no_private = vec![r#"<subject> <http://schema.org/name> "Test" ."#.to_string()];
         assert!(!GetValidationService::assertion_has_private_merkle_root(
             &triples_no_private
         ));

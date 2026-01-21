@@ -6,17 +6,13 @@ use network::{
     message::{ResponseMessageHeader, ResponseMessageType},
     request_response::ResponseChannel,
 };
-use uuid::Uuid;
-
 use triple_store::{Assertion, TokenIds, Visibility};
+use uuid::Uuid;
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{
-        NetworkProtocols, ProtocolResponse,
-        messages::GetResponseData,
-    },
+    controllers::rpc_controller::{NetworkProtocols, ProtocolResponse, messages::GetResponseData},
     services::{ResponseChannels, TripleStoreService},
     utils::ual::parse_ual,
 };

@@ -43,7 +43,10 @@ pub enum GetResponseData {
 
 impl GetResponseData {
     pub fn data(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
-        Self::Data { assertion, metadata }
+        Self::Data {
+            assertion,
+            metadata,
+        }
     }
 
     pub fn error(message: impl Into<String>) -> Self {

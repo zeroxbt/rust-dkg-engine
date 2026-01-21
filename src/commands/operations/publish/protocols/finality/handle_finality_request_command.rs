@@ -12,7 +12,9 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{messages::FinalityResponseData, NetworkProtocols, ProtocolResponse},
+    controllers::rpc_controller::{
+        NetworkProtocols, ProtocolResponse, messages::FinalityResponseData,
+    },
     services::ResponseChannels,
 };
 

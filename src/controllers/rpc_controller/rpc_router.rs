@@ -13,8 +13,7 @@ use super::{
 use crate::{
     context::Context,
     controllers::rpc_controller::v1::{
-        finality_rpc_controller::FinalityRpcController,
-        get_rpc_controller::GetRpcController,
+        finality_rpc_controller::FinalityRpcController, get_rpc_controller::GetRpcController,
         store_rpc_controller::StoreRpcController,
     },
     services::{OperationService, RequestTracker},

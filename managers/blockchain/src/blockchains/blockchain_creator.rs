@@ -135,8 +135,10 @@ impl Contracts {
 
     pub fn knowledge_collection_storage(
         &self,
-    ) -> Result<&KnowledgeCollectionStorage::KnowledgeCollectionStorageInstance<BlockchainProvider>, BlockchainError>
-    {
+    ) -> Result<
+        &KnowledgeCollectionStorage::KnowledgeCollectionStorageInstance<BlockchainProvider>,
+        BlockchainError,
+    > {
         self.knowledge_collection_storage.as_ref().ok_or_else(|| {
             BlockchainError::Custom(
                 "KnowledgeCollectionStorage contract is not initialized".to_string(),

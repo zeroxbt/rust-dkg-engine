@@ -85,10 +85,7 @@ where
         self.channels.remove(&key);
     }
 
-    fn cleanup_expired(
-        channels: &DashMap<ChannelKey, ChannelEntry<T>>,
-        timeout: Duration,
-    ) {
+    fn cleanup_expired(channels: &DashMap<ChannelKey, ChannelEntry<T>>, timeout: Duration) {
         let now = Instant::now();
         let mut expired_keys = Vec::new();
 
@@ -99,7 +96,10 @@ where
         }
 
         if !expired_keys.is_empty() {
-            tracing::debug!("Cleaning up {} expired response channels", expired_keys.len());
+            tracing::debug!(
+                "Cleaning up {} expired response channels",
+                expired_keys.len()
+            );
             for key in expired_keys {
                 channels.remove(&key);
             }

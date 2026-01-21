@@ -799,12 +799,14 @@ impl EvmChain {
                 BlockchainError::Custom(format!("Failed to get knowledge assets range: {}", e))
             })?;
 
-        let start_token_id = result._0.try_into().map_err(|_| {
-            BlockchainError::Custom("Start token ID overflow".to_string())
-        })?;
-        let end_token_id = result._1.try_into().map_err(|_| {
-            BlockchainError::Custom("End token ID overflow".to_string())
-        })?;
+        let start_token_id = result
+            ._0
+            .try_into()
+            .map_err(|_| BlockchainError::Custom("Start token ID overflow".to_string()))?;
+        let end_token_id = result
+            ._1
+            .try_into()
+            .map_err(|_| BlockchainError::Custom("End token ID overflow".to_string()))?;
         let burned: Vec<u64> = result
             ._2
             .into_iter()
@@ -845,7 +847,10 @@ impl EvmChain {
         if merkle_root.is_zero() {
             Ok(None)
         } else {
-            Ok(Some(format!("0x{}", crate::utils::to_hex_string(merkle_root))))
+            Ok(Some(format!(
+                "0x{}",
+                crate::utils::to_hex_string(merkle_root)
+            )))
         }
     }
 }

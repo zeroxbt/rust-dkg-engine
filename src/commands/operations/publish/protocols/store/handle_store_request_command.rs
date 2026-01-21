@@ -8,17 +8,18 @@ use network::{
     request_response::ResponseChannel,
 };
 use repository::RepositoryManager;
+use triple_store::Assertion;
 use uuid::Uuid;
 use validation::ValidationManager;
-
-use triple_store::Assertion;
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{messages::StoreResponseData, NetworkProtocols, ProtocolResponse},
+    controllers::rpc_controller::{
+        NetworkProtocols, ProtocolResponse, messages::StoreResponseData,
+    },
     services::{
-        pending_storage_service::PendingStorageService, OperationService, ResponseChannels,
+        OperationService, ResponseChannels, pending_storage_service::PendingStorageService,
     },
 };
 

@@ -7,7 +7,6 @@ use network::{
 };
 use repository::RepositoryManager;
 use tokio::sync::mpsc::Sender;
-
 use triple_store::Assertion;
 
 use crate::{

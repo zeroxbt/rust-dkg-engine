@@ -9,13 +9,14 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     commands::{
-        command_executor::CommandExecutionRequest,
-        command_registry::Command,
+        command_executor::CommandExecutionRequest, command_registry::Command,
         operations::get::protocols::get::handle_get_request_command::HandleGetRequestCommandData,
     },
     context::Context,
     controllers::rpc_controller::messages::{GetRequestData, GetResponseData},
-    services::{GetOperationContextStore, GetValidationService, OperationService, ResponseChannels},
+    services::{
+        GetOperationContextStore, GetValidationService, OperationService, ResponseChannels,
+    },
     utils::ual::ParsedUal,
 };
 
@@ -90,7 +91,10 @@ impl GetRpcController {
         let is_ack = header.message_type == ResponseMessageType::Ack;
 
         match &data {
-            GetResponseData::Data { assertion, metadata } => {
+            GetResponseData::Data {
+                assertion,
+                metadata,
+            } => {
                 tracing::debug!(
                     operation_id = %operation_id,
                     peer = %peer,
@@ -119,7 +123,8 @@ impl GetRpcController {
                         Some(ctx) => {
                             // Build a ParsedUal from the stored context for validation
                             // Note: We don't have the contract address stored, but validation
-                            // only needs blockchain, knowledge_collection_id, and knowledge_asset_id
+                            // only needs blockchain, knowledge_collection_id, and
+                            // knowledge_asset_id
                             let parsed_ual = ParsedUal {
                                 blockchain: ctx.blockchain.clone(),
                                 // Use a dummy contract address - validation doesn't use it

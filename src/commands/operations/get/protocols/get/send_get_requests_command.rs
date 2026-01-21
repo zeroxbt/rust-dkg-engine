@@ -8,17 +8,13 @@ use network::{
     message::{RequestMessageHeader, RequestMessageType},
 };
 use repository::RepositoryManager;
-use uuid::Uuid;
-
 use triple_store::{TokenIds, Visibility};
+use uuid::Uuid;
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{
-        NetworkProtocols, ProtocolRequest,
-        messages::GetRequestData,
-    },
+    controllers::rpc_controller::{NetworkProtocols, ProtocolRequest, messages::GetRequestData},
     services::{
         GetOperationContext, GetOperationContextStore, GetValidationService, OperationService,
         RequestTracker, TripleStoreService,
