@@ -4,11 +4,11 @@ use triple_store::{Assertion, TokenIds, Visibility};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetRequestData {
-    pub ual: String,
-    pub token_ids: TokenIds,
-    pub include_metadata: bool,
-    pub paranet_ual: Option<String>,
-    pub content_type: Visibility,
+    ual: String,
+    token_ids: TokenIds,
+    include_metadata: bool,
+    paranet_ual: Option<String>,
+    content_type: Visibility,
 }
 
 impl GetRequestData {
@@ -26,6 +26,31 @@ impl GetRequestData {
             paranet_ual,
             content_type,
         }
+    }
+
+    /// Returns the UAL.
+    pub fn ual(&self) -> &str {
+        &self.ual
+    }
+
+    /// Returns the token IDs.
+    pub fn token_ids(&self) -> &TokenIds {
+        &self.token_ids
+    }
+
+    /// Returns whether metadata should be included.
+    pub fn include_metadata(&self) -> bool {
+        self.include_metadata
+    }
+
+    /// Returns the paranet UAL, if any.
+    pub fn paranet_ual(&self) -> Option<&str> {
+        self.paranet_ual.as_deref()
+    }
+
+    /// Returns the content type (visibility).
+    pub fn content_type(&self) -> Visibility {
+        self.content_type
     }
 }
 

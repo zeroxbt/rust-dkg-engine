@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalityRequestData {
-    pub ual: String,
-    pub publish_operation_id: String,
+    ual: String,
+    publish_operation_id: String,
 }
 
 impl FinalityRequestData {
@@ -13,6 +13,16 @@ impl FinalityRequestData {
             ual,
             publish_operation_id,
         }
+    }
+
+    /// Returns the UAL.
+    pub fn ual(&self) -> &str {
+        &self.ual
+    }
+
+    /// Returns the publish operation ID.
+    pub fn publish_operation_id(&self) -> &str {
+        &self.publish_operation_id
     }
 }
 

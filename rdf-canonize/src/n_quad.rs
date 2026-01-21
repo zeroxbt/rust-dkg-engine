@@ -53,31 +53,108 @@ pub enum TermType {
     Literal,
     DefaultGraph,
 }
+
 /// Represents a term within an RDF Quad.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Term {
-    pub term_type: TermType,
-    pub value: String,
+    term_type: TermType,
+    value: String,
+}
+
+impl Term {
+    /// Creates a new Term with the given type and value.
+    pub fn new(term_type: TermType, value: String) -> Self {
+        Self { term_type, value }
+    }
+
+    /// Returns the term type.
+    pub fn term_type(&self) -> &TermType {
+        &self.term_type
+    }
+
+    /// Returns the value.
+    pub fn value(&self) -> &str {
+        &self.value
+    }
 }
 
 /// Represents a literal value in RDF, including optional datatype and language annotations.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Literal {
-    pub datatype: Term,
-    pub language: String,
+    datatype: Term,
+    language: String,
+}
+
+impl Literal {
+    /// Creates a new Literal with the given datatype and language.
+    pub fn new(datatype: Term, language: String) -> Self {
+        Self { datatype, language }
+    }
+
+    /// Returns the datatype term.
+    pub fn datatype(&self) -> &Term {
+        &self.datatype
+    }
+
+    /// Returns the language tag.
+    pub fn language(&self) -> &str {
+        &self.language
+    }
 }
 
 /// Represents an RDF Quad, consisting of subject, predicate, object, and graph components.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Quad {
-    pub subject: Term,
-    pub predicate: Term,
-    pub object: Term,
-    pub graph: Term,
-    pub object_literal: Option<Literal>,
+    subject: Term,
+    predicate: Term,
+    object: Term,
+    graph: Term,
+    object_literal: Option<Literal>,
 }
 
 impl Quad {
+    /// Creates a new Quad.
+    pub fn new(
+        subject: Term,
+        predicate: Term,
+        object: Term,
+        graph: Term,
+        object_literal: Option<Literal>,
+    ) -> Self {
+        Self {
+            subject,
+            predicate,
+            object,
+            graph,
+            object_literal,
+        }
+    }
+
+    /// Returns a reference to the subject term.
+    pub fn subject(&self) -> &Term {
+        &self.subject
+    }
+
+    /// Returns a reference to the predicate term.
+    pub fn predicate(&self) -> &Term {
+        &self.predicate
+    }
+
+    /// Returns a reference to the object term.
+    pub fn object(&self) -> &Term {
+        &self.object
+    }
+
+    /// Returns a reference to the graph term.
+    pub fn graph(&self) -> &Term {
+        &self.graph
+    }
+
+    /// Returns a reference to the object literal, if any.
+    pub fn object_literal(&self) -> Option<&Literal> {
+        self.object_literal.as_ref()
+    }
+
     /// Compares this quad with another for equality, considering potential language and datatype
     /// differences.
     fn compare(&self, other: &Self) -> bool {
@@ -123,44 +200,26 @@ impl NQuads {
             })?;
 
             let subject = if let Some(iri) = captures.get(1) {
-                Term {
-                    term_type: TermType::NamedNode,
-                    value: iri.as_str().to_string(),
-                }
+                Term::new(TermType::NamedNode, iri.as_str().to_string())
             } else {
-                Term {
-                    term_type: TermType::BlankNode,
-                    value: captures[2].to_string(),
-                }
+                Term::new(TermType::BlankNode, captures[2].to_string())
             };
 
-            let predicate = Term {
-                term_type: TermType::NamedNode,
-                value: captures[3].to_string(),
-            };
+            let predicate = Term::new(TermType::NamedNode, captures[3].to_string());
 
             let object;
             let object_literal;
 
             if let Some(iri) = captures.get(4) {
-                object = Term {
-                    term_type: TermType::NamedNode,
-                    value: iri.as_str().to_string(),
-                };
+                object = Term::new(TermType::NamedNode, iri.as_str().to_string());
                 object_literal = None;
             } else if let Some(blank_node_label) = captures.get(5) {
-                object = Term {
-                    term_type: TermType::BlankNode,
-                    value: blank_node_label.as_str().to_string(),
-                };
+                object = Term::new(TermType::BlankNode, blank_node_label.as_str().to_string());
                 object_literal = None;
             } else {
                 let unescaped_value = Self::unescape(&captures[6]);
 
-                object = Term {
-                    term_type: TermType::Literal,
-                    value: unescaped_value.clone(),
-                };
+                object = Term::new(TermType::Literal, unescaped_value);
 
                 let datatype_value = if let Some(iri) = captures.get(7) {
                     iri.as_str().to_string()
@@ -174,42 +233,24 @@ impl NQuads {
                     .get(8)
                     .map_or(String::new(), |m| m.as_str().to_string());
 
-                object_literal = Some(Literal {
-                    datatype: Term {
-                        term_type: TermType::NamedNode,
-                        value: datatype_value,
-                    },
+                object_literal = Some(Literal::new(
+                    Term::new(TermType::NamedNode, datatype_value),
                     language,
-                });
+                ));
             }
 
             let graph = if let Some(iri) = captures.get(9) {
-                Term {
-                    term_type: TermType::NamedNode,
-                    value: iri.as_str().to_string(),
-                }
+                Term::new(TermType::NamedNode, iri.as_str().to_string())
             } else if let Some(blank_node_label) = captures.get(10) {
-                Term {
-                    term_type: TermType::BlankNode,
-                    value: blank_node_label.as_str().to_string(),
-                }
+                Term::new(TermType::BlankNode, blank_node_label.as_str().to_string())
             } else {
-                Term {
-                    term_type: TermType::DefaultGraph,
-                    value: String::new(),
-                }
+                Term::new(TermType::DefaultGraph, String::new())
             };
 
-            let quad = Quad {
-                subject,
-                predicate,
-                object,
-                graph,
-                object_literal,
-            };
+            let quad = Quad::new(subject, predicate, object, graph, object_literal);
 
             // only add quad if it is unique in its graph
-            let entry = graphs.entry(quad.graph.value.clone()).or_default();
+            let entry = graphs.entry(quad.graph().value().to_string()).or_default();
             if !entry.iter().any(|existing| quad.compare(existing)) {
                 entry.push(quad.clone());
                 dataset.push(quad);
@@ -226,14 +267,14 @@ impl NQuads {
         p: &Term,
         o: &Term,
         g: &Term,
-        o_l: &Option<Literal>,
+        o_l: Option<&Literal>,
     ) -> Result<String, URDNAError> {
         let mut nquad = String::new();
 
         // subject can only be NamedNode or BlankNode
-        match s.term_type {
-            TermType::NamedNode => nquad.push_str(&format!("<{}>", s.value)),
-            TermType::BlankNode => nquad.push_str(&s.value),
+        match s.term_type() {
+            TermType::NamedNode => nquad.push_str(&format!("<{}>", s.value())),
+            TermType::BlankNode => nquad.push_str(s.value()),
             _ => {
                 return Err(URDNAError::Serializing(
                     "Subject must be a NamedNode or BlankNode".to_string(),
@@ -242,8 +283,8 @@ impl NQuads {
         }
 
         // predicate can only be NamedNode
-        if p.term_type == TermType::NamedNode {
-            nquad.push_str(&format!(" <{}> ", p.value));
+        if *p.term_type() == TermType::NamedNode {
+            nquad.push_str(&format!(" <{}> ", p.value()));
         } else {
             return Err(URDNAError::Serializing(
                 "Predicate must be a NamedNode".to_string(),
@@ -251,20 +292,20 @@ impl NQuads {
         }
 
         // object is NamedNode, BlankNode, or Literal
-        match o.term_type {
-            TermType::NamedNode => nquad.push_str(&format!("<{}>", o.value)),
-            TermType::BlankNode => nquad.push_str(&o.value),
+        match o.term_type() {
+            TermType::NamedNode => nquad.push_str(&format!("<{}>", o.value())),
+            TermType::BlankNode => nquad.push_str(o.value()),
             TermType::Literal => {
-                nquad.push_str(&format!("\"{}\"", Self::escape(&o.value)));
+                nquad.push_str(&format!("\"{}\"", Self::escape(o.value())));
                 // Extracting datatype and language from object_literal for literal objects
                 // Ensure that your actual code populates object_literal where appropriate
                 if let Some(literal) = o_l {
-                    if literal.datatype.value == RDF_LANGSTRING {
-                        if !literal.language.is_empty() {
-                            nquad.push_str(&format!("@{}", literal.language));
+                    if literal.datatype().value() == RDF_LANGSTRING {
+                        if !literal.language().is_empty() {
+                            nquad.push_str(&format!("@{}", literal.language()));
                         }
-                    } else if literal.datatype.value != XSD_STRING {
-                        nquad.push_str(&format!("^^<{}>", literal.datatype.value));
+                    } else if literal.datatype().value() != XSD_STRING {
+                        nquad.push_str(&format!("^^<{}>", literal.datatype().value()));
                     }
                 }
             }
@@ -277,9 +318,9 @@ impl NQuads {
 
         // graph can only be NamedNode or BlankNode (or DefaultGraph, but that
         // does not add to `nquad`)
-        match g.term_type {
-            TermType::NamedNode => nquad.push_str(&format!(" <{}>", g.value)),
-            TermType::BlankNode => nquad.push_str(&format!(" {}", g.value)),
+        match g.term_type() {
+            TermType::NamedNode => nquad.push_str(&format!(" <{}>", g.value())),
+            TermType::BlankNode => nquad.push_str(&format!(" {}", g.value())),
             TermType::DefaultGraph => {}
             _ => {
                 return Err(URDNAError::Serializing(

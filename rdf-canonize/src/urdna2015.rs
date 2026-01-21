@@ -60,9 +60,9 @@ impl URDNA2015 {
         let quads = dataset.clone();
 
         for quad in dataset {
-            self.add_blank_node_quad_info(&quad, &quad.subject);
-            self.add_blank_node_quad_info(&quad, &quad.object);
-            self.add_blank_node_quad_info(&quad, &quad.graph);
+            self.add_blank_node_quad_info(&quad, quad.subject());
+            self.add_blank_node_quad_info(&quad, quad.object());
+            self.add_blank_node_quad_info(&quad, quad.graph());
         }
 
         let mut hash_to_blank_nodes = HashMap::new();
@@ -121,11 +121,11 @@ impl URDNA2015 {
         let mut normalized = vec![];
         for quad in quads {
             let n_quad = NQuads::serialize_quad_components(
-                &self.term_with_canonical_id(quad.subject),
-                &quad.predicate,
-                &self.term_with_canonical_id(quad.object),
-                &self.term_with_canonical_id(quad.graph),
-                &quad.object_literal,
+                &self.term_with_canonical_id(quad.subject().clone()),
+                quad.predicate(),
+                &self.term_with_canonical_id(quad.object().clone()),
+                &self.term_with_canonical_id(quad.graph().clone()),
+                quad.object_literal(),
             )?;
 
             normalized.push(n_quad);
@@ -268,11 +268,11 @@ impl URDNA2015 {
         for quad in quads {
             nquads.push(
                 NQuads::serialize_quad_components(
-                    &self.modify_first_degree_term(id, &quad.subject),
-                    &quad.predicate,
-                    &self.modify_first_degree_term(id, &quad.object),
-                    &self.modify_first_degree_term(id, &quad.graph),
-                    &quad.object_literal,
+                    &self.modify_first_degree_term(id, quad.subject()),
+                    quad.predicate(),
+                    &self.modify_first_degree_term(id, quad.object()),
+                    &self.modify_first_degree_term(id, quad.graph()),
+                    quad.object_literal(),
                 )
                 .unwrap(),
             );
@@ -302,7 +302,7 @@ impl URDNA2015 {
         for quad in quads {
             self.add_related_blank_node_hash(
                 &quad,
-                &quad.subject,
+                quad.subject(),
                 "s",
                 id,
                 issuer,
@@ -311,7 +311,7 @@ impl URDNA2015 {
             .await;
             self.add_related_blank_node_hash(
                 &quad,
-                &quad.object,
+                quad.object(),
                 "o",
                 id,
                 issuer,
@@ -320,7 +320,7 @@ impl URDNA2015 {
             .await;
             self.add_related_blank_node_hash(
                 &quad,
-                &quad.graph,
+                quad.graph(),
                 "g",
                 id,
                 issuer,
@@ -340,11 +340,11 @@ impl URDNA2015 {
         issuer: &mut IdentifierIssuer,
         hash_to_related: &mut HashMap<String, Vec<String>>,
     ) {
-        if !(term.term_type == TermType::BlankNode && term.value != id) {
+        if !(*term.term_type() == TermType::BlankNode && term.value() != id) {
             return;
         }
 
-        let related = term.value.clone();
+        let related = term.value().to_string();
         let hash = self
             .hash_related_blank_node(related.as_str(), quad, issuer, position)
             .await;
@@ -395,10 +395,10 @@ impl URDNA2015 {
     /// Adds quad information to the blank node tracking structure, used in the canonicalization
     /// process.
     fn add_blank_node_quad_info(&mut self, quad: &Quad, term: &Term) {
-        if term.term_type != TermType::BlankNode {
+        if *term.term_type() != TermType::BlankNode {
             return;
         }
-        let id = term.value.clone();
+        let id = term.value().to_string();
         if let Some(info) = self.blank_node_info.get_mut(&id) {
             info.quads.insert(quad.clone());
         } else {
@@ -413,15 +413,13 @@ impl URDNA2015 {
     }
 
     fn term_with_canonical_id(&mut self, term: Term) -> Term {
-        if term.term_type == TermType::BlankNode
-            && !term
-                .value
-                .starts_with(self.canonical_issuer.prefix.as_str())
+        if *term.term_type() == TermType::BlankNode
+            && !term.value().starts_with(self.canonical_issuer.prefix())
         {
-            return Term {
-                term_type: TermType::BlankNode,
-                value: self.canonical_issuer.get_id(Some(&term.value.clone())),
-            };
+            return Term::new(
+                TermType::BlankNode,
+                self.canonical_issuer.get_id(Some(term.value())),
+            );
         }
         term
     }
@@ -429,22 +427,22 @@ impl URDNA2015 {
     /// Modifies a term representing a first-degree connection to adjust its identifier if
     /// necessary.
     fn modify_first_degree_term(&self, id: &str, term: &Term) -> Term {
-        if term.term_type != TermType::BlankNode {
+        if *term.term_type() != TermType::BlankNode {
             return term.clone();
         }
 
-        Term {
-            term_type: TermType::BlankNode,
-            value: if term.value == id {
+        Term::new(
+            TermType::BlankNode,
+            if term.value() == id {
                 "_:a".to_owned()
             } else {
                 "_:z".to_owned()
             },
-        }
+        )
     }
 
     /// Retrieves the predicate as a string from a given quad, formatted for use in hash inputs.
     fn get_related_predicate(&self, quad: &Quad) -> String {
-        format!("<{}>", quad.predicate.value)
+        format!("<{}>", quad.predicate().value())
     }
 }

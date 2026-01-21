@@ -26,15 +26,55 @@ pub enum ResponseMessageType {
 /// Request message header containing operation tracking and message type
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RequestMessageHeader {
-    pub operation_id: Uuid,
-    pub message_type: RequestMessageType,
+    operation_id: Uuid,
+    message_type: RequestMessageType,
+}
+
+impl RequestMessageHeader {
+    /// Creates a new request message header.
+    pub fn new(operation_id: Uuid, message_type: RequestMessageType) -> Self {
+        Self {
+            operation_id,
+            message_type,
+        }
+    }
+
+    /// Returns the operation ID.
+    pub fn operation_id(&self) -> Uuid {
+        self.operation_id
+    }
+
+    /// Returns the message type.
+    pub fn message_type(&self) -> &RequestMessageType {
+        &self.message_type
+    }
 }
 
 /// Response message header containing operation tracking and message type
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResponseMessageHeader {
-    pub operation_id: Uuid,
-    pub message_type: ResponseMessageType,
+    operation_id: Uuid,
+    message_type: ResponseMessageType,
+}
+
+impl ResponseMessageHeader {
+    /// Creates a new response message header.
+    pub fn new(operation_id: Uuid, message_type: ResponseMessageType) -> Self {
+        Self {
+            operation_id,
+            message_type,
+        }
+    }
+
+    /// Returns the operation ID.
+    pub fn operation_id(&self) -> Uuid {
+        self.operation_id
+    }
+
+    /// Returns the message type.
+    pub fn message_type(&self) -> &ResponseMessageType {
+        &self.message_type
+    }
 }
 
 /// Generic request message envelope

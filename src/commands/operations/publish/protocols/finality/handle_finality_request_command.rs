@@ -89,10 +89,7 @@ impl HandleFinalityRequestCommandHandler {
         ual: &str,
     ) {
         let message = ResponseMessage {
-            header: ResponseMessageHeader {
-                operation_id,
-                message_type: ResponseMessageType::Ack,
-            },
+            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
             data: FinalityResponseData::Ack {
                 message: format!("Acknowledged storing of {}", ual),
             },
@@ -107,10 +104,7 @@ impl HandleFinalityRequestCommandHandler {
         ual: &str,
     ) {
         let message = ResponseMessage {
-            header: ResponseMessageHeader {
-                operation_id,
-                message_type: ResponseMessageType::Nack,
-            },
+            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
             data: FinalityResponseData::Nack {
                 error_message: format!("Failed to acknowledge storing of {}", ual),
             },

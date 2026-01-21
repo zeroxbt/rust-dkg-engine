@@ -53,11 +53,11 @@ impl GetRpcController {
     ) {
         let RequestMessage { header, data } = request;
 
-        let operation_id = header.operation_id;
+        let operation_id = header.operation_id();
 
         tracing::trace!(
             operation_id = %operation_id,
-            ual = %data.ual,
+            ual = %data.ual(),
             peer = %remote_peer_id,
             "Get request received"
         );
@@ -69,11 +69,11 @@ impl GetRpcController {
         // Schedule command to handle the get request
         let command = Command::HandleGetRequest(HandleGetRequestCommandData::new(
             operation_id,
-            data.ual,
-            data.token_ids,
-            data.include_metadata,
-            data.paranet_ual,
-            data.content_type,
+            data.ual().to_string(),
+            data.token_ids().clone(),
+            data.include_metadata(),
+            data.paranet_ual().map(|s| s.to_string()),
+            data.content_type(),
             remote_peer_id,
         ));
 
@@ -85,8 +85,8 @@ impl GetRpcController {
     pub async fn handle_response(&self, response: ResponseMessage<GetResponseData>, peer: PeerId) {
         let ResponseMessage { header, data } = response;
 
-        let operation_id = header.operation_id;
-        let is_ack = header.message_type == ResponseMessageType::Ack;
+        let operation_id = header.operation_id();
+        let is_ack = *header.message_type() == ResponseMessageType::Ack;
 
         match &data {
             GetResponseData::Data {

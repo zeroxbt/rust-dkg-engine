@@ -131,8 +131,8 @@ impl TripleStoreService {
         visibility: Visibility,
     ) -> Option<(Vec<String>, Option<Vec<String>>)> {
         // First check if first and last KA exist (like JS)
-        let first_ka_ual = format!("{}/{}/public", kc_ual, token_ids.start_token_id);
-        let last_ka_ual = format!("{}/{}/public", kc_ual, token_ids.end_token_id);
+        let first_ka_ual = format!("{}/{}/public", kc_ual, token_ids.start_token_id());
+        let last_ka_ual = format!("{}/{}/public", kc_ual, token_ids.end_token_id());
 
         let (first_exists, last_exists) = tokio::join!(
             self.triple_store_manager
@@ -159,9 +159,9 @@ impl TripleStoreService {
                 .triple_store_manager
                 .get_knowledge_collection_named_graphs(
                     kc_ual,
-                    token_ids.start_token_id,
-                    token_ids.end_token_id,
-                    &token_ids.burned,
+                    token_ids.start_token_id(),
+                    token_ids.end_token_id(),
+                    token_ids.burned(),
                     Visibility::Public,
                 )
                 .await
@@ -182,9 +182,9 @@ impl TripleStoreService {
                 .triple_store_manager
                 .get_knowledge_collection_named_graphs(
                     kc_ual,
-                    token_ids.start_token_id,
-                    token_ids.end_token_id,
-                    &token_ids.burned,
+                    token_ids.start_token_id(),
+                    token_ids.end_token_id(),
+                    token_ids.burned(),
                     Visibility::Private,
                 )
                 .await

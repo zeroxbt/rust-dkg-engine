@@ -47,7 +47,7 @@ impl StoreRpcController {
     ) {
         let RequestMessage { header, data } = request;
 
-        let operation_id = header.operation_id;
+        let operation_id = header.operation_id();
 
         tracing::trace!(
             operation_id = %operation_id,
@@ -87,8 +87,8 @@ impl StoreRpcController {
     ) {
         let ResponseMessage { header, data } = response;
 
-        let operation_id = header.operation_id;
-        let is_success = header.message_type == ResponseMessageType::Ack;
+        let operation_id = header.operation_id();
+        let is_success = *header.message_type() == ResponseMessageType::Ack;
 
         // If successful, store signature immediately to redb
         if let (
@@ -97,7 +97,7 @@ impl StoreRpcController {
                 identity_id,
                 signature,
             },
-        ) = (header.message_type, &data)
+        ) = (header.message_type(), &data)
         {
             let sig_data = SignatureData::new(
                 identity_id.to_string(),

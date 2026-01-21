@@ -308,10 +308,7 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
         }
 
         let message = RequestMessage {
-            header: RequestMessageHeader {
-                operation_id,
-                message_type: RequestMessageType::ProtocolRequest,
-            },
+            header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
             data: FinalityRequestData::new(ual, data.publish_operation_id.clone()),
         };
 

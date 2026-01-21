@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct TokenIds {
     /// The starting token ID (inclusive)
-    pub start_token_id: u64,
+    start_token_id: u64,
     /// The ending token ID (inclusive)
-    pub end_token_id: u64,
+    end_token_id: u64,
     /// List of burned token IDs to exclude from the range
-    pub burned: Vec<u64>,
+    burned: Vec<u64>,
 }
 
 impl TokenIds {
@@ -32,6 +32,21 @@ impl TokenIds {
             end_token_id: token_id,
             burned: vec![],
         }
+    }
+
+    /// Returns the starting token ID (inclusive).
+    pub fn start_token_id(&self) -> u64 {
+        self.start_token_id
+    }
+
+    /// Returns the ending token ID (inclusive).
+    pub fn end_token_id(&self) -> u64 {
+        self.end_token_id
+    }
+
+    /// Returns a reference to the list of burned token IDs.
+    pub fn burned(&self) -> &[u64] {
+        &self.burned
     }
 
     /// Check if this represents a single token.

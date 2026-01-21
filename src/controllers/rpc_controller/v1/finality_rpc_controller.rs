@@ -38,12 +38,12 @@ impl FinalityRpcController {
     ) {
         let RequestMessage { header, data } = request;
 
-        let operation_id = header.operation_id;
+        let operation_id = header.operation_id();
 
         tracing::trace!(
             operation_id = %operation_id,
-            publish_operation_id = %data.publish_operation_id,
-            ual = %data.ual,
+            publish_operation_id = %data.publish_operation_id(),
+            ual = %data.ual(),
             peer = %remote_peer_id,
             "Finality request received"
         );
@@ -55,8 +55,8 @@ impl FinalityRpcController {
         // Schedule the HandleFinalityRequest command
         let command_data = HandleFinalityRequestCommandData::new(
             operation_id,
-            data.ual,
-            data.publish_operation_id,
+            data.ual().to_string(),
+            data.publish_operation_id().to_string(),
             remote_peer_id,
         );
 

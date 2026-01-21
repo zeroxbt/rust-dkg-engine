@@ -17,9 +17,9 @@ pub enum CommandExecutionResult {
 
 #[derive(Clone)]
 pub struct CommandExecutionRequest {
-    pub command: Command,
-    pub delay_ms: i64,
-    pub created_at: i64,
+    command: Command,
+    delay_ms: i64,
+    created_at: i64,
 }
 
 impl CommandExecutionRequest {
@@ -34,6 +34,26 @@ impl CommandExecutionRequest {
     pub fn with_delay(mut self, delay_ms: i64) -> Self {
         self.delay_ms = delay_ms;
         self
+    }
+
+    /// Returns a reference to the command.
+    pub fn command(&self) -> &Command {
+        &self.command
+    }
+
+    /// Consumes the request and returns the command.
+    pub fn into_command(self) -> Command {
+        self.command
+    }
+
+    /// Returns the delay in milliseconds.
+    pub fn delay_ms(&self) -> i64 {
+        self.delay_ms
+    }
+
+    /// Sets the delay to zero, returning a mutable reference for chaining.
+    pub fn clear_delay(&mut self) {
+        self.delay_ms = 0;
     }
 
     pub fn is_expired(&self) -> bool {
@@ -58,13 +78,13 @@ impl CommandScheduler {
 
     /// Schedule a command for execution. Logs an error if scheduling fails.
     pub async fn schedule(&self, request: CommandExecutionRequest) {
-        let command_name = request.command.name();
-        let delay = min(request.delay_ms.max(0) as u64, MAX_COMMAND_DELAY_MS as u64);
+        let command_name = request.command().name();
+        let delay = min(request.delay_ms().max(0) as u64, MAX_COMMAND_DELAY_MS as u64);
 
         let result = if delay > 0 {
             let tx = self.tx.clone();
             let mut delayed_request = request;
-            delayed_request.delay_ms = 0;
+            delayed_request.clear_delay();
 
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(delay)).await;
@@ -155,20 +175,20 @@ impl CommandExecutor {
     ) {
         // Check if command has expired
         if request.is_expired() {
-            tracing::warn!("Command {} expired, dropping", request.command.name());
+            tracing::warn!("Command {} expired, dropping", request.command().name());
             return;
         }
 
-        let result = self.command_resolver.execute(&request.command).await;
+        let result = self.command_resolver.execute(request.command()).await;
 
         match result {
             CommandExecutionResult::Repeat { delay_ms } => {
                 let new_request =
-                    CommandExecutionRequest::new(request.command).with_delay(delay_ms);
+                    CommandExecutionRequest::new(request.into_command()).with_delay(delay_ms);
                 self.scheduler.schedule(new_request).await;
             }
             CommandExecutionResult::Completed => {
-                tracing::trace!("Command {} completed", request.command.name());
+                tracing::trace!("Command {} completed", request.command().name());
             }
         }
     }

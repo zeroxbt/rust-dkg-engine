@@ -6,12 +6,17 @@ use std::collections::HashMap;
 /// unique identifiers for blank nodes within an RDF graph.
 #[derive(Clone)]
 pub struct IdentifierIssuer {
-    pub prefix: String,
-    pub existing: HashMap<String, String>,
-    pub counter: usize,
+    prefix: String,
+    existing: HashMap<String, String>,
+    counter: usize,
 }
 
 impl IdentifierIssuer {
+    /// Returns the prefix used for new identifiers.
+    pub fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
     /// Constructs a new `IdentifierIssuer` with a specified prefix for identifiers.
     ///
     /// # Arguments

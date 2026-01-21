@@ -108,10 +108,10 @@ impl<Op: Operation> BatchSender<Op> {
                 let network_manager = Arc::clone(&network_manager);
                 let request_tracker = Arc::clone(&request_tracker);
                 let message = RequestMessage {
-                    header: RequestMessageHeader {
+                    header: RequestMessageHeader::new(
                         operation_id,
-                        message_type: RequestMessageType::ProtocolRequest,
-                    },
+                        RequestMessageType::ProtocolRequest,
+                    ),
                     data: request_data.clone(),
                 };
 
