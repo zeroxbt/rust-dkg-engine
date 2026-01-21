@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::State,
     response::IntoResponse,
 };
 use hyper::StatusCode;
@@ -23,7 +23,7 @@ pub struct GetHttpApiController;
 impl GetHttpApiController {
     pub async fn handle_request(
         State(context): State<Arc<Context>>,
-        Query(req): Query<GetRequest>,
+        Json(req): Json<GetRequest>,
     ) -> impl IntoResponse {
         match req.validate() {
             Ok(_) => {
