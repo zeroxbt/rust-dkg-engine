@@ -79,7 +79,10 @@ impl CommandScheduler {
     /// Schedule a command for execution. Logs an error if scheduling fails.
     pub async fn schedule(&self, request: CommandExecutionRequest) {
         let command_name = request.command().name();
-        let delay = min(request.delay_ms().max(0) as u64, MAX_COMMAND_DELAY_MS as u64);
+        let delay = min(
+            request.delay_ms().max(0) as u64,
+            MAX_COMMAND_DELAY_MS as u64,
+        );
 
         let result = if delay > 0 {
             let tx = self.tx.clone();
