@@ -10,7 +10,7 @@ const NETWORK_PORT_BASE: usize = 9100;
 const HARDHAT_PORT: u16 = 8545;
 const HARDHAT_BLOCKCHAIN_ID: &str = "hardhat1:31337";
 const BOOTSTRAP_NODE_INDEX: usize = 0;
-const BOOTSTRAP_KEY_FILENAME: &str = "private_key";
+const BOOTSTRAP_KEY_PATH: &str = "network/private_key";
 const BINARY_NAME: &str = "rust-ot-node";
 
 const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";
@@ -85,7 +85,7 @@ fn get_binary_path() -> String {
 }
 
 fn ensure_bootstrap_peer_id(data_folder: &str) -> PeerId {
-    let key_path = Path::new(data_folder).join(BOOTSTRAP_KEY_FILENAME);
+    let key_path = Path::new(data_folder).join(BOOTSTRAP_KEY_PATH);
 
     let keypair = if key_path.exists() {
         let mut key_bytes = fs::read(&key_path).expect("Failed to read bootstrap key file");
@@ -93,7 +93,10 @@ fn ensure_bootstrap_peer_id(data_folder: &str) -> PeerId {
             .expect("Failed to parse bootstrap key file");
         ed25519_keypair.into()
     } else {
-        fs::create_dir_all(data_folder).expect("Failed to create bootstrap data folder");
+        // Ensure parent directories exist (data_folder/network/)
+        if let Some(parent) = key_path.parent() {
+            fs::create_dir_all(parent).expect("Failed to create bootstrap key directory");
+        }
         let keypair = identity::Keypair::generate_ed25519();
         let ed25519_keypair = keypair
             .clone()
@@ -161,7 +164,6 @@ async fn main() {
         let toml_config = toml_template_str
             .replace("{{HTTP_PORT}}", &http_port.to_string())
             .replace("{{NETWORK_PORT}}", &network_port.to_string())
-            .replace("{{DATA_FOLDER}}", &data_folder)
             .replace("{{APP_DATA_PATH}}", &data_folder)
             .replace("{{BOOTSTRAP_NODE}}", &bootstrap_multiaddr)
             .replace("{{DATABASE_NAME}}", &database_name)

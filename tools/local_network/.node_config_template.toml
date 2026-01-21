@@ -19,7 +19,6 @@ port = {{HTTP_PORT}}
 # ============================================
 [managers.network]
 port = {{NETWORK_PORT}}
-data_folder_path = "{{DATA_FOLDER}}"
 
 # Bootstrap nodes
 bootstrap = ["{{BOOTSTRAP_NODE}}"]
@@ -65,7 +64,7 @@ node_name = "{{NODE_NAME}}"
 # Use embedded Oxigraph (faster, no external service needed)
 backend = "oxigraph"
 repository = "{{TRIPLE_STORE_REPOSITORY}}"
-data_path = "{{DATA_FOLDER}}/triple-store"
+# data_path is derived from app_data_path automatically
 
 # For Blazegraph (requires running Blazegraph server), use:
 # backend = "blazegraph"

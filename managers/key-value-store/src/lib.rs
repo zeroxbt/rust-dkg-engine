@@ -134,7 +134,16 @@ pub struct KeyValueStoreManager {
 
 impl KeyValueStoreManager {
     /// Open or create a key-value store at the given path.
+    ///
+    /// Creates parent directories if they don't exist.
     pub fn connect(path: impl AsRef<Path>) -> Result<Self, KeyValueStoreError> {
+        let path = path.as_ref();
+
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
         let db = Database::create(path)?;
         Ok(Self { db: Arc::new(db) })
     }

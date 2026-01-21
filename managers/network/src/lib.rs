@@ -1,11 +1,9 @@
 pub mod error;
-mod key_manager;
+pub mod key_manager;
 pub mod message;
 
-use std::path::PathBuf;
-
 use error::NetworkError;
-use key_manager::KeyManager;
+pub use key_manager::KeyManager;
 pub use libp2p::request_response::ProtocolSupport;
 // Re-export libp2p types and identity for application use
 pub use libp2p::{
@@ -57,7 +55,6 @@ pub type SwarmError = Either<NestedError, Void>;
 #[derive(Debug, Clone, Deserialize)]
 pub struct NetworkManagerConfig {
     port: u32,
-    data_folder_path: PathBuf,
     bootstrap: Vec<String>,
 }
 
@@ -97,20 +94,22 @@ where
     /// and handles bootstrap configuration. The Builder constructs the complete Behaviour
     /// including app-specific protocols.
     ///
+    /// # Arguments
+    /// * `config` - Network configuration (port, bootstrap nodes)
+    /// * `key` - Pre-loaded libp2p identity keypair
+    /// * `behaviour` - Application-defined protocol behaviour
+    ///
     /// # Errors
     ///
     /// Returns `NetworkError` if:
-    /// - Key generation/loading fails
     /// - Bootstrap node parsing fails
     /// - Transport creation fails
     /// - Swarm building fails
     pub async fn connect(
         config: &NetworkManagerConfig,
+        key: identity::Keypair,
         behaviour: B,
     ) -> Result<Self, NetworkError> {
-        // Load or generate keypair
-        let key = KeyManager::generate_or_load_key(&config.data_folder_path).await?;
-
         let public_key = key.public();
         let local_peer_id = PeerId::from(&public_key);
 

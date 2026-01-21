@@ -9,25 +9,25 @@ mod utils;
 
 use std::sync::Arc;
 
-use ::network::NetworkManager;
+use ::network::{KeyManager, NetworkManager};
 use blockchain::BlockchainManager;
 use commands::{
     command_executor::{CommandExecutor, CommandScheduler},
     command_registry::default_command_requests,
 };
-use config::ManagersConfig;
 use context::Context;
 use controllers::{
     http_api_controller::http_api_router::{HttpApiConfig, HttpApiRouter},
     rpc_controller::rpc_router::RpcRouter,
 };
 use dotenvy::dotenv;
+use libp2p::identity::Keypair;
 use repository::RepositoryManager;
 use tokio::select;
 use triple_store::TripleStoreManager;
 
 use crate::{
-    config::Config,
+    config::{AppPaths, ManagersConfig},
     controllers::rpc_controller::NetworkProtocols,
     operations::{GetOperation, PublishOperation},
     services::{
@@ -44,6 +44,14 @@ async fn main() {
     display_ot_node_ascii_art();
     let config = Arc::new(config::initialize_configuration());
 
+    // Derive all filesystem paths from the root data directory
+    let paths = AppPaths::from_root(config.app_data_path.clone());
+
+    // Load or generate network identity key (security-critical, handled at app level)
+    let network_key = KeyManager::load_or_generate(&paths.network_key)
+        .await
+        .expect("Failed to load or generate network identity key");
+
     // Create command scheduler channel
     let (command_scheduler, command_rx) = CommandScheduler::channel();
 
@@ -51,7 +59,7 @@ async fn main() {
     let (network_event_tx, network_event_rx) = tokio::sync::mpsc::channel(1024);
 
     let (network_manager, repository_manager, blockchain_manager, triple_store_manager) =
-        initialize_managers(&config.managers).await;
+        initialize_managers(&config.managers, &paths, network_key).await;
     let store_response_channels = Arc::new(ResponseChannels::new());
     let get_response_channels = Arc::new(ResponseChannels::new());
     let finality_response_channels = Arc::new(ResponseChannels::new());
@@ -61,7 +69,7 @@ async fn main() {
 
     // Initialize operation services (need result_store and request_tracker)
     let (publish_operation_service, get_operation_service, pending_storage_service) =
-        initialize_services(&config, &repository_manager);
+        initialize_services(&paths, &repository_manager);
 
     let context = Arc::new(Context::new(
         config.clone(),
@@ -168,6 +176,8 @@ fn display_ot_node_ascii_art() {
 
 async fn initialize_managers(
     config: &ManagersConfig,
+    paths: &AppPaths,
+    network_key: Keypair,
 ) -> (
     Arc<NetworkManager<NetworkProtocols>>,
     Arc<RepositoryManager>,
@@ -178,7 +188,7 @@ async fn initialize_managers(
     // Application creates its own protocol behaviours
     let app_protocols = NetworkProtocols::new();
     let network_manager = Arc::new(
-        NetworkManager::connect(&config.network, app_protocols)
+        NetworkManager::connect(&config.network, network_key, app_protocols)
             .await
             .expect("Failed to initialize network manager"),
     );
@@ -197,8 +207,13 @@ async fn initialize_managers(
         .expect("Failed to initialize blockchain identities");
 
     let blockchain_manager = Arc::new(blockchain_manager);
+
+    // Use centralized triple store path, merging with existing config
+    let mut triple_store_config = config.triple_store.clone();
+    triple_store_config.data_path = Some(paths.triple_store.clone());
+
     let triple_store_manager = Arc::new(
-        TripleStoreManager::connect(&config.triple_store)
+        TripleStoreManager::connect(&triple_store_config)
             .await
             .expect("Failed to initialize triple store manager"),
     );
@@ -212,18 +227,17 @@ async fn initialize_managers(
 }
 
 fn initialize_services(
-    config: &Config,
+    paths: &AppPaths,
     repository_manager: &Arc<RepositoryManager>,
 ) -> (
     Arc<GenericOperationService<PublishOperation>>,
     Arc<GenericOperationService<GetOperation>>,
     Arc<PendingStorageService>,
 ) {
-    // Create shared key-value store manager
-    let kv_store_manager = key_value_store::KeyValueStoreManager::connect(
-        config.app_data_path.join("key_value_store.redb"),
-    )
-    .expect("Failed to connect to key-value store manager");
+    // Create shared key-value store manager using centralized path
+    let kv_store_manager =
+        key_value_store::KeyValueStoreManager::connect(paths.key_value_store.clone())
+            .expect("Failed to connect to key-value store manager");
 
     let pending_storage_service = Arc::new(
         PendingStorageService::new(&kv_store_manager)
