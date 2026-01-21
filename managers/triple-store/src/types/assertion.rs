@@ -13,6 +13,11 @@ pub struct Assertion {
 }
 
 impl Assertion {
+    /// Create a new assertion with public and optional private triples.
+    pub fn new(public: Vec<String>, private: Option<Vec<String>>) -> Self {
+        Self { public, private }
+    }
+
     /// Create a new assertion with only public triples.
     pub fn public_only(public: Vec<String>) -> Self {
         Self {

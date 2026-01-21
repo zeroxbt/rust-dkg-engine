@@ -8,7 +8,7 @@ use network::{
     message::{RequestMessageHeader, RequestMessageType},
 };
 use repository::RepositoryManager;
-use triple_store::{TokenIds, Visibility};
+use triple_store::{Assertion, TokenIds, Visibility};
 use uuid::Uuid;
 
 use crate::{
@@ -16,8 +16,8 @@ use crate::{
     context::Context,
     controllers::rpc_controller::{NetworkProtocols, ProtocolRequest, messages::GetRequestData},
     services::{
-        GetOperationContext, GetOperationContextStore, GetValidationService, OperationService,
-        RequestTracker, TripleStoreService,
+        GetOperationContext, GetOperationContextStore, GetOperationResult, GetValidationService,
+        OperationService, RequestTracker, TripleStoreService,
     },
     utils::ual::{ParsedUal, parse_ual},
 };
@@ -253,19 +253,16 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     "Local data validated, completing operation"
                 );
 
-                // Build result JSON
-                let result_json = serde_json::json!({
-                    "assertion": {
-                        "public": result.public,
-                        "private": result.private
-                    },
-                    "metadata": result.metadata
-                });
+                // Build typed result
+                let get_result = GetOperationResult::new(
+                    Assertion::new(result.public, result.private),
+                    result.metadata,
+                );
 
                 // Mark operation as completed with result
                 if let Err(e) = self
                     .get_operation_manager
-                    .mark_completed_with_result(operation_id, result_json)
+                    .mark_completed_with_result(operation_id, &get_result)
                     .await
                 {
                     tracing::error!(

@@ -1,5 +1,5 @@
 use serde::Serialize;
-use triple_store::Visibility;
+use triple_store::{Assertion, Visibility};
 use uuid::Uuid;
 use validator_derive::Validate;
 
@@ -31,5 +31,67 @@ pub struct GetResponse {
 impl GetResponse {
     pub fn new(operation_id: Uuid) -> Self {
         Self { operation_id }
+    }
+}
+
+/// Data specific to get operation results
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetOperationData {
+    pub assertion: Assertion,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+/// Response for get operation result endpoint
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetOperationResultResponse {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<GetOperationData>,
+}
+
+impl GetOperationResultResponse {
+    pub fn pending() -> Self {
+        Self {
+            status: "PENDING".to_string(),
+            data: None,
+        }
+    }
+
+    pub fn in_progress() -> Self {
+        Self {
+            status: "IN_PROGRESS".to_string(),
+            data: None,
+        }
+    }
+
+    pub fn completed(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
+        Self {
+            status: "COMPLETED".to_string(),
+            data: Some(GetOperationData {
+                assertion,
+                metadata,
+                error_type: None,
+                error_message: None,
+            }),
+        }
+    }
+
+    pub fn failed(error_message: Option<String>) -> Self {
+        Self {
+            status: "FAILED".to_string(),
+            data: Some(GetOperationData {
+                assertion: Assertion::default(),
+                metadata: None,
+                error_type: Some("OPERATION_FAILED".to_string()),
+                error_message,
+            }),
+        }
     }
 }

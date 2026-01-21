@@ -11,9 +11,11 @@ use uuid::Uuid;
 
 use crate::{
     context::Context,
-    controllers::http_api_controller::v1::dto::operation_result::{
-        OperationResultErrorResponse, OperationResultResponse, SignatureData,
+    controllers::http_api_controller::v1::dto::{
+        get::GetOperationResultResponse,
+        operation_result::{OperationResultErrorResponse, OperationResultResponse, SignatureData},
     },
+    services::GetOperationResult,
 };
 
 pub struct OperationResultHttpApiController;
@@ -153,5 +155,99 @@ impl OperationResultHttpApiController {
             .collect();
 
         Ok((publisher_sig, network_sigs))
+    }
+
+    pub async fn handle_get_result(
+        State(context): State<Arc<Context>>,
+        Path(operation_id): Path<String>,
+    ) -> impl IntoResponse {
+        // Validate operation ID format
+        let operation_uuid = match Uuid::parse_str(&operation_id) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(OperationResultErrorResponse::new(
+                        400,
+                        format!("Operation id: {} is in wrong format", operation_id),
+                    )),
+                )
+                    .into_response();
+            }
+        };
+
+        // Get operation record
+        let operation_record = match context
+            .repository_manager()
+            .operation_repository()
+            .get(operation_uuid)
+            .await
+        {
+            Ok(Some(record)) => record,
+            Ok(None) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(OperationResultErrorResponse::new(
+                        400,
+                        format!("Handler with id: {} does not exist.", operation_id),
+                    )),
+                )
+                    .into_response();
+            }
+            Err(e) => {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Failed to get operation record"
+                );
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(OperationResultErrorResponse::new(
+                        400,
+                        format!("Unexpected error at getting results: {}", e),
+                    )),
+                )
+                    .into_response();
+            }
+        };
+
+        let status = OperationStatus::from_str(&operation_record.status).unwrap();
+
+        match status {
+            OperationStatus::Failed => {
+                let response = GetOperationResultResponse::failed(operation_record.error_message);
+                (StatusCode::OK, Json(response)).into_response()
+            }
+            OperationStatus::Completed => {
+                // Get cached result from file
+                match context
+                    .get_operation_manager()
+                    .get_cached_result::<GetOperationResult>(operation_uuid)
+                    .await
+                {
+                    Some(result) => {
+                        let response = GetOperationResultResponse::completed(
+                            result.assertion,
+                            result.metadata,
+                        );
+                        (StatusCode::OK, Json(response)).into_response()
+                    }
+                    None => {
+                        tracing::error!(
+                            operation_id = %operation_id,
+                            "Operation marked as completed but no cached result found"
+                        );
+                        let response = GetOperationResultResponse::failed(Some(
+                            "Operation result not found".to_string(),
+                        ));
+                        (StatusCode::OK, Json(response)).into_response()
+                    }
+                }
+            }
+            OperationStatus::InProgress => {
+                let response = GetOperationResultResponse::in_progress();
+                (StatusCode::OK, Json(response)).into_response()
+            }
+        }
     }
 }

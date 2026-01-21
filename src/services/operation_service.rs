@@ -2,9 +2,34 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use repository::{OperationStatus, RepositoryManager};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use triple_store::Assertion;
 use uuid::Uuid;
 
 use crate::{error::NodeError, services::file_service::FileService};
+
+/// Result data for a completed GET operation.
+///
+/// Stored in the operation result cache file when a get operation
+/// completes successfully (either from local query or network responses).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetOperationResult {
+    /// The retrieved assertion data (public and optionally private triples)
+    pub assertion: Assertion,
+    /// Optional metadata triples if requested
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Vec<String>>,
+}
+
+impl GetOperationResult {
+    /// Create a new get operation result.
+    pub fn new(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
+        Self {
+            assertion,
+            metadata,
+        }
+    }
+}
 
 /// Consolidated operation state service.
 /// The database is the single source of truth for all operation state.
@@ -162,16 +187,16 @@ impl OperationService {
 
     /// Mark an operation as completed with a result.
     /// Used when data is found locally without needing network requests.
-    pub async fn mark_completed_with_result(
+    pub async fn mark_completed_with_result<T: Serialize>(
         &self,
         operation_id: Uuid,
-        result: serde_json::Value,
+        result: &T,
     ) -> Result<(), NodeError> {
         // Store result in cache file
         let cache_dir = self.file_service.operation_result_cache_dir();
         let filename = operation_id.to_string();
         self.file_service
-            .write_json(&cache_dir, &filename, &result)
+            .write_json(&cache_dir, &filename, result)
             .await?;
 
         // Update status in database
@@ -192,6 +217,19 @@ impl OperationService {
         );
 
         Ok(())
+    }
+
+    /// Get a cached operation result.
+    /// Returns None if the result file doesn't exist or can't be deserialized.
+    pub async fn get_cached_result<T: DeserializeOwned>(
+        &self,
+        operation_id: Uuid,
+    ) -> Option<T> {
+        let cache_path = self
+            .file_service
+            .operation_result_cache_path(&operation_id.to_string());
+
+        self.file_service.read_json(&cache_path).await.ok()
     }
 
     /// Manually fail an operation (e.g., due to external error before sending requests).

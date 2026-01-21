@@ -9,7 +9,7 @@ pub mod triple_store_service;
 
 pub use get_operation_context::{GetOperationContext, GetOperationContextStore};
 pub use get_validation_service::GetValidationService;
-pub use operation_service::OperationService;
+pub use operation_service::{GetOperationResult, OperationService};
 pub use request_tracker::RequestTracker;
 pub use response_channels::ResponseChannels;
-pub use triple_store_service::{AssertionQueryResult, TripleStoreService};
+pub use triple_store_service::TripleStoreService;

@@ -7,6 +7,8 @@ use network::{
 };
 use tokio::sync::mpsc::Sender;
 
+use triple_store::Assertion;
+
 use crate::{
     commands::{
         command_executor::CommandExecutionRequest, command_registry::Command,
@@ -15,7 +17,8 @@ use crate::{
     context::Context,
     controllers::rpc_controller::messages::{GetRequestData, GetResponseData},
     services::{
-        GetOperationContextStore, GetValidationService, OperationService, ResponseChannels,
+        GetOperationContextStore, GetOperationResult, GetValidationService, OperationService,
+        ResponseChannels,
     },
     utils::ual::ParsedUal,
 };
@@ -172,6 +175,33 @@ impl GetRpcController {
         } else {
             false
         };
+
+        // If successful, store the result before recording response
+        // (record_response may trigger completion status update)
+        if is_success {
+            if let GetResponseData::Data {
+                assertion,
+                metadata,
+            } = &data
+            {
+                let get_result = GetOperationResult::new(
+                    Assertion::new(assertion.public.clone(), assertion.private.clone()),
+                    metadata.clone(),
+                );
+
+                if let Err(e) = self
+                    .get_operation_manager
+                    .mark_completed_with_result(operation_id, &get_result)
+                    .await
+                {
+                    tracing::error!(
+                        operation_id = %operation_id,
+                        error = %e,
+                        "Failed to store get result"
+                    );
+                }
+            }
+        }
 
         // Record response using operation manager
         if let Err(e) = self

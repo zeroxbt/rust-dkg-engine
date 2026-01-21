@@ -54,7 +54,11 @@ impl HttpApiRouter {
                 "/v1/finality",
                 get(FinalityStatusHttpApiController::handle_request),
             )
-            .route("/get", post(GetHttpApiController::handle_request))
+            .route("/v1/get", post(GetHttpApiController::handle_request))
+            .route(
+                "/v1/get/{operation_id}",
+                get(OperationResultHttpApiController::handle_get_result),
+            )
             .with_state(Arc::clone(context));
 
         HttpApiRouter {
