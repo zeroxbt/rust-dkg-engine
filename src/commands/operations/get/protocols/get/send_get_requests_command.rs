@@ -432,11 +432,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                 "Batch of get requests sent"
             );
 
-            // Note: In the JS implementation, we would check if any valid response
-            // was received after each batch and return early. For now, we send all
-            // batches and let the RPC controller handle responses.
-            // The operation_manager will mark the operation as completed on first
-            // successful response via record_response(operation_id, true).
+            // TODO: Implement sending in batches
         }
 
         tracing::info!(
