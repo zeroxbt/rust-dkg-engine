@@ -15,6 +15,8 @@ thiserror.workspace = true
 reqwest.workspace = true
 async-trait = "0.1"
 oxigraph = "0.5.3"
+validator.workspace = true
+validator_derive.workspace = true
 
 [dev-dependencies]
 uuid.workspace = true

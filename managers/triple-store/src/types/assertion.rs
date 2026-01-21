@@ -1,12 +1,25 @@
 use serde::{Deserialize, Serialize};
+use validator::ValidationError;
+use validator_derive::Validate;
+
+/// Validates that the public triples vector is non-empty.
+fn validate_public_non_empty(public: &[String]) -> Result<(), ValidationError> {
+    if public.is_empty() {
+        let mut error = ValidationError::new("public_non_empty");
+        error.message = Some("public triples must contain at least one triple".into());
+        return Err(error);
+    }
+    Ok(())
+}
 
 /// An assertion containing public and optional private triples.
 ///
 /// This is the core data structure for knowledge assets in the DKG,
 /// containing the N-Quads/N-Triples representation of RDF data.
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, Validate)]
 pub struct Assertion {
     /// Public triples (required, at least one triple)
+    #[validate(custom(function = "validate_public_non_empty"))]
     pub public: Vec<String>,
     /// Private triples (optional)
     pub private: Option<Vec<String>>,

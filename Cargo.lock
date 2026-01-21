@@ -8506,6 +8506,8 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "validator",
+ "validator_derive",
 ]
 
 [[package]]

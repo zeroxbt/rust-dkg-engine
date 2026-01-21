@@ -3,10 +3,15 @@ use triple_store::{Assertion, Visibility};
 use uuid::Uuid;
 use validator_derive::Validate;
 
+use crate::controllers::http_api_controller::validators::{
+    validate_optional_ual, validate_ual_format,
+};
+
 #[derive(serde::Deserialize, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct GetRequest {
     /// The UAL (Universal Asset Locator) of the knowledge asset/collection to retrieve
+    #[validate(custom(function = "validate_ual_format"))]
     pub id: String,
 
     /// Whether to include metadata in the response
@@ -15,6 +20,7 @@ pub struct GetRequest {
 
     /// Optional paranet UAL for permissioned access
     #[serde(rename = "paranetUAL")]
+    #[validate(custom(function = "validate_optional_ual"))]
     pub paranet_ual: Option<String>,
 
     /// Visibility filter: public, private, or all

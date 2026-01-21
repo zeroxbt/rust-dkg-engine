@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
+use validator_derive::Validate;
 
-#[derive(Debug, Deserialize)]
+use crate::controllers::http_api_controller::validators::validate_ual_format;
+
+#[derive(Debug, Deserialize, Validate)]
 pub struct FinalityRequest {
+    #[validate(custom(function = "validate_ual_format"))]
     pub ual: String,
 }
 
