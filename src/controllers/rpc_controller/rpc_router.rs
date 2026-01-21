@@ -359,14 +359,21 @@ impl RpcRouter {
                         tracing::error!("Failed to enqueue kad addresses: {}", error);
                     }
 
-                    self.repository_manager
+                    if let Err(error) = self
+                        .repository_manager
                         .shard_repository()
                         .update_peer_record_last_seen_and_last_dialed(
                             peer_id.to_base58(),
                             chrono::Utc::now(),
                         )
                         .await
-                        .unwrap();
+                    {
+                        tracing::warn!(
+                            "Failed to update peer record last seen/dialed for {}: {}",
+                            peer_id,
+                            error
+                        );
+                    }
                 }
                 _ => {}
             },

@@ -1,9 +1,6 @@
-use std::{
-    collections::HashMap,
-    sync::RwLock,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
+use dashmap::DashMap;
 use uuid::Uuid;
 
 /// Entry in the context store with TTL tracking.
@@ -15,9 +12,9 @@ struct ContextEntry<S> {
 /// Generic in-memory store for operation state/context.
 ///
 /// This replaces operation-specific stores like `GetOperationContextStore`.
-/// Uses `RwLock` for concurrent read access during response processing.
+/// Uses `DashMap` for concurrent access with minimal lock contention.
 pub struct ContextStore<S: Clone + Send + Sync> {
-    contexts: RwLock<HashMap<Uuid, ContextEntry<S>>>,
+    contexts: DashMap<Uuid, ContextEntry<S>>,
     ttl: Duration,
 }
 
@@ -25,7 +22,7 @@ impl<S: Clone + Send + Sync> ContextStore<S> {
     /// Create a new context store with the specified TTL.
     pub fn new(ttl: Duration) -> Self {
         Self {
-            contexts: RwLock::new(HashMap::new()),
+            contexts: DashMap::new(),
             ttl,
         }
     }
@@ -37,12 +34,10 @@ impl<S: Clone + Send + Sync> ContextStore<S> {
 
     /// Store context for an operation.
     pub fn store(&self, operation_id: Uuid, state: S) {
-        let mut contexts = self.contexts.write().expect("ContextStore lock poisoned");
+        // Clean up expired entries opportunistically (locks shards one at a time)
+        self.cleanup_expired();
 
-        // Clean up expired entries opportunistically
-        self.cleanup_expired_internal(&mut contexts);
-
-        contexts.insert(
+        self.contexts.insert(
             operation_id,
             ContextEntry {
                 state,
@@ -53,35 +48,30 @@ impl<S: Clone + Send + Sync> ContextStore<S> {
 
     /// Get context for an operation (does not remove it).
     pub fn get(&self, operation_id: &Uuid) -> Option<S> {
-        let contexts = self.contexts.read().expect("ContextStore lock poisoned");
-        contexts.get(operation_id).map(|entry| entry.state.clone())
+        self.contexts.get(operation_id).map(|entry| entry.state.clone())
     }
 
     /// Remove and return context for an operation.
     pub fn remove(&self, operation_id: &Uuid) -> Option<S> {
-        let mut contexts = self.contexts.write().expect("ContextStore lock poisoned");
-        contexts.remove(operation_id).map(|entry| entry.state)
+        self.contexts.remove(operation_id).map(|(_, entry)| entry.state)
     }
 
     /// Clean up expired contexts.
-    fn cleanup_expired_internal(&self, contexts: &mut HashMap<Uuid, ContextEntry<S>>) {
+    fn cleanup_expired(&self) {
         let now = Instant::now();
-        contexts.retain(|_, entry| now.duration_since(entry.created_at) < self.ttl);
+        self.contexts.retain(|_, entry| now.duration_since(entry.created_at) < self.ttl);
     }
 
     /// Get the number of stored contexts (for debugging/monitoring).
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
-        self.contexts
-            .read()
-            .expect("ContextStore lock poisoned")
-            .len()
+        self.contexts.len()
     }
 
     /// Check if the store is empty.
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.contexts.is_empty()
     }
 }
 
