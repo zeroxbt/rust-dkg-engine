@@ -4,7 +4,6 @@ use blockchain::BlockchainManager;
 use network::NetworkManager;
 use repository::RepositoryManager;
 use tokio::sync::mpsc::Sender;
-use triple_store::TripleStoreManager;
 use validation::ValidationManager;
 
 use crate::{
@@ -14,9 +13,11 @@ use crate::{
         NetworkProtocols,
         messages::{FinalityResponseData, GetResponseData, StoreResponseData},
     },
+    operations::{GetOperation, PublishOperation},
     services::{
-        GetOperationContextStore, GetValidationService, OperationService, RequestTracker,
-        ResponseChannels, TripleStoreService, pending_storage_service::PendingStorageService,
+        GetValidationService, ResponseChannels, TripleStoreService,
+        operation::OperationService as GenericOperationService,
+        pending_storage_service::PendingStorageService,
     },
 };
 
@@ -27,17 +28,14 @@ pub struct Context {
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     blockchain_manager: Arc<BlockchainManager>,
     validation_manager: Arc<ValidationManager>,
-    triple_store_manager: Arc<TripleStoreManager>,
     triple_store_service: Arc<TripleStoreService>,
-    publish_operation_manager: Arc<OperationService>,
-    get_operation_manager: Arc<OperationService>,
     get_validation_service: Arc<GetValidationService>,
-    get_operation_context_store: Arc<GetOperationContextStore>,
     pending_storage_service: Arc<PendingStorageService>,
-    request_tracker: Arc<RequestTracker>,
     store_response_channels: Arc<ResponseChannels<StoreResponseData>>,
     get_response_channels: Arc<ResponseChannels<GetResponseData>>,
     finality_response_channels: Arc<ResponseChannels<FinalityResponseData>>,
+    get_operation_service: Arc<GenericOperationService<GetOperation>>,
+    publish_operation_service: Arc<GenericOperationService<PublishOperation>>,
 }
 
 impl Context {
@@ -49,17 +47,14 @@ impl Context {
         network_manager: Arc<NetworkManager<NetworkProtocols>>,
         blockchain_manager: Arc<BlockchainManager>,
         validation_manager: Arc<ValidationManager>,
-        triple_store_manager: Arc<TripleStoreManager>,
         triple_store_service: Arc<TripleStoreService>,
-        publish_operation_manager: Arc<OperationService>,
-        get_operation_manager: Arc<OperationService>,
         get_validation_service: Arc<GetValidationService>,
-        get_operation_context_store: Arc<GetOperationContextStore>,
         pending_storage_service: Arc<PendingStorageService>,
-        request_tracker: Arc<RequestTracker>,
         store_response_channels: Arc<ResponseChannels<StoreResponseData>>,
         get_response_channels: Arc<ResponseChannels<GetResponseData>>,
         finality_response_channels: Arc<ResponseChannels<FinalityResponseData>>,
+        get_operation_service: Arc<GenericOperationService<GetOperation>>,
+        publish_operation_service: Arc<GenericOperationService<PublishOperation>>,
     ) -> Self {
         Self {
             config,
@@ -68,17 +63,14 @@ impl Context {
             network_manager,
             blockchain_manager,
             validation_manager,
-            triple_store_manager,
             triple_store_service,
-            publish_operation_manager,
-            get_operation_manager,
             get_validation_service,
-            get_operation_context_store,
             pending_storage_service,
-            request_tracker,
             store_response_channels,
             get_response_channels,
             finality_response_channels,
+            get_operation_service,
+            publish_operation_service,
         }
     }
 
@@ -102,28 +94,12 @@ impl Context {
         &self.validation_manager
     }
 
-    pub fn triple_store_manager(&self) -> &Arc<TripleStoreManager> {
-        &self.triple_store_manager
-    }
-
     pub fn triple_store_service(&self) -> &Arc<TripleStoreService> {
         &self.triple_store_service
     }
 
-    pub fn publish_operation_manager(&self) -> &Arc<OperationService> {
-        &self.publish_operation_manager
-    }
-
-    pub fn get_operation_manager(&self) -> &Arc<OperationService> {
-        &self.get_operation_manager
-    }
-
     pub fn get_validation_service(&self) -> &Arc<GetValidationService> {
         &self.get_validation_service
-    }
-
-    pub fn get_operation_context_store(&self) -> &Arc<GetOperationContextStore> {
-        &self.get_operation_context_store
     }
 
     pub fn pending_storage_service(&self) -> &Arc<PendingStorageService> {
@@ -132,10 +108,6 @@ impl Context {
 
     pub fn schedule_command_tx(&self) -> &Sender<CommandExecutionRequest> {
         &self.schedule_command_tx
-    }
-
-    pub fn request_tracker(&self) -> &Arc<RequestTracker> {
-        &self.request_tracker
     }
 
     pub fn store_response_channels(&self) -> &Arc<ResponseChannels<StoreResponseData>> {
@@ -148,5 +120,13 @@ impl Context {
 
     pub fn finality_response_channels(&self) -> &Arc<ResponseChannels<FinalityResponseData>> {
         &self.finality_response_channels
+    }
+
+    pub fn get_operation_service(&self) -> &Arc<GenericOperationService<GetOperation>> {
+        &self.get_operation_service
+    }
+
+    pub fn publish_operation_service(&self) -> &Arc<GenericOperationService<PublishOperation>> {
+        &self.publish_operation_service
     }
 }

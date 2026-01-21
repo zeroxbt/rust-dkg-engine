@@ -18,9 +18,7 @@ use crate::{
     controllers::rpc_controller::{
         NetworkProtocols, ProtocolResponse, messages::StoreResponseData,
     },
-    services::{
-        OperationService, ResponseChannels, pending_storage_service::PendingStorageService,
-    },
+    services::{ResponseChannels, pending_storage_service::PendingStorageService},
 };
 
 /// Command data for handling incoming publish/store requests.
@@ -55,7 +53,6 @@ impl HandleStoreRequestCommandData {
 pub struct HandleStoreRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    publish_operation_manager: Arc<OperationService>,
     validation_manager: Arc<ValidationManager>,
     blockchain_manager: Arc<BlockchainManager>,
     response_channels: Arc<ResponseChannels<StoreResponseData>>,
@@ -69,7 +66,6 @@ impl HandleStoreRequestCommandHandler {
             network_manager: Arc::clone(context.network_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             validation_manager: Arc::clone(context.validation_manager()),
-            publish_operation_manager: Arc::clone(context.publish_operation_manager()),
             response_channels: Arc::clone(context.store_response_channels()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
@@ -196,10 +192,6 @@ impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommand
                     error = %error_message,
                     "Peer validation failed - sending NACK"
                 );
-
-                self.publish_operation_manager
-                    .mark_failed(operation_id, error_message)
-                    .await;
 
                 self.send_nack(channel, operation_id, "Invalid neighbourhood")
                     .await;

@@ -82,16 +82,21 @@ impl ShardingTableCheckCommandHandler {
         let mut total_nodes_processed: u128 = 0;
 
         while total_nodes_processed < sharding_table_length {
+            // Only request as many nodes as we need (remaining nodes, capped by page size)
+            let remaining = sharding_table_length - total_nodes_processed;
+            let slice_start = if page_index == 0 { 0 } else { 1 };
+            // Add 1 to account for the overlapping node when slice_start == 1
+            let nodes_to_fetch = remaining.saturating_add(slice_start as u128).min(SHARDING_TABLE_PAGE_SIZE);
+
             let nodes = self
                 .blockchain_manager
-                .get_sharding_table_page(blockchain, starting_identity_id, SHARDING_TABLE_PAGE_SIZE)
+                .get_sharding_table_page(blockchain, starting_identity_id, nodes_to_fetch)
                 .await?;
 
             if nodes.is_empty() {
                 break;
             }
 
-            let slice_start = if page_index == 0 { 0 } else { 1 };
             let nodes_in_page = nodes.len().saturating_sub(slice_start) as u128;
             self.append_shard_records(blockchain, &nodes, slice_start, &mut records);
             total_nodes_processed += nodes_in_page;
@@ -122,12 +127,9 @@ impl ShardingTableCheckCommandHandler {
         records: &mut Vec<ShardRecordInput>,
     ) {
         for node in nodes.iter().skip(slice_start) {
+            // Empty nodeId indicates end of the linked list (padding in fixed-size page response)
             if node.nodeId.is_empty() {
-                tracing::warn!(
-                    blockchain = %blockchain,
-                    "Skipping sharding table node with empty node id bytes"
-                );
-                continue;
+                break;
             }
 
             // The node_id is stored on-chain as UTF-8 bytes of the base58 peer ID string,

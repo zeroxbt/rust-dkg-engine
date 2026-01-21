@@ -6,7 +6,6 @@ use network::{
     request_response,
 };
 use tokio::sync::mpsc::Sender;
-
 use triple_store::Assertion;
 
 use crate::{
@@ -16,17 +15,17 @@ use crate::{
     },
     context::Context,
     controllers::rpc_controller::messages::{GetRequestData, GetResponseData},
+    operations::{GetOperation, GetOperationResult},
     services::{
-        GetOperationContextStore, GetOperationResult, GetValidationService, OperationService,
-        ResponseChannels,
+        GetValidationService, ResponseChannels,
+        operation::OperationService as GenericOperationService,
     },
     utils::ual::ParsedUal,
 };
 
 pub struct GetRpcController {
-    get_operation_manager: Arc<OperationService>,
+    get_operation_service: Arc<GenericOperationService<GetOperation>>,
     get_validation_service: Arc<GetValidationService>,
-    get_operation_context_store: Arc<GetOperationContextStore>,
     response_channels: Arc<ResponseChannels<GetResponseData>>,
     schedule_command_tx: Sender<CommandExecutionRequest>,
 }
@@ -34,12 +33,16 @@ pub struct GetRpcController {
 impl GetRpcController {
     pub fn new(context: Arc<Context>) -> Self {
         Self {
-            get_operation_manager: Arc::clone(context.get_operation_manager()),
+            get_operation_service: Arc::clone(context.get_operation_service()),
             get_validation_service: Arc::clone(context.get_validation_service()),
-            get_operation_context_store: Arc::clone(context.get_operation_context_store()),
             response_channels: Arc::clone(context.get_response_channels()),
             schedule_command_tx: context.schedule_command_tx().clone(),
         }
+    }
+
+    /// Returns a reference to the operation service for this controller.
+    pub fn operation_service(&self) -> &Arc<GenericOperationService<GetOperation>> {
+        &self.get_operation_service
     }
 
     pub async fn handle_request(
@@ -121,19 +124,19 @@ impl GetRpcController {
         let is_success = if is_ack {
             match &data {
                 GetResponseData::Data { assertion, .. } => {
-                    // Retrieve operation context for validation
-                    match self.get_operation_context_store.get(&operation_id) {
-                        Some(ctx) => {
-                            // Build a ParsedUal from the stored context for validation
+                    // Retrieve operation context for validation from new service
+                    match self.get_operation_service.get_context(&operation_id) {
+                        Some(state) => {
+                            // Build a ParsedUal from the stored state for validation
                             // Note: We don't have the contract address stored, but validation
                             // only needs blockchain, knowledge_collection_id, and
                             // knowledge_asset_id
                             let parsed_ual = ParsedUal {
-                                blockchain: ctx.blockchain.clone(),
+                                blockchain: state.blockchain.clone(),
                                 // Use a dummy contract address - validation doesn't use it
                                 contract: blockchain::Address::ZERO,
-                                knowledge_collection_id: ctx.knowledge_collection_id,
-                                knowledge_asset_id: ctx.knowledge_asset_id,
+                                knowledge_collection_id: state.knowledge_collection_id,
+                                knowledge_asset_id: state.knowledge_asset_id,
                             };
 
                             let is_valid = self
@@ -142,7 +145,7 @@ impl GetRpcController {
                                     &assertion.public,
                                     assertion.private.as_deref(),
                                     &parsed_ual,
-                                    ctx.visibility,
+                                    state.visibility,
                                 )
                                 .await;
 
@@ -157,11 +160,6 @@ impl GetRpcController {
                             is_valid
                         }
                         None => {
-                            // No context found - this could happen if:
-                            // 1. The operation completed locally (context never stored)
-                            // 2. TTL expired (very unlikely within operation timeout)
-                            // 3. Context was already removed
-                            // Accept the response but log a warning
                             tracing::warn!(
                                 operation_id = %operation_id,
                                 "No operation context found for validation, accepting response"
@@ -178,34 +176,36 @@ impl GetRpcController {
 
         // If successful, store the result before recording response
         // (record_response may trigger completion status update)
-        if is_success {
-            if let GetResponseData::Data {
+        // If storing fails, treat as unsuccessful response
+        let is_success = if is_success
+            && let GetResponseData::Data {
                 assertion,
                 metadata,
             } = &data
-            {
-                let get_result = GetOperationResult::new(
-                    Assertion::new(assertion.public.clone(), assertion.private.clone()),
-                    metadata.clone(),
-                );
+        {
+            let get_result = GetOperationResult::new(
+                Assertion::new(assertion.public.clone(), assertion.private.clone()),
+                metadata.clone(),
+            );
 
-                if let Err(e) = self
-                    .get_operation_manager
-                    .mark_completed_with_result(operation_id, &get_result)
-                    .await
-                {
+            match self.get_operation_service.store_result(operation_id, &get_result) {
+                Ok(()) => true,
+                Err(e) => {
                     tracing::error!(
                         operation_id = %operation_id,
                         error = %e,
-                        "Failed to store get result"
+                        "Failed to store get result, treating as failed response"
                     );
+                    false
                 }
             }
-        }
+        } else {
+            is_success
+        };
 
-        // Record response using operation manager
+        // Record response using operation service (triggers completion signaling)
         if let Err(e) = self
-            .get_operation_manager
+            .get_operation_service
             .record_response(operation_id, is_success)
             .await
         {
@@ -225,7 +225,7 @@ impl GetRpcController {
         // Clean up context if operation is complete (success or all responses received)
         // Note: This is a simple cleanup; the TTL will handle any stragglers
         if is_success {
-            self.get_operation_context_store.remove(&operation_id);
+            self.get_operation_service.remove_context(&operation_id);
         }
     }
 }

@@ -133,6 +133,10 @@ impl Contracts {
         &self.token
     }
 
+    pub fn parameters_storage(&self) -> &ParametersStorage::ParametersStorageInstance<BlockchainProvider> {
+        &self.parameters_storage
+    }
+
     pub fn knowledge_collection_storage(
         &self,
     ) -> Result<

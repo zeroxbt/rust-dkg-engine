@@ -12,7 +12,6 @@ use repositories::{
     blockchain_repository::BlockchainRepository,
     finality_status_repository::FinalityStatusRepository,
     operation_repository::OperationRepository, shard_repository::ShardRepository,
-    signature_repository::SignatureRepository,
     triples_insert_count_repository::TriplesInsertCountRepository,
 };
 pub use sea_orm::ActiveValue;
@@ -27,7 +26,6 @@ pub struct RepositoryManager {
     shard_repository: ShardRepository,
     blockchain_repository: BlockchainRepository,
     operation_repository: OperationRepository,
-    signature_repository: SignatureRepository,
     finality_status_repository: FinalityStatusRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
 }
@@ -68,7 +66,6 @@ impl RepositoryManager {
             shard_repository: ShardRepository::new(Arc::clone(&conn)),
             blockchain_repository: BlockchainRepository::new(Arc::clone(&conn)),
             operation_repository: OperationRepository::new(Arc::clone(&conn)),
-            signature_repository: SignatureRepository::new(Arc::clone(&conn)),
             finality_status_repository: FinalityStatusRepository::new(Arc::clone(&conn)),
             triples_insert_count_repository: TriplesInsertCountRepository::new(Arc::clone(&conn)),
         })
@@ -84,10 +81,6 @@ impl RepositoryManager {
 
     pub fn operation_repository(&self) -> &OperationRepository {
         &self.operation_repository
-    }
-
-    pub fn signature_repository(&self) -> &SignatureRepository {
-        &self.signature_repository
     }
 
     pub fn finality_status_repository(&self) -> &FinalityStatusRepository {

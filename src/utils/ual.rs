@@ -145,11 +145,6 @@ fn parse_knowledge_asset_id(s: &str) -> Result<u128, UalParseError> {
         .map_err(|_| UalParseError::KnowledgeAssetId(s.to_string()))
 }
 
-/// Check if a string is a valid UAL format
-pub fn is_valid_ual(ual: &str) -> bool {
-    parse_ual(ual).is_ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

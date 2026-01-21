@@ -1,12 +1,8 @@
 use std::sync::Arc;
 
 use blockchain::BlockchainManager;
-use futures::future::join_all;
 use libp2p::PeerId;
-use network::{
-    NetworkManager, RequestMessage,
-    message::{RequestMessageHeader, RequestMessageType},
-};
+use network::NetworkManager;
 use repository::RepositoryManager;
 use triple_store::{Assertion, TokenIds, Visibility};
 use uuid::Uuid;
@@ -14,19 +10,14 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{NetworkProtocols, ProtocolRequest, messages::GetRequestData},
+    controllers::rpc_controller::{NetworkProtocols, messages::GetRequestData},
+    operations::{GetOperation, GetOperationResult, GetOperationState},
     services::{
-        GetOperationContext, GetOperationContextStore, GetOperationResult, GetValidationService,
-        OperationService, RequestTracker, TripleStoreService,
+        BatchSender, GetValidationService, TripleStoreService,
+        operation::{Operation, OperationService as GenericOperationService},
     },
     utils::ual::{ParsedUal, parse_ual},
 };
-
-/// Batch size for sending get requests to network nodes
-const BATCH_SIZE: usize = 5;
-
-/// Minimum number of ACK responses required for get operation
-const MIN_ACK_RESPONSES: u8 = 1;
 
 /// Command data for sending get requests to network nodes.
 #[derive(Clone)]
@@ -61,10 +52,8 @@ pub struct SendGetRequestsCommandHandler {
     triple_store_service: Arc<TripleStoreService>,
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    get_operation_manager: Arc<OperationService>,
+    get_operation_service: Arc<GenericOperationService<GetOperation>>,
     get_validation_service: Arc<GetValidationService>,
-    get_operation_context_store: Arc<GetOperationContextStore>,
-    request_tracker: Arc<RequestTracker>,
 }
 
 impl SendGetRequestsCommandHandler {
@@ -74,10 +63,8 @@ impl SendGetRequestsCommandHandler {
             triple_store_service: Arc::clone(context.triple_store_service()),
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            get_operation_manager: Arc::clone(context.get_operation_manager()),
+            get_operation_service: Arc::clone(context.get_operation_service()),
             get_validation_service: Arc::clone(context.get_validation_service()),
-            get_operation_context_store: Arc::clone(context.get_operation_context_store()),
-            request_tracker: Arc::clone(context.request_tracker()),
         }
     }
 
@@ -135,7 +122,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             Err(e) => {
                 let error_message = format!("Invalid UAL format: {}", e);
                 tracing::error!(operation_id = %operation_id, error = %e, "Failed to parse UAL");
-                self.get_operation_manager
+                self.get_operation_service
                     .mark_failed(operation_id, error_message)
                     .await;
                 return CommandExecutionResult::Completed;
@@ -164,7 +151,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     parsed_ual.knowledge_collection_id, parsed_ual.blockchain
                 );
                 tracing::error!(operation_id = %operation_id, %error_message, "UAL validation failed");
-                self.get_operation_manager
+                self.get_operation_service
                     .mark_failed(operation_id, error_message)
                     .await;
                 return CommandExecutionResult::Completed;
@@ -253,22 +240,28 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     "Local data validated, completing operation"
                 );
 
-                // Build typed result
-                let get_result = GetOperationResult::new(
-                    Assertion::new(result.public, result.private),
-                    result.metadata,
-                );
+                // Build the assertion from local data and store result
+                let assertion = Assertion {
+                    public: result.public.clone(),
+                    private: result.private.clone(),
+                };
+                let get_result = GetOperationResult::new(assertion, result.metadata.clone());
 
-                // Mark operation as completed with result
-                if let Err(e) = self
-                    .get_operation_manager
-                    .mark_completed_with_result(operation_id, &get_result)
-                    .await
-                {
+                if let Err(e) = self.get_operation_service.store_result(operation_id, &get_result) {
+                    let error_message = format!("Failed to store local result: {}", e);
+                    tracing::error!(operation_id = %operation_id, error = %e, "Failed to store local result");
+                    self.get_operation_service
+                        .mark_failed(operation_id, error_message)
+                        .await;
+                    return CommandExecutionResult::Completed;
+                }
+
+                // Mark operation as completed
+                if let Err(e) = self.get_operation_service.mark_completed(operation_id).await {
                     tracing::error!(
                         operation_id = %operation_id,
                         error = %e,
-                        "Failed to mark operation as completed with local result"
+                        "Failed to mark operation as completed"
                     );
                 }
 
@@ -287,14 +280,14 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
         );
 
         // Store operation context for response validation in RPC controller
-        let context = GetOperationContext::new(
+        let state = GetOperationState::new(
             parsed_ual.blockchain.clone(),
             parsed_ual.knowledge_collection_id,
             parsed_ual.knowledge_asset_id,
             data.visibility,
         );
-        self.get_operation_context_store
-            .store(operation_id, context);
+        self.get_operation_service
+            .store_context(operation_id, state);
 
         // Get shard nodes for the blockchain
         let shard_nodes = match self
@@ -314,7 +307,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             Err(e) => {
                 let error_message = format!("Failed to get shard nodes: {}", e);
                 tracing::error!(operation_id = %operation_id, error = %e, "Failed to get shard nodes");
-                self.get_operation_manager
+                self.get_operation_service
                     .mark_failed(operation_id, error_message)
                     .await;
                 return CommandExecutionResult::Completed;
@@ -338,30 +331,33 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
         );
 
         // Check if we have enough peers
-        if peers.len() < MIN_ACK_RESPONSES as usize {
+        if peers.len() < GetOperation::MIN_ACK_RESPONSES as usize {
             let error_message = format!(
                 "Unable to find enough nodes for operation: {}. Found {} nodes, need at least {}",
                 operation_id,
                 peers.len(),
-                MIN_ACK_RESPONSES
+                GetOperation::MIN_ACK_RESPONSES
             );
-            self.get_operation_manager
+            self.get_operation_service
                 .mark_failed(operation_id, error_message)
                 .await;
             return CommandExecutionResult::Completed;
         }
 
-        // Initialize progress tracking
-        if let Err(e) = self
-            .get_operation_manager
-            .initialize_progress(operation_id, total_peers, MIN_ACK_RESPONSES as u16)
+        // Initialize progress tracking and get completion receiver
+        let completion_rx = match self
+            .get_operation_service
+            .initialize_progress(operation_id, total_peers, GetOperation::MIN_ACK_RESPONSES)
             .await
         {
-            self.get_operation_manager
-                .mark_failed(operation_id, e.to_string())
-                .await;
-            return CommandExecutionResult::Completed;
-        }
+            Ok(rx) => rx,
+            Err(e) => {
+                self.get_operation_service
+                    .mark_failed(operation_id, e.to_string())
+                    .await;
+                return CommandExecutionResult::Completed;
+            }
+        };
 
         // Build the get request data (reusing token_ids from local query)
         let get_request_data = GetRequestData::new(
@@ -372,73 +368,26 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             data.visibility,
         );
 
-        // Send requests to peers in batches
-        // Unlike publish, get operation returns on first valid response
-        for batch in peers.chunks(BATCH_SIZE) {
-            let mut send_futures = Vec::with_capacity(batch.len());
+        // Create batch sender and send requests
+        let batch_sender = BatchSender::<GetOperation>::from_operation();
 
-            for peer_id in batch {
-                let network_manager = Arc::clone(&self.network_manager);
-                let request_tracker = Arc::clone(&self.request_tracker);
-                let peer = *peer_id;
-                let op_id = operation_id;
-
-                let message = RequestMessage {
-                    header: RequestMessageHeader {
-                        operation_id,
-                        message_type: RequestMessageType::ProtocolRequest,
-                    },
-                    data: get_request_data.clone(),
-                };
-
-                send_futures.push(async move {
-                    tracing::debug!(
-                        operation_id = %op_id,
-                        peer = %peer,
-                        "Sending get request to peer"
-                    );
-
-                    match network_manager
-                        .send_protocol_request(ProtocolRequest::Get { peer, message })
-                        .await
-                    {
-                        Ok(request_id) => {
-                            request_tracker.track(request_id, op_id, peer);
-                            tracing::info!(
-                                operation_id = %op_id,
-                                peer = %peer,
-                                ?request_id,
-                                "Get request sent successfully"
-                            );
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                operation_id = %op_id,
-                                peer = %peer,
-                                error = %e,
-                                "Failed to send get request"
-                            );
-                        }
-                    }
-                });
-            }
-
-            // Wait for batch to complete
-            join_all(send_futures).await;
-
-            tracing::debug!(
-                operation_id = %operation_id,
-                batch_size = batch.len(),
-                "Batch of get requests sent"
-            );
-
-            // TODO: Implement sending in batches
-        }
+        let result = batch_sender
+            .send_batched_until_completion(
+                operation_id,
+                peers,
+                get_request_data,
+                Arc::clone(&self.network_manager),
+                Arc::clone(self.get_operation_service.request_tracker()),
+                completion_rx,
+            )
+            .await;
 
         tracing::info!(
             operation_id = %operation_id,
-            total_peers = total_peers,
-            "All get requests have been sent"
+            sent = result.sent_count,
+            failed = result.failed_count,
+            early_completion = result.early_completion,
+            "Get requests batch sending completed"
         );
 
         CommandExecutionResult::Completed

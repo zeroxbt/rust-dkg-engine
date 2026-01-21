@@ -15,7 +15,7 @@ use crate::{
         get::GetOperationResultResponse,
         operation_result::{OperationResultErrorResponse, OperationResultResponse, SignatureData},
     },
-    services::GetOperationResult,
+    operations::PublishOperationResult,
 };
 
 pub struct OperationResultHttpApiController;
@@ -89,8 +89,8 @@ impl OperationResultHttpApiController {
                 (StatusCode::OK, Json(response)).into_response()
             }
             OperationStatus::Completed | OperationStatus::InProgress if min_acks_reached => {
-                // Get signatures when min acks reached
-                match Self::get_signatures(&context, operation_uuid).await {
+                // Get signatures from redb
+                match Self::get_signatures(&context, operation_uuid) {
                     Ok((publisher_sig, network_sigs)) => {
                         let response = OperationResultResponse::completed_with_signatures(
                             publisher_sig,
@@ -102,7 +102,7 @@ impl OperationResultHttpApiController {
                         tracing::error!(
                             operation_id = %operation_id,
                             error = %e,
-                            "Failed to get signatures"
+                            "Failed to get publish result"
                         );
                         let response = OperationResultResponse::in_progress_with_data(true);
                         (StatusCode::OK, Json(response)).into_response()
@@ -120,41 +120,44 @@ impl OperationResultHttpApiController {
         }
     }
 
-    async fn get_signatures(
+    /// Get signatures from redb storage
+    fn get_signatures(
         context: &Arc<Context>,
         operation_id: Uuid,
     ) -> Result<(Option<SignatureData>, Vec<SignatureData>), String> {
-        let repo = context.repository_manager().signature_repository();
+        // Get result from redb via publish operation service
+        let result: Option<PublishOperationResult> = context
+            .publish_operation_service()
+            .get_result(operation_id)
+            .map_err(|e| e.to_string())?;
 
-        // Get publisher signature
-        let publisher_sig = repo
-            .get_publisher_signature(operation_id)
-            .await
-            .map_err(|e| e.to_string())?
-            .map(|sig| SignatureData {
-                identity_id: sig.identity_id,
-                v: sig.v,
-                r: sig.r,
-                s: sig.s,
-                vs: sig.vs,
-            });
+        match result {
+            Some(publish_result) => {
+                // Convert from operations::SignatureData to dto::SignatureData
+                let publisher_sig = publish_result.publisher_signature.map(|sig| SignatureData {
+                    identity_id: sig.identity_id,
+                    v: sig.v,
+                    r: sig.r,
+                    s: sig.s,
+                    vs: sig.vs,
+                });
 
-        // Get network signatures
-        let network_sigs = repo
-            .get_network_signatures(operation_id)
-            .await
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .map(|sig| SignatureData {
-                identity_id: sig.identity_id,
-                v: sig.v,
-                r: sig.r,
-                s: sig.s,
-                vs: sig.vs,
-            })
-            .collect();
+                let network_sigs = publish_result
+                    .network_signatures
+                    .into_iter()
+                    .map(|sig| SignatureData {
+                        identity_id: sig.identity_id,
+                        v: sig.v,
+                        r: sig.r,
+                        s: sig.s,
+                        vs: sig.vs,
+                    })
+                    .collect();
 
-        Ok((publisher_sig, network_sigs))
+                Ok((publisher_sig, network_sigs))
+            }
+            None => Ok((None, Vec::new())),
+        }
     }
 
     pub async fn handle_get_result(
@@ -219,26 +222,33 @@ impl OperationResultHttpApiController {
                 (StatusCode::OK, Json(response)).into_response()
             }
             OperationStatus::Completed => {
-                // Get cached result from file
-                match context
-                    .get_operation_manager()
-                    .get_cached_result::<GetOperationResult>(operation_uuid)
-                    .await
-                {
-                    Some(result) => {
+                // Get result from redb store via new operation service
+                match context.get_operation_service().get_result(operation_uuid) {
+                    Ok(Some(result)) => {
                         let response = GetOperationResultResponse::completed(
                             result.assertion,
                             result.metadata,
                         );
                         (StatusCode::OK, Json(response)).into_response()
                     }
-                    None => {
+                    Ok(None) => {
                         tracing::error!(
                             operation_id = %operation_id,
                             "Operation marked as completed but no cached result found"
                         );
                         let response = GetOperationResultResponse::failed(Some(
                             "Operation result not found".to_string(),
+                        ));
+                        (StatusCode::OK, Json(response)).into_response()
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            operation_id = %operation_id,
+                            error = %e,
+                            "Failed to retrieve operation result"
+                        );
+                        let response = GetOperationResultResponse::failed(Some(
+                            "Failed to retrieve operation result".to_string(),
                         ));
                         (StatusCode::OK, Json(response)).into_response()
                     }

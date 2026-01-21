@@ -77,18 +77,18 @@ impl GetValidationService {
         }
 
         // Validate private assertion if present
-        if let Some(private) = private_triples {
-            if !private.is_empty() {
-                match self.validate_private_assertion(public_triples, private) {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        tracing::debug!("Private assertion validation failed");
-                        return false;
-                    }
-                    Err(e) => {
-                        tracing::debug!(error = %e, "Error validating private assertion");
-                        return false;
-                    }
+        if let Some(private) = private_triples
+            && !private.is_empty()
+        {
+            match self.validate_private_assertion(public_triples, private) {
+                Ok(true) => {}
+                Ok(false) => {
+                    tracing::debug!("Private assertion validation failed");
+                    return false;
+                }
+                Err(e) => {
+                    tracing::debug!(error = %e, "Error validating private assertion");
+                    return false;
                 }
             }
         }
@@ -131,7 +131,7 @@ impl GetValidationService {
         let sorted_flat: Vec<String> = grouped
             .iter()
             .flat_map(|group| {
-                let mut sorted_group: Vec<&str> = group.iter().copied().collect();
+                let mut sorted_group: Vec<&str> = group.to_vec();
                 sorted_group.sort();
                 sorted_group.into_iter().map(String::from)
             })
@@ -210,15 +210,6 @@ impl GetValidationService {
 
         Ok(true)
     }
-
-    /// Check if public assertion contains privateMerkleRoot predicate.
-    ///
-    /// Used to determine if private triples are expected for permissioned paranets.
-    pub fn assertion_has_private_merkle_root(public_triples: &[String]) -> bool {
-        public_triples
-            .iter()
-            .any(|triple| triple.contains(PRIVATE_MERKLE_ROOT))
-    }
 }
 
 /// Extract the merkle root value from a privateMerkleRoot triple.
@@ -248,6 +239,15 @@ fn extract_private_merkle_root(triple: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// Check if public assertion contains privateMerkleRoot predicate.
+    ///
+    /// Used to determine if private triples are expected for permissioned paranets.
+    pub fn assertion_has_private_merkle_root(public_triples: &[String]) -> bool {
+        public_triples
+            .iter()
+            .any(|triple| triple.contains(PRIVATE_MERKLE_ROOT))
+    }
+
     #[test]
     fn test_extract_private_merkle_root() {
         let triple = r#"<uuid:1e91a527-a3ef-430e-819e-64710ab0f797> <https://ontology.origintrail.io/dkg/1.0#privateMerkleRoot> "0xaac2a420672a1eb77506c544ff01beed2be58c0ee3576fe037c846f97481cefd" ."#;
@@ -272,13 +272,9 @@ mod tests {
             r#"<uuid:123> <https://ontology.origintrail.io/dkg/1.0#privateMerkleRoot> "0xabc" ."#
                 .to_string(),
         ];
-        assert!(GetValidationService::assertion_has_private_merkle_root(
-            &triples
-        ));
+        assert!(assertion_has_private_merkle_root(&triples));
 
         let triples_no_private = vec![r#"<subject> <http://schema.org/name> "Test" ."#.to_string()];
-        assert!(!GetValidationService::assertion_has_private_merkle_root(
-            &triples_no_private
-        ));
+        assert!(!assertion_has_private_merkle_root(&triples_no_private));
     }
 }

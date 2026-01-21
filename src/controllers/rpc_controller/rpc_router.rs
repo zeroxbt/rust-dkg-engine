@@ -16,7 +16,6 @@ use crate::{
         finality_rpc_controller::FinalityRpcController, get_rpc_controller::GetRpcController,
         store_rpc_controller::StoreRpcController,
     },
-    services::{OperationService, RequestTracker},
 };
 
 // Type alias for the complete behaviour and its event type
@@ -26,9 +25,6 @@ type BehaviourEvent = <Behaviour as network::NetworkBehaviour>::ToSwarm;
 pub struct RpcRouter {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    request_tracker: Arc<RequestTracker>,
-    publish_operation_manager: Arc<OperationService>,
-    get_operation_manager: Arc<OperationService>,
     store_controller: Arc<StoreRpcController>,
     get_controller: Arc<GetRpcController>,
     finality_controller: Arc<FinalityRpcController>,
@@ -40,9 +36,6 @@ impl RpcRouter {
         RpcRouter {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            request_tracker: Arc::clone(context.request_tracker()),
-            publish_operation_manager: Arc::clone(context.publish_operation_manager()),
-            get_operation_manager: Arc::clone(context.get_operation_manager()),
             store_controller: Arc::new(StoreRpcController::new(Arc::clone(&context))),
             get_controller: Arc::new(GetRpcController::new(Arc::clone(&context))),
             finality_controller: Arc::new(FinalityRpcController::new(Arc::clone(&context))),
@@ -101,7 +94,13 @@ impl RpcRouter {
                                 } => {
                                     // Check if this response arrived after a timeout was already
                                     // processed
-                                    if self.request_tracker.handle_response(request_id).is_some() {
+                                    if self
+                                        .store_controller
+                                        .operation_service()
+                                        .request_tracker()
+                                        .handle_response(request_id)
+                                        .is_some()
+                                    {
                                         // Valid response - process it
                                         self.store_controller.handle_response(response, peer).await;
                                     } else {
@@ -131,15 +130,15 @@ impl RpcRouter {
                                 "Store request failed"
                             );
 
+                            let operation_service = self.store_controller.operation_service();
+
                             // Look up operation_id and mark as timed out to ignore late responses
                             if let Some((operation_id, _peer)) =
-                                self.request_tracker.handle_timeout(request_id)
+                                operation_service.request_tracker().handle_timeout(request_id)
                             {
                                 // Record as NACK (failed response)
-                                if let Err(e) = self
-                                    .publish_operation_manager
-                                    .record_response(operation_id, false)
-                                    .await
+                                if let Err(e) =
+                                    operation_service.record_response(operation_id, false).await
                                 {
                                     tracing::error!(
                                         %operation_id,
@@ -202,7 +201,13 @@ impl RpcRouter {
                                 } => {
                                     // Check if this response arrived after a timeout was already
                                     // processed
-                                    if self.request_tracker.handle_response(request_id).is_some() {
+                                    if self
+                                        .get_controller
+                                        .operation_service()
+                                        .request_tracker()
+                                        .handle_response(request_id)
+                                        .is_some()
+                                    {
                                         // Valid response - process it
                                         self.get_controller.handle_response(response, peer).await;
                                     } else {
@@ -231,15 +236,15 @@ impl RpcRouter {
                                 "Get request failed"
                             );
 
+                            let operation_service = self.get_controller.operation_service();
+
                             // Look up operation_id and mark as timed out to ignore late responses
                             if let Some((operation_id, _peer)) =
-                                self.request_tracker.handle_timeout(request_id)
+                                operation_service.request_tracker().handle_timeout(request_id)
                             {
                                 // Record as NACK (failed response)
-                                if let Err(e) = self
-                                    .get_operation_manager
-                                    .record_response(operation_id, false)
-                                    .await
+                                if let Err(e) =
+                                    operation_service.record_response(operation_id, false).await
                                 {
                                     tracing::error!(
                                         %operation_id,

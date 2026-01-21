@@ -12,7 +12,7 @@ pub struct ValidationManagerConfig {}
 pub struct ValidationManager;
 
 impl ValidationManager {
-    pub async fn new() -> Self {
+    pub async fn new(_config: &ValidationManagerConfig) -> Self {
         Self
     }
 

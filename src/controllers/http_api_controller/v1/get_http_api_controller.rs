@@ -30,7 +30,7 @@ impl GetHttpApiController {
                 let operation_id = Uuid::new_v4();
 
                 if let Err(e) = context
-                    .get_operation_manager()
+                    .get_operation_service()
                     .create_operation(operation_id)
                     .await
                 {

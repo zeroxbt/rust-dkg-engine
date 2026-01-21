@@ -14,8 +14,6 @@ use crate::{
     controllers::http_api_controller::v1::dto::publish::{PublishRequest, PublishResponse},
 };
 
-const MIN_ACK_RESPONSES: u8 = 8;
-
 pub struct PublishHttpApiController;
 
 impl PublishHttpApiController {
@@ -28,7 +26,7 @@ impl PublishHttpApiController {
                 let operation_id = Uuid::new_v4();
 
                 if let Err(e) = context
-                    .publish_operation_manager()
+                    .publish_operation_service()
                     .create_operation(operation_id)
                     .await
                 {
@@ -42,12 +40,12 @@ impl PublishHttpApiController {
 
                 tracing::info!(operation_id = %operation_id, "Publish request received");
 
+                // Pass user-provided value to command; command handler will determine effective value
                 let command = Command::SendStoreRequests(SendStoreRequestsCommandData::new(
                     operation_id,
                     req.blockchain,
                     req.dataset_root,
-                    req.minimum_number_of_node_replications
-                        .unwrap_or(MIN_ACK_RESPONSES),
+                    req.minimum_number_of_node_replications,
                     req.dataset,
                 ));
 

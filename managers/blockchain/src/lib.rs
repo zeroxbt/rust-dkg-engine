@@ -440,6 +440,19 @@ impl BlockchainManager {
         blockchain_impl.get_sharding_table_head().await
     }
 
+    pub async fn get_minimum_required_signatures(
+        &self,
+        blockchain: &BlockchainId,
+    ) -> Result<u64, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+
+        blockchain_impl.get_minimum_required_signatures().await
+    }
+
     pub async fn get_sharding_table_length(
         &self,
         blockchain: &BlockchainId,

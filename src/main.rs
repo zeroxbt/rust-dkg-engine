@@ -3,6 +3,7 @@ mod config;
 mod context;
 mod controllers;
 mod error;
+mod operations;
 mod services;
 mod utils;
 
@@ -22,7 +23,6 @@ use controllers::{
 };
 use dotenvy::dotenv;
 use repository::RepositoryManager;
-use services::operation_service::{OperationConfig, OperationService};
 use tokio::{
     join,
     sync::mpsc::{Receiver, Sender},
@@ -33,9 +33,10 @@ use validation::ValidationManager;
 use crate::{
     config::Config,
     controllers::rpc_controller::NetworkProtocols,
+    operations::{GetOperation, PublishOperation},
     services::{
-        GetOperationContextStore, GetValidationService, RequestTracker, ResponseChannels,
-        TripleStoreService, file_service::FileService,
+        GetValidationService, RequestTracker, ResponseChannels, ResultStore, TripleStoreService,
+        file_service::FileService, operation::OperationService as GenericOperationService,
         pending_storage_service::PendingStorageService,
     },
 };
@@ -59,10 +60,6 @@ async fn main() {
         validation_manager,
         triple_store_manager,
     ) = initialize_managers(&config.managers).await;
-    let (publish_operation_manager, get_operation_manager, pending_storage_service) =
-        initialize_services(&config, &repository_manager);
-
-    let request_tracker = Arc::new(RequestTracker::new());
     let store_response_channels = Arc::new(ResponseChannels::new());
     let get_response_channels = Arc::new(ResponseChannels::new());
     let finality_response_channels = Arc::new(ResponseChannels::new());
@@ -70,8 +67,11 @@ async fn main() {
         Arc::clone(&validation_manager),
         Arc::clone(&blockchain_manager),
     ));
-    let get_operation_context_store = Arc::new(GetOperationContextStore::with_default_ttl());
     let triple_store_service = Arc::new(TripleStoreService::new(Arc::clone(&triple_store_manager)));
+
+    // Initialize operation services (need result_store and request_tracker)
+    let (publish_operation_service, get_operation_service, pending_storage_service) =
+        initialize_services(&config, &repository_manager);
 
     let context = Arc::new(Context::new(
         config.clone(),
@@ -80,17 +80,14 @@ async fn main() {
         Arc::clone(&network_manager),
         Arc::clone(&blockchain_manager),
         Arc::clone(&validation_manager),
-        Arc::clone(&triple_store_manager),
         Arc::clone(&triple_store_service),
-        Arc::clone(&publish_operation_manager),
-        Arc::clone(&get_operation_manager),
         Arc::clone(&get_validation_service),
-        Arc::clone(&get_operation_context_store),
         Arc::clone(&pending_storage_service),
-        Arc::clone(&request_tracker),
         Arc::clone(&store_response_channels),
         Arc::clone(&get_response_channels),
         Arc::clone(&finality_response_channels),
+        Arc::clone(&get_operation_service),
+        Arc::clone(&publish_operation_service),
     ));
 
     if config.is_dev_env {
@@ -217,7 +214,7 @@ async fn initialize_managers(
         .expect("Failed to initialize blockchain identities");
 
     let blockchain_manager = Arc::new(blockchain_manager);
-    let validation_manager = Arc::new(ValidationManager::new().await);
+    let validation_manager = Arc::new(ValidationManager::new(&config.validation).await);
     let triple_store_manager = Arc::new(
         TripleStoreManager::new(&config.triple_store)
             .await
@@ -237,32 +234,34 @@ fn initialize_services(
     config: &Config,
     repository_manager: &Arc<RepositoryManager>,
 ) -> (
-    Arc<OperationService>,
-    Arc<OperationService>,
+    Arc<GenericOperationService<PublishOperation>>,
+    Arc<GenericOperationService<GetOperation>>,
     Arc<PendingStorageService>,
 ) {
     let file_service = Arc::new(FileService::new(config.app_data_path.clone()));
     let pending_storage_service = Arc::new(PendingStorageService::new(Arc::clone(&file_service)));
 
-    let publish_operation_manager = Arc::new(OperationService::new(
-        Arc::clone(repository_manager),
-        Arc::clone(&file_service),
-        OperationConfig {
-            operation_name: "publish",
-        },
-    ));
+    // Create result store for operation results
+    let result_store = Arc::new(
+        ResultStore::open(config.app_data_path.join("operation_results.redb"))
+            .expect("Failed to open result store"),
+    );
+    let request_tracker = Arc::new(RequestTracker::new());
 
-    let get_operation_manager = Arc::new(OperationService::new(
+    let publish_operation_service = Arc::new(GenericOperationService::<PublishOperation>::new(
         Arc::clone(repository_manager),
-        Arc::clone(&file_service),
-        OperationConfig {
-            operation_name: "get",
-        },
+        Arc::clone(&result_store),
+        Arc::clone(&request_tracker),
+    ));
+    let get_operation_service = Arc::new(GenericOperationService::<GetOperation>::new(
+        Arc::clone(repository_manager),
+        Arc::clone(&result_store),
+        Arc::clone(&request_tracker),
     ));
 
     (
-        publish_operation_manager,
-        get_operation_manager,
+        publish_operation_service,
+        get_operation_service,
         pending_storage_service,
     )
 }
