@@ -66,6 +66,7 @@ sol!(
     "../../abi/Token.json"
 );
 
+#[allow(clippy::too_many_arguments)]
 pub mod paranets_registry {
     use alloy::sol;
 
