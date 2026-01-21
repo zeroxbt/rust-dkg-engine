@@ -109,6 +109,72 @@ impl TripleStoreBackend for OxigraphBackend {
 
         Ok(())
     }
+
+    async fn construct(&self, query: &str, _timeout_ms: u64) -> Result<String> {
+        use oxigraph::sparql::Query;
+
+        // Parse the query
+        let query = Query::parse(query, None).map_err(|e| TripleStoreError::InvalidQuery {
+            reason: format!("Failed to parse SPARQL CONSTRUCT: {}", e),
+        })?;
+
+        // Execute on blocking thread pool
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || {
+            let result = store
+                .query(query)
+                .map_err(|e| TripleStoreError::Other(format!("SPARQL CONSTRUCT failed: {}", e)))?;
+
+            match result {
+                QueryResults::Graph(triples) => {
+                    let mut output = Vec::new();
+                    for triple_result in triples {
+                        let triple = triple_result.map_err(|e| {
+                            TripleStoreError::Other(format!("Failed to read triple: {}", e))
+                        })?;
+
+                        // Serialize to N-Triples format
+                        output.push(format!(
+                            "{} {} {} .",
+                            triple.subject, triple.predicate, triple.object
+                        ));
+                    }
+                    Ok(output.join("\n"))
+                }
+                _ => Err(TripleStoreError::Other(
+                    "Expected CONSTRUCT to return graph results".to_string(),
+                )),
+            }
+        })
+        .await
+        .map_err(|e| TripleStoreError::Other(format!("Task join error: {}", e)))?
+    }
+
+    async fn ask(&self, query: &str, _timeout_ms: u64) -> Result<bool> {
+        use oxigraph::sparql::Query;
+
+        // Parse the query
+        let query = Query::parse(query, None).map_err(|e| TripleStoreError::InvalidQuery {
+            reason: format!("Failed to parse SPARQL ASK: {}", e),
+        })?;
+
+        // Execute on blocking thread pool
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || {
+            let result = store
+                .query(query)
+                .map_err(|e| TripleStoreError::Other(format!("SPARQL ASK failed: {}", e)))?;
+
+            match result {
+                QueryResults::Boolean(value) => Ok(value),
+                _ => Err(TripleStoreError::Other(
+                    "Expected ASK to return boolean result".to_string(),
+                )),
+            }
+        })
+        .await
+        .map_err(|e| TripleStoreError::Other(format!("Task join error: {}", e)))?
+    }
 }
 
 #[cfg(test)]

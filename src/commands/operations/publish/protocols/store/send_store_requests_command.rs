@@ -10,6 +10,8 @@ use network::{
 use repository::RepositoryManager;
 use uuid::Uuid;
 
+use triple_store::Assertion;
+
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
@@ -17,7 +19,6 @@ use crate::{
     services::{
         pending_storage_service::PendingStorageService, OperationService, RequestTracker,
     },
-    types::models::Assertion,
 };
 
 /// Command data for sending publish requests to network nodes.

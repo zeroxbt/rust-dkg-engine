@@ -749,4 +749,103 @@ impl EvmChain {
 
         Ok(crate::SignatureComponents { v, r, s, vs })
     }
+
+    /// Check if a knowledge collection exists on-chain.
+    ///
+    /// Validates that the knowledge collection ID exists by checking if it has a publisher.
+    /// Returns the publisher address if the collection exists, or None if it doesn't.
+    pub async fn get_knowledge_collection_publisher(
+        &self,
+        knowledge_collection_id: u128,
+    ) -> Result<Option<Address>, BlockchainError> {
+        let contracts = self.contracts().await;
+        let kc_storage = contracts.knowledge_collection_storage()?;
+
+        let publisher = kc_storage
+            .getLatestMerkleRootPublisher(U256::from(knowledge_collection_id))
+            .call()
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!(
+                    "Failed to get knowledge collection publisher: {}",
+                    e
+                ))
+            })?;
+
+        // If publisher is zero address, the collection doesn't exist
+        if publisher.is_zero() {
+            Ok(None)
+        } else {
+            Ok(Some(publisher))
+        }
+    }
+
+    /// Get the range of knowledge assets (token IDs) for a knowledge collection.
+    ///
+    /// Returns (start_token_id, end_token_id, burned_token_ids) or None if the collection
+    /// doesn't exist.
+    pub async fn get_knowledge_assets_range(
+        &self,
+        knowledge_collection_id: u128,
+    ) -> Result<Option<(u64, u64, Vec<u64>)>, BlockchainError> {
+        let contracts = self.contracts().await;
+        let kc_storage = contracts.knowledge_collection_storage()?;
+
+        let result = kc_storage
+            .getKnowledgeAssetsRange(U256::from(knowledge_collection_id))
+            .call()
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!("Failed to get knowledge assets range: {}", e))
+            })?;
+
+        let start_token_id = result._0.try_into().map_err(|_| {
+            BlockchainError::Custom("Start token ID overflow".to_string())
+        })?;
+        let end_token_id = result._1.try_into().map_err(|_| {
+            BlockchainError::Custom("End token ID overflow".to_string())
+        })?;
+        let burned: Vec<u64> = result
+            ._2
+            .into_iter()
+            .filter_map(|v| v.try_into().ok())
+            .collect();
+
+        // If both start and end are 0, the collection doesn't exist or is empty
+        if start_token_id == 0 && end_token_id == 0 {
+            Ok(None)
+        } else {
+            Ok(Some((start_token_id, end_token_id, burned)))
+        }
+    }
+
+    /// Get the latest merkle root for a knowledge collection.
+    ///
+    /// Returns the merkle root as a hex string (with 0x prefix), or None if the collection
+    /// doesn't exist.
+    pub async fn get_knowledge_collection_merkle_root(
+        &self,
+        knowledge_collection_id: u128,
+    ) -> Result<Option<String>, BlockchainError> {
+        let contracts = self.contracts().await;
+        let kc_storage = contracts.knowledge_collection_storage()?;
+
+        let merkle_root = kc_storage
+            .getLatestMerkleRoot(U256::from(knowledge_collection_id))
+            .call()
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!(
+                    "Failed to get knowledge collection merkle root: {}",
+                    e
+                ))
+            })?;
+
+        // If merkle root is zero, the collection doesn't exist
+        if merkle_root.is_zero() {
+            Ok(None)
+        } else {
+            Ok(Some(format!("0x{}", crate::utils::to_hex_string(merkle_root))))
+        }
+    }
 }

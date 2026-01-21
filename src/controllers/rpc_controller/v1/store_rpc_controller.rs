@@ -8,6 +8,8 @@ use network::{
 use repository::RepositoryManager;
 use tokio::sync::mpsc::Sender;
 
+use triple_store::Assertion;
+
 use crate::{
     commands::{
         command_executor::CommandExecutionRequest, command_registry::Command,
@@ -16,7 +18,6 @@ use crate::{
     context::Context,
     controllers::rpc_controller::messages::{StoreRequestData, StoreResponseData},
     services::{OperationService, ResponseChannels},
-    types::models::Assertion,
 };
 
 pub struct StoreRpcController {

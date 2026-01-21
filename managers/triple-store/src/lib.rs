@@ -63,7 +63,7 @@ pub use backend::{SelectResult, SelectRow, SelectValue};
 pub use config::{TripleStoreBackendType, TripleStoreManagerConfig};
 pub use error::TripleStoreError as Error;
 pub use rdf::{extract_subject, group_nquads_by_subject};
-pub use types::{KnowledgeAsset, Visibility};
+pub use types::{Assertion, KnowledgeAsset, TokenIds, Visibility};
 
 /// Metadata for a knowledge collection
 #[derive(Debug, Clone)]
@@ -451,6 +451,177 @@ INSERT DATA {{
     pub async fn update_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<()> {
         self.backend
             .update(query, timeout_ms.unwrap_or(self.config.timeouts.insert_ms))
+            .await
+    }
+
+    // ========== Knowledge Asset Operations ==========
+
+    /// Get knowledge asset from unified graph
+    ///
+    /// Returns N-Quads string with triples matching the exact UAL
+    pub async fn get_knowledge_asset(&self, ual: &str, visibility: Visibility) -> Result<String> {
+        let filter = match visibility {
+            Visibility::Public => format!(
+                r#"FILTER NOT EXISTS {{ << ?s ?p ?o >> <{label}> "private" . }}"#,
+                label = predicates::LABEL
+            ),
+            Visibility::Private | Visibility::All => String::new(),
+        };
+
+        let query = format!(
+            r#"CONSTRUCT {{ ?s ?p ?o . }}
+WHERE {{
+    GRAPH <{unified}> {{
+        << ?s ?p ?o >> <{ual_pred}> <{ual}> .
+        {filter}
+    }}
+}}"#,
+            unified = named_graphs::UNIFIED,
+            ual_pred = predicates::UAL,
+        );
+
+        self.backend
+            .construct(&query, self.config.timeouts.query_ms)
+            .await
+    }
+
+    /// Get knowledge asset from its named graph (public or private).
+    ///
+    /// This queries the actual named graph `{ual}/public` or `{ual}/private`.
+    /// For visibility ALL, call this method twice with Public and Private.
+    ///
+    /// Returns N-Triples as lines.
+    pub async fn get_knowledge_asset_named_graph(
+        &self,
+        ual: &str,
+        visibility: Visibility,
+    ) -> Result<Vec<String>> {
+        let suffix = match visibility {
+            Visibility::Public => "public",
+            Visibility::Private => "private",
+            Visibility::All => {
+                // For ALL, we need to query both separately - caller should handle this
+                return Err(TripleStoreError::Other(
+                    "Use Public or Private visibility, not All".to_string(),
+                ));
+            }
+        };
+
+        let query = format!(
+            r#"PREFIX schema: <http://schema.org/>
+CONSTRUCT {{ ?s ?p ?o }}
+WHERE {{
+    GRAPH <{ual}/{suffix}> {{
+        ?s ?p ?o .
+    }}
+}}"#
+        );
+
+        let nquads = self
+            .backend
+            .construct(&query, self.config.timeouts.query_ms)
+            .await?;
+
+        Ok(nquads
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(String::from)
+            .collect())
+    }
+
+    /// Get knowledge collection from named graphs using token ID range.
+    ///
+    /// Uses VALUES clause for efficient querying (matching JS implementation).
+    /// Returns N-Triples as lines for the specified visibility.
+    pub async fn get_knowledge_collection_named_graphs(
+        &self,
+        kc_ual: &str,
+        start_token_id: u64,
+        end_token_id: u64,
+        burned: &[u64],
+        visibility: Visibility,
+    ) -> Result<Vec<String>> {
+        let suffix = match visibility {
+            Visibility::Public => "public",
+            Visibility::Private => "private",
+            Visibility::All => {
+                return Err(TripleStoreError::Other(
+                    "Use Public or Private visibility, not All".to_string(),
+                ));
+            }
+        };
+
+        // Build list of named graphs
+        let named_graphs: Vec<String> = (start_token_id..=end_token_id)
+            .filter(|id| !burned.contains(id))
+            .map(|id| format!("<{}/{}/{}>", kc_ual, id, suffix))
+            .collect();
+
+        if named_graphs.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Use VALUES clause like JS implementation
+        let query = format!(
+            r#"PREFIX schema: <http://schema.org/>
+CONSTRUCT {{
+    ?s ?p ?o .
+}}
+WHERE {{
+    GRAPH ?g {{
+        ?s ?p ?o .
+    }}
+    VALUES ?g {{
+        {}
+    }}
+}}"#,
+            named_graphs.join("\n        ")
+        );
+
+        let nquads = self
+            .backend
+            .construct(&query, self.config.timeouts.query_ms)
+            .await?;
+
+        Ok(nquads
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(String::from)
+            .collect())
+    }
+
+    /// Check if a knowledge asset exists in the triple store.
+    ///
+    /// Checks for the existence of the named graph `{ka_ual}`.
+    /// The ka_ual should include the visibility suffix (e.g., `did:dkg:.../1/public`).
+    pub async fn knowledge_asset_exists(&self, ka_ual_with_visibility: &str) -> Result<bool> {
+        let query = format!(
+            r#"ASK {{
+    GRAPH <{ka_ual_with_visibility}> {{
+        ?s ?p ?o
+    }}
+}}"#
+        );
+
+        self.backend.ask(&query, self.config.timeouts.ask_ms).await
+    }
+
+    /// Get metadata for a knowledge collection from the metadata graph
+    ///
+    /// Returns N-Triples with metadata predicates (publishedBy, publishedAtBlock, etc.)
+    pub async fn get_metadata(&self, kc_ual: &str) -> Result<String> {
+        let query = format!(
+            r#"CONSTRUCT {{ <{kc_ual}> ?p ?o . }}
+WHERE {{
+    GRAPH <{metadata}> {{
+        <{kc_ual}> ?p ?o .
+    }}
+}}"#,
+            metadata = named_graphs::METADATA,
+        );
+
+        self.backend
+            .construct(&query, self.config.timeouts.query_ms)
             .await
     }
 

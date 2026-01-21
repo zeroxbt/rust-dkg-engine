@@ -15,8 +15,8 @@ use crate::{
         messages::{FinalityResponseData, GetResponseData, StoreResponseData},
     },
     services::{
-        OperationService, RequestTracker, ResponseChannels,
-        pending_storage_service::PendingStorageService,
+        GetOperationContextStore, GetValidationService, OperationService, RequestTracker,
+        ResponseChannels, TripleStoreService, pending_storage_service::PendingStorageService,
     },
 };
 
@@ -28,7 +28,11 @@ pub struct Context {
     blockchain_manager: Arc<BlockchainManager>,
     validation_manager: Arc<ValidationManager>,
     triple_store_manager: Arc<TripleStoreManager>,
+    triple_store_service: Arc<TripleStoreService>,
     publish_operation_manager: Arc<OperationService>,
+    get_operation_manager: Arc<OperationService>,
+    get_validation_service: Arc<GetValidationService>,
+    get_operation_context_store: Arc<GetOperationContextStore>,
     pending_storage_service: Arc<PendingStorageService>,
     request_tracker: Arc<RequestTracker>,
     store_response_channels: Arc<ResponseChannels<StoreResponseData>>,
@@ -46,7 +50,11 @@ impl Context {
         blockchain_manager: Arc<BlockchainManager>,
         validation_manager: Arc<ValidationManager>,
         triple_store_manager: Arc<TripleStoreManager>,
+        triple_store_service: Arc<TripleStoreService>,
         publish_operation_manager: Arc<OperationService>,
+        get_operation_manager: Arc<OperationService>,
+        get_validation_service: Arc<GetValidationService>,
+        get_operation_context_store: Arc<GetOperationContextStore>,
         pending_storage_service: Arc<PendingStorageService>,
         request_tracker: Arc<RequestTracker>,
         store_response_channels: Arc<ResponseChannels<StoreResponseData>>,
@@ -61,7 +69,11 @@ impl Context {
             blockchain_manager,
             validation_manager,
             triple_store_manager,
+            triple_store_service,
             publish_operation_manager,
+            get_operation_manager,
+            get_validation_service,
+            get_operation_context_store,
             pending_storage_service,
             request_tracker,
             store_response_channels,
@@ -94,8 +106,24 @@ impl Context {
         &self.triple_store_manager
     }
 
+    pub fn triple_store_service(&self) -> &Arc<TripleStoreService> {
+        &self.triple_store_service
+    }
+
     pub fn publish_operation_manager(&self) -> &Arc<OperationService> {
         &self.publish_operation_manager
+    }
+
+    pub fn get_operation_manager(&self) -> &Arc<OperationService> {
+        &self.get_operation_manager
+    }
+
+    pub fn get_validation_service(&self) -> &Arc<GetValidationService> {
+        &self.get_validation_service
+    }
+
+    pub fn get_operation_context_store(&self) -> &Arc<GetOperationContextStore> {
+        &self.get_operation_context_store
     }
 
     pub fn pending_storage_service(&self) -> &Arc<PendingStorageService> {

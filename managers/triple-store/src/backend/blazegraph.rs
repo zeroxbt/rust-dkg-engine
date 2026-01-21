@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use reqwest::Client;
+use serde::Deserialize;
 
 use super::TripleStoreBackend;
 use crate::{
@@ -42,8 +43,56 @@ impl BlazegraphBackend {
         }
     }
 
-    /*  /// Decode Blazegraph's escaped Unicode sequences (\Uxxxxxxxx)
+    /// Decode Blazegraph's escaped Unicode sequences (\Uxxxxxxxx)
     fn decode_unicode_escapes(input: &str) -> String {
+        let mut result = String::with_capacity(input.len());
+        let mut chars = input.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                match chars.peek() {
+                    Some('U') => {
+                        chars.next(); // consume 'U'
+                        let hex: String = chars.by_ref().take(8).collect();
+                        if hex.len() == 8
+                            && let Ok(code) = u32::from_str_radix(&hex, 16)
+                            && let Some(decoded) = char::from_u32(code)
+                        {
+                            result.push(decoded);
+                            continue;
+                        }
+                        // Fallback: keep original
+                        result.push('\\');
+                        result.push('U');
+                        result.push_str(&hex);
+                    }
+                    Some('u') => {
+                        chars.next(); // consume 'u'
+                        let hex: String = chars.by_ref().take(4).collect();
+                        if hex.len() == 4
+                            && let Ok(code) = u32::from_str_radix(&hex, 16)
+                            && let Some(decoded) = char::from_u32(code)
+                        {
+                            result.push(decoded);
+                            continue;
+                        }
+                        // Fallback: keep original
+                        result.push('\\');
+                        result.push('u');
+                        result.push_str(&hex);
+                    }
+                    _ => result.push(c),
+                }
+            } else {
+                result.push(c);
+            }
+        }
+
+        result
+    }
+
+    /*  /// Decode Blazegraph's escaped Unicode sequences (\Uxxxxxxxx) - COMMENTED OUT
+    fn decode_unicode_escapes_old(input: &str) -> String {
         let mut result = String::with_capacity(input.len());
         let mut chars = input.chars().peekable();
 
@@ -209,6 +258,32 @@ impl TripleStoreBackend for BlazegraphBackend {
         }
     }
 
+    async fn construct(&self, query: &str, timeout_ms: u64) -> Result<String> {
+        let url = self.config.sparql_endpoint();
+
+        let response = self
+            .auth_headers(self.client.post(&url))
+            .header("Content-Type", "application/sparql-query")
+            .header("Accept", "application/n-quads")
+            .header("X-BIGDATA-MAX-QUERY-MILLIS", timeout_ms.to_string())
+            .timeout(Duration::from_millis(timeout_ms + 5000))
+            .body(query.to_string())
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let body = response.text().await?;
+            Ok(Self::decode_unicode_escapes(&body))
+        } else {
+            let status = response.status().as_u16();
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(TripleStoreError::Backend { status, message })
+        }
+    }
+
     /* async fn construct(&self, query: &str, timeout_ms: u64) -> Result<String> {
         let url = self.config.sparql_endpoint();
 
@@ -310,7 +385,48 @@ impl TripleStoreBackend for BlazegraphBackend {
             Err(TripleStoreError::Backend { status, message })
         }
     }
+
+    async fn ask(&self, query: &str, timeout_ms: u64) -> Result<bool> {
+        let url = self.config.sparql_endpoint();
+
+        let response = self
+            .auth_headers(self.client.post(&url))
+            .header("Content-Type", "application/sparql-query")
+            .header("Accept", "application/sparql-results+json")
+            .header("X-BIGDATA-MAX-QUERY-MILLIS", timeout_ms.to_string())
+            .timeout(Duration::from_millis(timeout_ms + 5000))
+            .body(query.to_string())
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let body = response.text().await?;
+            parse_ask_json(&body)
+        } else {
+            let status = response.status().as_u16();
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(TripleStoreError::Backend { status, message })
+        }
+    }
 }
+
+#[derive(Deserialize)]
+struct SparqlAskResponse {
+    boolean: bool,
+}
+
+fn parse_ask_json(json: &str) -> Result<bool> {
+    let response: SparqlAskResponse =
+        serde_json::from_str(json).map_err(|e| TripleStoreError::ParseError {
+            reason: format!("Failed to parse ASK response: {e}"),
+        })?;
+
+    Ok(response.boolean)
+}
+
 /*
 // JSON response structures for SPARQL results
 #[derive(Deserialize)]

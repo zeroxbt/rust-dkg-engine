@@ -1,13 +1,10 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use repository::RepositoryManager;
+use repository::{OperationStatus, RepositoryManager};
 use uuid::Uuid;
 
-use crate::{
-    error::NodeError, services::file_service::FileService,
-    types::models::operation::OperationStatus,
-};
+use crate::{error::NodeError, services::file_service::FileService};
 
 /// Consolidated operation state service.
 /// The database is the single source of truth for all operation state.
@@ -160,6 +157,40 @@ impl OperationService {
         }
 
         // Still in progress
+        Ok(())
+    }
+
+    /// Mark an operation as completed with a result.
+    /// Used when data is found locally without needing network requests.
+    pub async fn mark_completed_with_result(
+        &self,
+        operation_id: Uuid,
+        result: serde_json::Value,
+    ) -> Result<(), NodeError> {
+        // Store result in cache file
+        let cache_dir = self.file_service.operation_result_cache_dir();
+        let filename = operation_id.to_string();
+        self.file_service
+            .write_json(&cache_dir, &filename, &result)
+            .await?;
+
+        // Update status in database
+        self.repository
+            .operation_repository()
+            .update(
+                operation_id,
+                Some(OperationStatus::Completed.as_str()),
+                None,
+                None,
+            )
+            .await?;
+
+        tracing::info!(
+            operation_id = %operation_id,
+            "[{}] Operation completed (local)",
+            self.config.operation_name
+        );
+
         Ok(())
     }
 

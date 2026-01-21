@@ -1,26 +1,25 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use triple_store::Visibility;
 use uuid::Uuid;
 use validator_derive::Validate;
 
-#[derive(Debug, Deserialize)]
-#[serde(untagged, rename_all = "lowercase")]
-pub enum GetContentTypes {
-    Public,
-    Private,
-    All,
-}
-
-#[derive(Deserialize, Debug, Validate)]
+#[derive(serde::Deserialize, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct GetRequest {
+    /// The UAL (Universal Asset Locator) of the knowledge asset/collection to retrieve
     pub id: String,
 
+    /// Whether to include metadata in the response
+    #[serde(default)]
     pub include_metadata: bool,
 
+    /// Optional paranet UAL for permissioned access
     #[serde(rename = "paranetUAL")]
     pub paranet_ual: Option<String>,
 
-    content_type: GetContentTypes,
+    /// Visibility filter: public, private, or all
+    #[serde(default)]
+    pub content_type: Visibility,
 }
 
 #[derive(Serialize, Debug, Clone)]

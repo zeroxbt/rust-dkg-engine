@@ -598,6 +598,63 @@ impl BlockchainManager {
         })?;
         blockchain_impl.get_native_token_balance(address).await
     }
+
+    /// Check if a knowledge collection exists on-chain.
+    ///
+    /// Returns the publisher address if the collection exists, or None if it doesn't.
+    /// This is used to validate UALs before sending get requests.
+    pub async fn get_knowledge_collection_publisher(
+        &self,
+        blockchain: &BlockchainId,
+        knowledge_collection_id: u128,
+    ) -> Result<Option<Address>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
+            .get_knowledge_collection_publisher(knowledge_collection_id)
+            .await
+    }
+
+    /// Get the range of knowledge assets (token IDs) for a knowledge collection.
+    ///
+    /// Returns (start_token_id, end_token_id, burned_token_ids) or None if the collection
+    /// doesn't exist.
+    pub async fn get_knowledge_assets_range(
+        &self,
+        blockchain: &BlockchainId,
+        knowledge_collection_id: u128,
+    ) -> Result<Option<(u64, u64, Vec<u64>)>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
+            .get_knowledge_assets_range(knowledge_collection_id)
+            .await
+    }
+
+    /// Get the latest merkle root for a knowledge collection.
+    ///
+    /// Returns the merkle root as a hex string (with 0x prefix), or None if the collection
+    /// doesn't exist.
+    pub async fn get_knowledge_collection_merkle_root(
+        &self,
+        blockchain: &BlockchainId,
+        knowledge_collection_id: u128,
+    ) -> Result<Option<String>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
+            .get_knowledge_collection_merkle_root(knowledge_collection_id)
+            .await
+    }
 }
 
 #[cfg(test)]

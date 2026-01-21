@@ -3,10 +3,11 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use triple_store::Assertion;
+
 use crate::{
     error::{NodeError, ServiceError},
     services::file_service::FileService,
-    types::models::Assertion,
 };
 
 #[derive(Serialize, Deserialize, Clone)]

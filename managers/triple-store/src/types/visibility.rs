@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Controls which triples are retrieved or stored based on their
 /// privacy annotations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Visibility {
     /// Only public triples (excludes those with "private" label)
@@ -12,6 +12,7 @@ pub enum Visibility {
     /// Only private triples (those with "private" label)
     Private,
     /// All triples regardless of visibility
+    #[default]
     All,
 }
 

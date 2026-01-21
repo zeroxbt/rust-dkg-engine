@@ -4,7 +4,6 @@ mod context;
 mod controllers;
 mod error;
 mod services;
-mod types;
 mod utils;
 
 use std::sync::Arc;
@@ -35,8 +34,8 @@ use crate::{
     config::Config,
     controllers::rpc_controller::NetworkProtocols,
     services::{
-        RequestTracker, ResponseChannels, file_service::FileService,
-        pending_storage_service::PendingStorageService,
+        GetOperationContextStore, GetValidationService, RequestTracker, ResponseChannels,
+        TripleStoreService, file_service::FileService, pending_storage_service::PendingStorageService,
     },
 };
 
@@ -59,13 +58,19 @@ async fn main() {
         validation_manager,
         triple_store_manager,
     ) = initialize_managers(&config.managers).await;
-    let (publish_operation_manager, pending_storage_service) =
+    let (publish_operation_manager, get_operation_manager, pending_storage_service) =
         initialize_services(&config, &repository_manager);
 
     let request_tracker = Arc::new(RequestTracker::new());
     let store_response_channels = Arc::new(ResponseChannels::new());
     let get_response_channels = Arc::new(ResponseChannels::new());
     let finality_response_channels = Arc::new(ResponseChannels::new());
+    let get_validation_service = Arc::new(GetValidationService::new(
+        Arc::clone(&validation_manager),
+        Arc::clone(&blockchain_manager),
+    ));
+    let get_operation_context_store = Arc::new(GetOperationContextStore::with_default_ttl());
+    let triple_store_service = Arc::new(TripleStoreService::new(Arc::clone(&triple_store_manager)));
 
     let context = Arc::new(Context::new(
         config.clone(),
@@ -75,7 +80,11 @@ async fn main() {
         Arc::clone(&blockchain_manager),
         Arc::clone(&validation_manager),
         Arc::clone(&triple_store_manager),
+        Arc::clone(&triple_store_service),
         Arc::clone(&publish_operation_manager),
+        Arc::clone(&get_operation_manager),
+        Arc::clone(&get_validation_service),
+        Arc::clone(&get_operation_context_store),
         Arc::clone(&pending_storage_service),
         Arc::clone(&request_tracker),
         Arc::clone(&store_response_channels),
@@ -226,7 +235,7 @@ async fn initialize_managers(
 fn initialize_services(
     config: &Config,
     repository_manager: &Arc<RepositoryManager>,
-) -> (Arc<OperationService>, Arc<PendingStorageService>) {
+) -> (Arc<OperationService>, Arc<OperationService>, Arc<PendingStorageService>) {
     let file_service = Arc::new(FileService::new(config.app_data_path.clone()));
     let pending_storage_service = Arc::new(PendingStorageService::new(Arc::clone(&file_service)));
 
@@ -238,7 +247,15 @@ fn initialize_services(
         },
     ));
 
-    (publish_operation_manager, pending_storage_service)
+    let get_operation_manager = Arc::new(OperationService::new(
+        Arc::clone(repository_manager),
+        Arc::clone(&file_service),
+        OperationConfig {
+            operation_name: "get",
+        },
+    ));
+
+    (publish_operation_manager, get_operation_manager, pending_storage_service)
 }
 
 fn initialize_controllers(

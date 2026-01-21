@@ -11,6 +11,8 @@ use repository::RepositoryManager;
 use uuid::Uuid;
 use validation::ValidationManager;
 
+use triple_store::Assertion;
+
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
@@ -18,7 +20,6 @@ use crate::{
     services::{
         pending_storage_service::PendingStorageService, OperationService, ResponseChannels,
     },
-    types::models::Assertion,
 };
 
 /// Command data for handling incoming publish/store requests.

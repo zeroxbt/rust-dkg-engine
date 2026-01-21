@@ -1,9 +1,8 @@
 use blockchain::BlockchainId;
 use serde::{Deserialize, Serialize};
+use triple_store::Assertion;
 use uuid::Uuid;
 use validator_derive::Validate;
-
-use crate::types::models::Assertion;
 
 #[derive(Deserialize, Debug, Validate)]
 #[serde(rename_all = "camelCase")]

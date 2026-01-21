@@ -133,6 +133,17 @@ impl Contracts {
         &self.token
     }
 
+    pub fn knowledge_collection_storage(
+        &self,
+    ) -> Result<&KnowledgeCollectionStorage::KnowledgeCollectionStorageInstance<BlockchainProvider>, BlockchainError>
+    {
+        self.knowledge_collection_storage.as_ref().ok_or_else(|| {
+            BlockchainError::Custom(
+                "KnowledgeCollectionStorage contract is not initialized".to_string(),
+            )
+        })
+    }
+
     pub fn get_address(&self, contract_name: &ContractName) -> Result<Address, BlockchainError> {
         match contract_name {
             ContractName::Hub => Ok(*self.hub.address()),

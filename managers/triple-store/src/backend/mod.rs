@@ -84,4 +84,14 @@ pub trait TripleStoreBackend: Send + Sync {
     ///
     /// Returns nothing on success
     async fn update(&self, query: &str, timeout_ms: u64) -> Result<()>;
+
+    /// Execute a SPARQL CONSTRUCT query
+    ///
+    /// Returns N-Quads/N-Triples serialized RDF
+    async fn construct(&self, query: &str, timeout_ms: u64) -> Result<String>;
+
+    /// Execute a SPARQL ASK query
+    ///
+    /// Returns true if the pattern exists, false otherwise
+    async fn ask(&self, query: &str, timeout_ms: u64) -> Result<bool>;
 }

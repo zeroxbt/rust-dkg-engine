@@ -4,21 +4,31 @@ use blockchain::BlockchainId;
 
 use super::{
     command_executor::CommandExecutionRequest,
-    operations::publish::protocols::{
-        finality::{
-            handle_finality_request_command::{
-                HandleFinalityRequestCommandData, HandleFinalityRequestCommandHandler,
+    operations::{
+        get::protocols::get::{
+            handle_get_request_command::{
+                HandleGetRequestCommandData, HandleGetRequestCommandHandler,
             },
-            send_finality_request_command::{
-                SendFinalityRequestCommandData, SendFinalityRequestCommandHandler,
+            send_get_requests_command::{
+                SendGetRequestsCommandData, SendGetRequestsCommandHandler,
             },
         },
-        store::{
-            handle_store_request_command::{
-                HandleStoreRequestCommandData, HandleStoreRequestCommandHandler,
+        publish::protocols::{
+            finality::{
+                handle_finality_request_command::{
+                    HandleFinalityRequestCommandData, HandleFinalityRequestCommandHandler,
+                },
+                send_finality_request_command::{
+                    SendFinalityRequestCommandData, SendFinalityRequestCommandHandler,
+                },
             },
-            send_store_requests_command::{
-                SendStoreRequestsCommandData, SendStoreRequestsCommandHandler,
+            store::{
+                handle_store_request_command::{
+                    HandleStoreRequestCommandData, HandleStoreRequestCommandHandler,
+                },
+                send_store_requests_command::{
+                    SendStoreRequestsCommandData, SendStoreRequestsCommandHandler,
+                },
             },
         },
     },
@@ -120,6 +130,14 @@ command_registry! {
     handle_finality_request: HandleFinalityRequest => {
         data: HandleFinalityRequestCommandData,
         handler: HandleFinalityRequestCommandHandler
+    },
+    send_get_requests: SendGetRequests => {
+        data: SendGetRequestsCommandData,
+        handler: SendGetRequestsCommandHandler
+    },
+    handle_get_request: HandleGetRequest => {
+        data: HandleGetRequestCommandData,
+        handler: HandleGetRequestCommandHandler
     }
 }
 

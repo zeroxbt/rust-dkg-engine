@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 use axum::{
     Json,
@@ -6,6 +6,7 @@ use axum::{
     response::IntoResponse,
 };
 use hyper::StatusCode;
+use repository::OperationStatus;
 use uuid::Uuid;
 
 use crate::{
@@ -13,7 +14,6 @@ use crate::{
     controllers::http_api_controller::v1::dto::operation_result::{
         OperationResultErrorResponse, OperationResultResponse, SignatureData,
     },
-    types::models::operation::OperationStatus,
 };
 
 pub struct OperationResultHttpApiController;
@@ -73,7 +73,7 @@ impl OperationResultHttpApiController {
             }
         };
 
-        let status = OperationStatus::from_str(&operation_record.status);
+        let status = OperationStatus::from_str(&operation_record.status).unwrap();
 
         // Check if min acks reached
         let min_acks_reached = operation_record

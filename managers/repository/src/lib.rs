@@ -2,6 +2,9 @@ pub mod error;
 mod migrations;
 pub mod models;
 mod repositories;
+mod types;
+
+pub use types::OperationStatus;
 
 use std::sync::Arc;
 

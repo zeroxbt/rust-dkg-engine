@@ -13,7 +13,9 @@ use super::{
 use crate::{
     context::Context,
     controllers::rpc_controller::v1::{
-        finality_rpc_controller::FinalityRpcController, store_rpc_controller::StoreRpcController,
+        finality_rpc_controller::FinalityRpcController,
+        get_rpc_controller::GetRpcController,
+        store_rpc_controller::StoreRpcController,
     },
     services::{OperationService, RequestTracker},
 };
@@ -27,7 +29,9 @@ pub struct RpcRouter {
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     request_tracker: Arc<RequestTracker>,
     publish_operation_manager: Arc<OperationService>,
+    get_operation_manager: Arc<OperationService>,
     store_controller: Arc<StoreRpcController>,
+    get_controller: Arc<GetRpcController>,
     finality_controller: Arc<FinalityRpcController>,
     semaphore: Arc<Semaphore>,
 }
@@ -39,7 +43,9 @@ impl RpcRouter {
             network_manager: Arc::clone(context.network_manager()),
             request_tracker: Arc::clone(context.request_tracker()),
             publish_operation_manager: Arc::clone(context.publish_operation_manager()),
+            get_operation_manager: Arc::clone(context.get_operation_manager()),
             store_controller: Arc::new(StoreRpcController::new(Arc::clone(&context))),
+            get_controller: Arc::new(GetRpcController::new(Arc::clone(&context))),
             finality_controller: Arc::new(FinalityRpcController::new(Arc::clone(&context))),
             semaphore: Arc::new(Semaphore::new(NETWORK_EVENT_QUEUE_PARALLELISM)),
         }
@@ -185,22 +191,34 @@ impl RpcRouter {
                         request_response::Event::Message { message, peer, .. } => {
                             match message {
                                 Message::Request {
-                                    request: _,
-                                    channel: _,
-                                    ..
+                                    request, channel, ..
                                 } => {
-                                    // TODO: Implement get request handler
-                                    tracing::debug!(%peer, "Get request received - not yet implemented");
+                                    self.get_controller
+                                        .handle_request(request, channel, peer)
+                                        .await;
                                 }
-                                // TODO: Track request_id to detect late responses after timeout.
-                                Message::Response { response: _, .. } => {
-                                    // TODO: Implement get response handler
-                                    tracing::debug!(%peer, "Get response received - not yet implemented");
+                                Message::Response {
+                                    response,
+                                    request_id,
+                                } => {
+                                    // Check if this response arrived after a timeout was already
+                                    // processed
+                                    if self.request_tracker.handle_response(request_id).is_some() {
+                                        // Valid response - process it
+                                        self.get_controller.handle_response(response, peer).await;
+                                    } else {
+                                        // Late response after timeout, or unknown request
+                                        tracing::debug!(
+                                            %peer,
+                                            ?request_id,
+                                            "Ignoring late get response (already timed out or unknown)"
+                                        );
+                                    }
                                 }
                             };
                         }
-                        // OutboundFailure: We sent a get request and it failed.
-                        // TODO: Handle similarly to store - record as failed response.
+                        // OutboundFailure: We sent a get request and it failed (timeout,
+                        // connection closed, etc.) This is treated as a NACK.
                         request_response::Event::OutboundFailure {
                             peer,
                             request_id,
@@ -211,8 +229,31 @@ impl RpcRouter {
                                 %peer,
                                 ?request_id,
                                 ?error,
-                                "Get request failed - should record as NACK"
+                                "Get request failed"
                             );
+
+                            // Look up operation_id and mark as timed out to ignore late responses
+                            if let Some((operation_id, _peer)) =
+                                self.request_tracker.handle_timeout(request_id)
+                            {
+                                // Record as NACK (failed response)
+                                if let Err(e) = self
+                                    .get_operation_manager
+                                    .record_response(operation_id, false)
+                                    .await
+                                {
+                                    tracing::error!(
+                                        %operation_id,
+                                        error = %e,
+                                        "Failed to record get timeout as NACK"
+                                    );
+                                }
+                            } else {
+                                tracing::debug!(
+                                    ?request_id,
+                                    "Get OutboundFailure for unknown request_id (not tracked)"
+                                );
+                            }
                         }
                         // InboundFailure: Someone sent us a get request and we failed to respond.
                         request_response::Event::InboundFailure {
