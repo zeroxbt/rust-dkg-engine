@@ -5,10 +5,10 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::{Mutex, Semaphore, mpsc};
 
 use super::{
-    command_registry::Command,
+    command_registry::{Command, CommandResolver},
     constants::{COMMAND_QUEUE_PARALLELISM, MAX_COMMAND_DELAY_MS, MAX_COMMAND_LIFETIME_MS},
 };
-use crate::{commands::command_registry::CommandResolver, context::Context};
+use crate::context::Context;
 
 pub enum CommandExecutionResult {
     Completed,
@@ -42,11 +42,61 @@ impl CommandExecutionRequest {
     }
 }
 
+/// Handle for scheduling commands. Can be cloned and shared across the application.
+#[derive(Clone)]
+pub struct CommandScheduler {
+    tx: mpsc::Sender<CommandExecutionRequest>,
+}
+
+impl CommandScheduler {
+    /// Create a new command scheduler channel pair.
+    /// Returns the scheduler (for sending commands) and a receiver (for the executor).
+    pub fn channel() -> (Self, mpsc::Receiver<CommandExecutionRequest>) {
+        let (tx, rx) = mpsc::channel::<CommandExecutionRequest>(COMMAND_QUEUE_PARALLELISM);
+        (Self { tx }, rx)
+    }
+
+    /// Schedule a command for execution. Logs an error if scheduling fails.
+    pub async fn schedule(&self, request: CommandExecutionRequest) {
+        let command_name = request.command.name();
+        let delay = min(request.delay_ms.max(0) as u64, MAX_COMMAND_DELAY_MS as u64);
+
+        let result = if delay > 0 {
+            let tx = self.tx.clone();
+            let mut delayed_request = request;
+            delayed_request.delay_ms = 0;
+
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+                if let Err(e) = tx.send(delayed_request).await {
+                    tracing::error!(
+                        command = %command_name,
+                        error = %e,
+                        "Failed to schedule delayed command"
+                    );
+                }
+            });
+
+            return;
+        } else {
+            self.tx.send(request).await
+        };
+
+        if let Err(e) = result {
+            tracing::error!(
+                command = %command_name,
+                error = %e,
+                "Failed to schedule command"
+            );
+        }
+    }
+}
+
 pub struct CommandExecutor {
-    pub command_resolver: CommandResolver,
-    pub process_command_tx: mpsc::Sender<CommandExecutionRequest>,
-    pub process_command_rx: Arc<Mutex<mpsc::Receiver<CommandExecutionRequest>>>,
-    pub semaphore: Arc<Semaphore>,
+    command_resolver: CommandResolver,
+    scheduler: CommandScheduler,
+    rx: Arc<Mutex<mpsc::Receiver<CommandExecutionRequest>>>,
+    semaphore: Arc<Semaphore>,
 }
 
 // TODO:
@@ -55,29 +105,27 @@ pub struct CommandExecutor {
 //   - add error handling
 
 impl CommandExecutor {
-    pub fn new(context: Arc<Context>) -> Self {
-        let (tx, rx) = mpsc::channel::<CommandExecutionRequest>(COMMAND_QUEUE_PARALLELISM);
-
+    pub fn new(context: Arc<Context>, rx: mpsc::Receiver<CommandExecutionRequest>) -> Self {
         Self {
-            command_resolver: CommandResolver::new(context),
-            process_command_tx: tx,
-            process_command_rx: Arc::new(Mutex::new(rx)),
+            command_resolver: CommandResolver::new(Arc::clone(&context)),
+            scheduler: context.command_scheduler().clone(),
+            rx: Arc::new(Mutex::new(rx)),
             semaphore: Arc::new(Semaphore::new(COMMAND_QUEUE_PARALLELISM)),
         }
     }
 
-    /// Schedule initial commands to be executed
+    /// Schedule initial commands to be executed.
     pub async fn schedule_commands(&self, requests: Vec<CommandExecutionRequest>) {
         for request in requests {
-            self.enqueue(request).await.unwrap();
+            self.scheduler.schedule(request).await;
         }
     }
 
-    pub async fn listen_and_execute_commands(&self) {
+    pub async fn run(&self) {
         let mut pending_tasks = FuturesUnordered::new();
 
         loop {
-            let mut locked_rx = self.process_command_rx.lock().await;
+            let mut locked_rx = self.rx.lock().await;
 
             tokio::select! {
                 _ = pending_tasks.select_next_some(), if !pending_tasks.is_empty() => {
@@ -100,39 +148,6 @@ impl CommandExecutor {
         }
     }
 
-    pub async fn listen_and_schedule_commands(
-        &self,
-        mut schedule_command_rx: mpsc::Receiver<CommandExecutionRequest>,
-    ) {
-        loop {
-            if let Some(request) = schedule_command_rx.recv().await {
-                self.enqueue(request).await.unwrap();
-            }
-        }
-    }
-
-    async fn enqueue(
-        &self,
-        request: CommandExecutionRequest,
-    ) -> Result<(), mpsc::error::SendError<CommandExecutionRequest>> {
-        let delay = min(request.delay_ms.max(0) as u64, MAX_COMMAND_DELAY_MS as u64);
-
-        if delay > 0 {
-            let process_command_tx = self.process_command_tx.clone();
-            let mut delayed_request = request;
-            delayed_request.delay_ms = 0;
-
-            tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(delay)).await;
-                let _ = process_command_tx.send(delayed_request).await;
-            });
-
-            Ok(())
-        } else {
-            self.process_command_tx.send(request).await
-        }
-    }
-
     async fn execute(
         &self,
         request: CommandExecutionRequest,
@@ -150,7 +165,7 @@ impl CommandExecutor {
             CommandExecutionResult::Repeat { delay_ms } => {
                 let new_request =
                     CommandExecutionRequest::new(request.command).with_delay(delay_ms);
-                self.enqueue(new_request).await.unwrap();
+                self.scheduler.schedule(new_request).await;
             }
             CommandExecutionResult::Completed => {
                 tracing::trace!("Command {} completed", request.command.name());

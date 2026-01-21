@@ -5,12 +5,12 @@ use network::{
     message::{RequestMessage, ResponseMessage, ResponseMessageType},
     request_response,
 };
-use tokio::sync::mpsc::Sender;
 use triple_store::Assertion;
 
 use crate::{
     commands::{
-        command_executor::CommandExecutionRequest, command_registry::Command,
+        command_executor::{CommandExecutionRequest, CommandScheduler},
+        command_registry::Command,
         operations::publish::protocols::store::handle_store_request_command::HandleStoreRequestCommandData,
     },
     context::Context,
@@ -22,7 +22,7 @@ use crate::{
 pub struct StoreRpcController {
     publish_operation_service: Arc<GenericOperationService<PublishOperation>>,
     response_channels: Arc<ResponseChannels<StoreResponseData>>,
-    schedule_command_tx: Sender<CommandExecutionRequest>,
+    command_scheduler: CommandScheduler,
 }
 
 impl StoreRpcController {
@@ -30,7 +30,7 @@ impl StoreRpcController {
         Self {
             publish_operation_service: Arc::clone(context.publish_operation_service()),
             response_channels: Arc::clone(context.store_response_channels()),
-            schedule_command_tx: context.schedule_command_tx().clone(),
+            command_scheduler: context.command_scheduler().clone(),
         }
     }
 
@@ -75,17 +75,9 @@ impl StoreRpcController {
             dataset,
         ));
 
-        let request = CommandExecutionRequest::new(command);
-
-        let command_name = request.command.name();
-        if let Err(e) = self.schedule_command_tx.send(request).await {
-            tracing::error!(
-                operation_id = %operation_id,
-                error = %e,
-                command_name = %command_name,
-                "Failed to schedule command."
-            );
-        }
+        self.command_scheduler
+            .schedule(CommandExecutionRequest::new(command))
+            .await;
     }
 
     pub async fn handle_response(

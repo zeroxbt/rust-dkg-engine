@@ -3,10 +3,9 @@ use std::sync::Arc;
 use blockchain::BlockchainManager;
 use network::NetworkManager;
 use repository::RepositoryManager;
-use tokio::sync::mpsc::Sender;
 
 use crate::{
-    commands::command_executor::CommandExecutionRequest,
+    commands::command_executor::CommandScheduler,
     config::Config,
     controllers::rpc_controller::{
         NetworkProtocols,
@@ -22,7 +21,7 @@ use crate::{
 
 pub struct Context {
     config: Arc<Config>,
-    schedule_command_tx: Sender<CommandExecutionRequest>,
+    command_scheduler: CommandScheduler,
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -40,7 +39,7 @@ impl Context {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: Arc<Config>,
-        schedule_command_tx: Sender<CommandExecutionRequest>,
+        command_scheduler: CommandScheduler,
         repository_manager: Arc<RepositoryManager>,
         network_manager: Arc<NetworkManager<NetworkProtocols>>,
         blockchain_manager: Arc<BlockchainManager>,
@@ -55,7 +54,7 @@ impl Context {
     ) -> Self {
         Self {
             config,
-            schedule_command_tx,
+            command_scheduler,
             repository_manager,
             network_manager,
             blockchain_manager,
@@ -72,6 +71,10 @@ impl Context {
 
     pub fn config(&self) -> &Arc<Config> {
         &self.config
+    }
+
+    pub fn command_scheduler(&self) -> &CommandScheduler {
+        &self.command_scheduler
     }
 
     pub fn repository_manager(&self) -> &Arc<RepositoryManager> {
@@ -96,10 +99,6 @@ impl Context {
 
     pub fn pending_storage_service(&self) -> &Arc<PendingStorageService> {
         &self.pending_storage_service
-    }
-
-    pub fn schedule_command_tx(&self) -> &Sender<CommandExecutionRequest> {
-        &self.schedule_command_tx
     }
 
     pub fn store_response_channels(&self) -> &Arc<ResponseChannels<StoreResponseData>> {

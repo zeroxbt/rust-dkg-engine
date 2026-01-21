@@ -50,11 +50,10 @@ impl PublishHttpApiController {
                     req.dataset,
                 ));
 
-                let request = CommandExecutionRequest::new(command);
-
-                if let Err(e) = context.schedule_command_tx().send(request).await {
-                    tracing::error!(operation_id = %operation_id, error = %e, "Failed to schedule SendPublishRequestsCommand");
-                }
+                context
+                    .command_scheduler()
+                    .schedule(CommandExecutionRequest::new(command))
+                    .await;
 
                 Json(PublishResponse::new(operation_id)).into_response()
             }

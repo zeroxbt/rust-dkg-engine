@@ -5,12 +5,12 @@ use network::{
     message::{RequestMessage, ResponseMessage, ResponseMessageType},
     request_response,
 };
-use tokio::sync::mpsc::Sender;
 use triple_store::Assertion;
 
 use crate::{
     commands::{
-        command_executor::CommandExecutionRequest, command_registry::Command,
+        command_executor::{CommandExecutionRequest, CommandScheduler},
+        command_registry::Command,
         operations::get::protocols::get::handle_get_request_command::HandleGetRequestCommandData,
     },
     context::Context,
@@ -27,7 +27,7 @@ pub struct GetRpcController {
     get_operation_service: Arc<GenericOperationService<GetOperation>>,
     get_validation_service: Arc<GetValidationService>,
     response_channels: Arc<ResponseChannels<GetResponseData>>,
-    schedule_command_tx: Sender<CommandExecutionRequest>,
+    command_scheduler: CommandScheduler,
 }
 
 impl GetRpcController {
@@ -36,7 +36,7 @@ impl GetRpcController {
             get_operation_service: Arc::clone(context.get_operation_service()),
             get_validation_service: Arc::clone(context.get_validation_service()),
             response_channels: Arc::clone(context.get_response_channels()),
-            schedule_command_tx: context.schedule_command_tx().clone(),
+            command_scheduler: context.command_scheduler().clone(),
         }
     }
 
@@ -77,17 +77,9 @@ impl GetRpcController {
             remote_peer_id,
         ));
 
-        let request = CommandExecutionRequest::new(command);
-
-        let command_name = request.command.name();
-        if let Err(e) = self.schedule_command_tx.send(request).await {
-            tracing::error!(
-                operation_id = %operation_id,
-                error = %e,
-                command_name = %command_name,
-                "Failed to schedule HandleGetRequest command."
-            );
-        }
+        self.command_scheduler
+            .schedule(CommandExecutionRequest::new(command))
+            .await;
     }
 
     pub async fn handle_response(&self, response: ResponseMessage<GetResponseData>, peer: PeerId) {

@@ -5,11 +5,11 @@ use network::{
     message::{RequestMessage, ResponseMessage},
     request_response,
 };
-use tokio::sync::mpsc::Sender;
 
 use crate::{
     commands::{
-        command_executor::CommandExecutionRequest, command_registry::Command,
+        command_executor::{CommandExecutionRequest, CommandScheduler},
+        command_registry::Command,
         operations::publish::protocols::finality::handle_finality_request_command::HandleFinalityRequestCommandData,
     },
     context::Context,
@@ -19,14 +19,14 @@ use crate::{
 
 pub struct FinalityRpcController {
     response_channels: Arc<ResponseChannels<FinalityResponseData>>,
-    schedule_command_tx: Sender<CommandExecutionRequest>,
+    command_scheduler: CommandScheduler,
 }
 
 impl FinalityRpcController {
     pub fn new(context: Arc<Context>) -> Self {
         Self {
             response_channels: Arc::clone(context.finality_response_channels()),
-            schedule_command_tx: context.schedule_command_tx().clone(),
+            command_scheduler: context.command_scheduler().clone(),
         }
     }
 
@@ -60,19 +60,11 @@ impl FinalityRpcController {
             remote_peer_id,
         );
 
-        if let Err(e) = self
-            .schedule_command_tx
-            .send(CommandExecutionRequest::new(
+        self.command_scheduler
+            .schedule(CommandExecutionRequest::new(
                 Command::HandleFinalityRequest(command_data),
             ))
-            .await
-        {
-            tracing::error!(
-                operation_id = %operation_id,
-                error = %e,
-                "Failed to schedule HandleFinalityRequest command"
-            );
-        }
+            .await;
     }
 
     pub async fn handle_response(

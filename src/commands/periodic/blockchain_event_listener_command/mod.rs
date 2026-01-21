@@ -6,11 +6,10 @@ use blockchain::{
     ParameterChangedFilter, error::BlockchainError, utils::to_hex_string,
 };
 use repository::RepositoryManager;
-use tokio::sync::mpsc::Sender;
 
 use crate::{
     commands::{
-        command_executor::{CommandExecutionRequest, CommandExecutionResult},
+        command_executor::{CommandExecutionRequest, CommandExecutionResult, CommandScheduler},
         command_registry::{Command, CommandHandler},
         operations::publish::protocols::finality::send_finality_request_command::SendFinalityRequestCommandData,
     },
@@ -34,7 +33,7 @@ const MAX_BLOCKS_TO_SYNC_DEV: u64 = u64::MAX; // unlimited for dev
 pub struct BlockchainEventListenerCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
-    schedule_command_tx: Sender<CommandExecutionRequest>,
+    command_scheduler: CommandScheduler,
     /// Polling interval in milliseconds
     poll_interval_ms: i64,
     /// Maximum number of blocks to sync historically (beyond this, events are skipped)
@@ -60,7 +59,7 @@ impl BlockchainEventListenerCommandHandler {
         Self {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             repository_manager: Arc::clone(context.repository_manager()),
-            schedule_command_tx: context.schedule_command_tx().clone(),
+            command_scheduler: context.command_scheduler().clone(),
             poll_interval_ms,
             max_blocks_to_sync,
         }
@@ -382,15 +381,9 @@ impl BlockchainEventListenerCommandHandler {
             log.block_timestamp.unwrap_or_default(),
         ));
 
-        let request = CommandExecutionRequest::new(command);
-
-        if let Err(e) = self.schedule_command_tx.send(request).await {
-            tracing::error!(
-                publish_operation_id = %filter.publishOperationId,
-                error = %e,
-                "Failed to schedule FinalizePublishOperationCommand"
-            );
-        }
+        self.command_scheduler
+            .schedule(CommandExecutionRequest::new(command))
+            .await;
     }
 }
 

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use ::network::NetworkManager;
 use blockchain::BlockchainManager;
 use commands::{
-    command_executor::{CommandExecutionRequest, CommandExecutor},
+    command_executor::{CommandExecutor, CommandScheduler},
     command_registry::default_command_requests,
 };
 use config::ManagersConfig;
@@ -23,10 +23,7 @@ use controllers::{
 };
 use dotenvy::dotenv;
 use repository::RepositoryManager;
-use tokio::{
-    join,
-    sync::mpsc::{Receiver, Sender},
-};
+use tokio::join;
 use triple_store::TripleStoreManager;
 
 use crate::{
@@ -47,7 +44,8 @@ async fn main() {
     display_ot_node_ascii_art();
     let config = Arc::new(config::initialize_configuration());
 
-    let (schedule_command_tx, schedule_command_rx) = initialize_channels();
+    // Create command scheduler channel
+    let (command_scheduler, command_rx) = CommandScheduler::channel();
 
     // Channels for network manager event loop
     let (network_event_tx, network_event_rx) = tokio::sync::mpsc::channel(1024);
@@ -67,7 +65,7 @@ async fn main() {
 
     let context = Arc::new(Context::new(
         config.clone(),
-        schedule_command_tx,
+        command_scheduler,
         Arc::clone(&repository_manager),
         Arc::clone(&network_manager),
         Arc::clone(&blockchain_manager),
@@ -85,7 +83,7 @@ async fn main() {
         initialize_dev_environment(&blockchain_manager).await;
     }
 
-    let command_executor = Arc::new(CommandExecutor::new(Arc::clone(&context)));
+    let command_executor = Arc::new(CommandExecutor::new(Arc::clone(&context), command_rx));
 
     // Schedule default commands (including per-blockchain event listeners)
     let blockchain_ids: Vec<_> = blockchain_manager
@@ -99,16 +97,7 @@ async fn main() {
 
     let (http_api_router, rpc_router) = initialize_controllers(&config.http_api, &context);
 
-    let cloned_command_executor = Arc::clone(&command_executor);
-
-    let schedule_commands_task = tokio::task::spawn(async move {
-        cloned_command_executor
-            .listen_and_schedule_commands(schedule_command_rx)
-            .await
-    });
-
-    let execute_commands_task =
-        tokio::task::spawn(async move { command_executor.listen_and_execute_commands().await });
+    let execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
 
     // Spawn network manager event loop task
     let network_event_loop_task = tokio::task::spawn(async move {
@@ -134,7 +123,6 @@ async fn main() {
         handle_http_events_task,
         network_event_loop_task,
         handle_rpc_events_task,
-        schedule_commands_task,
         execute_commands_task,
     );
 }
@@ -165,16 +153,6 @@ fn display_ot_node_ascii_art() {
     } else {
         tracing::error!("NODE_ENV environment variable not set!");
     }
-}
-
-fn initialize_channels() -> (
-    Sender<CommandExecutionRequest>,
-    Receiver<CommandExecutionRequest>,
-) {
-    let (schedule_command_tx, schedule_command_rx) =
-        tokio::sync::mpsc::channel::<CommandExecutionRequest>(1000);
-
-    (schedule_command_tx, schedule_command_rx)
 }
 
 async fn initialize_managers(
