@@ -53,6 +53,7 @@ pub enum ContractName {
     Profile,
     ParametersStorage,
     KnowledgeCollectionStorage,
+    ParanetsRegistry,
 }
 
 impl ContractName {
@@ -65,6 +66,7 @@ impl ContractName {
             ContractName::Profile => "Profile",
             ContractName::ParametersStorage => "ParametersStorage",
             ContractName::KnowledgeCollectionStorage => "KnowledgeCollectionStorage",
+            ContractName::ParanetsRegistry => "ParanetsRegistry",
         }
     }
 }
@@ -81,6 +83,7 @@ impl FromStr for ContractName {
             "Profile" => Ok(ContractName::Profile),
             "ParametersStorage" => Ok(ContractName::ParametersStorage),
             "KnowledgeCollectionStorage" => Ok(ContractName::KnowledgeCollectionStorage),
+            "ParanetsRegistry" => Ok(ContractName::ParanetsRegistry),
             _ => Err(format!("'{}' is not a valid contract name", s)),
         }
     }
@@ -863,5 +866,94 @@ impl EvmChain {
                 crate::utils::to_hex_string(merkle_root)
             )))
         }
+    }
+
+    // ==================== Paranet Methods ====================
+
+    /// Check if a paranet exists on-chain.
+    pub async fn paranet_exists(&self, paranet_id: B256) -> Result<bool, BlockchainError> {
+        let contracts = self.contracts().await;
+        let registry = contracts.paranets_registry()?;
+
+        // Single return value - result IS the bool directly
+        let exists = registry
+            .paranetExists(paranet_id)
+            .call()
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!("Failed to check paranet exists: {}", e))
+            })?;
+
+        Ok(exists)
+    }
+
+    /// Get the nodes access policy for a paranet.
+    pub async fn get_nodes_access_policy(
+        &self,
+        paranet_id: B256,
+    ) -> Result<crate::AccessPolicy, BlockchainError> {
+        let contracts = self.contracts().await;
+        let registry = contracts.paranets_registry()?;
+
+        // Single return value - result IS the u8 directly
+        let policy = registry
+            .getNodesAccessPolicy(paranet_id)
+            .call()
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!("Failed to get nodes access policy: {}", e))
+            })?;
+
+        Ok(crate::AccessPolicy::from(policy))
+    }
+
+    /// Get the list of permissioned nodes for a paranet.
+    pub async fn get_permissioned_nodes(
+        &self,
+        paranet_id: B256,
+    ) -> Result<Vec<crate::PermissionedNode>, BlockchainError> {
+        let contracts = self.contracts().await;
+        let registry = contracts.paranets_registry()?;
+
+        // Single return value - result IS the Vec directly
+        let nodes = registry
+            .getPermissionedNodes(paranet_id)
+            .call()
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!("Failed to get permissioned nodes: {}", e))
+            })?;
+
+        Ok(nodes
+            .into_iter()
+            .map(|node| crate::PermissionedNode {
+                identity_id: node.identityId.to::<u128>(),
+                node_id: node.nodeId.to_vec(),
+            })
+            .collect())
+    }
+
+    /// Check if a knowledge collection is registered in a paranet.
+    pub async fn is_knowledge_collection_registered(
+        &self,
+        paranet_id: B256,
+        knowledge_collection_id: B256,
+    ) -> Result<bool, BlockchainError> {
+        let contracts = self.contracts().await;
+        let registry = contracts.paranets_registry()?;
+
+        // Single return value - result IS the bool directly
+        let registered = registry
+            .isKnowledgeCollectionRegistered(paranet_id, knowledge_collection_id)
+            .call()
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!(
+                    "Failed to check knowledge collection registration: {}",
+                    e
+                ))
+            })?;
+
+        Ok(registered)
     }
 }

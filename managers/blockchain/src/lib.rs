@@ -22,8 +22,36 @@ pub type NewAssetStorageFilter = Hub::NewAssetStorage;
 pub type AssetStorageChangedFilter = Hub::AssetStorageChanged;
 pub type ParameterChangedFilter = ParametersStorage::ParameterChanged;
 pub type KnowledgeCollectionCreatedFilter = KnowledgeCollectionStorage::KnowledgeCollectionCreated;
-pub use alloy::primitives::{Address, B256 as H256, U256};
+pub use alloy::primitives::{Address, B256, B256 as H256, U256};
 use serde::{Deserialize, Serialize};
+
+/// Access policy for paranet nodes (matches on-chain enum).
+/// OPEN = 0: Any node can participate
+/// PERMISSIONED = 1: Only approved nodes can participate
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AccessPolicy {
+    Open = 0,
+    Permissioned = 1,
+}
+
+impl From<u8> for AccessPolicy {
+    fn from(value: u8) -> Self {
+        match value {
+            1 => AccessPolicy::Permissioned,
+            _ => AccessPolicy::Open,
+        }
+    }
+}
+
+/// A node permitted to participate in a permissioned paranet.
+#[derive(Debug, Clone)]
+pub struct PermissionedNode {
+    /// The node's identity ID on-chain
+    pub identity_id: u128,
+    /// The node's peer ID as bytes
+    pub node_id: Vec<u8>,
+}
 
 use crate::{
     blockchains::blockchain_creator::sharding_table::ShardingTableLib::NodeInfo,
@@ -666,6 +694,67 @@ impl BlockchainManager {
         })?;
         blockchain_impl
             .get_knowledge_collection_merkle_root(knowledge_collection_id)
+            .await
+    }
+
+    // ==================== Paranet Methods ====================
+
+    /// Check if a paranet exists on-chain.
+    pub async fn paranet_exists(
+        &self,
+        blockchain: &BlockchainId,
+        paranet_id: B256,
+    ) -> Result<bool, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl.paranet_exists(paranet_id).await
+    }
+
+    /// Get the nodes access policy for a paranet.
+    pub async fn get_nodes_access_policy(
+        &self,
+        blockchain: &BlockchainId,
+        paranet_id: B256,
+    ) -> Result<AccessPolicy, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl.get_nodes_access_policy(paranet_id).await
+    }
+
+    /// Get the list of permissioned nodes for a paranet.
+    pub async fn get_permissioned_nodes(
+        &self,
+        blockchain: &BlockchainId,
+        paranet_id: B256,
+    ) -> Result<Vec<PermissionedNode>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl.get_permissioned_nodes(paranet_id).await
+    }
+
+    /// Check if a knowledge collection is registered in a paranet.
+    pub async fn is_knowledge_collection_registered(
+        &self,
+        blockchain: &BlockchainId,
+        paranet_id: B256,
+        knowledge_collection_id: B256,
+    ) -> Result<bool, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
+            .is_knowledge_collection_registered(paranet_id, knowledge_collection_id)
             .await
     }
 }

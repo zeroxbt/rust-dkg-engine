@@ -66,6 +66,16 @@ sol!(
     "../../abi/Token.json"
 );
 
+pub mod paranets_registry {
+    use alloy::sol;
+
+    sol!(
+        #[sol(rpc)]
+        ParanetsRegistry,
+        "../../abi/ParanetsRegistry.json"
+    );
+}
+
 use std::{num::NonZeroUsize, sync::Arc};
 
 use alloy::{
@@ -82,6 +92,7 @@ use alloy::{
     },
 };
 pub use knowledge_collection_storage::KnowledgeCollectionStorage;
+pub use paranets_registry::ParanetsRegistry;
 pub use sharding_table::ShardingTable;
 pub use sharding_table_storage::ShardingTableStorage;
 use tower::ServiceBuilder;
@@ -102,6 +113,7 @@ pub struct Contracts {
     sharding_table: ShardingTable::ShardingTableInstance<BlockchainProvider>,
     sharding_table_storage: ShardingTableStorage::ShardingTableStorageInstance<BlockchainProvider>,
     token: Token::TokenInstance<BlockchainProvider>,
+    paranets_registry: Option<ParanetsRegistry::ParanetsRegistryInstance<BlockchainProvider>>,
 }
 
 impl Contracts {
@@ -152,6 +164,15 @@ impl Contracts {
         })
     }
 
+    pub fn paranets_registry(
+        &self,
+    ) -> Result<&ParanetsRegistry::ParanetsRegistryInstance<BlockchainProvider>, BlockchainError>
+    {
+        self.paranets_registry.as_ref().ok_or_else(|| {
+            BlockchainError::Custom("ParanetsRegistry contract is not initialized".to_string())
+        })
+    }
+
     pub fn get_address(&self, contract_name: &ContractName) -> Result<Address, BlockchainError> {
         match contract_name {
             ContractName::Hub => Ok(*self.hub.address()),
@@ -167,6 +188,15 @@ impl Contracts {
                 .ok_or_else(|| {
                     BlockchainError::Custom(
                         "KnowledgeCollectionStorage contract is not initialized".to_string(),
+                    )
+                }),
+            ContractName::ParanetsRegistry => self
+                .paranets_registry
+                .as_ref()
+                .map(|registry| *registry.address())
+                .ok_or_else(|| {
+                    BlockchainError::Custom(
+                        "ParanetsRegistry contract is not initialized".to_string(),
                     )
                 }),
         }
@@ -204,6 +234,10 @@ impl Contracts {
                     contract_address,
                     provider.clone(),
                 ));
+            }
+            ContractName::ParanetsRegistry => {
+                self.paranets_registry =
+                    Some(ParanetsRegistry::new(contract_address, provider.clone()));
             }
         };
 
@@ -396,5 +430,14 @@ pub(crate) async fn initialize_contracts(
             Address::from(hub.getContractAddress("Token".to_string()).call().await?.0),
             provider.clone(),
         ),
+        paranets_registry: Some(ParanetsRegistry::new(
+            Address::from(
+                hub.getContractAddress("ParanetsRegistry".to_string())
+                    .call()
+                    .await?
+                    .0,
+            ),
+            provider.clone(),
+        )),
     })
 }
