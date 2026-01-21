@@ -48,18 +48,23 @@ impl<S: Clone + Send + Sync> ContextStore<S> {
 
     /// Get context for an operation (does not remove it).
     pub fn get(&self, operation_id: &Uuid) -> Option<S> {
-        self.contexts.get(operation_id).map(|entry| entry.state.clone())
+        self.contexts
+            .get(operation_id)
+            .map(|entry| entry.state.clone())
     }
 
     /// Remove and return context for an operation.
     pub fn remove(&self, operation_id: &Uuid) -> Option<S> {
-        self.contexts.remove(operation_id).map(|(_, entry)| entry.state)
+        self.contexts
+            .remove(operation_id)
+            .map(|(_, entry)| entry.state)
     }
 
     /// Clean up expired contexts.
     fn cleanup_expired(&self) {
         let now = Instant::now();
-        self.contexts.retain(|_, entry| now.duration_since(entry.created_at) < self.ttl);
+        self.contexts
+            .retain(|_, entry| now.duration_since(entry.created_at) < self.ttl);
     }
 
     /// Get the number of stored contexts (for debugging/monitoring).

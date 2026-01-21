@@ -60,7 +60,9 @@ impl TripleStoreBackend for OxigraphBackend {
         // Do a simple query to verify it's working
         let result = SparqlEvaluator::new()
             .parse_query("ASK { ?s ?p ?o }")
-            .map_err(|e| TripleStoreError::Other(format!("Health check query parse failed: {}", e)))?
+            .map_err(|e| {
+                TripleStoreError::Other(format!("Health check query parse failed: {}", e))
+            })?
             .on_store(&self.store)
             .execute()
             .map_err(|e| TripleStoreError::Other(format!("Health check query failed: {}", e)))?;
@@ -95,11 +97,11 @@ impl TripleStoreBackend for OxigraphBackend {
 
     async fn update(&self, query: &str, _timeout_ms: u64) -> Result<()> {
         // Parse the query first (CPU-bound, but fast)
-        let prepared = SparqlEvaluator::new()
-            .parse_update(query)
-            .map_err(|e| TripleStoreError::InvalidQuery {
+        let prepared = SparqlEvaluator::new().parse_update(query).map_err(|e| {
+            TripleStoreError::InvalidQuery {
                 reason: format!("Failed to parse SPARQL UPDATE: {}", e),
-            })?;
+            }
+        })?;
 
         // Execute on blocking thread pool since Oxigraph's update involves disk I/O
         let store = self.store.clone();
@@ -117,11 +119,11 @@ impl TripleStoreBackend for OxigraphBackend {
 
     async fn construct(&self, query: &str, _timeout_ms: u64) -> Result<String> {
         // Parse the query
-        let prepared = SparqlEvaluator::new()
-            .parse_query(query)
-            .map_err(|e| TripleStoreError::InvalidQuery {
+        let prepared = SparqlEvaluator::new().parse_query(query).map_err(|e| {
+            TripleStoreError::InvalidQuery {
                 reason: format!("Failed to parse SPARQL CONSTRUCT: {}", e),
-            })?;
+            }
+        })?;
 
         // Execute on blocking thread pool
         let store = self.store.clone();
@@ -158,11 +160,11 @@ impl TripleStoreBackend for OxigraphBackend {
 
     async fn ask(&self, query: &str, _timeout_ms: u64) -> Result<bool> {
         // Parse the query
-        let prepared = SparqlEvaluator::new()
-            .parse_query(query)
-            .map_err(|e| TripleStoreError::InvalidQuery {
+        let prepared = SparqlEvaluator::new().parse_query(query).map_err(|e| {
+            TripleStoreError::InvalidQuery {
                 reason: format!("Failed to parse SPARQL ASK: {}", e),
-            })?;
+            }
+        })?;
 
         // Execute on blocking thread pool
         let store = self.store.clone();

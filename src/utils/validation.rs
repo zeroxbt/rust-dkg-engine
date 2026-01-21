@@ -1,5 +1,5 @@
 use alloy::{
-    primitives::{hex, keccak256, B256, U256},
+    primitives::{B256, U256, hex, keccak256},
     sol_types::SolValue,
 };
 
