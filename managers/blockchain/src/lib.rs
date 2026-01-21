@@ -299,7 +299,7 @@ pub struct BlockchainManager {
 }
 
 impl BlockchainManager {
-    pub async fn new(config: &BlockchainManagerConfig) -> Result<Self, BlockchainError> {
+    pub async fn connect(config: &BlockchainManagerConfig) -> Result<Self, BlockchainError> {
         let mut blockchains = HashMap::new();
 
         for blockchain in config.0.iter() {

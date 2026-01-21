@@ -134,7 +134,7 @@ pub struct KeyValueStoreManager {
 
 impl KeyValueStoreManager {
     /// Open or create a key-value store at the given path.
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, KeyValueStoreError> {
+    pub fn connect(path: impl AsRef<Path>) -> Result<Self, KeyValueStoreError> {
         let db = Database::create(path)?;
         Ok(Self { db: Arc::new(db) })
     }
@@ -147,7 +147,7 @@ impl KeyValueStoreManager {
     /// # Example
     ///
     /// ```ignore
-    /// let manager = KeyValueStoreManager::open("data.redb")?;
+    /// let manager = KeyValueStoreManager::connect("data.redb")?;
     /// let results_table: Table<MyResult> = manager.table("operation_results")?;
     /// results_table.store(uuid, &my_result)?;
     /// ```
@@ -185,7 +185,7 @@ mod tests {
     fn test_store_and_get() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.redb");
-        let manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let manager = KeyValueStoreManager::connect(&db_path).unwrap();
 
         let table: Table<TestData> = manager.table("test_table").unwrap();
 
@@ -205,7 +205,7 @@ mod tests {
     fn test_get_nonexistent() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.redb");
-        let manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let manager = KeyValueStoreManager::connect(&db_path).unwrap();
 
         let table: Table<TestData> = manager.table("test_table").unwrap();
 
@@ -218,7 +218,7 @@ mod tests {
     fn test_remove() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.redb");
-        let manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let manager = KeyValueStoreManager::connect(&db_path).unwrap();
 
         let table: Table<TestData> = manager.table("test_table").unwrap();
 
@@ -244,7 +244,7 @@ mod tests {
     fn test_update() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.redb");
-        let manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let manager = KeyValueStoreManager::connect(&db_path).unwrap();
 
         let table: Table<TestData> = manager.table("test_table").unwrap();
 
@@ -284,7 +284,7 @@ mod tests {
     fn test_update_creates_default() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.redb");
-        let manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let manager = KeyValueStoreManager::connect(&db_path).unwrap();
 
         let table: Table<TestData> = manager.table("test_table").unwrap();
 
@@ -313,7 +313,7 @@ mod tests {
     fn test_multiple_tables() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.redb");
-        let manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let manager = KeyValueStoreManager::connect(&db_path).unwrap();
 
         let table1: Table<TestData> = manager.table("table1").unwrap();
         let table2: Table<String> = manager.table("table2").unwrap();

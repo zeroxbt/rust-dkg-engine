@@ -147,7 +147,7 @@ mod tests {
     fn test_store_and_get() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.redb");
-        let kv_store_manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let kv_store_manager = KeyValueStoreManager::connect(&db_path).unwrap();
         let service = PendingStorageService::new(&kv_store_manager).unwrap();
 
         let op_id = Uuid::new_v4();
@@ -169,7 +169,7 @@ mod tests {
     fn test_get_nonexistent() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.redb");
-        let kv_store_manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let kv_store_manager = KeyValueStoreManager::connect(&db_path).unwrap();
         let service = PendingStorageService::new(&kv_store_manager).unwrap();
 
         let op_id = Uuid::new_v4();
@@ -181,7 +181,7 @@ mod tests {
     fn test_remove() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.redb");
-        let kv_store_manager = KeyValueStoreManager::open(&db_path).unwrap();
+        let kv_store_manager = KeyValueStoreManager::connect(&db_path).unwrap();
         let service = PendingStorageService::new(&kv_store_manager).unwrap();
 
         let op_id = Uuid::new_v4();

@@ -39,7 +39,7 @@ impl RepositoryManager {
     /// - Database connection fails
     /// - Database creation fails
     /// - Migrations fail
-    pub async fn new(config: &RepositoryManagerConfig) -> Result<Self, RepositoryError> {
+    pub async fn connect(config: &RepositoryManagerConfig) -> Result<Self, RepositoryError> {
         // Connect to MySQL server
         let conn = Database::connect(config.root_connection_string()).await?;
 

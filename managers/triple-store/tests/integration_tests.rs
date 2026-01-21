@@ -38,7 +38,7 @@ fn blazegraph_config() -> TripleStoreManagerConfig {
 #[tokio::test]
 async fn test_blazegraph_health_check() {
     let config = blazegraph_config();
-    let manager = match TripleStoreManager::new(&config).await {
+    let manager = match TripleStoreManager::connect(&config).await {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Skipping test - Blazegraph not available: {e}");
@@ -85,7 +85,7 @@ async fn test_oxigraph_insert() {
 #[tokio::test]
 async fn test_ensure_repository() {
     let config = test_config();
-    let manager = match TripleStoreManager::new(&config).await {
+    let manager = match TripleStoreManager::connect(&config).await {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Skipping test - Blazegraph not available: {e}");
@@ -106,7 +106,7 @@ async fn test_ensure_repository() {
 #[tokio::test]
 async fn test_insert_and_get_knowledge_collection() {
     let config = test_config();
-    let manager = match TripleStoreManager::new(&config).await {
+    let manager = match TripleStoreManager::connect(&config).await {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Skipping test - Blazegraph not available: {e}");
@@ -167,7 +167,7 @@ async fn test_insert_and_get_knowledge_collection() {
 #[tokio::test]
 async fn test_knowledge_collection_exists() {
     let config = test_config();
-    let manager = match TripleStoreManager::new(&config).await {
+    let manager = match TripleStoreManager::connect(&config).await {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Skipping test - Blazegraph not available: {e}");
@@ -209,7 +209,7 @@ async fn test_knowledge_collection_exists() {
 #[tokio::test]
 async fn test_metadata_operations() {
     let config = test_config();
-    let manager = match TripleStoreManager::new(&config).await {
+    let manager = match TripleStoreManager::connect(&config).await {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Skipping test - Blazegraph not available: {e}");
@@ -265,7 +265,7 @@ async fn test_metadata_operations() {
 #[tokio::test]
 async fn test_drop_named_graph() {
     let config = test_config();
-    let manager = match TripleStoreManager::new(&config).await {
+    let manager = match TripleStoreManager::connect(&config).await {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Skipping test - Blazegraph not available: {e}");
@@ -315,7 +315,7 @@ async fn test_drop_named_graph() {
 #[tokio::test]
 async fn test_raw_sparql_queries() {
     let config = test_config();
-    let manager = match TripleStoreManager::new(&config).await {
+    let manager = match TripleStoreManager::connect(&config).await {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Skipping test - Blazegraph not available: {e}");

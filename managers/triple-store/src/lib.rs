@@ -120,7 +120,7 @@ impl TripleStoreManager {
     ///
     /// Creates the appropriate backend based on configuration and ensures
     /// the repository/store is ready.
-    pub async fn new(config: &TripleStoreManagerConfig) -> Result<Self> {
+    pub async fn connect(config: &TripleStoreManagerConfig) -> Result<Self> {
         let backend: Box<dyn TripleStoreBackend> = match config.backend {
             TripleStoreBackendType::Blazegraph => Box::new(BlazegraphBackend::new(config.clone())?),
             TripleStoreBackendType::Oxigraph => {

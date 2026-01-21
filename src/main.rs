@@ -122,7 +122,7 @@ async fn main() {
     });
 
     // Spawn RPC router task to handle network events
-    let handle_network_events_task = tokio::task::spawn(async move {
+    let handle_rpc_events_task = tokio::task::spawn(async move {
         rpc_router
             .listen_and_handle_network_events(network_event_rx)
             .await
@@ -133,7 +133,7 @@ async fn main() {
     let _ = join!(
         handle_http_events_task,
         network_event_loop_task,
-        handle_network_events_task,
+        handle_rpc_events_task,
         schedule_commands_task,
         execute_commands_task,
     );
@@ -189,13 +189,17 @@ async fn initialize_managers(
     // Application creates its own protocol behaviours
     let app_protocols = NetworkProtocols::new();
     let network_manager = Arc::new(
-        NetworkManager::new(&config.network, app_protocols)
+        NetworkManager::connect(&config.network, app_protocols)
             .await
             .expect("Failed to initialize network manager"),
     );
 
-    let repository_manager = Arc::new(RepositoryManager::new(&config.repository).await.unwrap());
-    let mut blockchain_manager = BlockchainManager::new(&config.blockchain)
+    let repository_manager = Arc::new(
+        RepositoryManager::connect(&config.repository)
+            .await
+            .unwrap(),
+    );
+    let mut blockchain_manager = BlockchainManager::connect(&config.blockchain)
         .await
         .expect("Failed to initialize blockchain manager");
     blockchain_manager
@@ -205,7 +209,7 @@ async fn initialize_managers(
 
     let blockchain_manager = Arc::new(blockchain_manager);
     let triple_store_manager = Arc::new(
-        TripleStoreManager::new(&config.triple_store)
+        TripleStoreManager::connect(&config.triple_store)
             .await
             .expect("Failed to initialize triple store manager"),
     );
@@ -227,10 +231,10 @@ fn initialize_services(
     Arc<PendingStorageService>,
 ) {
     // Create shared key-value store manager
-    let kv_store_manager = key_value_store::KeyValueStoreManager::open(
+    let kv_store_manager = key_value_store::KeyValueStoreManager::connect(
         config.app_data_path.join("key_value_store.redb"),
     )
-    .expect("Failed to open key-value store manager");
+    .expect("Failed to connect to key-value store manager");
 
     let pending_storage_service = Arc::new(
         PendingStorageService::new(&kv_store_manager)

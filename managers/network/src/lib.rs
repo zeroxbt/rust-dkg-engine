@@ -104,7 +104,7 @@ where
     /// - Bootstrap node parsing fails
     /// - Transport creation fails
     /// - Swarm building fails
-    pub async fn new(config: &NetworkManagerConfig, behaviour: B) -> Result<Self, NetworkError> {
+    pub async fn connect(config: &NetworkManagerConfig, behaviour: B) -> Result<Self, NetworkError> {
         // Load or generate keypair
         let key = KeyManager::generate_or_load_key(&config.data_folder_path).await?;
 
