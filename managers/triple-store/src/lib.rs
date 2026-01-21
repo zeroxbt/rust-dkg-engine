@@ -531,7 +531,8 @@ WHERE {{
 
     /// Get knowledge collection from named graphs using token ID range.
     ///
-    /// Uses VALUES clause for efficient querying (matching JS implementation).
+    /// Uses VALUES clause for efficient querying with pagination to handle
+    /// large collections (matching JS implementation which uses MAX_TOKEN_ID_PER_GET_PAGE = 50).
     /// Returns N-Triples as lines for the specified visibility.
     pub async fn get_knowledge_collection_named_graphs(
         &self,
@@ -541,6 +542,9 @@ WHERE {{
         burned: &[u64],
         visibility: Visibility,
     ) -> Result<Vec<String>> {
+        // Matches JS MAX_TOKEN_ID_PER_GET_PAGE constant
+        const MAX_TOKEN_ID_PER_PAGE: u64 = 50;
+
         let suffix = match visibility {
             Visibility::Public => "public",
             Visibility::Private => "private",
@@ -551,19 +555,23 @@ WHERE {{
             }
         };
 
-        // Build list of named graphs
-        let named_graphs: Vec<String> = (start_token_id..=end_token_id)
-            .filter(|id| !burned.contains(id))
-            .map(|id| format!("<{}/{}/{}>", kc_ual, id, suffix))
-            .collect();
+        let mut all_triples = Vec::new();
+        let mut page_start = start_token_id;
 
-        if named_graphs.is_empty() {
-            return Ok(Vec::new());
-        }
+        // Paginate through token IDs in chunks of MAX_TOKEN_ID_PER_PAGE
+        while page_start <= end_token_id {
+            let page_end = (page_start + MAX_TOKEN_ID_PER_PAGE - 1).min(end_token_id);
 
-        // Use VALUES clause like JS implementation
-        let query = format!(
-            r#"PREFIX schema: <http://schema.org/>
+            // Build list of named graphs for this page, excluding burned tokens
+            let named_graphs: Vec<String> = (page_start..=page_end)
+                .filter(|id| !burned.contains(id))
+                .map(|id| format!("<{}/{}/{}>", kc_ual, id, suffix))
+                .collect();
+
+            if !named_graphs.is_empty() {
+                // Use VALUES clause like JS implementation
+                let query = format!(
+                    r#"PREFIX schema: <http://schema.org/>
 CONSTRUCT {{
     ?s ?p ?o .
 }}
@@ -575,19 +583,26 @@ WHERE {{
         {}
     }}
 }}"#,
-            named_graphs.join("\n        ")
-        );
+                    named_graphs.join("\n        ")
+                );
 
-        let nquads = self
-            .backend
-            .construct(&query, self.config.timeouts.query_ms)
-            .await?;
+                let nquads = self
+                    .backend
+                    .construct(&query, self.config.timeouts.query_ms)
+                    .await?;
 
-        Ok(nquads
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(String::from)
-            .collect())
+                all_triples.extend(
+                    nquads
+                        .lines()
+                        .filter(|line| !line.trim().is_empty())
+                        .map(String::from),
+                );
+            }
+
+            page_start = page_end + 1;
+        }
+
+        Ok(all_triples)
     }
 
     /// Check if a knowledge asset exists in the triple store.
