@@ -23,7 +23,7 @@ use controllers::{
 };
 use dotenvy::dotenv;
 use repository::RepositoryManager;
-use tokio::join;
+use tokio::select;
 use triple_store::TripleStoreManager;
 
 use crate::{
@@ -119,12 +119,23 @@ async fn main() {
     let handle_http_events_task =
         tokio::task::spawn(async move { http_api_router.listen_and_handle_http_requests().await });
 
-    let _ = join!(
-        handle_http_events_task,
-        network_event_loop_task,
-        handle_rpc_events_task,
-        execute_commands_task,
-    );
+    select! {
+        result = handle_http_events_task => {
+            tracing::error!("HTTP task exited unexpectedly: {:?}", result);
+        }
+        result = network_event_loop_task => {
+            tracing::error!("Network task exited unexpectedly: {:?}", result);
+        }
+        result = handle_rpc_events_task => {
+            tracing::error!("RPC task exited unexpectedly: {:?}", result);
+        }
+        result = execute_commands_task => {
+            tracing::error!("Command executor exited unexpectedly: {:?}", result);
+        }
+    }
+
+    tracing::error!("Critical task failed, shutting down");
+    std::process::exit(1);
 }
 
 fn initialize_logger() {
