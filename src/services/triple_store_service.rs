@@ -494,21 +494,27 @@ mod tests {
 
         let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset);
 
-        // Expected: 3 KAs (person/1, person/2, organization/1)
+        // Expected: 3 KAs sorted alphabetically by subject:
+        // 1. organization/1 (comes first alphabetically)
+        // 2. person/1
+        // 3. person/2
         assert_eq!(kas.len(), 3);
 
+        // First KA: organization/1 (alphabetically first)
         assert_eq!(kas[0].ual(), "did:dkg:otp:2043/0xdef/5/1");
-        assert_eq!(kas[0].public_triples().len(), 3); // person/1 has 3 triples
-        assert!(kas[0].private_triples().is_some());
-        assert_eq!(kas[0].private_triples().unwrap().len(), 1); // person/1 has 1 private
+        assert_eq!(kas[0].public_triples().len(), 1); // organization/1 has 1 triple
+        assert!(kas[0].private_triples().is_none()); // organization/1 has no private
 
+        // Second KA: person/1
         assert_eq!(kas[1].ual(), "did:dkg:otp:2043/0xdef/5/2");
-        assert_eq!(kas[1].public_triples().len(), 1); // person/2 has 1 triple
+        assert_eq!(kas[1].public_triples().len(), 3); // person/1 has 3 triples
         assert!(kas[1].private_triples().is_some());
-        assert_eq!(kas[1].private_triples().unwrap().len(), 1); // person/2 has 1 private
+        assert_eq!(kas[1].private_triples().unwrap().len(), 1); // person/1 has 1 private
 
+        // Third KA: person/2
         assert_eq!(kas[2].ual(), "did:dkg:otp:2043/0xdef/5/3");
-        assert_eq!(kas[2].public_triples().len(), 1); // organization/1 has 1 triple
-        assert!(kas[2].private_triples().is_none()); // organization/1 has no private
+        assert_eq!(kas[2].public_triples().len(), 1); // person/2 has 1 triple
+        assert!(kas[2].private_triples().is_some());
+        assert_eq!(kas[2].private_triples().unwrap().len(), 1); // person/2 has 1 private
     }
 }
