@@ -13,8 +13,8 @@ use crate::{
     controllers::rpc_controller::{NetworkProtocols, messages::StoreRequestData},
     operations::{PublishOperation, PublishOperationResult, SignatureData},
     services::{
-        BatchSender, pending_storage_service::PendingStorageService,
-        operation::OperationService as GenericOperationService,
+        BatchSender, operation::OperationService as GenericOperationService,
+        pending_storage_service::PendingStorageService,
     },
 };
 
@@ -334,10 +334,12 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
             }
         }
 
-        if let Err(e) = self
-            .pending_storage_service
-            .store_dataset(operation_id, dataset_root, dataset, &my_peer_id.to_base58())
-        {
+        if let Err(e) = self.pending_storage_service.store_dataset(
+            operation_id,
+            dataset_root,
+            dataset,
+            &my_peer_id.to_base58(),
+        ) {
             tracing::error!(
                 operation_id = %operation_id,
                 error = %e,

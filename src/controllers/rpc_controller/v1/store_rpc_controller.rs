@@ -16,10 +16,7 @@ use crate::{
     context::Context,
     controllers::rpc_controller::messages::{StoreRequestData, StoreResponseData},
     operations::{PublishOperation, PublishOperationResult, SignatureData},
-    services::{
-        ResponseChannels,
-        operation::OperationService as GenericOperationService,
-    },
+    services::{ResponseChannels, operation::OperationService as GenericOperationService},
 };
 
 pub struct StoreRpcController {

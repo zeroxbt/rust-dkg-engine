@@ -332,15 +332,12 @@ impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommand
             }
         };
 
-        if let Err(e) = self
-            .pending_storage_service
-            .store_dataset(
-                operation_id,
-                dataset_root,
-                dataset,
-                &remote_peer_id.to_base58(),
-            )
-        {
+        if let Err(e) = self.pending_storage_service.store_dataset(
+            operation_id,
+            dataset_root,
+            dataset,
+            &remote_peer_id.to_base58(),
+        ) {
             tracing::error!(
                 operation_id = %operation_id,
                 error = %e,

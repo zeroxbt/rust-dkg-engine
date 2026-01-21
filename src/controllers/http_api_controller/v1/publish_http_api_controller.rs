@@ -40,7 +40,8 @@ impl PublishHttpApiController {
 
                 tracing::info!(operation_id = %operation_id, "Publish request received");
 
-                // Pass user-provided value to command; command handler will determine effective value
+                // Pass user-provided value to command; command handler will determine effective
+                // value
                 let command = Command::SendStoreRequests(SendStoreRequestsCommandData::new(
                     operation_id,
                     req.blockchain,

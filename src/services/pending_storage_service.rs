@@ -92,7 +92,10 @@ impl PendingStorageService {
     }
 
     /// Retrieve a dataset from pending storage.
-    pub fn get_dataset(&self, operation_id: Uuid) -> Result<PendingStorageData, PendingStorageError> {
+    pub fn get_dataset(
+        &self,
+        operation_id: Uuid,
+    ) -> Result<PendingStorageData, PendingStorageError> {
         match self.table.get(operation_id)? {
             Some(data) => {
                 tracing::debug!(

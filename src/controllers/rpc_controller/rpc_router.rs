@@ -133,8 +133,9 @@ impl RpcRouter {
                             let operation_service = self.store_controller.operation_service();
 
                             // Look up operation_id and mark as timed out to ignore late responses
-                            if let Some((operation_id, _peer)) =
-                                operation_service.request_tracker().handle_timeout(request_id)
+                            if let Some((operation_id, _peer)) = operation_service
+                                .request_tracker()
+                                .handle_timeout(request_id)
                             {
                                 // Record as NACK (failed response)
                                 if let Err(e) =
@@ -239,8 +240,9 @@ impl RpcRouter {
                             let operation_service = self.get_controller.operation_service();
 
                             // Look up operation_id and mark as timed out to ignore late responses
-                            if let Some((operation_id, _peer)) =
-                                operation_service.request_tracker().handle_timeout(request_id)
+                            if let Some((operation_id, _peer)) = operation_service
+                                .request_tracker()
+                                .handle_timeout(request_id)
                             {
                                 // Record as NACK (failed response)
                                 if let Err(e) =

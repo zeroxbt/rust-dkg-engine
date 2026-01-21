@@ -170,7 +170,6 @@ impl FileService {
             Err(e) => Err(FileServiceError::Io(e)),
         }
     }
-
 }
 
 #[cfg(test)]

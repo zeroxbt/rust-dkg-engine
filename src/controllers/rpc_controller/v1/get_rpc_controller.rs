@@ -188,7 +188,10 @@ impl GetRpcController {
                 metadata.clone(),
             );
 
-            match self.get_operation_service.store_result(operation_id, &get_result) {
+            match self
+                .get_operation_service
+                .store_result(operation_id, &get_result)
+            {
                 Ok(()) => true,
                 Err(e) => {
                     tracing::error!(

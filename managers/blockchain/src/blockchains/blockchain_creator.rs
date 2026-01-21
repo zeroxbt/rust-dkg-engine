@@ -133,7 +133,9 @@ impl Contracts {
         &self.token
     }
 
-    pub fn parameters_storage(&self) -> &ParametersStorage::ParametersStorageInstance<BlockchainProvider> {
+    pub fn parameters_storage(
+        &self,
+    ) -> &ParametersStorage::ParametersStorageInstance<BlockchainProvider> {
         &self.parameters_storage
     }
 

@@ -247,7 +247,10 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                 };
                 let get_result = GetOperationResult::new(assertion, result.metadata.clone());
 
-                if let Err(e) = self.get_operation_service.store_result(operation_id, &get_result) {
+                if let Err(e) = self
+                    .get_operation_service
+                    .store_result(operation_id, &get_result)
+                {
                     let error_message = format!("Failed to store local result: {}", e);
                     tracing::error!(operation_id = %operation_id, error = %e, "Failed to store local result");
                     self.get_operation_service
@@ -257,7 +260,11 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                 }
 
                 // Mark operation as completed
-                if let Err(e) = self.get_operation_service.mark_completed(operation_id).await {
+                if let Err(e) = self
+                    .get_operation_service
+                    .mark_completed(operation_id)
+                    .await
+                {
                     tracing::error!(
                         operation_id = %operation_id,
                         error = %e,

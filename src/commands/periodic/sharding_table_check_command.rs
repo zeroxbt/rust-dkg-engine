@@ -86,7 +86,9 @@ impl ShardingTableCheckCommandHandler {
             let remaining = sharding_table_length - total_nodes_processed;
             let slice_start = if page_index == 0 { 0 } else { 1 };
             // Add 1 to account for the overlapping node when slice_start == 1
-            let nodes_to_fetch = remaining.saturating_add(slice_start as u128).min(SHARDING_TABLE_PAGE_SIZE);
+            let nodes_to_fetch = remaining
+                .saturating_add(slice_start as u128)
+                .min(SHARDING_TABLE_PAGE_SIZE);
 
             let nodes = self
                 .blockchain_manager
