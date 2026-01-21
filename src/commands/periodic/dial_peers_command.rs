@@ -33,32 +33,49 @@ pub struct DialPeersCommandData;
 
 impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
     async fn execute(&self, _: &DialPeersCommandData) -> CommandExecutionResult {
-        let peer_id = self.network_manager.peer_id().to_base58();
+        let own_peer_id = self.network_manager.peer_id().to_base58();
 
-        let potential_peer_ids = self
+        let potential_peers = match self
             .repository_manager
             .shard_repository()
             .get_peers_to_dial(DIAL_CONCURRENCY, MIN_DIAL_FREQUENCY_PER_PEER_MS)
             .await
-            .unwrap();
+        {
+            Ok(peers) => peers,
+            Err(e) => {
+                tracing::error!(error = %e, "failed to fetch peers to dial");
+                return CommandExecutionResult::Repeat {
+                    delay_ms: DIAL_PEERS_COMMAND_PERIOD_MS,
+                };
+            }
+        };
 
-        let peer_ids: Vec<_> = potential_peer_ids
+        let peers: Vec<PeerId> = potential_peers
             .into_iter()
-            .filter(|p| p != &peer_id)
+            .filter(|p| p != &own_peer_id)
+            .filter_map(|peer_id| match peer_id.parse::<PeerId>() {
+                Ok(id) => {
+                    tracing::trace!(%peer_id, "dialing peer");
+                    Some(id)
+                }
+                Err(e) => {
+                    tracing::warn!(%peer_id, error = %e, "invalid peer id");
+                    None
+                }
+            })
             .collect();
 
-        if !peer_ids.is_empty() {
-            tracing::info!("Dialing {} remote peers", peer_ids.len());
+        if peers.is_empty() {
+            tracing::debug!("no peers to dial");
+            return CommandExecutionResult::Repeat {
+                delay_ms: DIAL_PEERS_COMMAND_PERIOD_MS,
+            };
+        }
 
-            for peer_id in &peer_ids {
-                tracing::trace!("Dialing peer: {}...", peer_id);
-            }
+        tracing::info!(count = peers.len(), "dialing remote peers");
 
-            let peers: Vec<PeerId> = peer_ids
-                .iter()
-                .map(|peer_id| peer_id.parse::<PeerId>().unwrap()) // TODO: Consider handling this unwrap.
-                .collect();
-            let _ = self.network_manager.dial_peers(peers).await;
+        if let Err(e) = self.network_manager.dial_peers(peers).await {
+            tracing::error!(error = %e, "failed to dial peers");
         }
 
         CommandExecutionResult::Repeat {
