@@ -14,8 +14,7 @@ use crate::{
 };
 
 const SHARDING_TABLE_CHECK_COMMAND_PERIOD_MS: i64 = 10_000;
-// TODO: small value chosen for testing, this will be updated after testing. Do not update for now.
-const SHARDING_TABLE_PAGE_SIZE: u128 = 2;
+const SHARDING_TABLE_PAGE_SIZE: u128 = 100;
 
 pub struct ShardingTableCheckCommandHandler {
     repository_manager: Arc<RepositoryManager>,
