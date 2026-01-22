@@ -11,6 +11,7 @@ app_data_path = "data"
 # HTTP API Configuration
 # ============================================
 [http_api]
+enabled = true  # Set to false to disable the HTTP API server
 port = 8900
 
 # Rate limiter configuration

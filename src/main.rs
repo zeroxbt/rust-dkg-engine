@@ -127,8 +127,16 @@ async fn main() {
             .listen_and_handle_network_events(network_event_rx)
             .await
     });
-    let handle_http_events_task =
-        tokio::task::spawn(async move { http_api_router.listen_and_handle_http_requests().await });
+
+    // Spawn HTTP API task if enabled
+    let handle_http_events_task = tokio::task::spawn(async move {
+        if let Some(router) = http_api_router {
+            router.listen_and_handle_http_requests().await;
+        } else {
+            // HTTP API disabled - wait forever (this task won't cause shutdown)
+            std::future::pending::<()>().await;
+        }
+    });
 
     select! {
         result = handle_http_events_task => {
@@ -278,8 +286,14 @@ fn initialize_services(
 fn initialize_controllers(
     http_api_config: &HttpApiConfig,
     context: &Arc<Context>,
-) -> (HttpApiRouter, RpcRouter) {
-    let http_api_router = HttpApiRouter::new(http_api_config, context);
+) -> (Option<HttpApiRouter>, RpcRouter) {
+    let http_api_router = if http_api_config.enabled {
+        tracing::info!("HTTP API enabled on port {}", http_api_config.port);
+        Some(HttpApiRouter::new(http_api_config, context))
+    } else {
+        tracing::info!("HTTP API disabled");
+        None
+    };
     let rpc_router = RpcRouter::new(Arc::clone(context));
 
     (http_api_router, rpc_router)
