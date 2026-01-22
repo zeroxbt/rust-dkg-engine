@@ -92,7 +92,7 @@ impl NetworkManagerConfig {
 /// NetworkManager provides the base protocols (kad, identify, ping) and the application
 /// provides its custom protocols via the generic parameter B.
 #[derive(NetworkBehaviour)]
-pub struct NestedBehaviour<B: NetworkBehaviour> {
+pub struct CompositeBehaviour<B: NetworkBehaviour> {
     pub kad: kad::Behaviour<MemoryStore>,
     pub identify: identify::Behaviour,
     pub protocols: B,
@@ -107,7 +107,7 @@ where
     B: NetworkBehaviour + ProtocolDispatch,
 {
     config: NetworkManagerConfig,
-    swarm: Mutex<Swarm<NestedBehaviour<B>>>,
+    swarm: Mutex<Swarm<CompositeBehaviour<B>>>,
     action_tx: mpsc::Sender<NetworkAction<B>>,
     action_rx: Mutex<Option<mpsc::Receiver<NetworkAction<B>>>>,
     peer_id: PeerId,
@@ -189,7 +189,7 @@ where
         // Application creates its Behaviour with base protocols + app-specific protocols
         // let behaviour = Builder::build(kad, identify, ping);
 
-        let custom_behaviour = NestedBehaviour::<B> {
+        let custom_behaviour = CompositeBehaviour::<B> {
             kad,
             identify,
             protocols: behaviour,
@@ -301,7 +301,7 @@ where
     /// - `event_tx`: Channel sender for outgoing swarm events
     pub async fn run(
         &self,
-        event_tx: mpsc::Sender<SwarmEvent<<NestedBehaviour<B> as NetworkBehaviour>::ToSwarm>>,
+        event_tx: mpsc::Sender<SwarmEvent<<CompositeBehaviour<B> as NetworkBehaviour>::ToSwarm>>,
     ) {
         use libp2p::futures::StreamExt;
 

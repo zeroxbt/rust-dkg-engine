@@ -618,7 +618,9 @@ WHERE {{
 }}"#
         );
 
-        self.backend.ask(&query, self.config.timeouts.ask_timeout()).await
+        self.backend
+            .ask(&query, self.config.timeouts.ask_timeout())
+            .await
     }
 
     /// Get metadata for a knowledge collection from the metadata graph

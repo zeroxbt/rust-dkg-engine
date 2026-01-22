@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
 use libp2p::request_response::Message;
-use network::{NestedBehaviourEvent, NetworkManager, SwarmEvent, identify, kad, request_response};
+use network::{
+    CompositeBehaviourEvent, NetworkManager, SwarmEvent, identify, kad, request_response,
+};
 use tokio::sync::{Semaphore, mpsc};
 
 use super::{
@@ -19,7 +21,7 @@ use crate::{
 };
 
 // Type alias for the complete behaviour and its event type
-type Behaviour = network::NestedBehaviour<NetworkProtocols>;
+type Behaviour = network::CompositeBehaviour<NetworkProtocols>;
 type BehaviourEvent = <Behaviour as network::NetworkBehaviour>::ToSwarm;
 
 pub struct RpcRouter {
@@ -77,7 +79,7 @@ impl RpcRouter {
     ) {
         match event {
             SwarmEvent::Behaviour(behaviour_event) => match behaviour_event {
-                NestedBehaviourEvent::Protocols(protocol_event) => match protocol_event {
+                CompositeBehaviourEvent::Protocols(protocol_event) => match protocol_event {
                     NetworkProtocolsEvent::Store(inner_event) => match inner_event {
                         request_response::Event::Message { message, peer, .. } => {
                             match message {
@@ -346,8 +348,10 @@ impl RpcRouter {
                         }
                     },
                 },
-                NestedBehaviourEvent::Identify(identify::Event::Received {
-                    peer_id, info, ..
+                CompositeBehaviourEvent::Identify(identify::Event::Received {
+                    peer_id,
+                    info,
+                    ..
                 }) => {
                     tracing::debug!(%peer_id, "received identify from peer");
 
@@ -359,7 +363,7 @@ impl RpcRouter {
                         tracing::error!(%peer_id, %error, "failed to enqueue kad addresses");
                     }
                 }
-                NestedBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
+                CompositeBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
                     result: kad::QueryResult::GetClosestPeers(result),
                     ..
                 }) => {

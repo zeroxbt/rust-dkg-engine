@@ -217,7 +217,10 @@ mod tests {
             }
         "#;
 
-        backend.update(insert_query, Duration::from_secs(10)).await.unwrap();
+        backend
+            .update(insert_query, Duration::from_secs(10))
+            .await
+            .unwrap();
 
         // Verify data was inserted by checking the store directly
         let count = SparqlEvaluator::new()
@@ -254,7 +257,10 @@ mod tests {
             }
         "#;
 
-        backend.update(insert_query, Duration::from_secs(10)).await.unwrap();
+        backend
+            .update(insert_query, Duration::from_secs(10))
+            .await
+            .unwrap();
 
         // Query public graph only
         let result = SparqlEvaluator::new()

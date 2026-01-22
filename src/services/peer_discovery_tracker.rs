@@ -20,8 +20,8 @@ impl PeerDiscoveryTracker {
     pub fn new() -> Self {
         Self {
             failed_peers: DashMap::new(),
-            base_delay: Duration::from_secs(60),  // 1 minute base delay
-            max_delay: Duration::from_secs(960),  // 16 minutes max delay
+            base_delay: Duration::from_secs(60), // 1 minute base delay
+            max_delay: Duration::from_secs(960), // 16 minutes max delay
         }
     }
 
@@ -61,7 +61,9 @@ impl PeerDiscoveryTracker {
             return Duration::ZERO;
         }
         let multiplier = 1u32 << (failure_count - 1).min(10); // 2^(n-1), cap exponent at 10
-        self.base_delay.saturating_mul(multiplier).min(self.max_delay)
+        self.base_delay
+            .saturating_mul(multiplier)
+            .min(self.max_delay)
     }
 
     /// Get the current backoff delay for a peer (for logging).
