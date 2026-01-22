@@ -13,6 +13,18 @@ app_data_path = "data"
 [http_api]
 port = 8900
 
+# Rate limiter configuration
+[http_api.rate_limiter]
+enabled = true
+time_window_seconds = 60   # Time window for rate limiting
+max_requests = 10          # Maximum requests per time window
+# burst_size = 10          # Optional: burst capacity (defaults to max_requests)
+
+# Authentication configuration
+[http_api.auth]
+enabled = true
+ip_whitelist = ["127.0.0.1", "::1"]  # Only localhost allowed by default
+
 # ============================================
 # Network Manager Configuration
 # ============================================
