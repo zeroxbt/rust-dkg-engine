@@ -2,6 +2,8 @@ pub mod error;
 pub mod key_manager;
 pub mod message;
 
+use std::time::Duration;
+
 use error::NetworkError;
 pub use key_manager::KeyManager;
 pub use libp2p::request_response::ProtocolSupport;
@@ -35,7 +37,14 @@ enum NetworkAction<B>
 where
     B: ProtocolDispatch,
 {
-    DialClosestPeers(Vec<PeerId>),
+    /// Discover peers via Kademlia DHT lookup (get_closest_peers).
+    /// This queries the network for nodes closest to the given peer IDs,
+    /// which populates the routing table with their addresses.
+    FindPeers(Vec<PeerId>),
+    /// Directly dial a peer (requires addresses to be known in Kademlia).
+    DialPeer(PeerId),
+    /// Get the list of currently connected peers.
+    GetConnectedPeers(tokio::sync::oneshot::Sender<Vec<PeerId>>),
     AddKadAddresses {
         peer_id: PeerId,
         listen_addrs: Vec<Multiaddr>,
@@ -54,8 +63,21 @@ pub type SwarmError = Either<NestedError, Void>;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct NetworkManagerConfig {
-    port: u32,
-    bootstrap: Vec<String>,
+    pub port: u32,
+    pub bootstrap: Vec<String>,
+    /// External IP address to announce to peers (for NAT traversal).
+    /// If set, the node will advertise this address so peers behind NAT can be reached.
+    /// Must be a valid public IPv4 address.
+    #[serde(default)]
+    pub external_ip: Option<String>,
+    /// How long to keep idle connections open (in seconds).
+    /// Default is 300 (5 minutes).
+    #[serde(default = "default_idle_connection_timeout")]
+    pub idle_connection_timeout_secs: u64,
+}
+
+fn default_idle_connection_timeout() -> u64 {
+    300
 }
 
 /// Hierarchical network behaviour that combines base protocols with app-specific protocols
@@ -166,8 +188,11 @@ where
             protocols: behaviour,
         };
 
-        // Build the swarm
-        let swarm = SwarmBuilder::with_existing_identity(key.clone())
+        // Build the swarm with configurable idle connection timeout.
+        // Default libp2p timeout is 10 seconds, which causes connections to drop quickly.
+        // We use a configurable timeout (default 5 minutes) to maintain shard table connections.
+        let idle_timeout = Duration::from_secs(config.idle_connection_timeout_secs);
+        let mut swarm = SwarmBuilder::with_existing_identity(key.clone())
             .with_tokio()
             .with_tcp(
                 tcp::Config::default(),
@@ -176,7 +201,43 @@ where
             )
             .map_err(NetworkError::TransportCreation)?
             .with_behaviour(|_| custom_behaviour)?
+            .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(idle_timeout))
             .build();
+
+        // Add external address for NAT traversal if configured.
+        // This allows peers behind NAT to be reachable by advertising their public IP.
+        if let Some(ref external_ip) = config.external_ip {
+            // Validate that it's a valid public IPv4 address
+            match external_ip.parse::<std::net::Ipv4Addr>() {
+                Ok(ip) if !ip.is_private() && !ip.is_loopback() && !ip.is_link_local() => {
+                    let external_addr: Multiaddr =
+                        format!("/ip4/{}/tcp/{}", external_ip, config.port)
+                            .parse()
+                            .map_err(|e| NetworkError::InvalidMultiaddr {
+                                parsed: format!("/ip4/{}/tcp/{}", external_ip, config.port),
+                                source: e,
+                            })?;
+                    swarm.add_external_address(external_addr.clone());
+                    info!(
+                        "Added external address for NAT traversal: {}",
+                        external_addr
+                    );
+                }
+                Ok(_) => {
+                    tracing::warn!(
+                        external_ip,
+                        "external_ip must be a public IPv4 address, ignoring"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        external_ip,
+                        error = %e,
+                        "invalid external_ip format, must be a valid IPv4 address"
+                    );
+                }
+            }
+        }
 
         let (action_tx, action_rx) = mpsc::channel(1024);
 
@@ -259,10 +320,21 @@ where
                 action = action_rx.recv() => {
                     match action {
                         Some(action) => match action {
-                            NetworkAction::DialClosestPeers(peers) => {
+                            NetworkAction::FindPeers(peers) => {
                                 for peer in peers {
                                     swarm.behaviour_mut().kad.get_closest_peers(peer);
                                 }
+                            }
+                            NetworkAction::DialPeer(peer) => {
+                                if swarm.is_connected(&peer) {
+                                    tracing::trace!(%peer, "already connected to peer, skipping dial");
+                                } else if let Err(e) = swarm.dial(peer) {
+                                    tracing::debug!(%peer, error = %e, "failed to dial peer");
+                                }
+                            }
+                            NetworkAction::GetConnectedPeers(response_tx) => {
+                                let peers: Vec<PeerId> = swarm.connected_peers().copied().collect();
+                                let _ = response_tx.send(peers);
                             }
                             NetworkAction::AddKadAddresses {
                                 peer_id,
@@ -298,10 +370,25 @@ where
             .map_err(|_| NetworkError::ActionChannelClosed)
     }
 
-    /// Enqueue a Kademlia closest-peers lookup for each peer ID.
-    pub async fn dial_peers(&self, peers: Vec<PeerId>) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::DialClosestPeers(peers))
-            .await
+    /// Discover peers via Kademlia DHT lookup.
+    /// This initiates a get_closest_peers query for each peer, which will discover
+    /// their addresses through the DHT and add them to the routing table.
+    pub async fn find_peers(&self, peers: Vec<PeerId>) -> Result<(), NetworkError> {
+        self.enqueue_action(NetworkAction::FindPeers(peers)).await
+    }
+
+    /// Directly dial a peer to establish a connection.
+    /// The peer's addresses must already be known (e.g., from a previous DHT lookup).
+    pub async fn dial_peer(&self, peer: PeerId) -> Result<(), NetworkError> {
+        self.enqueue_action(NetworkAction::DialPeer(peer)).await
+    }
+
+    /// Get the list of currently connected peers.
+    pub async fn connected_peers(&self) -> Result<Vec<PeerId>, NetworkError> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.enqueue_action(NetworkAction::GetConnectedPeers(tx))
+            .await?;
+        rx.await.map_err(|_| NetworkError::RequestIdChannelClosed)
     }
 
     /// Enqueue Kademlia address updates for a peer.

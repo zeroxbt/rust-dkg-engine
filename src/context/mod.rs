@@ -13,7 +13,7 @@ use crate::{
     },
     operations::{GetOperation, PublishOperation},
     services::{
-        GetValidationService, ResponseChannels, TripleStoreService,
+        GetValidationService, PeerDiscoveryTracker, ResponseChannels, TripleStoreService,
         operation::OperationService as GenericOperationService,
         pending_storage_service::PendingStorageService,
     },
@@ -28,6 +28,7 @@ pub struct Context {
     triple_store_service: Arc<TripleStoreService>,
     get_validation_service: Arc<GetValidationService>,
     pending_storage_service: Arc<PendingStorageService>,
+    peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
     store_response_channels: Arc<ResponseChannels<StoreResponseData>>,
     get_response_channels: Arc<ResponseChannels<GetResponseData>>,
     finality_response_channels: Arc<ResponseChannels<FinalityResponseData>>,
@@ -46,6 +47,7 @@ impl Context {
         triple_store_service: Arc<TripleStoreService>,
         get_validation_service: Arc<GetValidationService>,
         pending_storage_service: Arc<PendingStorageService>,
+        peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
         store_response_channels: Arc<ResponseChannels<StoreResponseData>>,
         get_response_channels: Arc<ResponseChannels<GetResponseData>>,
         finality_response_channels: Arc<ResponseChannels<FinalityResponseData>>,
@@ -61,6 +63,7 @@ impl Context {
             triple_store_service,
             get_validation_service,
             pending_storage_service,
+            peer_discovery_tracker,
             store_response_channels,
             get_response_channels,
             finality_response_channels,
@@ -99,6 +102,10 @@ impl Context {
 
     pub fn pending_storage_service(&self) -> &Arc<PendingStorageService> {
         &self.pending_storage_service
+    }
+
+    pub fn peer_discovery_tracker(&self) -> &Arc<PeerDiscoveryTracker> {
+        &self.peer_discovery_tracker
     }
 
     pub fn store_response_channels(&self) -> &Arc<ResponseChannels<StoreResponseData>> {

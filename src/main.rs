@@ -31,8 +31,8 @@ use crate::{
     controllers::rpc_controller::NetworkProtocols,
     operations::{GetOperation, PublishOperation},
     services::{
-        GetValidationService, RequestTracker, ResponseChannels, TripleStoreService,
-        operation::OperationService as GenericOperationService,
+        GetValidationService, PeerDiscoveryTracker, RequestTracker, ResponseChannels,
+        TripleStoreService, operation::OperationService as GenericOperationService,
         pending_storage_service::PendingStorageService,
     },
 };
@@ -71,6 +71,8 @@ async fn main() {
     let (publish_operation_service, get_operation_service, pending_storage_service) =
         initialize_services(&paths, &repository_manager);
 
+    let peer_discovery_tracker = Arc::new(PeerDiscoveryTracker::new());
+
     let context = Arc::new(Context::new(
         config.clone(),
         command_scheduler,
@@ -80,6 +82,7 @@ async fn main() {
         Arc::clone(&triple_store_service),
         Arc::clone(&get_validation_service),
         Arc::clone(&pending_storage_service),
+        Arc::clone(&peer_discovery_tracker),
         Arc::clone(&store_response_channels),
         Arc::clone(&get_response_channels),
         Arc::clone(&finality_response_channels),

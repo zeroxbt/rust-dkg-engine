@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
 use libp2p::request_response::Message;
-use network::{NestedBehaviourEvent, NetworkManager, SwarmEvent, identify, request_response};
-use repository::RepositoryManager;
+use network::{NestedBehaviourEvent, NetworkManager, SwarmEvent, identify, kad, request_response};
 use tokio::sync::{Semaphore, mpsc};
 
 use super::{
@@ -16,6 +15,7 @@ use crate::{
         finality_rpc_controller::FinalityRpcController, get_rpc_controller::GetRpcController,
         store_rpc_controller::StoreRpcController,
     },
+    services::PeerDiscoveryTracker,
 };
 
 // Type alias for the complete behaviour and its event type
@@ -23,22 +23,22 @@ type Behaviour = network::NestedBehaviour<NetworkProtocols>;
 type BehaviourEvent = <Behaviour as network::NetworkBehaviour>::ToSwarm;
 
 pub struct RpcRouter {
-    repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     store_controller: Arc<StoreRpcController>,
     get_controller: Arc<GetRpcController>,
     finality_controller: Arc<FinalityRpcController>,
+    peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
     semaphore: Arc<Semaphore>,
 }
 
 impl RpcRouter {
     pub fn new(context: Arc<Context>) -> Self {
         RpcRouter {
-            repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
             store_controller: Arc::new(StoreRpcController::new(Arc::clone(&context))),
             get_controller: Arc::new(GetRpcController::new(Arc::clone(&context))),
             finality_controller: Arc::new(FinalityRpcController::new(Arc::clone(&context))),
+            peer_discovery_tracker: Arc::clone(context.peer_discovery_tracker()),
             semaphore: Arc::new(Semaphore::new(NETWORK_EVENT_QUEUE_PARALLELISM)),
         }
     }
@@ -349,36 +349,93 @@ impl RpcRouter {
                 NestedBehaviourEvent::Identify(identify::Event::Received {
                     peer_id, info, ..
                 }) => {
-                    tracing::trace!("Adding peer to routing table: {}", peer_id);
+                    tracing::debug!(%peer_id, "received identify from peer");
 
                     if let Err(error) = self
                         .network_manager
                         .add_kad_addresses(peer_id, info.listen_addrs)
                         .await
                     {
-                        tracing::error!("Failed to enqueue kad addresses: {}", error);
+                        tracing::error!(%peer_id, %error, "failed to enqueue kad addresses");
                     }
+                }
+                NestedBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
+                    result: kad::QueryResult::GetClosestPeers(result),
+                    ..
+                }) => {
+                    // Handle completed GetClosestPeers queries (from find_peers)
+                    match result {
+                        Ok(kad::GetClosestPeersOk { key, peers }) => {
+                            let target_peer_id = match libp2p::PeerId::from_bytes(&key) {
+                                Ok(peer_id) => peer_id,
+                                Err(_) => return,
+                            };
 
-                    if let Err(error) = self
-                        .repository_manager
-                        .shard_repository()
-                        .update_peer_record_last_seen_and_last_dialed(
-                            peer_id.to_base58(),
-                            chrono::Utc::now(),
-                        )
-                        .await
-                    {
-                        tracing::warn!(
-                            "Failed to update peer record last seen/dialed for {}: {}",
-                            peer_id,
-                            error
-                        );
+                            // Check if our target peer is among the closest peers found
+                            if peers.iter().any(|p| p.peer_id == target_peer_id) {
+                                tracing::debug!(%target_peer_id, "DHT lookup found target peer, dialing");
+                                if let Err(e) = self.network_manager.dial_peer(target_peer_id).await
+                                {
+                                    tracing::debug!(%target_peer_id, error = %e, "failed to dial peer");
+                                }
+                            } else {
+                                tracing::debug!(
+                                    %target_peer_id,
+                                    peer_count = peers.len(),
+                                    "DHT lookup did not find target peer"
+                                );
+                                // Record failure for backoff
+                                self.peer_discovery_tracker.record_failure(target_peer_id);
+                            }
+                        }
+                        Err(kad::GetClosestPeersError::Timeout { key, peers }) => {
+                            let target_peer_id = match libp2p::PeerId::from_bytes(&key) {
+                                Ok(peer_id) => peer_id,
+                                Err(_) => return,
+                            };
+
+                            // Even on timeout, check if target was among partial results
+                            if peers.iter().any(|p| p.peer_id == target_peer_id) {
+                                tracing::debug!(%target_peer_id, "DHT lookup timed out but found target peer, dialing");
+                                if let Err(e) = self.network_manager.dial_peer(target_peer_id).await
+                                {
+                                    tracing::debug!(%target_peer_id, error = %e, "failed to dial peer");
+                                }
+                            } else {
+                                tracing::debug!(
+                                    %target_peer_id,
+                                    peers_found = peers.len(),
+                                    "DHT lookup timed out without finding target"
+                                );
+                                // Record failure for backoff
+                                self.peer_discovery_tracker.record_failure(target_peer_id);
+                            }
+                        }
                     }
                 }
                 _ => {}
             },
             SwarmEvent::NewListenAddr { address, .. } => {
                 tracing::info!("Listening on {}", address)
+            }
+            SwarmEvent::OutgoingConnectionError {
+                peer_id: Some(peer_id),
+                error,
+                ..
+            } => {
+                tracing::debug!(%peer_id, %error, "outgoing connection failed");
+            }
+            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                tracing::debug!(%peer_id, "connection established");
+                // Clear backoff on successful connection
+                self.peer_discovery_tracker.record_success(&peer_id);
+            }
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                num_established,
+                ..
+            } => {
+                tracing::debug!(%peer_id, num_established, "connection closed");
             }
             _ => {}
         }

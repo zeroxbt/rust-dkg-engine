@@ -190,7 +190,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
         let shard_nodes = match self
             .repository_manager
             .shard_repository()
-            .get_all_peer_records(blockchain.as_str(), true)
+            .get_all_peer_records(blockchain.as_str())
             .await
         {
             Ok(shard_nodes) => {

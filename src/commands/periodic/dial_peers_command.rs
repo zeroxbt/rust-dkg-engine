@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use libp2p::PeerId;
 use network::NetworkManager;
@@ -8,15 +8,16 @@ use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     controllers::rpc_controller::NetworkProtocols,
+    services::PeerDiscoveryTracker,
 };
 
-const DIAL_PEERS_COMMAND_PERIOD_MS: i64 = 10_000;
-const DIAL_CONCURRENCY: usize = 5;
-const MIN_DIAL_FREQUENCY_PER_PEER_MS: i64 = 60 * 60 * 1000;
+const DIAL_PEERS_COMMAND_PERIOD_MS: i64 = 30_000;
+const DIAL_BATCH_SIZE: usize = 10;
 
 pub struct DialPeersCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
 }
 
 impl DialPeersCommandHandler {
@@ -24,6 +25,7 @@ impl DialPeersCommandHandler {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
+            peer_discovery_tracker: Arc::clone(context.peer_discovery_tracker()),
         }
     }
 }
@@ -33,49 +35,88 @@ pub struct DialPeersCommandData;
 
 impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
     async fn execute(&self, _: &DialPeersCommandData) -> CommandExecutionResult {
-        let own_peer_id = self.network_manager.peer_id().to_base58();
+        let own_peer_id = *self.network_manager.peer_id();
 
-        let potential_peers = match self
+        // Get all peer IDs from shard table
+        let all_peer_ids = match self
             .repository_manager
             .shard_repository()
-            .get_peers_to_dial(DIAL_CONCURRENCY, MIN_DIAL_FREQUENCY_PER_PEER_MS)
+            .get_all_peer_ids()
             .await
         {
             Ok(peers) => peers,
             Err(e) => {
-                tracing::error!(error = %e, "failed to fetch peers to dial");
+                tracing::error!(error = %e, "failed to fetch peer ids from shard table");
                 return CommandExecutionResult::Repeat {
                     delay_ms: DIAL_PEERS_COMMAND_PERIOD_MS,
                 };
             }
         };
 
-        let peers: Vec<PeerId> = potential_peers
+        // Get currently connected peers
+        let connected_peers: HashSet<PeerId> = match self.network_manager.connected_peers().await {
+            Ok(peers) => peers.into_iter().collect(),
+            Err(e) => {
+                tracing::error!(error = %e, "failed to get connected peers");
+                return CommandExecutionResult::Repeat {
+                    delay_ms: DIAL_PEERS_COMMAND_PERIOD_MS,
+                };
+            }
+        };
+
+        let total_peers = all_peer_ids.len();
+
+        // Filter to peers we're not connected to and not in backoff
+        let peers_to_find: Vec<PeerId> = all_peer_ids
             .into_iter()
-            .filter(|p| p != &own_peer_id)
-            .filter_map(|peer_id| match peer_id.parse::<PeerId>() {
-                Ok(id) => {
-                    tracing::trace!(%peer_id, "dialing peer");
-                    Some(id)
-                }
+            .filter_map(|peer_id_str| match peer_id_str.parse::<PeerId>() {
+                Ok(peer_id) => Some(peer_id),
                 Err(e) => {
-                    tracing::warn!(%peer_id, error = %e, "invalid peer id");
+                    tracing::warn!(%peer_id_str, error = %e, "invalid peer id in shard table");
                     None
                 }
             })
+            .filter(|peer_id| {
+                if *peer_id == own_peer_id || connected_peers.contains(peer_id) {
+                    return false;
+                }
+                // Check backoff - skip peers we recently failed to find
+                if !self.peer_discovery_tracker.should_attempt(peer_id) {
+                    if let Some(backoff_secs) =
+                        self.peer_discovery_tracker.get_backoff_secs(peer_id)
+                    {
+                        tracing::trace!(
+                            %peer_id,
+                            backoff_secs,
+                            "skipping peer discovery due to backoff"
+                        );
+                    }
+                    return false;
+                }
+                true
+            })
+            .take(DIAL_BATCH_SIZE)
             .collect();
 
-        if peers.is_empty() {
-            tracing::debug!("no peers to dial");
+        if peers_to_find.is_empty() {
+            tracing::debug!(
+                total_peers,
+                connected = connected_peers.len(),
+                "all shard table peers are connected"
+            );
             return CommandExecutionResult::Repeat {
                 delay_ms: DIAL_PEERS_COMMAND_PERIOD_MS,
             };
         }
 
-        tracing::info!(count = peers.len(), "dialing remote peers");
+        tracing::info!(
+            count = peers_to_find.len(),
+            connected = connected_peers.len(),
+            "discovering disconnected peers via DHT"
+        );
 
-        if let Err(e) = self.network_manager.dial_peers(peers).await {
-            tracing::error!(error = %e, "failed to dial peers");
+        if let Err(e) = self.network_manager.find_peers(peers_to_find).await {
+            tracing::error!(error = %e, "failed to find peers");
         }
 
         CommandExecutionResult::Repeat {

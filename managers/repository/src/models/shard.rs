@@ -1,8 +1,6 @@
 use sea_orm::{
     entity::prelude::{DeriveRelation, EnumIter},
-    prelude::{
-        ActiveModelBehavior, DateTimeUtc, DeriveEntityModel, DerivePrimaryKey, PrimaryKeyTrait,
-    },
+    prelude::{ActiveModelBehavior, DeriveEntityModel, DerivePrimaryKey, PrimaryKeyTrait},
 };
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -14,10 +12,6 @@ pub struct Model {
     pub blockchain_id: String,
     pub ask: String,
     pub stake: String,
-    #[sea_orm(default_value = "1970-01-01 00:00:00")]
-    pub last_seen: DateTimeUtc,
-    #[sea_orm(default_value = "1970-01-01 00:00:00")]
-    pub last_dialed: DateTimeUtc,
     pub sha256: String,
 }
 

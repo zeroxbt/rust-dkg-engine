@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
-use chrono::Duration;
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, DbBackend, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait,
-    UpdateResult, error::DbErr, prelude::DateTimeUtc, sea_query::Expr,
+    PaginatorTrait, QueryFilter, Statement, TransactionTrait, error::DbErr,
 };
 
 use crate::models::shard::{ActiveModel, Column, Entity, Model};
@@ -39,8 +37,6 @@ impl ShardRepository {
                 ask: ActiveValue::Set(record.ask),
                 stake: ActiveValue::Set(record.stake),
                 sha256: ActiveValue::Set(record.sha256),
-                last_seen: ActiveValue::NotSet,
-                last_dialed: ActiveValue::NotSet,
             })
             .collect();
 
@@ -82,8 +78,6 @@ impl ShardRepository {
             ask: ActiveValue::Set(record.ask),
             stake: ActiveValue::Set(record.stake),
             sha256: ActiveValue::Set(record.sha256),
-            last_seen: ActiveValue::NotSet,
-            last_dialed: ActiveValue::NotSet,
         };
 
         Entity::insert(active_model)
@@ -93,23 +87,9 @@ impl ShardRepository {
         Ok(())
     }
 
-    pub async fn get_all_peer_records(
-        &self,
-        blockchain_id: &str,
-        filter_last_seen: bool,
-    ) -> Result<Vec<Model>, DbErr> {
-        let query = if filter_last_seen {
-            r#"SELECT * FROM shard WHERE blockchain_id = ? and last_seen >= last_dialed"#
-        } else {
-            r#"SELECT * FROM shard WHERE blockchain_id = ?"#
-        };
-
+    pub async fn get_all_peer_records(&self, blockchain_id: &str) -> Result<Vec<Model>, DbErr> {
         Entity::find()
-            .from_raw_sql(Statement::from_sql_and_values(
-                DbBackend::MySql,
-                query,
-                [blockchain_id.into()],
-            ))
+            .filter(Column::BlockchainId.eq(blockchain_id))
             .all(self.conn.as_ref())
             .await
     }
@@ -133,21 +113,22 @@ impl ShardRepository {
             .await
     }
 
-    pub async fn get_peers_to_dial(
-        &self,
-        limit: usize,
-        dial_frequency_millis: i64,
-    ) -> Result<Vec<String>, DbErr> {
-        let earlier_time = chrono::Utc::now() - Duration::milliseconds(dial_frequency_millis);
+    /// Get all unique peer IDs from the shard table.
+    pub async fn get_all_peer_ids(&self) -> Result<Vec<String>, DbErr> {
+        let result: Vec<Model> = Entity::find().all(self.conn.as_ref()).await?;
 
-        let result: Vec<Model> = Entity::find()
-            .filter(Column::LastDialed.lt(earlier_time))
-            .order_by(Column::LastDialed, sea_orm::Order::Asc)
-            .limit(limit as u64)
-            .all(self.conn.as_ref())
-            .await?;
-
-        Ok(result.into_iter().map(|record| record.peer_id).collect())
+        // Deduplicate peer IDs (peers may appear multiple times for different blockchains)
+        let mut seen = std::collections::HashSet::new();
+        Ok(result
+            .into_iter()
+            .filter_map(|record| {
+                if seen.insert(record.peer_id.clone()) {
+                    Some(record.peer_id)
+                } else {
+                    None
+                }
+            })
+            .collect())
     }
 
     pub async fn update_peer_ask(
@@ -194,35 +175,6 @@ impl ShardRepository {
         }
     }
 
-    pub async fn update_peer_record_last_dialed(
-        &self,
-        peer_id: String,
-        timestamp: DateTimeUtc,
-    ) -> Result<(), DbErr> {
-        ActiveModel {
-            peer_id: ActiveValue::Set(peer_id),
-            last_dialed: ActiveValue::Set(timestamp),
-            ..Default::default()
-        }
-        .update(self.conn.as_ref())
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn update_peer_record_last_seen_and_last_dialed(
-        &self,
-        peer_id: String,
-        timestamp: DateTimeUtc,
-    ) -> Result<UpdateResult, DbErr> {
-        Entity::update_many()
-            .col_expr(Column::LastSeen, Expr::value::<DateTimeUtc>(timestamp))
-            .col_expr(Column::LastDialed, Expr::value::<DateTimeUtc>(timestamp))
-            .filter(Column::PeerId.eq(peer_id))
-            .exec(self.conn.as_ref())
-            .await
-    }
-
     pub async fn clean_sharding_table(&self, blockchain_id: Option<String>) -> Result<(), DbErr> {
         if let Some(id) = blockchain_id {
             Entity::delete_many()
@@ -258,8 +210,6 @@ impl ShardRepository {
                     ask: ActiveValue::Set(record.ask),
                     stake: ActiveValue::Set(record.stake),
                     sha256: ActiveValue::Set(record.sha256),
-                    last_seen: ActiveValue::NotSet,
-                    last_dialed: ActiveValue::NotSet,
                 })
                 .collect();
 

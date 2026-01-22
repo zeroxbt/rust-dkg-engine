@@ -475,7 +475,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
         let shard_nodes = match self
             .repository_manager
             .shard_repository()
-            .get_all_peer_records(parsed_ual.blockchain.as_str(), true)
+            .get_all_peer_records(parsed_ual.blockchain.as_str())
             .await
         {
             Ok(nodes) => {
