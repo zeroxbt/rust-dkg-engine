@@ -104,7 +104,29 @@ fn default_ask_timeout_ms() -> u64 {
     10_000
 }
 
+impl TimeoutConfig {
+    /// Get query timeout as Duration
+    pub fn query_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.query_ms)
+    }
+
+    /// Get insert timeout as Duration
+    pub fn insert_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.insert_ms)
+    }
+
+    /// Get ask timeout as Duration
+    pub fn ask_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.ask_ms)
+    }
+}
+
 impl TripleStoreManagerConfig {
+    /// Get connect retry frequency as Duration
+    pub fn connect_retry_frequency(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.connect_retry_frequency_ms)
+    }
+
     /// Get the SPARQL endpoint URL for the configured repository
     pub fn sparql_endpoint(&self) -> String {
         format!(

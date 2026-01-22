@@ -261,15 +261,16 @@ impl TripleStoreBackend for BlazegraphBackend {
         }
     }
 
-    async fn construct(&self, query: &str, timeout_ms: u64) -> Result<String> {
+    async fn construct(&self, query: &str, timeout: Duration) -> Result<String> {
         let url = self.config.sparql_endpoint();
+        let timeout_ms = timeout.as_millis();
 
         let response = self
             .auth_headers(self.client.post(&url))
             .header("Content-Type", "application/sparql-query")
             .header("Accept", "application/n-quads")
             .header("X-BIGDATA-MAX-QUERY-MILLIS", timeout_ms.to_string())
-            .timeout(Duration::from_millis(timeout_ms + 5000))
+            .timeout(timeout + Duration::from_secs(5))
             .body(query.to_string())
             .send()
             .await?;
@@ -365,14 +366,15 @@ impl TripleStoreBackend for BlazegraphBackend {
         }
     } */
 
-    async fn update(&self, query: &str, timeout_ms: u64) -> Result<()> {
+    async fn update(&self, query: &str, timeout: Duration) -> Result<()> {
         let url = self.config.sparql_endpoint();
+        let timeout_ms = timeout.as_millis();
 
         let response = self
             .auth_headers(self.client.post(&url))
             .header("Content-Type", "application/sparql-update")
             .header("X-BIGDATA-MAX-QUERY-MILLIS", timeout_ms.to_string())
-            .timeout(Duration::from_millis(timeout_ms + 5000))
+            .timeout(timeout + Duration::from_secs(5))
             .body(query.to_string())
             .send()
             .await?;
@@ -389,15 +391,16 @@ impl TripleStoreBackend for BlazegraphBackend {
         }
     }
 
-    async fn ask(&self, query: &str, timeout_ms: u64) -> Result<bool> {
+    async fn ask(&self, query: &str, timeout: Duration) -> Result<bool> {
         let url = self.config.sparql_endpoint();
+        let timeout_ms = timeout.as_millis();
 
         let response = self
             .auth_headers(self.client.post(&url))
             .header("Content-Type", "application/sparql-query")
             .header("Accept", "application/sparql-results+json")
             .header("X-BIGDATA-MAX-QUERY-MILLIS", timeout_ms.to_string())
-            .timeout(Duration::from_millis(timeout_ms + 5000))
+            .timeout(timeout + Duration::from_secs(5))
             .body(query.to_string())
             .send()
             .await?;

@@ -7,6 +7,8 @@
 //!
 //! Oxigraph tests run with an in-memory backend and don't require external services.
 
+use std::time::Duration;
+
 use triple_store::{
     TripleStoreBackendType, TripleStoreManager, TripleStoreManagerConfig, config::TimeoutConfig,
 };
@@ -75,7 +77,7 @@ async fn test_oxigraph_insert() {
                 }
             }
             "#,
-            Some(10000),
+            Some(Duration::from_secs(10)),
         )
         .await;
 

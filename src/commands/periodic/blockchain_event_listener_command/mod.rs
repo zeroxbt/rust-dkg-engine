@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use blockchain::{
     AssetStorageChangedFilter, BlockchainId, BlockchainManager, ContractChangedFilter, ContractLog,
@@ -20,8 +20,11 @@ mod blockchain_event_spec;
 
 use blockchain_event_spec::{ContractEvent, decode_contract_event, monitored_contract_events};
 
-const EVENT_FETCH_INTERVAL_MAINNET_MS: i64 = 10_000;
-const EVENT_FETCH_INTERVAL_DEV_MS: i64 = 4_000;
+/// Event fetch interval for mainnet (10 seconds)
+const EVENT_FETCH_INTERVAL_MAINNET: Duration = Duration::from_secs(10);
+
+/// Event fetch interval for dev environments (4 seconds)
+const EVENT_FETCH_INTERVAL_DEV: Duration = Duration::from_secs(4);
 
 /// Maximum number of blocks we can sync historically.
 /// If the node has been offline for longer than this (in blocks), we skip missed events.
@@ -34,8 +37,8 @@ pub struct BlockchainEventListenerCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
     command_scheduler: CommandScheduler,
-    /// Polling interval in milliseconds
-    poll_interval_ms: i64,
+    /// Polling interval
+    poll_interval: Duration,
     /// Maximum number of blocks to sync historically (beyond this, events are skipped)
     max_blocks_to_sync: u64,
 }
@@ -44,10 +47,10 @@ impl BlockchainEventListenerCommandHandler {
     pub fn new(context: Arc<Context>) -> Self {
         let is_dev_env = context.config().is_dev_env;
 
-        let poll_interval_ms = if is_dev_env {
-            EVENT_FETCH_INTERVAL_DEV_MS
+        let poll_interval = if is_dev_env {
+            EVENT_FETCH_INTERVAL_DEV
         } else {
-            EVENT_FETCH_INTERVAL_MAINNET_MS
+            EVENT_FETCH_INTERVAL_MAINNET
         };
 
         let max_blocks_to_sync = if is_dev_env {
@@ -60,7 +63,7 @@ impl BlockchainEventListenerCommandHandler {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             repository_manager: Arc::clone(context.repository_manager()),
             command_scheduler: context.command_scheduler().clone(),
-            poll_interval_ms,
+            poll_interval,
             max_blocks_to_sync,
         }
     }
@@ -404,7 +407,7 @@ impl CommandHandler<BlockchainEventListenerCommandData> for BlockchainEventListe
 
         tracing::trace!(
             blockchain = %blockchain,
-            poll_interval_ms = self.poll_interval_ms,
+            poll_interval_ms = self.poll_interval.as_millis(),
             "Running blockchain event listener"
         );
 
@@ -417,7 +420,7 @@ impl CommandHandler<BlockchainEventListenerCommandData> for BlockchainEventListe
         }
 
         CommandExecutionResult::Repeat {
-            delay_ms: self.poll_interval_ms,
+            delay: self.poll_interval,
         }
     }
 }

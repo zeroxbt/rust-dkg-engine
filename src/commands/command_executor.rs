@@ -1,4 +1,4 @@
-use std::{cmp::min, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -6,19 +6,19 @@ use tokio::sync::{Mutex, Semaphore, mpsc};
 
 use super::{
     command_registry::{Command, CommandResolver},
-    constants::{COMMAND_QUEUE_PARALLELISM, MAX_COMMAND_DELAY_MS, MAX_COMMAND_LIFETIME_MS},
+    constants::{COMMAND_QUEUE_PARALLELISM, MAX_COMMAND_DELAY, MAX_COMMAND_LIFETIME},
 };
 use crate::context::Context;
 
 pub enum CommandExecutionResult {
     Completed,
-    Repeat { delay_ms: i64 },
+    Repeat { delay: Duration },
 }
 
 #[derive(Clone)]
 pub struct CommandExecutionRequest {
     command: Command,
-    delay_ms: i64,
+    delay: Duration,
     created_at: i64,
 }
 
@@ -26,13 +26,13 @@ impl CommandExecutionRequest {
     pub fn new(command: Command) -> Self {
         Self {
             command,
-            delay_ms: 0,
+            delay: Duration::ZERO,
             created_at: Utc::now().timestamp_millis(),
         }
     }
 
-    pub fn with_delay(mut self, delay_ms: i64) -> Self {
-        self.delay_ms = delay_ms;
+    pub fn with_delay(mut self, delay: Duration) -> Self {
+        self.delay = delay;
         self
     }
 
@@ -46,19 +46,20 @@ impl CommandExecutionRequest {
         self.command
     }
 
-    /// Returns the delay in milliseconds.
-    pub fn delay_ms(&self) -> i64 {
-        self.delay_ms
+    /// Returns the delay duration.
+    pub fn delay(&self) -> Duration {
+        self.delay
     }
 
-    /// Sets the delay to zero, returning a mutable reference for chaining.
+    /// Sets the delay to zero.
     pub fn clear_delay(&mut self) {
-        self.delay_ms = 0;
+        self.delay = Duration::ZERO;
     }
 
     pub fn is_expired(&self) -> bool {
         let now = Utc::now().timestamp_millis();
-        now - self.created_at > MAX_COMMAND_LIFETIME_MS
+        let elapsed_ms = (now - self.created_at).max(0) as u64;
+        Duration::from_millis(elapsed_ms) > MAX_COMMAND_LIFETIME
     }
 }
 
@@ -79,18 +80,15 @@ impl CommandScheduler {
     /// Schedule a command for execution. Logs an error if scheduling fails.
     pub async fn schedule(&self, request: CommandExecutionRequest) {
         let command_name = request.command().name();
-        let delay = min(
-            request.delay_ms().max(0) as u64,
-            MAX_COMMAND_DELAY_MS as u64,
-        );
+        let delay = request.delay().min(MAX_COMMAND_DELAY);
 
-        let result = if delay > 0 {
+        let result = if delay > Duration::ZERO {
             let tx = self.tx.clone();
             let mut delayed_request = request;
             delayed_request.clear_delay();
 
             tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(delay)).await;
+                tokio::time::sleep(delay).await;
                 if let Err(e) = tx.send(delayed_request).await {
                     tracing::error!(
                         command = %command_name,
@@ -185,9 +183,9 @@ impl CommandExecutor {
         let result = self.command_resolver.execute(request.command()).await;
 
         match result {
-            CommandExecutionResult::Repeat { delay_ms } => {
+            CommandExecutionResult::Repeat { delay } => {
                 let new_request =
-                    CommandExecutionRequest::new(request.into_command()).with_delay(delay_ms);
+                    CommandExecutionRequest::new(request.into_command()).with_delay(delay);
                 self.scheduler.schedule(new_request).await;
             }
             CommandExecutionResult::Completed => {

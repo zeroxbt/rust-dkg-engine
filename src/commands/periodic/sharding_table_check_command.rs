@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use blockchain::{
     BlockchainId, BlockchainManager,
@@ -13,7 +13,8 @@ use crate::{
     context::Context,
 };
 
-const SHARDING_TABLE_CHECK_COMMAND_PERIOD_MS: i64 = 10_000;
+/// Interval between sharding table synchronization checks (10 seconds)
+const SHARDING_TABLE_CHECK_PERIOD: Duration = Duration::from_secs(10);
 const SHARDING_TABLE_PAGE_SIZE: u128 = 100;
 
 pub struct ShardingTableCheckCommandHandler {
@@ -200,7 +201,7 @@ impl CommandHandler<ShardingTableCheckCommandData> for ShardingTableCheckCommand
         }
 
         CommandExecutionResult::Repeat {
-            delay_ms: SHARDING_TABLE_CHECK_COMMAND_PERIOD_MS,
+            delay: SHARDING_TABLE_CHECK_PERIOD,
         }
     }
 }

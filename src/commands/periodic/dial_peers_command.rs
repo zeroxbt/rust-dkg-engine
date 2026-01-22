@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use libp2p::PeerId;
 use network::NetworkManager;
@@ -11,7 +11,8 @@ use crate::{
     services::PeerDiscoveryTracker,
 };
 
-const DIAL_PEERS_COMMAND_PERIOD_MS: i64 = 30_000;
+/// Interval between peer discovery attempts (30 seconds)
+const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
 const DIAL_BATCH_SIZE: usize = 10;
 
 pub struct DialPeersCommandHandler {
@@ -48,7 +49,7 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
             Err(e) => {
                 tracing::error!(error = %e, "failed to fetch peer ids from shard table");
                 return CommandExecutionResult::Repeat {
-                    delay_ms: DIAL_PEERS_COMMAND_PERIOD_MS,
+                    delay: DIAL_PEERS_PERIOD,
                 };
             }
         };
@@ -59,7 +60,7 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
             Err(e) => {
                 tracing::error!(error = %e, "failed to get connected peers");
                 return CommandExecutionResult::Repeat {
-                    delay_ms: DIAL_PEERS_COMMAND_PERIOD_MS,
+                    delay: DIAL_PEERS_PERIOD,
                 };
             }
         };
@@ -82,12 +83,10 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
                 }
                 // Check backoff - skip peers we recently failed to find
                 if !self.peer_discovery_tracker.should_attempt(peer_id) {
-                    if let Some(backoff_secs) =
-                        self.peer_discovery_tracker.get_backoff_secs(peer_id)
-                    {
+                    if let Some(backoff) = self.peer_discovery_tracker.get_backoff(peer_id) {
                         tracing::trace!(
                             %peer_id,
-                            backoff_secs,
+                            backoff_secs = backoff.as_secs(),
                             "skipping peer discovery due to backoff"
                         );
                     }
@@ -105,7 +104,7 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
                 "all shard table peers are connected"
             );
             return CommandExecutionResult::Repeat {
-                delay_ms: DIAL_PEERS_COMMAND_PERIOD_MS,
+                delay: DIAL_PEERS_PERIOD,
             };
         }
 
@@ -120,7 +119,7 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
         }
 
         CommandExecutionResult::Repeat {
-            delay_ms: DIAL_PEERS_COMMAND_PERIOD_MS,
+            delay: DIAL_PEERS_PERIOD,
         }
     }
 }

@@ -80,6 +80,13 @@ fn default_idle_connection_timeout() -> u64 {
     300
 }
 
+impl NetworkManagerConfig {
+    /// Get idle connection timeout as Duration
+    pub fn idle_connection_timeout(&self) -> Duration {
+        Duration::from_secs(self.idle_connection_timeout_secs)
+    }
+}
+
 /// Hierarchical network behaviour that combines base protocols with app-specific protocols
 ///
 /// NetworkManager provides the base protocols (kad, identify, ping) and the application
@@ -191,7 +198,7 @@ where
         // Build the swarm with configurable idle connection timeout.
         // Default libp2p timeout is 10 seconds, which causes connections to drop quickly.
         // We use a configurable timeout (default 5 minutes) to maintain shard table connections.
-        let idle_timeout = Duration::from_secs(config.idle_connection_timeout_secs);
+        let idle_timeout = config.idle_connection_timeout();
         let mut swarm = SwarmBuilder::with_existing_identity(key.clone())
             .with_tokio()
             .with_tcp(

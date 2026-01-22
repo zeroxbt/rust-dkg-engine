@@ -218,10 +218,7 @@ impl TripleStoreManager {
                 return Err(TripleStoreError::ConnectionFailed { attempts });
             }
 
-            tokio::time::sleep(Duration::from_millis(
-                self.config.connect_retry_frequency_ms,
-            ))
-            .await;
+            tokio::time::sleep(self.config.connect_retry_frequency()).await;
         }
     }
 
@@ -435,7 +432,7 @@ INSERT DATA {{
         );
 
         self.backend
-            .update(&insert_query, self.config.timeouts.insert_ms)
+            .update(&insert_query, self.config.timeouts.insert_timeout())
             .await?;
 
         tracing::debug!(
@@ -448,9 +445,12 @@ INSERT DATA {{
     }
 
     /// Execute a raw SPARQL UPDATE query
-    pub async fn update_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<()> {
+    pub async fn update_raw(&self, query: &str, timeout: Option<Duration>) -> Result<()> {
         self.backend
-            .update(query, timeout_ms.unwrap_or(self.config.timeouts.insert_ms))
+            .update(
+                query,
+                timeout.unwrap_or_else(|| self.config.timeouts.insert_timeout()),
+            )
             .await
     }
 
@@ -481,7 +481,7 @@ WHERE {{
         );
 
         self.backend
-            .construct(&query, self.config.timeouts.query_ms)
+            .construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -519,7 +519,7 @@ WHERE {{
 
         let nquads = self
             .backend
-            .construct(&query, self.config.timeouts.query_ms)
+            .construct(&query, self.config.timeouts.query_timeout())
             .await?;
 
         Ok(nquads
@@ -588,7 +588,7 @@ WHERE {{
 
                 let nquads = self
                     .backend
-                    .construct(&query, self.config.timeouts.query_ms)
+                    .construct(&query, self.config.timeouts.query_timeout())
                     .await?;
 
                 all_triples.extend(
@@ -618,7 +618,7 @@ WHERE {{
 }}"#
         );
 
-        self.backend.ask(&query, self.config.timeouts.ask_ms).await
+        self.backend.ask(&query, self.config.timeouts.ask_timeout()).await
     }
 
     /// Get metadata for a knowledge collection from the metadata graph
@@ -636,7 +636,7 @@ WHERE {{
         );
 
         self.backend
-            .construct(&query, self.config.timeouts.query_ms)
+            .construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -778,7 +778,7 @@ ORDER BY ?s"#,
         );
 
         self.backend
-            .construct(&query, self.config.timeouts.query_ms)
+            .construct(&query, self.config.timeouts.query_timeout())
             .await
     } */
 
@@ -810,7 +810,7 @@ WHERE {{
         );
 
         self.backend
-            .construct(&query, self.config.timeouts.query_ms)
+            .construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -867,7 +867,7 @@ WHERE {{
             ual_pred = predicates::UAL,
         );
 
-        self.backend.ask(&query, self.config.timeouts.ask_ms).await
+        self.backend.ask(&query, self.config.timeouts.ask_timeout()).await
     }
 
     // ========== Knowledge Asset Operations ==========
@@ -897,7 +897,7 @@ WHERE {{
         );
 
         self.backend
-            .construct(&query, self.config.timeouts.query_ms)
+            .construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -921,7 +921,7 @@ WHERE {{
                 );
                 return self
                     .backend
-                    .construct(&query, self.config.timeouts.query_ms)
+                    .construct(&query, self.config.timeouts.query_timeout())
                     .await;
             }
         };
@@ -934,7 +934,7 @@ WHERE {{
         );
 
         self.backend
-            .construct(&query, self.config.timeouts.query_ms)
+            .construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -986,7 +986,7 @@ WHERE {{
             ual_pred = predicates::UAL,
         );
 
-        self.backend.ask(&query, self.config.timeouts.ask_ms).await
+        self.backend.ask(&query, self.config.timeouts.ask_timeout()).await
     }
 
     // ========== Metadata Operations ==========
@@ -1004,7 +1004,7 @@ WHERE {{
         );
 
         self.backend
-            .construct(&query, self.config.timeouts.query_ms)
+            .construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -1039,7 +1039,7 @@ WHERE {{
             metadata = named_graphs::METADATA,
         );
 
-        self.backend.ask(&query, self.config.timeouts.ask_ms).await
+        self.backend.ask(&query, self.config.timeouts.ask_timeout()).await
     }
 
     // ========== Named Graph Operations ==========
@@ -1072,7 +1072,7 @@ WHERE {{
 
         let result = self
             .backend
-            .select(&query, self.config.timeouts.query_ms)
+            .select(&query, self.config.timeouts.query_timeout())
             .await?;
 
         Ok(result
@@ -1087,21 +1087,21 @@ WHERE {{
     /// Execute a raw SPARQL CONSTRUCT query
     pub async fn construct_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<String> {
         self.backend
-            .construct(query, timeout_ms.unwrap_or(self.config.timeouts.query_ms))
+            .construct(query, timeout_ms.unwrap_or(self.config.timeouts.query_timeout()))
             .await
     }
 
     /// Execute a raw SPARQL SELECT query
     pub async fn select_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<SelectResult> {
         self.backend
-            .select(query, timeout_ms.unwrap_or(self.config.timeouts.query_ms))
+            .select(query, timeout_ms.unwrap_or(self.config.timeouts.query_timeout()))
             .await
     }
 
     /// Execute a raw SPARQL ASK query
     pub async fn ask_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<bool> {
         self.backend
-            .ask(query, timeout_ms.unwrap_or(self.config.timeouts.ask_ms))
+            .ask(query, timeout_ms.unwrap_or(self.config.timeouts.ask_timeout()))
             .await
     }
 

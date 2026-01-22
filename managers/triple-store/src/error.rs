@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use thiserror::Error;
 
 /// Triple store specific errors
@@ -12,8 +14,8 @@ pub enum TripleStoreError {
     Backend { status: u16, message: String },
 
     /// Query timed out
-    #[error("Query timed out after {timeout_ms}ms")]
-    Timeout { timeout_ms: u64 },
+    #[error("Query timed out after {}ms", timeout.as_millis())]
+    Timeout { timeout: Duration },
 
     /// Failed to connect after multiple retries
     #[error("Failed to connect to triple store after {attempts} attempts")]

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
 use async_trait::async_trait;
 use oxigraph::{
@@ -95,7 +95,7 @@ impl TripleStoreBackend for OxigraphBackend {
         Ok(())
     }
 
-    async fn update(&self, query: &str, _timeout_ms: u64) -> Result<()> {
+    async fn update(&self, query: &str, _timeout: Duration) -> Result<()> {
         // Parse the query first (CPU-bound, but fast)
         let prepared = SparqlEvaluator::new().parse_update(query).map_err(|e| {
             TripleStoreError::InvalidQuery {
@@ -117,7 +117,7 @@ impl TripleStoreBackend for OxigraphBackend {
         Ok(())
     }
 
-    async fn construct(&self, query: &str, _timeout_ms: u64) -> Result<String> {
+    async fn construct(&self, query: &str, _timeout: Duration) -> Result<String> {
         // Parse the query
         let prepared = SparqlEvaluator::new().parse_query(query).map_err(|e| {
             TripleStoreError::InvalidQuery {
@@ -158,7 +158,7 @@ impl TripleStoreBackend for OxigraphBackend {
         .map_err(|e| TripleStoreError::Other(format!("Task join error: {}", e)))?
     }
 
-    async fn ask(&self, query: &str, _timeout_ms: u64) -> Result<bool> {
+    async fn ask(&self, query: &str, _timeout: Duration) -> Result<bool> {
         // Parse the query
         let prepared = SparqlEvaluator::new().parse_query(query).map_err(|e| {
             TripleStoreError::InvalidQuery {
@@ -217,7 +217,7 @@ mod tests {
             }
         "#;
 
-        backend.update(insert_query, 10000).await.unwrap();
+        backend.update(insert_query, Duration::from_secs(10)).await.unwrap();
 
         // Verify data was inserted by checking the store directly
         let count = SparqlEvaluator::new()
@@ -254,7 +254,7 @@ mod tests {
             }
         "#;
 
-        backend.update(insert_query, 10000).await.unwrap();
+        backend.update(insert_query, Duration::from_secs(10)).await.unwrap();
 
         // Query public graph only
         let result = SparqlEvaluator::new()
@@ -285,7 +285,10 @@ mod tests {
 
         // Insert data
         backend
-            .update("INSERT DATA { GRAPH <g:1> { <s:1> <p:1> <o:1> . } }", 10000)
+            .update(
+                "INSERT DATA { GRAPH <g:1> { <s:1> <p:1> <o:1> . } }",
+                Duration::from_secs(10),
+            )
             .await
             .unwrap();
 

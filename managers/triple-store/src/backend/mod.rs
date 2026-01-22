@@ -1,7 +1,7 @@
 mod blazegraph;
 mod oxigraph_backend;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 pub use blazegraph::BlazegraphBackend;
@@ -83,15 +83,15 @@ pub trait TripleStoreBackend: Send + Sync {
     /// Execute a SPARQL UPDATE query (INSERT/DELETE)
     ///
     /// Returns nothing on success
-    async fn update(&self, query: &str, timeout_ms: u64) -> Result<()>;
+    async fn update(&self, query: &str, timeout: Duration) -> Result<()>;
 
     /// Execute a SPARQL CONSTRUCT query
     ///
     /// Returns N-Quads/N-Triples serialized RDF
-    async fn construct(&self, query: &str, timeout_ms: u64) -> Result<String>;
+    async fn construct(&self, query: &str, timeout: Duration) -> Result<String>;
 
     /// Execute a SPARQL ASK query
     ///
     /// Returns true if the pattern exists, false otherwise
-    async fn ask(&self, query: &str, timeout_ms: u64) -> Result<bool>;
+    async fn ask(&self, query: &str, timeout: Duration) -> Result<bool>;
 }
