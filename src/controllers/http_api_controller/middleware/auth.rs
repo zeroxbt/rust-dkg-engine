@@ -71,10 +71,10 @@ impl AuthConfig {
             }
 
             // Handle IPv4-mapped IPv6 addresses (::ffff:127.0.0.1)
-            if let IpAddr::V6(v6) = ip {
-                if let Some(v4) = v6.to_ipv4_mapped() {
-                    return allowed == &v4.to_string();
-                }
+            if let IpAddr::V6(v6) = ip
+                && let Some(v4) = v6.to_ipv4_mapped()
+            {
+                return allowed == &v4.to_string();
             }
 
             false
@@ -154,12 +154,10 @@ fn extract_client_ip(req: &Request<Body>) -> Option<IpAddr> {
     // Check X-Forwarded-For header first (leftmost IP is the client)
     if let Some(forwarded_for) = req.headers().get("x-forwarded-for")
         && let Ok(value) = forwarded_for.to_str()
+        && let Some(first_ip) = value.split(',').next()
+        && let Ok(ip) = first_ip.trim().parse::<IpAddr>()
     {
-        if let Some(first_ip) = value.split(',').next()
-            && let Ok(ip) = first_ip.trim().parse::<IpAddr>()
-        {
-            return Some(ip);
-        }
+        return Some(ip);
     }
 
     // Fall back to direct connection address from request extensions
