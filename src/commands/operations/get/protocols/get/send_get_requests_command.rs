@@ -13,7 +13,7 @@ use crate::{
     controllers::rpc_controller::{NetworkProtocols, messages::GetRequestData},
     operations::{GetOperation, GetOperationResult, GetOperationState},
     services::{
-        BatchSender, GetValidationService, TripleStoreService,
+        GetValidationService, TripleStoreService,
         operation::{Operation, OperationService as GenericOperationService},
     },
     utils::{
@@ -577,18 +577,10 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             data.visibility,
         );
 
-        // Create batch sender and send requests
-        let batch_sender = BatchSender::<GetOperation>::from_operation();
-
-        let result = batch_sender
-            .send_batched_until_completion(
-                operation_id,
-                peers,
-                get_request_data,
-                Arc::clone(&self.network_manager),
-                Arc::clone(self.get_operation_service.request_tracker()),
-                completion_rx,
-            )
+        // Send requests via operation service
+        let result = self
+            .get_operation_service
+            .send_batched_until_completion(operation_id, peers, get_request_data, completion_rx)
             .await;
 
         tracing::info!(

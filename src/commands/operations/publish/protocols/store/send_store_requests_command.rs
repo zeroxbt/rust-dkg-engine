@@ -13,7 +13,7 @@ use crate::{
     controllers::rpc_controller::{NetworkProtocols, messages::StoreRequestData},
     operations::{PublishOperation, PublishOperationResult, SignatureData},
     services::{
-        BatchSender, operation::OperationService as GenericOperationService,
+        operation::OperationService as GenericOperationService,
         pending_storage_service::PendingStorageService,
     },
 };
@@ -382,18 +382,10 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
             blockchain.to_owned(),
         );
 
-        // Create batch sender and send requests to remote peers
-        let batch_sender = BatchSender::<PublishOperation>::from_operation();
-
-        let result = batch_sender
-            .send_batched_until_completion(
-                operation_id,
-                remote_peers,
-                store_request_data,
-                Arc::clone(&self.network_manager),
-                Arc::clone(self.publish_operation_service.request_tracker()),
-                completion_rx,
-            )
+        // Send requests to remote peers via operation service
+        let result = self
+            .publish_operation_service
+            .send_batched_until_completion(operation_id, remote_peers, store_request_data, completion_rx)
             .await;
 
         tracing::info!(

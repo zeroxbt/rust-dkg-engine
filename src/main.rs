@@ -69,7 +69,7 @@ async fn main() {
 
     // Initialize operation services (need result_store and request_tracker)
     let (publish_operation_service, get_operation_service, pending_storage_service) =
-        initialize_services(&paths, &repository_manager);
+        initialize_services(&paths, &repository_manager, &network_manager);
 
     let peer_discovery_tracker = Arc::new(PeerDiscoveryTracker::new());
 
@@ -232,6 +232,7 @@ async fn initialize_managers(
 fn initialize_services(
     paths: &AppPaths,
     repository_manager: &Arc<RepositoryManager>,
+    network_manager: &Arc<NetworkManager<NetworkProtocols>>,
 ) -> (
     Arc<GenericOperationService<PublishOperation>>,
     Arc<GenericOperationService<GetOperation>>,
@@ -251,6 +252,7 @@ fn initialize_services(
     let publish_operation_service = Arc::new(
         GenericOperationService::<PublishOperation>::new(
             Arc::clone(repository_manager),
+            Arc::clone(network_manager),
             &kv_store_manager,
             Arc::clone(&request_tracker),
         )
@@ -259,6 +261,7 @@ fn initialize_services(
     let get_operation_service = Arc::new(
         GenericOperationService::<GetOperation>::new(
             Arc::clone(repository_manager),
+            Arc::clone(network_manager),
             &kv_store_manager,
             Arc::clone(&request_tracker),
         )

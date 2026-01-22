@@ -8,7 +8,6 @@ pub mod response_channels;
 pub mod triple_store_service;
 
 pub use get_validation_service::GetValidationService;
-pub use operation::BatchSender;
 pub use peer_discovery_tracker::PeerDiscoveryTracker;
 pub use request_tracker::RequestTracker;
 pub use response_channels::ResponseChannels;

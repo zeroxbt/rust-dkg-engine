@@ -2,17 +2,26 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use dashmap::DashMap;
+use futures::future::join_all;
 use key_value_store::{KeyValueStoreManager, Table};
+use libp2p::PeerId;
+use network::{
+    NetworkManager, RequestMessage,
+    message::{RequestMessageHeader, RequestMessageType},
+};
 use repository::{OperationStatus, RepositoryManager};
 use tokio::sync::watch;
 use uuid::Uuid;
 
 use super::{
+    batch_sender::BatchSendResult,
     context_store::ContextStore,
     result_store::{ResultStoreError, TABLE_NAME},
     traits::Operation,
 };
-use crate::{error::NodeError, services::RequestTracker};
+use crate::{
+    controllers::rpc_controller::NetworkProtocols, error::NodeError, services::RequestTracker,
+};
 
 /// Generic operation service that handles all shared operation logic.
 ///
@@ -24,8 +33,10 @@ use crate::{error::NodeError, services::RequestTracker};
 /// - `Table<Op::Result>` - typed table for this operation's results
 /// - Completion signals - owned here
 /// - `RequestTracker` - shared reference
+/// - `NetworkManager` - shared reference for sending batch requests
 pub struct OperationService<Op: Operation> {
     repository: Arc<RepositoryManager>,
+    network_manager: Arc<NetworkManager<NetworkProtocols>>,
     context_store: ContextStore<Op::State>,
     result_table: Table<Op::Result>,
     completion_signals: DashMap<Uuid, watch::Sender<OperationStatus>>,
@@ -36,12 +47,14 @@ impl<Op: Operation> OperationService<Op> {
     /// Create a new operation service.
     pub fn new(
         repository: Arc<RepositoryManager>,
+        network_manager: Arc<NetworkManager<NetworkProtocols>>,
         kv_store_manager: &KeyValueStoreManager,
         request_tracker: Arc<RequestTracker>,
     ) -> Result<Self, ResultStoreError> {
         let result_table = kv_store_manager.table(TABLE_NAME)?;
         Ok(Self {
             repository,
+            network_manager,
             context_store: ContextStore::with_default_ttl(),
             result_table,
             completion_signals: DashMap::new(),
@@ -324,6 +337,202 @@ impl<Op: Operation> OperationService<Op> {
                 "[{}] Signaled completion",
                 Op::NAME
             );
+        }
+    }
+
+    /// Send requests to peers in batches until completion is signaled.
+    ///
+    /// Sends requests in batches, stopping early if the completion signal indicates
+    /// the operation has finished (e.g., minimum acknowledgments reached).
+    ///
+    /// # Arguments
+    /// * `operation_id` - The operation identifier
+    /// * `peers` - List of peers to contact
+    /// * `request_data` - The request data to send to each peer
+    /// * `completion_rx` - Watch receiver to check for early completion
+    ///
+    /// # Returns
+    /// * `BatchSendResult` indicating how many requests were sent and if completed early
+    pub async fn send_batched_until_completion(
+        &self,
+        operation_id: Uuid,
+        peers: Vec<PeerId>,
+        request_data: Op::Request,
+        mut completion_rx: watch::Receiver<OperationStatus>,
+    ) -> BatchSendResult {
+        let config = Op::config();
+        let mut total_sent = 0;
+        let mut total_failed = 0;
+        let total_peers = peers.len();
+
+        // Apply max_nodes limit if configured
+        let peers_to_contact: Vec<_> = match config.max_nodes {
+            Some(max) => peers.into_iter().take(max).collect(),
+            None => peers,
+        };
+
+        for (batch_idx, batch) in peers_to_contact.chunks(config.batch_size).enumerate() {
+            // Check if already completed before sending this batch
+            if *completion_rx.borrow() != OperationStatus::InProgress {
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    batch = batch_idx,
+                    "[{}] Operation completed before batch, stopping",
+                    Op::NAME
+                );
+                return BatchSendResult {
+                    sent_count: total_sent,
+                    failed_count: total_failed,
+                    early_completion: true,
+                };
+            }
+
+            // Send this batch
+            let mut send_futures = Vec::with_capacity(batch.len());
+
+            for peer_id in batch {
+                let peer = *peer_id;
+                let network_manager = Arc::clone(&self.network_manager);
+                let request_tracker = Arc::clone(&self.request_tracker);
+                let message = RequestMessage {
+                    header: RequestMessageHeader::new(
+                        operation_id,
+                        RequestMessageType::ProtocolRequest,
+                    ),
+                    data: request_data.clone(),
+                };
+
+                send_futures.push(async move {
+                    let protocol_request = Op::build_protocol_request(peer, message);
+                    match network_manager
+                        .send_protocol_request(protocol_request)
+                        .await
+                    {
+                        Ok(request_id) => {
+                            request_tracker.track(request_id, operation_id, peer);
+                            (peer, true)
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                operation_id = %operation_id,
+                                peer = %peer,
+                                error = %e,
+                                "[{}] Failed to send request",
+                                Op::NAME
+                            );
+                            (peer, false)
+                        }
+                    }
+                });
+            }
+
+            // Execute batch sends concurrently
+            let results = join_all(send_futures).await;
+
+            for (peer, success) in &results {
+                if *success {
+                    total_sent += 1;
+                    tracing::debug!(
+                        operation_id = %operation_id,
+                        peer = %peer,
+                        "[{}] Request sent successfully",
+                        Op::NAME
+                    );
+                } else {
+                    total_failed += 1;
+                    tracing::warn!(
+                        operation_id = %operation_id,
+                        peer = %peer,
+                        "[{}] Failed to send request",
+                        Op::NAME
+                    );
+                }
+            }
+
+            tracing::debug!(
+                operation_id = %operation_id,
+                batch = batch_idx,
+                batch_size = batch.len(),
+                total_sent = total_sent,
+                total_failed = total_failed,
+                total_peers = total_peers,
+                "[{}] Batch sent",
+                Op::NAME
+            );
+
+            // Wait for completion signal or timeout before next batch
+            let timeout = tokio::time::sleep(config.batch_timeout);
+
+            tokio::select! {
+                result = completion_rx.changed() => {
+                    if result.is_err() {
+                        // Channel closed, operation must be done
+                        tracing::debug!(
+                            operation_id = %operation_id,
+                            "[{}] Completion channel closed, stopping",
+                            Op::NAME
+                        );
+                        return BatchSendResult {
+                            sent_count: total_sent,
+                            failed_count: total_failed,
+                            early_completion: true,
+                        };
+                    }
+
+                    let status = *completion_rx.borrow();
+                    match status {
+                        OperationStatus::Completed => {
+                            tracing::debug!(
+                                operation_id = %operation_id,
+                                "[{}] Completion signaled, stopping batch sender",
+                                Op::NAME
+                            );
+                            return BatchSendResult {
+                                sent_count: total_sent,
+                                failed_count: total_failed,
+                                early_completion: true,
+                            };
+                        }
+                        OperationStatus::Failed => {
+                            tracing::debug!(
+                                operation_id = %operation_id,
+                                "[{}] Failure signaled, stopping batch sender",
+                                Op::NAME
+                            );
+                            return BatchSendResult {
+                                sent_count: total_sent,
+                                failed_count: total_failed,
+                                early_completion: true,
+                            };
+                        }
+                        OperationStatus::InProgress => {
+                            // Continue to next batch
+                        }
+                    }
+                }
+                _ = timeout => {
+                    tracing::trace!(
+                        operation_id = %operation_id,
+                        batch = batch_idx,
+                        "[{}] Batch timeout, continuing to next batch",
+                        Op::NAME
+                    );
+                }
+            }
+        }
+
+        tracing::info!(
+            operation_id = %operation_id,
+            total_sent = total_sent,
+            total_failed = total_failed,
+            "[{}] All batches sent",
+            Op::NAME
+        );
+
+        BatchSendResult {
+            sent_count: total_sent,
+            failed_count: total_failed,
+            early_completion: false,
         }
     }
 }
