@@ -1,4 +1,7 @@
-use std::{path::Path, time::Duration};
+use std::time::Duration;
+
+#[cfg(feature = "persistence")]
+use std::path::Path;
 
 use async_trait::async_trait;
 use oxigraph::{
@@ -18,7 +21,10 @@ pub struct OxigraphBackend {
 }
 
 impl OxigraphBackend {
-    /// Create a new Oxigraph backend with persistent storage
+    /// Create a new Oxigraph backend with persistent storage (requires `persistence` feature)
+    ///
+    /// Enable with: `cargo build --features triple-store/persistence`
+    #[cfg(feature = "persistence")]
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let store = Store::open(&path).map_err(|e| {
             TripleStoreError::Other(format!("Failed to open Oxigraph store: {}", e))
@@ -32,7 +38,10 @@ impl OxigraphBackend {
         Ok(Self { store })
     }
 
-    /// Create a new in-memory Oxigraph backend (for testing)
+    /// Create a new in-memory Oxigraph backend
+    ///
+    /// This is the default mode when compiled without the `persistence` feature.
+    /// Data is not persisted between restarts.
     pub fn in_memory() -> Result<Self> {
         let store = Store::new().map_err(|e| {
             TripleStoreError::Other(format!("Failed to create in-memory Oxigraph store: {}", e))

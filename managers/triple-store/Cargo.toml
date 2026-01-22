@@ -6,6 +6,12 @@ edition = "2024"
 [lints]
 workspace = true
 
+[features]
+default = []
+# Enable RocksDB persistence for oxigraph (adds ~117s to compile time)
+# Use for production builds: cargo build --release --features persistence
+persistence = ["oxigraph/default"]
+
 [dependencies]
 tokio.workspace = true
 serde.workspace = true
@@ -14,7 +20,8 @@ tracing.workspace = true
 thiserror.workspace = true
 reqwest.workspace = true
 async-trait = "0.1"
-oxigraph = "0.5.3"
+# In-memory only by default (fast compile), enable "persistence" feature for RocksDB
+oxigraph = { version = "0.5.3", default-features = false }
 validator.workspace = true
 validator_derive.workspace = true
 

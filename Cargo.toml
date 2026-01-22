@@ -7,7 +7,6 @@ members = [
     "./managers/triple-store",
     "./managers/key-value-store",
     "./tools/local_network",
-    "./rdf-canonize",
 ]
 
 resolver = "2"
@@ -45,7 +44,20 @@ uuid = { version = "1.19.0", features = ["serde", "v4"] }
 
 # Other shared dependencies
 clap = "4.5.54"
-alloy = { version = "1.4.3", features = ["full", "signer-local"] }
+# Minimal alloy features (instead of "full") to reduce compile time
+alloy = { version = "1.4.3", default-features = false, features = [
+    "std",
+    "contract",
+    "network",
+    "providers",
+    "provider-http",
+    "provider-ws",
+    "reqwest",
+    "rpc-client",
+    "rpc-types",
+    "signer-local",
+    "sol-types",
+] }
 libp2p = { version = "0.56.0", features = ["macros"] }
 sha2 = "0.10"
 subxt = "0.44.2"

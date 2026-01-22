@@ -5,7 +5,10 @@ pub mod query;
 pub mod rdf;
 pub mod types;
 
-use std::{path::PathBuf, time::Duration};
+use std::time::Duration;
+
+#[cfg(feature = "persistence")]
+use std::path::PathBuf;
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 use error::{Result, TripleStoreError};
@@ -124,25 +127,36 @@ impl TripleStoreManager {
         let backend: Box<dyn TripleStoreBackend> = match config.backend {
             TripleStoreBackendType::Blazegraph => Box::new(BlazegraphBackend::new(config.clone())?),
             TripleStoreBackendType::Oxigraph => {
-                let path = config
-                    .data_path
-                    .clone()
-                    .unwrap_or_else(|| PathBuf::from("data/triple-store"));
+                #[cfg(feature = "persistence")]
+                {
+                    let path = config
+                        .data_path
+                        .clone()
+                        .unwrap_or_else(|| PathBuf::from("data/triple-store"));
 
-                // Create full path with repository name
-                let store_path = path.join(&config.repository);
+                    // Create full path with repository name
+                    let store_path = path.join(&config.repository);
 
-                // Ensure the directory exists
-                if let Some(parent) = store_path.parent() {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        TripleStoreError::Other(format!(
-                            "Failed to create Oxigraph store directory: {}",
-                            e
-                        ))
-                    })?;
+                    // Ensure the directory exists
+                    if let Some(parent) = store_path.parent() {
+                        std::fs::create_dir_all(parent).map_err(|e| {
+                            TripleStoreError::Other(format!(
+                                "Failed to create Oxigraph store directory: {}",
+                                e
+                            ))
+                        })?;
+                    }
+
+                    Box::new(OxigraphBackend::open(store_path)?)
                 }
 
-                Box::new(OxigraphBackend::open(store_path)?)
+                #[cfg(not(feature = "persistence"))]
+                {
+                    tracing::warn!(
+                        "Oxigraph persistence disabled (compile with --features persistence). Using in-memory store."
+                    );
+                    Box::new(OxigraphBackend::in_memory()?)
+                }
             }
         };
 
