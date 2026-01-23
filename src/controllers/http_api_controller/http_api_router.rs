@@ -3,21 +3,22 @@ use std::{
     sync::Arc,
 };
 
-use axum::{Router, routing::{get, post}};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 use serde::Deserialize;
 use tokio::{net::TcpListener, sync::Mutex};
-use tower_http::{
-    cors::CorsLayer,
-    limit::RequestBodyLimitLayer,
-    trace::TraceLayer,
-};
+use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
 
-use super::middleware::{AuthConfig, RateLimiterConfig};
-use super::v1::{
-    finality_http_api_controller::FinalityStatusHttpApiController,
-    info_http_api_controller::InfoHttpApiController,
-    operation_result_http_api_controller::OperationResultHttpApiController,
-    publish_http_api_controller::PublishHttpApiController,
+use super::{
+    middleware::{AuthConfig, RateLimiterConfig},
+    v1::{
+        finality_http_api_controller::FinalityStatusHttpApiController,
+        info_http_api_controller::InfoHttpApiController,
+        operation_result_http_api_controller::OperationResultHttpApiController,
+        publish_http_api_controller::PublishHttpApiController,
+    },
 };
 use crate::{
     context::Context,
@@ -105,10 +106,7 @@ impl HttpApiRouter {
 
         // 3. Apply body size limit
         router = router.layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE));
-        tracing::info!(
-            "Request body limit: {} MB",
-            MAX_BODY_SIZE / (1024 * 1024)
-        );
+        tracing::info!("Request body limit: {} MB", MAX_BODY_SIZE / (1024 * 1024));
 
         // 4. Apply request tracing
         router = router.layer(TraceLayer::new_for_http());

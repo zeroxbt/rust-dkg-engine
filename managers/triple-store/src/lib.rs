@@ -5,10 +5,9 @@ pub mod query;
 pub mod rdf;
 pub mod types;
 
-use std::time::Duration;
-
 #[cfg(feature = "persistence")]
 use std::path::PathBuf;
+use std::time::Duration;
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 use error::{Result, TripleStoreError};
@@ -63,7 +62,7 @@ fn days_to_ymd(days: i64) -> (i32, u32, u32) {
 
 // Re-export commonly used types for convenience
 pub use backend::{SelectResult, SelectRow, SelectValue};
-pub use config::{TripleStoreBackendType, TripleStoreManagerConfig, DKG_REPOSITORY};
+pub use config::{DKG_REPOSITORY, TripleStoreBackendType, TripleStoreManagerConfig};
 pub use error::TripleStoreError as Error;
 pub use rdf::{extract_subject, group_nquads_by_subject};
 pub use types::{Assertion, KnowledgeAsset, TokenIds, Visibility};

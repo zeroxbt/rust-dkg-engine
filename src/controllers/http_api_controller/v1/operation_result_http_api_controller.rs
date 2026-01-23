@@ -98,8 +98,9 @@ impl OperationResultHttpApiController {
                             error = %e,
                             "Failed to get publish result"
                         );
-                        let response =
-                            OperationResultResponse::failed(Some("Failed to retrieve result".into()));
+                        let response = OperationResultResponse::failed(Some(
+                            "Failed to retrieve result".into(),
+                        ));
                         (StatusCode::OK, Json(response)).into_response()
                     }
                 }

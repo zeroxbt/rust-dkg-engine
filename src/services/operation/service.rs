@@ -119,9 +119,7 @@ impl<Op: Operation> OperationService<Op> {
         );
 
         // Await the response
-        response_rx
-            .await
-            .map_err(|_| RequestError::ChannelClosed)?
+        response_rx.await.map_err(|_| RequestError::ChannelClosed)?
     }
 
     /// Create a new operation record in the database and return a completion receiver.

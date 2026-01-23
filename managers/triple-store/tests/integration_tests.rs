@@ -18,7 +18,6 @@ fn blazegraph_config() -> TripleStoreManagerConfig {
         backend: TripleStoreBackendType::Blazegraph,
         url: std::env::var("BLAZEGRAPH_URL")
             .unwrap_or_else(|_| "http://localhost:9999".to_string()),
-        repository: format!("test_{}", uuid::Uuid::new_v4().to_string().replace('-', "")),
         data_path: None,
         username: None,
         password: None,

@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use network::{PeerId, message::{RequestMessage, ResponseMessage}, request_response};
+use network::{
+    PeerId,
+    message::{RequestMessage, ResponseMessage},
+    request_response,
+};
 use triple_store::Assertion;
 
 use crate::{

@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use super::TripleStoreBackend;
 use crate::{
-    config::{TripleStoreManagerConfig, DKG_REPOSITORY},
+    config::{DKG_REPOSITORY, TripleStoreManagerConfig},
     error::{Result, TripleStoreError},
 };
 
@@ -233,11 +233,7 @@ impl TripleStoreBackend for BlazegraphBackend {
     }
 
     async fn delete_repository(&self) -> Result<()> {
-        let url = format!(
-            "{}/{}",
-            self.config.namespace_endpoint(),
-            DKG_REPOSITORY
-        );
+        let url = format!("{}/{}", self.config.namespace_endpoint(), DKG_REPOSITORY);
 
         let response = self
             .auth_headers(self.client.delete(&url))

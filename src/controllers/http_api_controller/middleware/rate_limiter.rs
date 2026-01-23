@@ -4,9 +4,7 @@ use axum::body::Body;
 use governor::middleware::NoOpMiddleware;
 use serde::Deserialize;
 use tower_governor::{
-    GovernorLayer,
-    governor::GovernorConfigBuilder,
-    key_extractor::PeerIpKeyExtractor,
+    GovernorLayer, governor::GovernorConfigBuilder, key_extractor::PeerIpKeyExtractor,
 };
 
 /// Configuration for the HTTP API rate limiter.
@@ -66,9 +64,7 @@ impl RateLimiterConfig {
     /// Build the rate limiter layer.
     ///
     /// Returns `None` if rate limiting is disabled.
-    pub fn build_layer(
-        &self,
-    ) -> Option<GovernorLayer<PeerIpKeyExtractor, NoOpMiddleware, Body>> {
+    pub fn build_layer(&self) -> Option<GovernorLayer<PeerIpKeyExtractor, NoOpMiddleware, Body>> {
         if !self.enabled {
             return None;
         }

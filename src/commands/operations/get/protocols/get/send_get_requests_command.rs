@@ -11,7 +11,10 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{NetworkProtocols, messages::{GetRequestData, GetResponseData}},
+    controllers::rpc_controller::{
+        NetworkProtocols,
+        messages::{GetRequestData, GetResponseData},
+    },
     operations::{GetOperation, GetOperationResult, GetOperationState},
     services::{
         GetValidationService, TripleStoreService,
@@ -304,7 +307,10 @@ impl SendGetRequestsCommandHandler {
         visibility: Visibility,
     ) -> bool {
         match response {
-            GetResponseData::Data { assertion, metadata } => {
+            GetResponseData::Data {
+                assertion,
+                metadata,
+            } => {
                 // Validate the assertion
                 let is_valid = self
                     .get_validation_service
