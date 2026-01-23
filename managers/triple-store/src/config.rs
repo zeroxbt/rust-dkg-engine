@@ -2,6 +2,11 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+/// The fixed repository/namespace name used by the DKG.
+/// For Blazegraph: namespace name
+/// For Oxigraph: subdirectory name under data_path
+pub const DKG_REPOSITORY: &str = "DKG";
+
 /// Backend type for the triple store
 #[derive(Debug, Deserialize, Clone, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -24,12 +29,6 @@ pub struct TripleStoreManagerConfig {
     /// Required for Blazegraph, ignored for Oxigraph
     #[serde(default)]
     pub url: String,
-
-    /// Repository/namespace name (default: "DKG")
-    /// For Blazegraph: namespace name
-    /// For Oxigraph: subdirectory name under data_path
-    #[serde(default = "default_repository")]
-    pub repository: String,
 
     /// Path for Oxigraph persistent storage (default: "{app_data_path}/triple-store")
     /// Only used when backend = "oxigraph"
@@ -80,10 +79,6 @@ impl Default for TimeoutConfig {
     }
 }
 
-fn default_repository() -> String {
-    "DKG".to_string()
-}
-
 fn default_connect_max_retries() -> u32 {
     10
 }
@@ -127,12 +122,12 @@ impl TripleStoreManagerConfig {
         std::time::Duration::from_millis(self.connect_retry_frequency_ms)
     }
 
-    /// Get the SPARQL endpoint URL for the configured repository
+    /// Get the SPARQL endpoint URL for the DKG repository
     pub fn sparql_endpoint(&self) -> String {
         format!(
             "{}/blazegraph/namespace/{}/sparql",
             self.url.trim_end_matches('/'),
-            self.repository
+            DKG_REPOSITORY
         )
     }
 

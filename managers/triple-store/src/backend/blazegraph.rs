@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use super::TripleStoreBackend;
 use crate::{
-    config::TripleStoreManagerConfig,
+    config::{TripleStoreManagerConfig, DKG_REPOSITORY},
     error::{Result, TripleStoreError},
 };
 
@@ -164,7 +164,7 @@ impl TripleStoreBackend for BlazegraphBackend {
         let url = format!(
             "{}/{}/properties?describe-each-named-graph=false",
             self.config.namespace_endpoint(),
-            self.config.repository
+            DKG_REPOSITORY
         );
 
         let response = self
@@ -184,7 +184,7 @@ impl TripleStoreBackend for BlazegraphBackend {
 
     async fn create_repository(&self) -> Result<()> {
         let url = self.config.namespace_endpoint();
-        let name = &self.config.repository;
+        let name = DKG_REPOSITORY;
 
         // Blazegraph namespace configuration properties (Java properties format)
         // These settings match the JS ot-node implementation exactly
@@ -218,7 +218,7 @@ impl TripleStoreBackend for BlazegraphBackend {
 
         if response.status().is_success() || response.status().as_u16() == 201 {
             tracing::info!(
-                repository = %self.config.repository,
+                repository = %DKG_REPOSITORY,
                 "Created Blazegraph namespace"
             );
             Ok(())
@@ -236,7 +236,7 @@ impl TripleStoreBackend for BlazegraphBackend {
         let url = format!(
             "{}/{}",
             self.config.namespace_endpoint(),
-            self.config.repository
+            DKG_REPOSITORY
         );
 
         let response = self
@@ -247,7 +247,7 @@ impl TripleStoreBackend for BlazegraphBackend {
 
         if response.status().is_success() {
             tracing::info!(
-                repository = %self.config.repository,
+                repository = %DKG_REPOSITORY,
                 "Deleted Blazegraph namespace"
             );
             Ok(())

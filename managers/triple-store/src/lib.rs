@@ -63,7 +63,7 @@ fn days_to_ymd(days: i64) -> (i32, u32, u32) {
 
 // Re-export commonly used types for convenience
 pub use backend::{SelectResult, SelectRow, SelectValue};
-pub use config::{TripleStoreBackendType, TripleStoreManagerConfig};
+pub use config::{TripleStoreBackendType, TripleStoreManagerConfig, DKG_REPOSITORY};
 pub use error::TripleStoreError as Error;
 pub use rdf::{extract_subject, group_nquads_by_subject};
 pub use types::{Assertion, KnowledgeAsset, TokenIds, Visibility};
@@ -135,7 +135,7 @@ impl TripleStoreManager {
                         .unwrap_or_else(|| PathBuf::from("data/triple-store"));
 
                     // Create full path with repository name
-                    let store_path = path.join(&config.repository);
+                    let store_path = path.join(DKG_REPOSITORY);
 
                     // Ensure the directory exists
                     if let Some(parent) = store_path.parent() {
@@ -183,7 +183,6 @@ impl TripleStoreManager {
         let config = TripleStoreManagerConfig {
             backend: TripleStoreBackendType::Oxigraph,
             url: String::new(),
-            repository: "test".to_string(),
             data_path: None,
             username: None,
             password: None,
@@ -245,7 +244,7 @@ impl TripleStoreManager {
     pub async fn ensure_repository(&self) -> Result<()> {
         if !self.backend.repository_exists().await? {
             tracing::info!(
-                repository = %self.config.repository,
+                repository = %DKG_REPOSITORY,
                 "Repository does not exist, creating..."
             );
             self.backend.create_repository().await?;
