@@ -24,13 +24,12 @@ pub struct PublishRequest {
     pub dataset: Assertion,
     #[validate(custom(function = "validate_blockchain_id"))]
     pub blockchain: BlockchainId,
-    #[validate(range(min = 1, message = "hash_function_id must be at least 1"))]
-    pub hash_function_id: Option<u8>,
     #[validate(range(
         min = 1,
         message = "minimum_number_of_node_replications must be at least 1"
     ))]
-    pub minimum_number_of_node_replications: Option<u8>,
+    #[serde(default)]
+    pub minimum_number_of_node_replications: u8,
 }
 
 #[derive(Serialize, Debug, Clone)]

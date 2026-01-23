@@ -43,16 +43,10 @@ impl OperationResultResponse {
         }
     }
 
-    pub fn in_progress_with_data(min_acks_reached: bool) -> Self {
+    pub fn in_progress() -> Self {
         Self {
             status: "IN_PROGRESS".to_string(),
-            data: Some(PublishOperationData {
-                min_acks_reached,
-                publisher_node_signature: None,
-                signatures: None,
-                error_type: None,
-                error_message: None,
-            }),
+            data: None,
         }
     }
 

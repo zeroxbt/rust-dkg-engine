@@ -1,6 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use blockchain::{AccessPolicy, BlockchainManager};
+use futures::future::join_all;
 use libp2p::PeerId;
 use network::NetworkManager;
 use repository::RepositoryManager;
@@ -10,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{NetworkProtocols, messages::GetRequestData},
+    controllers::rpc_controller::{NetworkProtocols, messages::{GetRequestData, GetResponseData}},
     operations::{GetOperation, GetOperationResult, GetOperationState},
     services::{
         GetValidationService, TripleStoreService,
@@ -71,10 +72,21 @@ impl SendGetRequestsCommandHandler {
         }
     }
 
+    /// Maximum number of knowledge assets per collection.
+    /// Used to convert between global token IDs and local 1-based indices.
+    /// Global token ID formula: (kc_id - 1) * MAX_TOKENS_PER_KC + local_token_id
+    const MAX_TOKENS_PER_KC: u64 = 1_000_000;
+
     /// Build token IDs from on-chain data or parsed UAL.
     ///
     /// If requesting a specific asset, returns a single token ID.
-    /// If requesting entire collection, uses the on-chain range with burned tokens.
+    /// If requesting entire collection, converts the on-chain global token ID range
+    /// to local 1-based indices used for storage.
+    ///
+    /// Note: The blockchain returns global token IDs using the formula:
+    /// `global_token_id = (kc_id - 1) * 1_000_000 + local_token_id`
+    /// but knowledge assets are stored with 1-based local indices within each collection.
+    /// This function converts the global range back to local indices.
     fn build_token_ids_from_chain(
         parsed_ual: &ParsedUal,
         chain_range: Option<(u64, u64, Vec<u64>)>,
@@ -84,7 +96,20 @@ impl SendGetRequestsCommandHandler {
             None => {
                 // Use on-chain data if available
                 match chain_range {
-                    Some((start, end, burned)) => TokenIds::new(start, end, burned),
+                    Some((global_start, global_end, global_burned)) => {
+                        // Convert global token IDs to local 1-based indices
+                        // Global: (kc_id - 1) * 1_000_000 + local_id
+                        // Local: global - (kc_id - 1) * 1_000_000
+                        let offset = (parsed_ual.knowledge_collection_id as u64 - 1)
+                            * Self::MAX_TOKENS_PER_KC;
+                        let local_start = global_start.saturating_sub(offset);
+                        let local_end = global_end.saturating_sub(offset);
+                        let local_burned: Vec<u64> = global_burned
+                            .into_iter()
+                            .map(|b| b.saturating_sub(offset))
+                            .collect();
+                        TokenIds::new(local_start, local_end, local_burned)
+                    }
                     None => {
                         // Fallback for old ContentAssetStorage contracts
                         TokenIds::single(1)
@@ -266,6 +291,82 @@ impl SendGetRequestsCommandHandler {
             }
         }
     }
+
+    /// Validate a get response and store the result if valid.
+    ///
+    /// Returns true if the response is valid and was stored successfully.
+    async fn validate_and_store_response(
+        &self,
+        operation_id: Uuid,
+        peer: &PeerId,
+        response: &GetResponseData,
+        parsed_ual: &ParsedUal,
+        visibility: Visibility,
+    ) -> bool {
+        match response {
+            GetResponseData::Data { assertion, metadata } => {
+                // Validate the assertion
+                let is_valid = self
+                    .get_validation_service
+                    .validate_response(
+                        &assertion.public,
+                        assertion.private.as_deref(),
+                        parsed_ual,
+                        visibility,
+                    )
+                    .await;
+
+                if !is_valid {
+                    tracing::debug!(
+                        operation_id = %operation_id,
+                        peer = %peer,
+                        "Response validation failed"
+                    );
+                    return false;
+                }
+
+                // Build and store the result
+                let get_result = GetOperationResult::new(
+                    Assertion::new(assertion.public.clone(), assertion.private.clone()),
+                    metadata.clone(),
+                );
+
+                match self
+                    .get_operation_service
+                    .store_result(operation_id, &get_result)
+                {
+                    Ok(()) => {
+                        tracing::debug!(
+                            operation_id = %operation_id,
+                            peer = %peer,
+                            public_count = assertion.public.len(),
+                            has_private = assertion.private.is_some(),
+                            "Response validated and stored"
+                        );
+                        true
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            operation_id = %operation_id,
+                            peer = %peer,
+                            error = %e,
+                            "Failed to store result"
+                        );
+                        false
+                    }
+                }
+            }
+            GetResponseData::Error { error_message } => {
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    peer = %peer,
+                    error = %error_message,
+                    "Peer returned error response"
+                );
+                false
+            }
+        }
+    }
 }
 
 impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandler {
@@ -434,10 +535,10 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     return CommandExecutionResult::Completed;
                 }
 
-                // Mark operation as completed
+                // Mark operation as completed (local-first success: 1 success, 0 failures)
                 if let Err(e) = self
                     .get_operation_service
-                    .mark_completed(operation_id)
+                    .mark_completed(operation_id, 1, 0)
                     .await
                 {
                     tracing::error!(
@@ -553,21 +654,6 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             return CommandExecutionResult::Completed;
         }
 
-        // Initialize progress tracking and get completion receiver
-        let completion_rx = match self
-            .get_operation_service
-            .initialize_progress(operation_id, total_peers, GetOperation::MIN_ACK_RESPONSES)
-            .await
-        {
-            Ok(rx) => rx,
-            Err(e) => {
-                self.get_operation_service
-                    .mark_failed(operation_id, e.to_string())
-                    .await;
-                return CommandExecutionResult::Completed;
-            }
-        };
-
         // Build the get request data (reusing token_ids from local query)
         let get_request_data = GetRequestData::new(
             ual.clone(),
@@ -577,19 +663,121 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             data.visibility,
         );
 
-        // Send requests via operation service
-        let result = self
-            .get_operation_service
-            .send_batched_until_completion(operation_id, peers, get_request_data, completion_rx)
-            .await;
+        // Send requests in batches and process responses directly
+        let mut success_count: u16 = 0;
+        let mut failure_count: u16 = 0;
 
-        tracing::info!(
-            operation_id = %operation_id,
-            sent = result.sent_count,
-            failed = result.failed_count,
-            early_completion = result.early_completion,
-            "Get requests batch sending completed"
+        for (batch_idx, batch) in peers.chunks(GetOperation::BATCH_SIZE).enumerate() {
+            tracing::debug!(
+                operation_id = %operation_id,
+                batch = batch_idx,
+                batch_size = batch.len(),
+                "Sending batch of get requests"
+            );
+
+            // Send all requests in this batch concurrently
+            let request_futures: Vec<_> = batch
+                .iter()
+                .map(|peer| {
+                    let peer = *peer;
+                    let request_data = get_request_data.clone();
+                    let operation_service = Arc::clone(&self.get_operation_service);
+                    async move {
+                        let result = operation_service
+                            .send_request(operation_id, peer, request_data)
+                            .await;
+                        (peer, result)
+                    }
+                })
+                .collect();
+
+            // Wait for all requests in this batch to complete (success or failure)
+            let results = join_all(request_futures).await;
+
+            // Process each response
+            for (peer, result) in results {
+                match result {
+                    Ok(response) => {
+                        // Validate the response
+                        let is_valid = self
+                            .validate_and_store_response(
+                                operation_id,
+                                &peer,
+                                &response,
+                                &parsed_ual,
+                                data.visibility,
+                            )
+                            .await;
+
+                        if is_valid {
+                            success_count += 1;
+
+                            // Check if we've met the success threshold
+                            if success_count >= GetOperation::MIN_ACK_RESPONSES {
+                                tracing::info!(
+                                    operation_id = %operation_id,
+                                    success_count = success_count,
+                                    failure_count = failure_count,
+                                    batch = batch_idx,
+                                    "Get operation completed - success threshold reached"
+                                );
+
+                                // Mark operation as completed with final counts
+                                if let Err(e) = self
+                                    .get_operation_service
+                                    .mark_completed(operation_id, success_count, failure_count)
+                                    .await
+                                {
+                                    tracing::error!(
+                                        operation_id = %operation_id,
+                                        error = %e,
+                                        "Failed to mark operation as completed"
+                                    );
+                                }
+
+                                return CommandExecutionResult::Completed;
+                            }
+                        } else {
+                            failure_count += 1;
+                            tracing::debug!(
+                                operation_id = %operation_id,
+                                peer = %peer,
+                                "Response validation failed, treating as NACK"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        failure_count += 1;
+                        tracing::debug!(
+                            operation_id = %operation_id,
+                            peer = %peer,
+                            error = %e,
+                            "Request failed"
+                        );
+                    }
+                }
+            }
+
+            tracing::debug!(
+                operation_id = %operation_id,
+                batch = batch_idx,
+                success_count = success_count,
+                failure_count = failure_count,
+                "Batch completed"
+            );
+        }
+
+        // All batches exhausted without meeting success threshold
+        let error_message = format!(
+            "Failed to get data from network. Success: {}, Failed: {}, Required: {}",
+            success_count,
+            failure_count,
+            GetOperation::MIN_ACK_RESPONSES
         );
+        tracing::warn!(operation_id = %operation_id, %error_message);
+        self.get_operation_service
+            .mark_failed(operation_id, error_message)
+            .await;
 
         CommandExecutionResult::Completed
     }

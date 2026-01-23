@@ -31,8 +31,8 @@ use crate::{
     controllers::rpc_controller::NetworkProtocols,
     operations::{GetOperation, PublishOperation},
     services::{
-        GetValidationService, PeerDiscoveryTracker, RequestTracker, ResponseChannels,
-        TripleStoreService, operation::OperationService as GenericOperationService,
+        GetValidationService, PeerDiscoveryTracker, ResponseChannels, TripleStoreService,
+        operation::OperationService as GenericOperationService,
         pending_storage_service::PendingStorageService,
     },
 };
@@ -255,14 +255,12 @@ fn initialize_services(
         PendingStorageService::new(&kv_store_manager)
             .expect("Failed to create pending storage service"),
     );
-    let request_tracker = Arc::new(RequestTracker::new());
 
     let publish_operation_service = Arc::new(
         GenericOperationService::<PublishOperation>::new(
             Arc::clone(repository_manager),
             Arc::clone(network_manager),
             &kv_store_manager,
-            Arc::clone(&request_tracker),
         )
         .expect("Failed to create publish operation service"),
     );
@@ -271,7 +269,6 @@ fn initialize_services(
             Arc::clone(repository_manager),
             Arc::clone(network_manager),
             &kv_store_manager,
-            Arc::clone(&request_tracker),
         )
         .expect("Failed to create get operation service"),
     );

@@ -25,10 +25,13 @@ impl PublishHttpApiController {
             Ok(_) => {
                 let operation_id = Uuid::new_v4();
 
+                // Create operation record - we don't need the completion receiver for HTTP API
+                // (client polls for status via separate endpoint)
                 if let Err(e) = context
                     .publish_operation_service()
                     .create_operation(operation_id)
                     .await
+                    .map(|_| ())
                 {
                     tracing::error!(operation_id = %operation_id, error = %e, "Failed to create operation record");
                     return (

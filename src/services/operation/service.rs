@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use dashmap::DashMap;
-use futures::future::join_all;
 use key_value_store::{KeyValueStoreManager, Table};
 use libp2p::PeerId;
 use network::{
@@ -14,13 +13,14 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use super::{
-    batch_sender::BatchSendResult,
     context_store::ContextStore,
     result_store::{ResultStoreError, TABLE_NAME},
     traits::Operation,
 };
 use crate::{
-    controllers::rpc_controller::NetworkProtocols, error::NodeError, services::RequestTracker,
+    controllers::rpc_controller::NetworkProtocols,
+    error::NodeError,
+    services::{PendingRequests, RequestError},
 };
 
 /// Generic operation service that handles all shared operation logic.
@@ -32,15 +32,15 @@ use crate::{
 /// - `ContextStore<Op::State>` - owned here
 /// - `Table<Op::Result>` - typed table for this operation's results
 /// - Completion signals - owned here
-/// - `RequestTracker` - shared reference
-/// - `NetworkManager` - shared reference for sending batch requests
+/// - `PendingRequests<Op::Response>` - tracks outbound requests awaiting responses
+/// - `NetworkManager` - shared reference for sending requests
 pub struct OperationService<Op: Operation> {
     repository: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     context_store: ContextStore<Op::State>,
     result_table: Table<Op::Result>,
     completion_signals: DashMap<Uuid, watch::Sender<OperationStatus>>,
-    request_tracker: Arc<RequestTracker>,
+    pending_requests: PendingRequests<Op::Response>,
 }
 
 impl<Op: Operation> OperationService<Op> {
@@ -49,7 +49,6 @@ impl<Op: Operation> OperationService<Op> {
         repository: Arc<RepositoryManager>,
         network_manager: Arc<NetworkManager<NetworkProtocols>>,
         kv_store_manager: &KeyValueStoreManager,
-        request_tracker: Arc<RequestTracker>,
     ) -> Result<Self, ResultStoreError> {
         let result_table = kv_store_manager.table(TABLE_NAME)?;
         Ok(Self {
@@ -58,17 +57,85 @@ impl<Op: Operation> OperationService<Op> {
             context_store: ContextStore::with_default_ttl(),
             result_table,
             completion_signals: DashMap::new(),
-            request_tracker,
+            pending_requests: PendingRequests::new(),
         })
     }
 
-    /// Access the shared request tracker.
-    pub fn request_tracker(&self) -> &Arc<RequestTracker> {
-        &self.request_tracker
+    /// Access the pending requests tracker.
+    ///
+    /// Used by RpcRouter to complete pending requests when responses arrive.
+    pub fn pending_requests(&self) -> &PendingRequests<Op::Response> {
+        &self.pending_requests
     }
 
-    /// Create a new operation record in the database.
-    pub async fn create_operation(&self, operation_id: Uuid) -> Result<(), NodeError> {
+    /// Send a request to a peer and await the response.
+    ///
+    /// This method provides a synchronous request-response pattern on top of
+    /// libp2p's event-driven model. It:
+    /// 1. Sends the request via the network manager
+    /// 2. Registers a oneshot channel to receive the response
+    /// 3. Awaits the response (or timeout/failure from libp2p)
+    ///
+    /// The response is delivered when RpcRouter receives the libp2p event and
+    /// calls `pending_requests().complete_success()` or `complete_failure()`.
+    ///
+    /// # Arguments
+    /// * `operation_id` - The operation identifier for logging/tracking
+    /// * `peer` - The peer to send the request to
+    /// * `request_data` - The request payload
+    ///
+    /// # Returns
+    /// * `Ok(response)` - The peer's response
+    /// * `Err(RequestError)` - Timeout, connection failure, or channel error
+    pub async fn send_request(
+        &self,
+        operation_id: Uuid,
+        peer: PeerId,
+        request_data: Op::Request,
+    ) -> Result<Op::Response, RequestError> {
+        let message = RequestMessage {
+            header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
+            data: request_data,
+        };
+
+        let protocol_request = Op::build_protocol_request(peer, message);
+
+        // Send the request and get the request ID
+        let request_id = self
+            .network_manager
+            .send_protocol_request(protocol_request)
+            .await
+            .map_err(|e| RequestError::ConnectionFailed(e.to_string()))?;
+
+        // Register the pending request and get a receiver for the response
+        let response_rx = self.pending_requests.insert(request_id);
+
+        tracing::debug!(
+            operation_id = %operation_id,
+            peer = %peer,
+            ?request_id,
+            "[{}] Request sent, awaiting response",
+            Op::NAME
+        );
+
+        // Await the response
+        response_rx
+            .await
+            .map_err(|_| RequestError::ChannelClosed)?
+    }
+
+    /// Create a new operation record in the database and return a completion receiver.
+    ///
+    /// The returned watch receiver can be used by external callers to await operation
+    /// completion. The receiver will be updated when `mark_completed` or `mark_failed`
+    /// is called.
+    ///
+    /// For callers that just want to trigger an operation without awaiting, the receiver
+    /// can be dropped immediately.
+    pub async fn create_operation(
+        &self,
+        operation_id: Uuid,
+    ) -> Result<watch::Receiver<OperationStatus>, NodeError> {
         self.repository
             .operation_repository()
             .create(
@@ -79,37 +146,13 @@ impl<Op: Operation> OperationService<Op> {
             )
             .await?;
 
-        tracing::debug!(
-            operation_id = %operation_id,
-            "[{}] Operation record created",
-            Op::NAME
-        );
-
-        Ok(())
-    }
-
-    /// Initialize progress tracking and create completion signal.
-    /// Returns a watch receiver for the batch sender to monitor.
-    pub async fn initialize_progress(
-        &self,
-        operation_id: Uuid,
-        total_peers: u16,
-        min_ack_responses: u16,
-    ) -> Result<watch::Receiver<OperationStatus>, NodeError> {
-        self.repository
-            .operation_repository()
-            .initialize_progress(operation_id, total_peers, min_ack_responses)
-            .await?;
-
-        // Create completion signal for batch sender
+        // Create completion signal for external observers
         let (tx, rx) = watch::channel(OperationStatus::InProgress);
         self.completion_signals.insert(operation_id, tx);
 
-        tracing::info!(
+        tracing::debug!(
             operation_id = %operation_id,
-            total_peers = total_peers,
-            min_ack = min_ack_responses,
-            "[{}] Operation initialized",
+            "[{}] Operation record created with completion signal",
             Op::NAME
         );
 
@@ -129,96 +172,6 @@ impl<Op: Operation> OperationService<Op> {
     /// Remove operation context.
     pub fn remove_context(&self, operation_id: &Uuid) -> Option<Op::State> {
         self.context_store.remove(operation_id)
-    }
-
-    /// Record a response and check for completion.
-    /// Signals completion via watch channel when thresholds are met.
-    /// Returns the completion status if the operation reached a terminal state.
-    pub async fn record_response(
-        &self,
-        operation_id: Uuid,
-        is_success: bool,
-    ) -> Result<Option<OperationStatus>, NodeError> {
-        let record = self
-            .repository
-            .operation_repository()
-            .atomic_increment_response(operation_id, is_success)
-            .await?;
-
-        let total_peers = record.total_peers.unwrap_or(0);
-        let min_ack_responses = record.min_ack_responses.unwrap_or(0);
-        let completed_count = record.completed_count;
-        let failed_count = record.failed_count;
-        let total_responses = completed_count + failed_count;
-
-        tracing::trace!(
-            operation_id = %operation_id,
-            success = is_success,
-            completed = completed_count,
-            min_ack = min_ack_responses,
-            failed = failed_count,
-            total_peers = total_peers,
-            "[{}] Response recorded",
-            Op::NAME
-        );
-
-        // Check completion threshold
-        // Using == ensures only one thread (the one that pushed it to the threshold) triggers
-        if completed_count == min_ack_responses {
-            self.repository
-                .operation_repository()
-                .update_status(operation_id, OperationStatus::Completed.as_str())
-                .await?;
-
-            // Signal completion to batch sender
-            self.signal_completion(operation_id, OperationStatus::Completed);
-
-            tracing::info!(
-                operation_id = %operation_id,
-                completed = completed_count,
-                failed = failed_count,
-                "[{}] Minimum replication reached",
-                Op::NAME
-            );
-
-            return Ok(Some(OperationStatus::Completed));
-        }
-
-        // Check failure (all responses received but threshold not met)
-        if total_responses == total_peers && completed_count < min_ack_responses {
-            let reason = format!(
-                "Not replicated to enough nodes! Only {completed_count}/{min_ack_responses} \
-                 nodes responded successfully"
-            );
-            self.repository
-                .operation_repository()
-                .update(
-                    operation_id,
-                    Some(OperationStatus::Failed.as_str()),
-                    Some(reason),
-                    None,
-                )
-                .await?;
-
-            // Signal failure to batch sender
-            self.signal_completion(operation_id, OperationStatus::Failed);
-
-            // Clean up result if stored
-            let _ = self.result_table.remove(operation_id);
-
-            tracing::warn!(
-                operation_id = %operation_id,
-                completed = completed_count,
-                required = min_ack_responses,
-                failed = failed_count,
-                "[{}] Failed - insufficient replications",
-                Op::NAME
-            );
-
-            return Ok(Some(OperationStatus::Failed));
-        }
-
-        Ok(None)
     }
 
     /// Store a result in the key-value store.
@@ -262,9 +215,25 @@ impl<Op: Operation> OperationService<Op> {
         Ok(())
     }
 
-    /// Manually complete an operation (e.g., for local-first completions without network requests).
+    /// Manually complete an operation with the final response counts.
     /// Caller should store the result first via `store_result` before calling this.
-    pub async fn mark_completed(&self, operation_id: Uuid) -> Result<(), NodeError> {
+    ///
+    /// # Arguments
+    /// * `operation_id` - The operation identifier
+    /// * `success_count` - Number of successful responses received
+    /// * `failure_count` - Number of failed responses received
+    pub async fn mark_completed(
+        &self,
+        operation_id: Uuid,
+        success_count: u16,
+        failure_count: u16,
+    ) -> Result<(), NodeError> {
+        // Update progress counts first
+        self.repository
+            .operation_repository()
+            .update_progress(operation_id, success_count, failure_count)
+            .await?;
+
         // Update status in database
         self.repository
             .operation_repository()
@@ -276,6 +245,8 @@ impl<Op: Operation> OperationService<Op> {
 
         tracing::info!(
             operation_id = %operation_id,
+            success_count = success_count,
+            failure_count = failure_count,
             "[{}] Operation marked as completed",
             Op::NAME
         );
@@ -327,7 +298,7 @@ impl<Op: Operation> OperationService<Op> {
         self.remove_context(operation_id);
     }
 
-    /// Signal completion status to the batch sender.
+    /// Signal completion status to external observers.
     fn signal_completion(&self, operation_id: Uuid, status: OperationStatus) {
         if let Some(entry) = self.completion_signals.get(&operation_id) {
             let _ = entry.send(status);
@@ -337,202 +308,6 @@ impl<Op: Operation> OperationService<Op> {
                 "[{}] Signaled completion",
                 Op::NAME
             );
-        }
-    }
-
-    /// Send requests to peers in batches until completion is signaled.
-    ///
-    /// Sends requests in batches, stopping early if the completion signal indicates
-    /// the operation has finished (e.g., minimum acknowledgments reached).
-    ///
-    /// # Arguments
-    /// * `operation_id` - The operation identifier
-    /// * `peers` - List of peers to contact
-    /// * `request_data` - The request data to send to each peer
-    /// * `completion_rx` - Watch receiver to check for early completion
-    ///
-    /// # Returns
-    /// * `BatchSendResult` indicating how many requests were sent and if completed early
-    pub async fn send_batched_until_completion(
-        &self,
-        operation_id: Uuid,
-        peers: Vec<PeerId>,
-        request_data: Op::Request,
-        mut completion_rx: watch::Receiver<OperationStatus>,
-    ) -> BatchSendResult {
-        let config = Op::config();
-        let mut total_sent = 0;
-        let mut total_failed = 0;
-        let total_peers = peers.len();
-
-        // Apply max_nodes limit if configured
-        let peers_to_contact: Vec<_> = match config.max_nodes {
-            Some(max) => peers.into_iter().take(max).collect(),
-            None => peers,
-        };
-
-        for (batch_idx, batch) in peers_to_contact.chunks(config.batch_size).enumerate() {
-            // Check if already completed before sending this batch
-            if *completion_rx.borrow() != OperationStatus::InProgress {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    batch = batch_idx,
-                    "[{}] Operation completed before batch, stopping",
-                    Op::NAME
-                );
-                return BatchSendResult {
-                    sent_count: total_sent,
-                    failed_count: total_failed,
-                    early_completion: true,
-                };
-            }
-
-            // Send this batch
-            let mut send_futures = Vec::with_capacity(batch.len());
-
-            for peer_id in batch {
-                let peer = *peer_id;
-                let network_manager = Arc::clone(&self.network_manager);
-                let request_tracker = Arc::clone(&self.request_tracker);
-                let message = RequestMessage {
-                    header: RequestMessageHeader::new(
-                        operation_id,
-                        RequestMessageType::ProtocolRequest,
-                    ),
-                    data: request_data.clone(),
-                };
-
-                send_futures.push(async move {
-                    let protocol_request = Op::build_protocol_request(peer, message);
-                    match network_manager
-                        .send_protocol_request(protocol_request)
-                        .await
-                    {
-                        Ok(request_id) => {
-                            request_tracker.track(request_id, operation_id, peer);
-                            (peer, true)
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                operation_id = %operation_id,
-                                peer = %peer,
-                                error = %e,
-                                "[{}] Failed to send request",
-                                Op::NAME
-                            );
-                            (peer, false)
-                        }
-                    }
-                });
-            }
-
-            // Execute batch sends concurrently
-            let results = join_all(send_futures).await;
-
-            for (peer, success) in &results {
-                if *success {
-                    total_sent += 1;
-                    tracing::debug!(
-                        operation_id = %operation_id,
-                        peer = %peer,
-                        "[{}] Request sent successfully",
-                        Op::NAME
-                    );
-                } else {
-                    total_failed += 1;
-                    tracing::warn!(
-                        operation_id = %operation_id,
-                        peer = %peer,
-                        "[{}] Failed to send request",
-                        Op::NAME
-                    );
-                }
-            }
-
-            tracing::debug!(
-                operation_id = %operation_id,
-                batch = batch_idx,
-                batch_size = batch.len(),
-                total_sent = total_sent,
-                total_failed = total_failed,
-                total_peers = total_peers,
-                "[{}] Batch sent",
-                Op::NAME
-            );
-
-            // Wait for completion signal or timeout before next batch
-            let timeout = tokio::time::sleep(config.batch_timeout);
-
-            tokio::select! {
-                result = completion_rx.changed() => {
-                    if result.is_err() {
-                        // Channel closed, operation must be done
-                        tracing::debug!(
-                            operation_id = %operation_id,
-                            "[{}] Completion channel closed, stopping",
-                            Op::NAME
-                        );
-                        return BatchSendResult {
-                            sent_count: total_sent,
-                            failed_count: total_failed,
-                            early_completion: true,
-                        };
-                    }
-
-                    let status = *completion_rx.borrow();
-                    match status {
-                        OperationStatus::Completed => {
-                            tracing::debug!(
-                                operation_id = %operation_id,
-                                "[{}] Completion signaled, stopping batch sender",
-                                Op::NAME
-                            );
-                            return BatchSendResult {
-                                sent_count: total_sent,
-                                failed_count: total_failed,
-                                early_completion: true,
-                            };
-                        }
-                        OperationStatus::Failed => {
-                            tracing::debug!(
-                                operation_id = %operation_id,
-                                "[{}] Failure signaled, stopping batch sender",
-                                Op::NAME
-                            );
-                            return BatchSendResult {
-                                sent_count: total_sent,
-                                failed_count: total_failed,
-                                early_completion: true,
-                            };
-                        }
-                        OperationStatus::InProgress => {
-                            // Continue to next batch
-                        }
-                    }
-                }
-                _ = timeout => {
-                    tracing::trace!(
-                        operation_id = %operation_id,
-                        batch = batch_idx,
-                        "[{}] Batch timeout, continuing to next batch",
-                        Op::NAME
-                    );
-                }
-            }
-        }
-
-        tracing::info!(
-            operation_id = %operation_id,
-            total_sent = total_sent,
-            total_failed = total_failed,
-            "[{}] All batches sent",
-            Op::NAME
-        );
-
-        BatchSendResult {
-            sent_count: total_sent,
-            failed_count: total_failed,
-            early_completion: false,
         }
     }
 }

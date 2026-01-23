@@ -77,18 +77,12 @@ impl OperationResultHttpApiController {
 
         let status = OperationStatus::from_str(&operation_record.status).unwrap();
 
-        // Check if min acks reached
-        let min_acks_reached = operation_record
-            .min_ack_responses
-            .map(|min| operation_record.completed_count >= min)
-            .unwrap_or(false);
-
         match status {
             OperationStatus::Failed => {
                 let response = OperationResultResponse::failed(operation_record.error_message);
                 (StatusCode::OK, Json(response)).into_response()
             }
-            OperationStatus::Completed | OperationStatus::InProgress if min_acks_reached => {
+            OperationStatus::Completed => {
                 // Get signatures from redb
                 match Self::get_signatures(&context, operation_uuid) {
                     Ok((publisher_sig, network_sigs)) => {
@@ -104,17 +98,14 @@ impl OperationResultHttpApiController {
                             error = %e,
                             "Failed to get publish result"
                         );
-                        let response = OperationResultResponse::in_progress_with_data(true);
+                        let response =
+                            OperationResultResponse::failed(Some("Failed to retrieve result".into()));
                         (StatusCode::OK, Json(response)).into_response()
                     }
                 }
             }
             OperationStatus::InProgress => {
-                let response = OperationResultResponse::in_progress_with_data(false);
-                (StatusCode::OK, Json(response)).into_response()
-            }
-            _ => {
-                let response = OperationResultResponse::pending();
+                let response = OperationResultResponse::in_progress();
                 (StatusCode::OK, Json(response)).into_response()
             }
         }

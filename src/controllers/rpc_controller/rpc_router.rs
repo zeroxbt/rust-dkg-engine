@@ -17,7 +17,7 @@ use crate::{
         finality_rpc_controller::FinalityRpcController, get_rpc_controller::GetRpcController,
         store_rpc_controller::StoreRpcController,
     },
-    services::PeerDiscoveryTracker,
+    services::{PeerDiscoveryTracker, RequestError},
 };
 
 // Type alias for the complete behaviour and its event type
@@ -94,31 +94,16 @@ impl RpcRouter {
                                     response,
                                     request_id,
                                 } => {
-                                    // Check if this response arrived after a timeout was already
-                                    // processed
-                                    if self
-                                        .store_controller
+                                    // Complete pending request for send_request callers
+                                    self.store_controller
                                         .operation_service()
-                                        .request_tracker()
-                                        .handle_response(request_id)
-                                        .is_some()
-                                    {
-                                        // Valid response - process it
-                                        self.store_controller.handle_response(response, peer).await;
-                                    } else {
-                                        // Late response after timeout, or unknown request
-                                        tracing::debug!(
-                                            %peer,
-                                            ?request_id,
-                                            "Ignoring late store response (already timed out or unknown)"
-                                        );
-                                    }
+                                        .pending_requests()
+                                        .complete_success(request_id, response.data);
                                 }
                             };
                         }
                         // OutboundFailure: We sent a store request and it failed (timeout,
-                        // connection closed, etc.) This is treated as a
-                        // NACK for replication counting.
+                        // connection closed, etc.)
                         request_response::Event::OutboundFailure {
                             peer,
                             request_id,
@@ -132,29 +117,26 @@ impl RpcRouter {
                                 "Store request failed"
                             );
 
-                            let operation_service = self.store_controller.operation_service();
-
-                            // Look up operation_id and mark as timed out to ignore late responses
-                            if let Some((operation_id, _peer)) = operation_service
-                                .request_tracker()
-                                .handle_timeout(request_id)
-                            {
-                                // Record as NACK (failed response)
-                                if let Err(e) =
-                                    operation_service.record_response(operation_id, false).await
-                                {
-                                    tracing::error!(
-                                        %operation_id,
-                                        error = %e,
-                                        "Failed to record timeout as NACK"
-                                    );
+                            // Complete pending request with failure for send_request callers
+                            let request_error = match &error {
+                                request_response::OutboundFailure::Timeout => RequestError::Timeout,
+                                request_response::OutboundFailure::ConnectionClosed => {
+                                    RequestError::ConnectionFailed("Connection closed".to_string())
                                 }
-                            } else {
-                                tracing::debug!(
-                                    ?request_id,
-                                    "OutboundFailure for unknown request_id (not tracked)"
-                                );
-                            }
+                                request_response::OutboundFailure::DialFailure => {
+                                    RequestError::NotConnected
+                                }
+                                request_response::OutboundFailure::UnsupportedProtocols => {
+                                    RequestError::ConnectionFailed(
+                                        "Unsupported protocols".to_string(),
+                                    )
+                                }
+                                _ => RequestError::ConnectionFailed(error.to_string()),
+                            };
+                            self.store_controller
+                                .operation_service()
+                                .pending_requests()
+                                .complete_failure(request_id, request_error);
                         }
                         // InboundFailure: Someone sent us a store request and we failed to respond.
                         // This is informational - the requester will see OutboundFailure on their
@@ -202,30 +184,16 @@ impl RpcRouter {
                                     response,
                                     request_id,
                                 } => {
-                                    // Check if this response arrived after a timeout was already
-                                    // processed
-                                    if self
-                                        .get_controller
+                                    // Complete pending request for send_request callers
+                                    self.get_controller
                                         .operation_service()
-                                        .request_tracker()
-                                        .handle_response(request_id)
-                                        .is_some()
-                                    {
-                                        // Valid response - process it
-                                        self.get_controller.handle_response(response, peer).await;
-                                    } else {
-                                        // Late response after timeout, or unknown request
-                                        tracing::debug!(
-                                            %peer,
-                                            ?request_id,
-                                            "Ignoring late get response (already timed out or unknown)"
-                                        );
-                                    }
+                                        .pending_requests()
+                                        .complete_success(request_id, response.data);
                                 }
                             };
                         }
                         // OutboundFailure: We sent a get request and it failed (timeout,
-                        // connection closed, etc.) This is treated as a NACK.
+                        // connection closed, etc.)
                         request_response::Event::OutboundFailure {
                             peer,
                             request_id,
@@ -239,29 +207,26 @@ impl RpcRouter {
                                 "Get request failed"
                             );
 
-                            let operation_service = self.get_controller.operation_service();
-
-                            // Look up operation_id and mark as timed out to ignore late responses
-                            if let Some((operation_id, _peer)) = operation_service
-                                .request_tracker()
-                                .handle_timeout(request_id)
-                            {
-                                // Record as NACK (failed response)
-                                if let Err(e) =
-                                    operation_service.record_response(operation_id, false).await
-                                {
-                                    tracing::error!(
-                                        %operation_id,
-                                        error = %e,
-                                        "Failed to record get timeout as NACK"
-                                    );
+                            // Complete pending request with failure for send_request callers
+                            let request_error = match &error {
+                                request_response::OutboundFailure::Timeout => RequestError::Timeout,
+                                request_response::OutboundFailure::ConnectionClosed => {
+                                    RequestError::ConnectionFailed("Connection closed".to_string())
                                 }
-                            } else {
-                                tracing::debug!(
-                                    ?request_id,
-                                    "Get OutboundFailure for unknown request_id (not tracked)"
-                                );
-                            }
+                                request_response::OutboundFailure::DialFailure => {
+                                    RequestError::NotConnected
+                                }
+                                request_response::OutboundFailure::UnsupportedProtocols => {
+                                    RequestError::ConnectionFailed(
+                                        "Unsupported protocols".to_string(),
+                                    )
+                                }
+                                _ => RequestError::ConnectionFailed(error.to_string()),
+                            };
+                            self.get_controller
+                                .operation_service()
+                                .pending_requests()
+                                .complete_failure(request_id, request_error);
                         }
                         // InboundFailure: Someone sent us a get request and we failed to respond.
                         request_response::Event::InboundFailure {

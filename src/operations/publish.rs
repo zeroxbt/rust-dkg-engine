@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use libp2p::PeerId;
 use network::RequestMessage;
 use serde::{Deserialize, Serialize};
@@ -9,7 +7,7 @@ use crate::{
         ProtocolRequest,
         messages::{StoreRequestData, StoreResponseData},
     },
-    services::operation::{Operation, OperationConfig},
+    services::operation::Operation,
 };
 
 /// Signature data stored after Publish operation.
@@ -74,19 +72,13 @@ impl Operation for PublishOperation {
     /// Default minimum ACK responses for publish operations.
     /// The effective value is max(this, blockchain_min, user_provided).
     const MIN_ACK_RESPONSES: u16 = 3;
+    /// Send to all nodes at once (no batching for publish).
+    const BATCH_SIZE: usize = usize::MAX;
 
     type Request = StoreRequestData;
     type Response = StoreResponseData;
     type State = PublishOperationState;
     type Result = PublishOperationResult;
-
-    fn config() -> OperationConfig {
-        OperationConfig {
-            batch_size: usize::MAX,
-            max_nodes: None,
-            batch_timeout: Duration::from_secs(30),
-        }
-    }
 
     fn build_protocol_request(
         peer: PeerId,

@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use blockchain::BlockchainId;
 use libp2p::PeerId;
 use network::RequestMessage;
@@ -11,7 +9,7 @@ use crate::{
         ProtocolRequest,
         messages::{GetRequestData, GetResponseData},
     },
-    services::operation::{Operation, OperationConfig},
+    services::operation::Operation,
 };
 
 /// Result stored after successful Get operation.
@@ -70,19 +68,12 @@ pub struct GetOperation;
 impl Operation for GetOperation {
     const NAME: &'static str = "get";
     const MIN_ACK_RESPONSES: u16 = 1;
+    const BATCH_SIZE: usize = 5;
 
     type Request = GetRequestData;
     type Response = GetResponseData;
     type State = GetOperationState;
     type Result = GetOperationResult;
-
-    fn config() -> OperationConfig {
-        OperationConfig {
-            batch_size: 5,
-            max_nodes: None,
-            batch_timeout: Duration::from_secs(5),
-        }
-    }
 
     fn build_protocol_request(
         peer: PeerId,

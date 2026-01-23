@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use blockchain::{BlockchainId, BlockchainManager, H256, utils::keccak256_encode_packed};
+use futures::future::join_all;
 use libp2p::PeerId;
 use network::NetworkManager;
 use repository::RepositoryManager;
@@ -10,10 +11,13 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{NetworkProtocols, messages::StoreRequestData},
+    controllers::rpc_controller::{
+        NetworkProtocols,
+        messages::{StoreRequestData, StoreResponseData},
+    },
     operations::{PublishOperation, PublishOperationResult, SignatureData},
     services::{
-        operation::OperationService as GenericOperationService,
+        operation::{Operation, OperationService as GenericOperationService},
         pending_storage_service::PendingStorageService,
     },
 };
@@ -25,8 +29,7 @@ pub struct SendStoreRequestsCommandData {
     pub operation_id: Uuid,
     pub blockchain: BlockchainId,
     pub dataset_root: String,
-    /// User-provided minimum ACK responses. If None, uses max(default, chain_min).
-    pub min_ack_responses: Option<u8>,
+    pub min_ack_responses: u8,
     pub dataset: Assertion,
 }
 
@@ -35,7 +38,7 @@ impl SendStoreRequestsCommandData {
         operation_id: Uuid,
         blockchain: BlockchainId,
         dataset_root: String,
-        min_ack_responses: Option<u8>,
+        min_ack_responses: u8,
         dataset: Assertion,
     ) -> Self {
         Self {
@@ -98,11 +101,6 @@ impl SendStoreRequestsCommandHandler {
             },
         )?;
 
-        // Record as a network response
-        self.publish_operation_service
-            .record_response(operation_id, true)
-            .await?;
-
         Ok(())
     }
 
@@ -142,12 +140,69 @@ impl SendStoreRequestsCommandHandler {
             signature.vs,
         ))
     }
+
+    /// Process a store response and store the signature if valid.
+    ///
+    /// Returns true if the response is a valid ACK with signature data.
+    fn process_store_response(
+        &self,
+        operation_id: Uuid,
+        peer: &PeerId,
+        response: &StoreResponseData,
+    ) -> bool {
+        match response {
+            StoreResponseData::Data {
+                identity_id,
+                signature,
+            } => {
+                let sig_data = SignatureData::new(
+                    identity_id.to_string(),
+                    signature.v,
+                    signature.r.clone(),
+                    signature.s.clone(),
+                    signature.vs.clone(),
+                );
+
+                // Store signature incrementally to redb
+                if let Err(e) = self.publish_operation_service.update_result(
+                    operation_id,
+                    PublishOperationResult::new(None, Vec::new()),
+                    |result| {
+                        result.network_signatures.push(sig_data);
+                    },
+                ) {
+                    tracing::error!(
+                        operation_id = %operation_id,
+                        peer = %peer,
+                        error = %e,
+                        "Failed to store network signature"
+                    );
+                    return false;
+                }
+
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    peer = %peer,
+                    identity_id = %identity_id,
+                    "Signature stored successfully"
+                );
+                true
+            }
+            StoreResponseData::Error { error_message } => {
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    peer = %peer,
+                    error = %error_message,
+                    "Peer returned error response"
+                );
+                false
+            }
+        }
+    }
 }
 
 impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHandler {
     async fn execute(&self, data: &SendStoreRequestsCommandData) -> CommandExecutionResult {
-        use crate::services::operation::Operation;
-
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;
         let dataset_root = &data.dataset_root;
@@ -155,8 +210,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
 
         // Determine effective min_ack_responses using max(default, chain_min, user_provided)
         let default_min = PublishOperation::MIN_ACK_RESPONSES as u8;
-        let user_min = data.min_ack_responses.unwrap_or(0);
-
+        let user_min = data.min_ack_responses;
         let chain_min = match self
             .blockchain_manager
             .get_minimum_required_signatures(blockchain)
@@ -259,21 +313,6 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
 
             return CommandExecutionResult::Completed;
         }
-
-        // Initialize progress tracking and get completion receiver
-        let completion_rx = match self
-            .publish_operation_service
-            .initialize_progress(operation_id, total_peers, min_ack_responses as u16)
-            .await
-        {
-            Ok(rx) => rx,
-            Err(e) => {
-                self.publish_operation_service
-                    .mark_failed(operation_id, e.to_string())
-                    .await;
-                return CommandExecutionResult::Completed;
-            }
-        };
 
         let identity_id = match self.blockchain_manager.get_identity_id(blockchain).await {
             Ok(Some(id)) => id,
@@ -382,19 +421,120 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
             blockchain.to_owned(),
         );
 
-        // Send requests to remote peers via operation service
-        let result = self
-            .publish_operation_service
-            .send_batched_until_completion(operation_id, remote_peers, store_request_data, completion_rx)
-            .await;
+        // Send requests in batches and process responses directly
+        let mut success_count: u16 = if self_in_shard { 1 } else { 0 }; // Include self-node if in shard
+        let mut failure_count: u16 = 0;
 
-        tracing::info!(
-            operation_id = %operation_id,
-            sent = result.sent_count,
-            failed = result.failed_count,
-            early_completion = result.early_completion,
-            "Publish requests batch sending completed"
+        for (batch_idx, batch) in remote_peers
+            .chunks(PublishOperation::BATCH_SIZE)
+            .enumerate()
+        {
+            // Check if we've already met the threshold (e.g., from self-node)
+            if success_count >= min_ack_responses as u16 {
+                tracing::info!(
+                    operation_id = %operation_id,
+                    success_count = success_count,
+                    min_required = min_ack_responses,
+                    "Success threshold already reached, skipping remaining batches"
+                );
+                break;
+            }
+
+            tracing::debug!(
+                operation_id = %operation_id,
+                batch = batch_idx,
+                batch_size = batch.len(),
+                "Sending batch of store requests"
+            );
+
+            // Send all requests in this batch concurrently
+            let request_futures: Vec<_> = batch
+                .iter()
+                .map(|peer| {
+                    let peer = *peer;
+                    let request_data = store_request_data.clone();
+                    let operation_service = Arc::clone(&self.publish_operation_service);
+                    async move {
+                        let result = operation_service
+                            .send_request(operation_id, peer, request_data)
+                            .await;
+                        (peer, result)
+                    }
+                })
+                .collect();
+
+            // Wait for all requests in this batch to complete (success or failure)
+            let results = join_all(request_futures).await;
+
+            // Process each response
+            for (peer, result) in results {
+                match result {
+                    Ok(response) => {
+                        let is_valid = self.process_store_response(operation_id, &peer, &response);
+
+                        if !is_valid {
+                            failure_count += 1;
+                            continue;
+                        }
+
+                        success_count += 1;
+
+                        // Check if we've met the success threshold
+                        if success_count >= min_ack_responses as u16 {
+                            tracing::info!(
+                                operation_id = %operation_id,
+                                success_count = success_count,
+                                failure_count = failure_count,
+                                batch = batch_idx,
+                                "Publish operation completed - success threshold reached"
+                            );
+
+                            // Mark operation as completed with final counts
+                            if let Err(e) = self
+                                .publish_operation_service
+                                .mark_completed(operation_id, success_count, failure_count)
+                                .await
+                            {
+                                tracing::error!(
+                                    operation_id = %operation_id,
+                                    error = %e,
+                                    "Failed to mark operation as completed"
+                                );
+                            }
+
+                            return CommandExecutionResult::Completed;
+                        }
+                    }
+                    Err(e) => {
+                        failure_count += 1;
+                        tracing::debug!(
+                            operation_id = %operation_id,
+                            peer = %peer,
+                            error = %e,
+                            "Store request failed"
+                        );
+                    }
+                }
+            }
+
+            tracing::debug!(
+                operation_id = %operation_id,
+                batch = batch_idx,
+                success_count = success_count,
+                failure_count = failure_count,
+                "Batch completed"
+            );
+        }
+
+        // All batches exhausted without meeting success threshold
+        let error_message = format!(
+            "Failed to get enough signatures. Success: {}, Failed: {}, Required: {}",
+            success_count, failure_count, min_ack_responses
         );
+        tracing::warn!(operation_id = %operation_id, %error_message);
+        self.publish_operation_service
+            .mark_failed(operation_id, error_message)
+            .await;
 
         CommandExecutionResult::Completed
     }

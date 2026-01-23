@@ -1,21 +1,8 @@
-use std::time::Duration;
-
 use libp2p::PeerId;
 use network::RequestMessage;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::controllers::rpc_controller::ProtocolRequest;
-
-/// Configuration for an operation's behavior.
-#[derive(Debug, Clone)]
-pub struct OperationConfig {
-    /// Number of requests to send per batch.
-    pub batch_size: usize,
-    /// Maximum number of nodes to contact (None = all available).
-    pub max_nodes: Option<usize>,
-    /// How long to wait between batches for completion signal.
-    pub batch_timeout: Duration,
-}
 
 /// Trait defining an operation type and its associated types.
 ///
@@ -27,6 +14,9 @@ pub trait Operation: Send + Sync + 'static {
 
     /// Minimum number of ACK responses required for operation success.
     const MIN_ACK_RESPONSES: u16;
+
+    /// Number of requests to send per batch.
+    const BATCH_SIZE: usize;
 
     /// The request message type sent to peers.
     /// Must be Clone for batching across multiple peers.
@@ -42,9 +32,6 @@ pub trait Operation: Send + Sync + 'static {
     /// Persisted result type stored after operation completion.
     /// Must be serializable for redb storage.
     type Result: Serialize + DeserializeOwned + Send + Sync + 'static;
-
-    /// Returns the configuration for this operation type.
-    fn config() -> OperationConfig;
 
     /// Build the protocol request for sending to a peer.
     ///

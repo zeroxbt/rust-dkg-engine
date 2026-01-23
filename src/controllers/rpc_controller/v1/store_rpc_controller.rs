@@ -1,10 +1,6 @@
 use std::sync::Arc;
 
-use network::{
-    PeerId,
-    message::{RequestMessage, ResponseMessage, ResponseMessageType},
-    request_response,
-};
+use network::{PeerId, message::{RequestMessage, ResponseMessage}, request_response};
 use triple_store::Assertion;
 
 use crate::{
@@ -15,7 +11,7 @@ use crate::{
     },
     context::Context,
     controllers::rpc_controller::messages::{StoreRequestData, StoreResponseData},
-    operations::{PublishOperation, PublishOperationResult, SignatureData},
+    operations::PublishOperation,
     services::{ResponseChannels, operation::OperationService as GenericOperationService},
 };
 
@@ -78,68 +74,5 @@ impl StoreRpcController {
         self.command_scheduler
             .schedule(CommandExecutionRequest::new(command))
             .await;
-    }
-
-    pub async fn handle_response(
-        &self,
-        response: ResponseMessage<StoreResponseData>,
-        _peer: PeerId,
-    ) {
-        let ResponseMessage { header, data } = response;
-
-        let operation_id = header.operation_id();
-        let is_success = *header.message_type() == ResponseMessageType::Ack;
-
-        // If successful, store signature immediately to redb
-        if let (
-            ResponseMessageType::Ack,
-            StoreResponseData::Data {
-                identity_id,
-                signature,
-            },
-        ) = (header.message_type(), &data)
-        {
-            let sig_data = SignatureData::new(
-                identity_id.to_string(),
-                signature.v,
-                signature.r.clone(),
-                signature.s.clone(),
-                signature.vs.clone(),
-            );
-
-            // Store signature incrementally to redb
-            if let Err(e) = self.publish_operation_service.update_result(
-                operation_id,
-                PublishOperationResult::new(None, Vec::new()),
-                |result| {
-                    result.network_signatures.push(sig_data);
-                },
-            ) {
-                tracing::error!(
-                    operation_id = %operation_id,
-                    error = %e,
-                    "Failed to store network signature to redb"
-                );
-            }
-        }
-
-        // Record response using operation service (triggers completion signaling)
-        if let Err(e) = self
-            .publish_operation_service
-            .record_response(operation_id, is_success)
-            .await
-        {
-            tracing::error!(
-                operation_id = %operation_id,
-                error = %e,
-                "Failed to record response"
-            );
-        } else {
-            tracing::debug!(
-                operation_id = %operation_id,
-                success = is_success,
-                "Store response processed"
-            );
-        }
     }
 }
