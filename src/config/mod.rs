@@ -16,7 +16,7 @@ use crate::controllers::http_api_controller::http_api_router::HttpApiConfig;
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error("Configuration loading failed: {0}")]
-    LoadError(#[from] figment::Error),
+    LoadError(#[from] Box<figment::Error>),
 
     #[error("Configuration validation failed: {0}")]
     ValidationError(String),
@@ -28,8 +28,6 @@ pub enum ConfigError {
 /// making it easy to see the complete directory structure and avoiding path collisions.
 #[derive(Debug, Clone)]
 pub struct AppPaths {
-    /// Root data directory (e.g., "data")
-    pub root: PathBuf,
     /// Path to the network identity key file
     pub network_key: PathBuf,
     /// Path to the key-value store database
@@ -56,7 +54,6 @@ impl AppPaths {
             network_key: root.join("network/private_key"),
             key_value_store: root.join("key-value-store/key_value_store.redb"),
             triple_store: root.join("triple-store"),
-            root,
         }
     }
 }
@@ -116,7 +113,7 @@ fn load_configuration() -> Result<Config, ConfigError> {
     }
 
     // Extract and validate configuration
-    let config: Config = figment.extract()?;
+    let config: Config = figment.extract().map_err(Box::new)?;
 
     tracing::info!("Configuration loaded successfully");
 

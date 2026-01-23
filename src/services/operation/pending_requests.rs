@@ -16,9 +16,6 @@ pub enum RequestError {
     #[error("Peer not connected")]
     NotConnected,
 
-    #[error("Request cancelled")]
-    Cancelled,
-
     #[error("Response channel closed")]
     ChannelClosed,
 }
@@ -110,11 +107,6 @@ where
             false
         }
     }
-
-    /// Get the number of pending requests (for debugging/metrics).
-    pub fn pending_count(&self) -> usize {
-        self.pending.len()
-    }
 }
 
 impl<T> Default for PendingRequests<T>
@@ -123,16 +115,5 @@ where
 {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_pending_requests_count() {
-        let pending: PendingRequests<String> = PendingRequests::new();
-        assert_eq!(pending.pending_count(), 0);
     }
 }

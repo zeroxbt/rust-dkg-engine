@@ -2,13 +2,12 @@ pub mod file_service;
 pub mod get_validation_service;
 pub mod operation;
 pub mod peer_discovery_tracker;
-pub mod pending_requests;
 pub mod pending_storage_service;
 pub mod response_channels;
 pub mod triple_store_service;
 
 pub use get_validation_service::GetValidationService;
+pub use operation::RequestError;
 pub use peer_discovery_tracker::PeerDiscoveryTracker;
-pub use pending_requests::{PendingRequests, RequestError};
 pub use response_channels::ResponseChannels;
 pub use triple_store_service::TripleStoreService;

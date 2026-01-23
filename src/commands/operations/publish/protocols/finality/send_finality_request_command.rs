@@ -247,6 +247,16 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
             }
         };
 
+        // Remove from pending storage now that insertion succeeded
+        if let Err(e) = self.pending_storage_service.remove(publish_operation_id) {
+            tracing::warn!(
+                operation_id = %operation_id,
+                publish_operation_id = %publish_operation_id,
+                error = %e,
+                "Failed to remove dataset from pending storage"
+            );
+        }
+
         // Increment the total triples counter
         if let Err(e) = self
             .repository_manager

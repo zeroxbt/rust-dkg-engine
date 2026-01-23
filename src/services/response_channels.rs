@@ -6,6 +6,9 @@ use serde::{Serialize, de::DeserializeOwned};
 use tokio::time::Instant;
 use uuid::Uuid;
 
+/// Default timeout for response channels (5 minutes).
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
+
 type ChannelKey = (String, Uuid);
 
 struct ChannelEntry<T> {
@@ -19,11 +22,14 @@ struct ChannelEntry<T> {
 /// For example:
 /// - `ResponseChannels<StoreResponseData>` for Store protocol
 /// - `ResponseChannels<GetResponseData>` for Get protocol
+///
+/// Expired channels are cleaned up opportunistically when new channels are stored.
 pub struct ResponseChannels<T>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
 {
     channels: Arc<DashMap<ChannelKey, ChannelEntry<T>>>,
+    timeout: Duration,
 }
 
 impl<T> ResponseChannels<T>
@@ -33,6 +39,7 @@ where
     pub fn new() -> Self {
         Self {
             channels: Arc::new(DashMap::new()),
+            timeout: DEFAULT_TIMEOUT,
         }
     }
 
@@ -42,6 +49,9 @@ where
         operation_id: Uuid,
         channel: request_response::ResponseChannel<ResponseMessage<T>>,
     ) {
+        // Clean up expired entries opportunistically
+        Self::cleanup_expired(&self.channels, self.timeout);
+
         let key = (peer_id.to_string(), operation_id);
         let entry = ChannelEntry {
             channel,
@@ -73,18 +83,6 @@ where
         self.channels.remove(&key).map(|(_, entry)| entry.channel)
     }
 
-    pub fn remove(&self, peer_id: &PeerId, operation_id: Uuid) {
-        let key = (peer_id.to_string(), operation_id);
-
-        tracing::trace!(
-            "Removing response channel for peer: {}, operation_id: {}",
-            peer_id,
-            operation_id
-        );
-
-        self.channels.remove(&key);
-    }
-
     fn cleanup_expired(channels: &DashMap<ChannelKey, ChannelEntry<T>>, timeout: Duration) {
         let now = Instant::now();
         let mut expired_keys = Vec::new();
@@ -105,10 +103,6 @@ where
             }
         }
     }
-
-    pub fn len(&self) -> usize {
-        self.channels.len()
-    }
 }
 
 impl<T> Default for ResponseChannels<T>
@@ -117,17 +111,5 @@ where
 {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::controllers::rpc_controller::messages::StoreResponseData;
-
-    #[tokio::test]
-    async fn test_len() {
-        let channels: ResponseChannels<StoreResponseData> = ResponseChannels::new();
-        assert_eq!(channels.len(), 0);
     }
 }

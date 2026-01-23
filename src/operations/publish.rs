@@ -55,11 +55,6 @@ impl PublishOperationResult {
     }
 }
 
-/// In-memory state during Publish operation.
-/// Note: Signatures are stored directly to redb, so this state is minimal.
-#[derive(Debug, Clone, Default)]
-pub struct PublishOperationState;
-
 /// Publish operation type implementation.
 ///
 /// For publish operations, `min_ack_responses` is typically configurable
@@ -77,7 +72,6 @@ impl Operation for PublishOperation {
 
     type Request = StoreRequestData;
     type Response = StoreResponseData;
-    type State = PublishOperationState;
     type Result = PublishOperationResult;
 
     fn build_protocol_request(

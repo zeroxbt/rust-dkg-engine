@@ -15,7 +15,7 @@ use crate::{
         NetworkProtocols,
         messages::{GetRequestData, GetResponseData},
     },
-    operations::{GetOperation, GetOperationResult, GetOperationState},
+    operations::{GetOperation, GetOperationResult},
     services::{
         GetValidationService, TripleStoreService,
         operation::{Operation, OperationService as GenericOperationService},
@@ -567,16 +567,6 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             operation_id = %operation_id,
             "Data not found locally, querying network"
         );
-
-        // Store operation context for response validation in RPC controller
-        let state = GetOperationState::new(
-            parsed_ual.blockchain.clone(),
-            parsed_ual.knowledge_collection_id,
-            parsed_ual.knowledge_asset_id,
-            data.visibility,
-        );
-        self.get_operation_service
-            .store_context(operation_id, state);
 
         // Get shard nodes for the blockchain
         let shard_nodes = match self

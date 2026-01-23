@@ -36,13 +36,6 @@ pub struct OperationResultResponse {
 }
 
 impl OperationResultResponse {
-    pub fn pending() -> Self {
-        Self {
-            status: "PENDING".to_string(),
-            data: None,
-        }
-    }
-
     pub fn in_progress() -> Self {
         Self {
             status: "IN_PROGRESS".to_string(),

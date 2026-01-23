@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, DbBackend, EntityTrait,
-    PaginatorTrait, QueryFilter, Statement, TransactionTrait, error::DbErr,
+    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter, TransactionTrait, error::DbErr,
 };
 
 use crate::models::shard::{ActiveModel, Column, Entity, Model};

@@ -1,8 +1,7 @@
-use blockchain::BlockchainId;
 use libp2p::PeerId;
 use network::RequestMessage;
 use serde::{Deserialize, Serialize};
-use triple_store::{Assertion, Visibility};
+use triple_store::Assertion;
 
 use crate::{
     controllers::rpc_controller::{
@@ -32,36 +31,6 @@ impl GetOperationResult {
     }
 }
 
-/// In-memory state during Get operation.
-/// Used for validation when processing responses.
-#[derive(Debug, Clone)]
-pub struct GetOperationState {
-    /// The blockchain where the knowledge collection exists
-    pub blockchain: BlockchainId,
-    /// The knowledge collection ID
-    pub knowledge_collection_id: u128,
-    /// The specific knowledge asset ID (if requesting a single asset)
-    pub knowledge_asset_id: Option<u128>,
-    /// The visibility being requested (public, private, or all)
-    pub visibility: Visibility,
-}
-
-impl GetOperationState {
-    pub fn new(
-        blockchain: BlockchainId,
-        knowledge_collection_id: u128,
-        knowledge_asset_id: Option<u128>,
-        visibility: Visibility,
-    ) -> Self {
-        Self {
-            blockchain,
-            knowledge_collection_id,
-            knowledge_asset_id,
-            visibility,
-        }
-    }
-}
-
 /// Get operation type implementation.
 pub struct GetOperation;
 
@@ -72,7 +41,6 @@ impl Operation for GetOperation {
 
     type Request = GetRequestData;
     type Response = GetResponseData;
-    type State = GetOperationState;
     type Result = GetOperationResult;
 
     fn build_protocol_request(

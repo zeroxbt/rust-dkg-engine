@@ -13,15 +13,11 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use super::{
-    context_store::ContextStore,
+    pending_requests::{PendingRequests, RequestError},
     result_store::{ResultStoreError, TABLE_NAME},
     traits::Operation,
 };
-use crate::{
-    controllers::rpc_controller::NetworkProtocols,
-    error::NodeError,
-    services::{PendingRequests, RequestError},
-};
+use crate::{controllers::rpc_controller::NetworkProtocols, error::NodeError};
 
 /// Generic operation service that handles all shared operation logic.
 ///
@@ -29,7 +25,6 @@ use crate::{
 /// the specific request/response/state/result types for each operation.
 ///
 /// # Ownership
-/// - `ContextStore<Op::State>` - owned here
 /// - `Table<Op::Result>` - typed table for this operation's results
 /// - Completion signals - owned here
 /// - `PendingRequests<Op::Response>` - tracks outbound requests awaiting responses
@@ -37,7 +32,6 @@ use crate::{
 pub struct OperationService<Op: Operation> {
     repository: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
-    context_store: ContextStore<Op::State>,
     result_table: Table<Op::Result>,
     completion_signals: DashMap<Uuid, watch::Sender<OperationStatus>>,
     pending_requests: PendingRequests<Op::Response>,
@@ -54,7 +48,6 @@ impl<Op: Operation> OperationService<Op> {
         Ok(Self {
             repository,
             network_manager,
-            context_store: ContextStore::with_default_ttl(),
             result_table,
             completion_signals: DashMap::new(),
             pending_requests: PendingRequests::new(),
@@ -157,21 +150,6 @@ impl<Op: Operation> OperationService<Op> {
         Ok(rx)
     }
 
-    /// Store operation context/state for response processing.
-    pub fn store_context(&self, operation_id: Uuid, state: Op::State) {
-        self.context_store.store(operation_id, state);
-    }
-
-    /// Get operation context (does not remove it).
-    pub fn get_context(&self, operation_id: &Uuid) -> Option<Op::State> {
-        self.context_store.get(operation_id)
-    }
-
-    /// Remove operation context.
-    pub fn remove_context(&self, operation_id: &Uuid) -> Option<Op::State> {
-        self.context_store.remove(operation_id)
-    }
-
     /// Store a result in the key-value store.
     pub fn store_result(
         &self,
@@ -238,8 +216,9 @@ impl<Op: Operation> OperationService<Op> {
             .update_status(operation_id, OperationStatus::Completed.as_str())
             .await?;
 
-        // Signal completion
+        // Signal completion and clean up
         self.signal_completion(operation_id, OperationStatus::Completed);
+        self.completion_signals.remove(&operation_id);
 
         tracing::info!(
             operation_id = %operation_id,
@@ -265,12 +244,10 @@ impl<Op: Operation> OperationService<Op> {
             )
             .await;
 
-        // Signal failure
+        // Signal failure and clean up
         self.signal_completion(operation_id, OperationStatus::Failed);
-
-        // Clean up
+        self.completion_signals.remove(&operation_id);
         let _ = self.result_table.remove(operation_id);
-        self.remove_context(&operation_id);
 
         match result {
             Ok(_) => {
@@ -288,12 +265,6 @@ impl<Op: Operation> OperationService<Op> {
                 );
             }
         }
-    }
-
-    /// Clean up resources after operation completion.
-    pub fn cleanup(&self, operation_id: &Uuid) {
-        self.completion_signals.remove(operation_id);
-        self.remove_context(operation_id);
     }
 
     /// Signal completion status to external observers.

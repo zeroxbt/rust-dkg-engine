@@ -7,7 +7,7 @@ use crate::controllers::rpc_controller::ProtocolRequest;
 /// Trait defining an operation type and its associated types.
 ///
 /// Each operation (Get, Publish, etc.) implements this trait to specify
-/// its request/response message types, in-memory state, and persisted result.
+/// its request/response message types and persisted result.
 pub trait Operation: Send + Sync + 'static {
     /// Human-readable name for logging and database records.
     const NAME: &'static str;
@@ -24,10 +24,6 @@ pub trait Operation: Send + Sync + 'static {
 
     /// The response message type received from peers.
     type Response: Clone + Send + Sync + 'static;
-
-    /// In-memory state held during operation execution.
-    /// Used for validation and context when processing responses.
-    type State: Clone + Send + Sync + 'static;
 
     /// Persisted result type stored after operation completion.
     /// Must be serializable for redb storage.
