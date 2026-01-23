@@ -1,13 +1,11 @@
-pub mod backend;
-pub mod config;
-pub mod error;
-pub mod query;
-pub mod rdf;
-pub mod types;
+mod backend;
+mod config;
+pub(crate) mod error;
+pub(crate) mod query;
+mod rdf;
+mod types;
 
-#[cfg(feature = "persistence")]
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 use error::{Result, TripleStoreError};
@@ -61,15 +59,13 @@ fn days_to_ymd(days: i64) -> (i32, u32, u32) {
 }
 
 // Re-export commonly used types for convenience
-pub use backend::{SelectResult, SelectRow, SelectValue};
-pub use config::{DKG_REPOSITORY, TripleStoreBackendType, TripleStoreManagerConfig};
-pub use error::TripleStoreError as Error;
-pub use rdf::{extract_subject, group_nquads_by_subject};
-pub use types::{Assertion, KnowledgeAsset, TokenIds, Visibility};
+pub(crate) use config::{DKG_REPOSITORY, TripleStoreBackendType, TripleStoreManagerConfig};
+pub(crate) use rdf::{extract_subject, group_nquads_by_subject};
+pub(crate) use types::{Assertion, KnowledgeAsset, TokenIds, Visibility};
 
 /// Metadata for a knowledge collection
 #[derive(Debug, Clone)]
-pub struct KnowledgeCollectionMetadata {
+pub(crate) struct KnowledgeCollectionMetadata {
     publisher_address: String,
     block_number: u64,
     transaction_hash: String,
@@ -77,7 +73,7 @@ pub struct KnowledgeCollectionMetadata {
 }
 
 impl KnowledgeCollectionMetadata {
-    pub fn new(
+    pub(crate) fn new(
         publisher_address: String,
         block_number: u64,
         transaction_hash: String,
@@ -91,19 +87,19 @@ impl KnowledgeCollectionMetadata {
         }
     }
 
-    pub fn publisher_address(&self) -> &str {
+    pub(crate) fn publisher_address(&self) -> &str {
         &self.publisher_address
     }
 
-    pub fn block_number(&self) -> u64 {
+    pub(crate) fn block_number(&self) -> u64 {
         self.block_number
     }
 
-    pub fn transaction_hash(&self) -> &str {
+    pub(crate) fn transaction_hash(&self) -> &str {
         &self.transaction_hash
     }
 
-    pub fn block_timestamp(&self) -> u64 {
+    pub(crate) fn block_timestamp(&self) -> u64 {
         self.block_timestamp
     }
 }
@@ -112,7 +108,7 @@ impl KnowledgeCollectionMetadata {
 ///
 /// Provides high-level operations for managing RDF data in the DKG triple store.
 /// Supports knowledge collection and asset operations with SPARQL.
-pub struct TripleStoreManager {
+pub(crate) struct TripleStoreManager {
     backend: Box<dyn TripleStoreBackend>,
     config: TripleStoreManagerConfig,
 }
@@ -122,40 +118,29 @@ impl TripleStoreManager {
     ///
     /// Creates the appropriate backend based on configuration and ensures
     /// the repository/store is ready.
-    pub async fn connect(config: &TripleStoreManagerConfig) -> Result<Self> {
+    pub(crate) async fn connect(config: &TripleStoreManagerConfig) -> Result<Self> {
         let backend: Box<dyn TripleStoreBackend> = match config.backend {
             TripleStoreBackendType::Blazegraph => Box::new(BlazegraphBackend::new(config.clone())?),
             TripleStoreBackendType::Oxigraph => {
-                #[cfg(feature = "persistence")]
-                {
-                    let path = config
-                        .data_path
-                        .clone()
-                        .unwrap_or_else(|| PathBuf::from("data/triple-store"));
+                let path = config
+                    .data_path
+                    .clone()
+                    .unwrap_or_else(|| PathBuf::from("data/triple-store"));
 
-                    // Create full path with repository name
-                    let store_path = path.join(DKG_REPOSITORY);
+                // Create full path with repository name
+                let store_path = path.join(DKG_REPOSITORY);
 
-                    // Ensure the directory exists
-                    if let Some(parent) = store_path.parent() {
-                        std::fs::create_dir_all(parent).map_err(|e| {
-                            TripleStoreError::Other(format!(
-                                "Failed to create Oxigraph store directory: {}",
-                                e
-                            ))
-                        })?;
-                    }
-
-                    Box::new(OxigraphBackend::open(store_path)?)
+                // Ensure the directory exists
+                if let Some(parent) = store_path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        TripleStoreError::Other(format!(
+                            "Failed to create Oxigraph store directory: {}",
+                            e
+                        ))
+                    })?;
                 }
 
-                #[cfg(not(feature = "persistence"))]
-                {
-                    tracing::warn!(
-                        "Oxigraph persistence disabled (compile with --features persistence). Using in-memory store."
-                    );
-                    Box::new(OxigraphBackend::in_memory()?)
-                }
+                Box::new(OxigraphBackend::open(store_path)?)
             }
         };
 
@@ -177,7 +162,7 @@ impl TripleStoreManager {
     }
 
     /// Create an in-memory Triple Store Manager (for testing)
-    pub fn in_memory() -> Result<Self> {
+    pub(crate) fn in_memory() -> Result<Self> {
         let backend = Box::new(OxigraphBackend::in_memory()?);
         let config = TripleStoreManagerConfig {
             backend: TripleStoreBackendType::Oxigraph,
@@ -235,12 +220,12 @@ impl TripleStoreManager {
     }
 
     /// Health check for the triple store
-    pub async fn health_check(&self) -> Result<bool> {
+    pub(crate) async fn health_check(&self) -> Result<bool> {
         self.backend.health_check().await
     }
 
     /// Ensure the repository exists, creating it if necessary
-    pub async fn ensure_repository(&self) -> Result<()> {
+    pub(crate) async fn ensure_repository(&self) -> Result<()> {
         if !self.backend.repository_exists().await? {
             tracing::info!(
                 repository = %DKG_REPOSITORY,
@@ -270,7 +255,7 @@ impl TripleStoreManager {
     /// # Returns
     ///
     /// The total number of triples inserted (data triples + metadata triples).
-    pub async fn insert_knowledge_collection(
+    pub(crate) async fn insert_knowledge_collection(
         &self,
         kc_ual: &str,
         knowledge_assets: &[types::KnowledgeAsset],
@@ -457,7 +442,7 @@ INSERT DATA {{
     }
 
     /// Execute a raw SPARQL UPDATE query
-    pub async fn update_raw(&self, query: &str, timeout: Option<Duration>) -> Result<()> {
+    pub(crate) async fn update_raw(&self, query: &str, timeout: Option<Duration>) -> Result<()> {
         self.backend
             .update(
                 query,
@@ -471,7 +456,11 @@ INSERT DATA {{
     /// Get knowledge asset from unified graph
     ///
     /// Returns N-Quads string with triples matching the exact UAL
-    pub async fn get_knowledge_asset(&self, ual: &str, visibility: Visibility) -> Result<String> {
+    pub(crate) async fn get_knowledge_asset(
+        &self,
+        ual: &str,
+        visibility: Visibility,
+    ) -> Result<String> {
         let filter = match visibility {
             Visibility::Public => format!(
                 r#"FILTER NOT EXISTS {{ << ?s ?p ?o >> <{label}> "private" . }}"#,
@@ -503,7 +492,7 @@ WHERE {{
     /// For visibility ALL, call this method twice with Public and Private.
     ///
     /// Returns N-Triples as lines.
-    pub async fn get_knowledge_asset_named_graph(
+    pub(crate) async fn get_knowledge_asset_named_graph(
         &self,
         ual: &str,
         visibility: Visibility,
@@ -546,7 +535,7 @@ WHERE {{
     /// Uses VALUES clause for efficient querying with pagination to handle
     /// large collections (matching JS implementation which uses MAX_TOKEN_ID_PER_GET_PAGE = 50).
     /// Returns N-Triples as lines for the specified visibility.
-    pub async fn get_knowledge_collection_named_graphs(
+    pub(crate) async fn get_knowledge_collection_named_graphs(
         &self,
         kc_ual: &str,
         start_token_id: u64,
@@ -621,7 +610,10 @@ WHERE {{
     ///
     /// Checks for the existence of the named graph `{ka_ual}`.
     /// The ka_ual should include the visibility suffix (e.g., `did:dkg:.../1/public`).
-    pub async fn knowledge_asset_exists(&self, ka_ual_with_visibility: &str) -> Result<bool> {
+    pub(crate) async fn knowledge_asset_exists(
+        &self,
+        ka_ual_with_visibility: &str,
+    ) -> Result<bool> {
         let query = format!(
             r#"ASK {{
     GRAPH <{ka_ual_with_visibility}> {{
@@ -638,7 +630,7 @@ WHERE {{
     /// Get metadata for a knowledge collection from the metadata graph
     ///
     /// Returns N-Triples with metadata predicates (publishedBy, publishedAtBlock, etc.)
-    pub async fn get_metadata(&self, kc_ual: &str) -> Result<String> {
+    pub(crate) async fn get_metadata(&self, kc_ual: &str) -> Result<String> {
         let query = format!(
             r#"CONSTRUCT {{ <{kc_ual}> ?p ?o . }}
 WHERE {{
@@ -662,7 +654,7 @@ WHERE {{
     /// - Named graphs for public/private assertions
     /// - Metadata graph with KC metadata
     /// - Current graph with named graph references
-    pub async fn insert_knowledge_collection(
+    pub(crate) async fn   insert_knowledge_collection(
         &self,
         ual: &str,
         public_nquads: &str,
@@ -762,7 +754,7 @@ WHERE {{
     /* /// Get knowledge collection from unified graph
     ///
     /// Returns N-Quads string with triples matching the UAL prefix
-    pub async fn get_knowledge_collection(
+    pub(crate) async fn   get_knowledge_collection(
         &self,
         ual: &str,
         visibility: Visibility,
@@ -799,7 +791,7 @@ ORDER BY ?s"#,
     /*  /// Get knowledge collection from named graphs
     ///
     /// Returns triples from the specific public/private named graphs
-    pub async fn get_knowledge_collection_named_graphs(
+    pub(crate) async fn   get_knowledge_collection_named_graphs(
         &self,
         ual: &str,
         visibility: Visibility,
@@ -832,7 +824,7 @@ WHERE {{
     ///
     /// Uses annotation count to only delete triples that belong exclusively
     /// to this knowledge collection (not shared with others)
-    pub async fn delete_knowledge_collection(&self, ual: &str) -> Result<()> {
+    pub(crate) async fn   delete_knowledge_collection(&self, ual: &str) -> Result<()> {
         let query = format!(
             r#"DELETE {{
     GRAPH <{unified}> {{
@@ -869,7 +861,7 @@ WHERE {{
     }
 
     /// Check if knowledge collection exists in unified graph
-    pub async fn knowledge_collection_exists(&self, ual: &str) -> Result<bool> {
+    pub(crate) async fn   knowledge_collection_exists(&self, ual: &str) -> Result<bool> {
         let query = format!(
             r#"ASK WHERE {{
     GRAPH <{unified}> {{
@@ -889,7 +881,7 @@ WHERE {{
     /// Get knowledge asset from unified graph
     ///
     /// Returns N-Quads string with triples matching the exact UAL
-    pub async fn get_knowledge_asset(&self, ual: &str, visibility: Visibility) -> Result<String> {
+    pub(crate) async fn   get_knowledge_asset(&self, ual: &str, visibility: Visibility) -> Result<String> {
         let filter = match visibility {
             Visibility::Public => format!(
                 r#"FILTER NOT EXISTS {{ << ?s ?p ?o >> <{label}> "private" . }}"#,
@@ -916,7 +908,7 @@ WHERE {{
     }
 
     /// Get knowledge asset from named graph
-    pub async fn get_knowledge_asset_named_graph(
+    pub(crate) async fn   get_knowledge_asset_named_graph(
         &self,
         ual: &str,
         visibility: Visibility,
@@ -953,7 +945,7 @@ WHERE {{
     }
 
     /// Delete knowledge asset from unified graph
-    pub async fn delete_knowledge_asset(&self, ual: &str) -> Result<()> {
+    pub(crate) async fn   delete_knowledge_asset(&self, ual: &str) -> Result<()> {
         let query = format!(
             r#"DELETE {{
     GRAPH <{unified}> {{
@@ -989,7 +981,7 @@ WHERE {{
     }
 
     /// Check if knowledge asset exists in unified graph
-    pub async fn knowledge_asset_exists(&self, ual: &str) -> Result<bool> {
+    pub(crate) async fn   knowledge_asset_exists(&self, ual: &str) -> Result<bool> {
         let query = format!(
             r#"ASK WHERE {{
     GRAPH <{unified}> {{
@@ -1006,7 +998,7 @@ WHERE {{
     // ========== Metadata Operations ==========
 
     /// Get metadata for a UAL from the metadata graph
-    pub async fn get_metadata(&self, ual: &str) -> Result<String> {
+    pub(crate) async fn   get_metadata(&self, ual: &str) -> Result<String> {
         let query = format!(
             r#"CONSTRUCT {{ <{ual}> ?p ?o . }}
 WHERE {{
@@ -1023,7 +1015,7 @@ WHERE {{
     }
 
     /// Delete metadata for a UAL
-    pub async fn delete_metadata(&self, ual: &str) -> Result<()> {
+    pub(crate) async fn   delete_metadata(&self, ual: &str) -> Result<()> {
         let query = format!(
             r#"DELETE WHERE {{
     GRAPH <{metadata}> {{
@@ -1042,7 +1034,7 @@ WHERE {{
     }
 
     /// Check if metadata exists for a knowledge collection
-    pub async fn metadata_exists(&self, ual: &str) -> Result<bool> {
+    pub(crate) async fn   metadata_exists(&self, ual: &str) -> Result<bool> {
         let query = format!(
             r#"ASK {{
     GRAPH <{metadata}> {{
@@ -1059,7 +1051,7 @@ WHERE {{
     // ========== Named Graph Operations ==========
 
     /// Drop a named graph
-    pub async fn drop_named_graph(&self, graph: &str) -> Result<()> {
+    pub(crate) async fn   drop_named_graph(&self, graph: &str) -> Result<()> {
         let query = format!("DROP GRAPH <{graph}>");
 
         self.backend
@@ -1071,7 +1063,7 @@ WHERE {{
     }
 
     /// Find all named graphs matching a UAL prefix
-    pub async fn find_named_graphs_by_ual(&self, ual: &str) -> Result<Vec<String>> {
+    pub(crate) async fn   find_named_graphs_by_ual(&self, ual: &str) -> Result<Vec<String>> {
         let query = format!(
             r#"SELECT DISTINCT ?g
 WHERE {{
@@ -1099,28 +1091,28 @@ WHERE {{
     // ========== Raw Query Access ==========
 
     /// Execute a raw SPARQL CONSTRUCT query
-    pub async fn construct_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<String> {
+    pub(crate) async fn   construct_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<String> {
         self.backend
             .construct(query, timeout_ms.unwrap_or(self.config.timeouts.query_timeout()))
             .await
     }
 
     /// Execute a raw SPARQL SELECT query
-    pub async fn select_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<SelectResult> {
+    pub(crate) async fn   select_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<SelectResult> {
         self.backend
             .select(query, timeout_ms.unwrap_or(self.config.timeouts.query_timeout()))
             .await
     }
 
     /// Execute a raw SPARQL ASK query
-    pub async fn ask_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<bool> {
+    pub(crate) async fn   ask_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<bool> {
         self.backend
             .ask(query, timeout_ms.unwrap_or(self.config.timeouts.ask_timeout()))
             .await
     }
 
     /// Execute a raw SPARQL UPDATE query
-    pub async fn update_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<()> {
+    pub(crate) async fn   update_raw(&self, query: &str, timeout_ms: Option<u64>) -> Result<()> {
         self.backend
             .update(query, timeout_ms.unwrap_or(self.config.timeouts.insert_ms))
             .await

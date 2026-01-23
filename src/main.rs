@@ -3,14 +3,13 @@ mod config;
 mod context;
 mod controllers;
 mod error;
+mod managers;
 mod operations;
 mod services;
 mod utils;
 
 use std::sync::Arc;
 
-use ::network::{KeyManager, NetworkManager};
-use blockchain::BlockchainManager;
 use commands::{
     command_executor::{CommandExecutor, CommandScheduler},
     command_registry::default_command_requests,
@@ -22,13 +21,17 @@ use controllers::{
 };
 use dotenvy::dotenv;
 use libp2p::identity::Keypair;
-use repository::RepositoryManager;
 use tokio::select;
-use triple_store::TripleStoreManager;
 
 use crate::{
     config::{AppPaths, ManagersConfig},
     controllers::rpc_controller::NetworkProtocols,
+    managers::{
+        blockchain::BlockchainManager,
+        network::{KeyManager, NetworkManager},
+        repository::RepositoryManager,
+        triple_store::TripleStoreManager,
+    },
     operations::{GetOperation, PublishOperation},
     services::{
         GetValidationService, PeerDiscoveryTracker, ResponseChannels, TripleStoreService,
@@ -90,9 +93,8 @@ async fn main() {
         Arc::clone(&publish_operation_service),
     ));
 
-    if config.is_dev_env {
-        initialize_dev_environment(&blockchain_manager).await;
-    }
+    #[cfg(feature = "dev-tools")]
+    initialize_dev_environment(&blockchain_manager).await;
 
     let command_executor = Arc::new(CommandExecutor::new(Arc::clone(&context), command_rx));
 
@@ -207,7 +209,7 @@ async fn initialize_managers(
     let repository_manager = Arc::new(
         RepositoryManager::connect(&config.repository)
             .await
-            .unwrap(),
+            .expect("Failed to initialize repository manager"),
     );
     let mut blockchain_manager = BlockchainManager::connect(&config.blockchain)
         .await
@@ -247,9 +249,10 @@ fn initialize_services(
     Arc<PendingStorageService>,
 ) {
     // Create shared key-value store manager using centralized path
-    let kv_store_manager =
-        key_value_store::KeyValueStoreManager::connect(paths.key_value_store.clone())
-            .expect("Failed to connect to key-value store manager");
+    let kv_store_manager = crate::managers::key_value_store::KeyValueStoreManager::connect(
+        paths.key_value_store.clone(),
+    )
+    .expect("Failed to connect to key-value store manager");
 
     let pending_storage_service = Arc::new(
         PendingStorageService::new(&kv_store_manager)
@@ -296,6 +299,7 @@ fn initialize_controllers(
     (http_api_router, rpc_router)
 }
 
+#[cfg(feature = "dev-tools")]
 async fn initialize_dev_environment(blockchain_manager: &Arc<BlockchainManager>) {
     use alloy::primitives::utils::parse_ether;
 

@@ -6,7 +6,6 @@ use axum::{
     response::IntoResponse,
 };
 use hyper::StatusCode;
-use repository::OperationStatus;
 use uuid::Uuid;
 
 use crate::{
@@ -15,29 +14,27 @@ use crate::{
         get::GetOperationResultResponse,
         operation_result::{OperationResultErrorResponse, OperationResultResponse, SignatureData},
     },
+    managers::repository::OperationStatus,
     operations::PublishOperationResult,
 };
 
-pub struct OperationResultHttpApiController;
+pub(crate) struct OperationResultHttpApiController;
 
 impl OperationResultHttpApiController {
-    pub async fn handle_publish_result(
+    pub(crate) async fn handle_publish_result(
         State(context): State<Arc<Context>>,
         Path(operation_id): Path<String>,
     ) -> impl IntoResponse {
         // Validate operation ID format
-        let operation_uuid = match Uuid::parse_str(&operation_id) {
-            Ok(uuid) => uuid,
-            Err(_) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(OperationResultErrorResponse::new(
-                        400,
-                        format!("Operation id: {} is in wrong format", operation_id),
-                    )),
-                )
-                    .into_response();
-            }
+        let Ok(operation_uuid) = Uuid::parse_str(&operation_id) else {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(OperationResultErrorResponse::new(
+                    400,
+                    format!("Operation id: {} is in wrong format", operation_id),
+                )),
+            )
+                .into_response();
         };
 
         // Get operation record
@@ -152,23 +149,20 @@ impl OperationResultHttpApiController {
         }
     }
 
-    pub async fn handle_get_result(
+    pub(crate) async fn handle_get_result(
         State(context): State<Arc<Context>>,
         Path(operation_id): Path<String>,
     ) -> impl IntoResponse {
         // Validate operation ID format
-        let operation_uuid = match Uuid::parse_str(&operation_id) {
-            Ok(uuid) => uuid,
-            Err(_) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(OperationResultErrorResponse::new(
-                        400,
-                        format!("Operation id: {} is in wrong format", operation_id),
-                    )),
-                )
-                    .into_response();
-            }
+        let Ok(operation_uuid) = Uuid::parse_str(&operation_id) else {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(OperationResultErrorResponse::new(
+                    400,
+                    format!("Operation id: {} is in wrong format", operation_id),
+                )),
+            )
+                .into_response();
         };
 
         // Get operation record

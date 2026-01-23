@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use triple_store::{
+use crate::managers::triple_store::{
     TripleStoreBackendType, TripleStoreManager, TripleStoreManagerConfig, config::TimeoutConfig,
 };
 

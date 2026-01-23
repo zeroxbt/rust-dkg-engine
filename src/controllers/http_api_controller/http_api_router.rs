@@ -26,7 +26,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct HttpApiConfig {
+pub(crate) struct HttpApiConfig {
     /// Whether the HTTP API server is enabled. Defaults to true.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
@@ -41,7 +41,7 @@ fn default_enabled() -> bool {
     true
 }
 
-pub struct HttpApiRouter {
+pub(crate) struct HttpApiRouter {
     config: HttpApiConfig,
     router: Arc<Mutex<Router>>,
 }
@@ -50,7 +50,7 @@ pub struct HttpApiRouter {
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
 
 impl HttpApiRouter {
-    pub fn new(config: &HttpApiConfig, context: &Arc<Context>) -> Self {
+    pub(crate) fn new(config: &HttpApiConfig, context: &Arc<Context>) -> Self {
         // Build the base router with routes and state
         let mut router = Router::new()
             .route("/v1/info", get(InfoHttpApiController::handle_request))
@@ -121,7 +121,7 @@ impl HttpApiRouter {
         }
     }
 
-    pub async fn listen_and_handle_http_requests(&self) {
+    pub(crate) async fn   listen_and_handle_http_requests(&self) {
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, self.config.port));
 
         let cloned_router_for_serve = self.router.lock().await.clone();

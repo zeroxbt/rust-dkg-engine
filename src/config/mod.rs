@@ -1,20 +1,24 @@
 use std::{env, path::PathBuf};
 
-use blockchain::BlockchainManagerConfig;
+#[cfg(feature = "dev-tools")]
+use clap::{Arg, Command};
 use figment::{
     Figment,
     providers::{Format, Toml},
 };
-use network::NetworkManagerConfig;
-use repository::RepositoryManagerConfig;
 use serde::Deserialize;
 use thiserror::Error;
-use triple_store::TripleStoreManagerConfig;
 
-use crate::controllers::http_api_controller::http_api_router::HttpApiConfig;
+use crate::{
+    controllers::http_api_controller::http_api_router::HttpApiConfig,
+    managers::{
+        blockchain::BlockchainManagerConfig, network::NetworkManagerConfig,
+        repository::RepositoryManagerConfig, triple_store::TripleStoreManagerConfig,
+    },
+};
 
 #[derive(Error, Debug)]
-pub enum ConfigError {
+pub(crate) enum ConfigError {
     #[error("Configuration loading failed: {0}")]
     LoadError(#[from] Box<figment::Error>),
 
@@ -27,7 +31,7 @@ pub enum ConfigError {
 /// This provides a single source of truth for all filesystem paths used by the application,
 /// making it easy to see the complete directory structure and avoiding path collisions.
 #[derive(Debug, Clone)]
-pub struct AppPaths {
+pub(crate) struct AppPaths {
     /// Path to the network identity key file
     pub network_key: PathBuf,
     /// Path to the key-value store database
@@ -49,7 +53,7 @@ impl AppPaths {
     /// └── triple-store/
     ///     └── {repository}/        <- oxigraph store per repository
     /// ```
-    pub fn from_root(root: PathBuf) -> Self {
+    pub(crate) fn from_root(root: PathBuf) -> Self {
         Self {
             network_key: root.join("network/private_key"),
             key_value_store: root.join("key-value-store/key_value_store.redb"),
@@ -59,7 +63,7 @@ impl AppPaths {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Config {
+pub(crate) struct Config {
     #[serde(default)]
     pub is_dev_env: bool,
     #[serde(default = "default_app_data_path")]
@@ -73,14 +77,14 @@ fn default_app_data_path() -> PathBuf {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct ManagersConfig {
+pub(crate) struct ManagersConfig {
     pub network: NetworkManagerConfig,
     pub repository: RepositoryManagerConfig,
     pub blockchain: BlockchainManagerConfig,
     pub triple_store: TripleStoreManagerConfig,
 }
 
-pub fn initialize_configuration() -> Config {
+pub(crate) fn initialize_configuration() -> Config {
     load_configuration().expect("Failed to load configuration")
 }
 
@@ -90,26 +94,31 @@ fn load_configuration() -> Result<Config, ConfigError> {
     tracing::info!("Loading configuration for environment: {}", node_env);
 
     // Build configuration with layered sources (priority: lowest to highest)
+    #[cfg_attr(not(feature = "dev-tools"), allow(unused_mut))]
     let mut figment = Figment::new()
         // Base configuration from TOML
         .merge(Toml::file(format!("config/{}.toml", node_env)))
         // User overrides from .origintrail_noderc.toml
-        .merge(Toml::file(".origintrail_noderc.toml").nested());
+        .merge(Toml::file(".origintrail_noderc.toml"));
 
-    // Parse CLI arguments for custom config file
-    let matches = clap::Command::new("OriginTrail Rust Node")
-        .arg(
-            clap::Arg::new("config")
-                .short('c')
-                .long("config")
-                .value_name("FILE")
-                .help("Sets a custom config file (.toml format)"),
-        )
-        .get_matches();
+    // Parse CLI arguments for custom config file (dev-tools feature only)
+    #[cfg(feature = "dev-tools")]
+    {
+        let matches = Command::new("OriginTrail Rust Node")
+            .arg(
+                Arg::new("config")
+                    .short('c')
+                    .long("config")
+                    .value_name("FILE")
+                    .help("Sets a custom config file (.toml format)"),
+            )
+            .get_matches();
 
-    if let Some(config_path) = matches.get_one::<String>("config") {
-        tracing::info!("Loading custom config file: {}", config_path);
-        figment = figment.merge(Toml::file(config_path));
+        // If custom config file is provided, merge it with highest priority
+        if let Some(config_path) = matches.get_one::<String>("config") {
+            tracing::info!("Loading custom config file: {}", config_path);
+            figment = figment.merge(Toml::file(config_path));
+        }
     }
 
     // Extract and validate configuration

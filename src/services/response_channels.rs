@@ -1,10 +1,11 @@
 use std::{sync::Arc, time::Duration};
 
 use dashmap::DashMap;
-use network::{PeerId, ResponseMessage, request_response};
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::time::Instant;
 use uuid::Uuid;
+
+use crate::managers::network::{PeerId, ResponseMessage, request_response};
 
 /// Default timeout for response channels (5 minutes).
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
@@ -24,7 +25,7 @@ struct ChannelEntry<T> {
 /// - `ResponseChannels<GetResponseData>` for Get protocol
 ///
 /// Expired channels are cleaned up opportunistically when new channels are stored.
-pub struct ResponseChannels<T>
+pub(crate) struct ResponseChannels<T>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
 {
@@ -36,14 +37,14 @@ impl<T> ResponseChannels<T>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
 {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             channels: Arc::new(DashMap::new()),
             timeout: DEFAULT_TIMEOUT,
         }
     }
 
-    pub fn store(
+    pub(crate) fn store(
         &self,
         peer_id: &PeerId,
         operation_id: Uuid,
@@ -67,7 +68,7 @@ where
         self.channels.insert(key, entry);
     }
 
-    pub fn retrieve(
+    pub(crate) fn retrieve(
         &self,
         peer_id: &PeerId,
         operation_id: Uuid,

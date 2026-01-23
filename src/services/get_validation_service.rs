@@ -1,24 +1,27 @@
 use std::sync::Arc;
 
-use blockchain::BlockchainManager;
-use triple_store::{
-    Visibility, group_nquads_by_subject,
-    query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
+use crate::{
+    managers::{
+        blockchain::BlockchainManager,
+        triple_store::{
+            Visibility, group_nquads_by_subject,
+            query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
+        },
+    },
+    utils::{ual::ParsedUal, validation},
 };
-
-use crate::utils::{ual::ParsedUal, validation};
 
 /// Service for validating get operation responses.
 ///
 /// Validates that:
 /// 1. Public assertion merkle root matches on-chain value
 /// 2. Private assertion merkle root (if present) matches the value in public triples
-pub struct GetValidationService {
+pub(crate) struct GetValidationService {
     blockchain_manager: Arc<BlockchainManager>,
 }
 
 impl GetValidationService {
-    pub fn new(blockchain_manager: Arc<BlockchainManager>) -> Self {
+    pub(crate) fn new(blockchain_manager: Arc<BlockchainManager>) -> Self {
         Self { blockchain_manager }
     }
 
@@ -30,7 +33,7 @@ impl GetValidationService {
     ///   if present
     ///
     /// Returns true if the response is valid, false otherwise.
-    pub async fn validate_response(
+    pub(crate) async fn validate_response(
         &self,
         public_triples: &[String],
         private_triples: Option<&[String]>,
@@ -232,7 +235,7 @@ mod tests {
     /// Check if public assertion contains privateMerkleRoot predicate.
     ///
     /// Used to determine if private triples are expected for permissioned paranets.
-    pub fn assertion_has_private_merkle_root(public_triples: &[String]) -> bool {
+    pub(crate) fn assertion_has_private_merkle_root(public_triples: &[String]) -> bool {
         public_triples
             .iter()
             .any(|triple| triple.contains(PRIVATE_MERKLE_ROOT))

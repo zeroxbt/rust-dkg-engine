@@ -2,22 +2,22 @@ use thiserror::Error;
 
 /// Top-level application error that composes all subsystem errors
 #[derive(Error, Debug)]
-pub enum NodeError {
+pub(crate) enum NodeError {
     /// Blockchain-related errors
     #[error("Blockchain error: {0}")]
-    Blockchain(#[from] blockchain::error::BlockchainError),
+    Blockchain(#[from] crate::managers::blockchain::error::BlockchainError),
 
     /// Network-related errors
     #[error("Network error: {0}")]
-    Network(#[from] network::error::NetworkError),
+    Network(#[from] crate::managers::network::error::NetworkError),
 
     /// Database/repository errors
     #[error("Repository error: {0}")]
-    Repository(#[from] repository::error::RepositoryError),
+    Repository(#[from] crate::managers::repository::error::RepositoryError),
 
     /// Triple store errors
     #[error("Triple store error: {0}")]
-    TripleStore(#[from] triple_store::error::TripleStoreError),
+    TripleStore(#[from] crate::managers::triple_store::error::TripleStoreError),
 
     /// I/O errors
     #[error("I/O error: {0}")]

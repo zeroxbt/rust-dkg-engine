@@ -10,20 +10,20 @@ use super::{
 };
 use crate::context::Context;
 
-pub enum CommandExecutionResult {
+pub(crate) enum CommandExecutionResult {
     Completed,
     Repeat { delay: Duration },
 }
 
 #[derive(Clone)]
-pub struct CommandExecutionRequest {
+pub(crate) struct CommandExecutionRequest {
     command: Command,
     delay: Duration,
     created_at: i64,
 }
 
 impl CommandExecutionRequest {
-    pub fn new(command: Command) -> Self {
+    pub(crate) fn new(command: Command) -> Self {
         Self {
             command,
             delay: Duration::ZERO,
@@ -31,32 +31,32 @@ impl CommandExecutionRequest {
         }
     }
 
-    pub fn with_delay(mut self, delay: Duration) -> Self {
+    pub(crate) fn with_delay(mut self, delay: Duration) -> Self {
         self.delay = delay;
         self
     }
 
     /// Returns a reference to the command.
-    pub fn command(&self) -> &Command {
+    pub(crate) fn command(&self) -> &Command {
         &self.command
     }
 
     /// Consumes the request and returns the command.
-    pub fn into_command(self) -> Command {
+    pub(crate) fn into_command(self) -> Command {
         self.command
     }
 
     /// Returns the delay duration.
-    pub fn delay(&self) -> Duration {
+    pub(crate) fn delay(&self) -> Duration {
         self.delay
     }
 
     /// Sets the delay to zero.
-    pub fn clear_delay(&mut self) {
+    pub(crate) fn clear_delay(&mut self) {
         self.delay = Duration::ZERO;
     }
 
-    pub fn is_expired(&self) -> bool {
+    pub(crate) fn is_expired(&self) -> bool {
         let now = Utc::now().timestamp_millis();
         let elapsed_ms = (now - self.created_at).max(0) as u64;
         Duration::from_millis(elapsed_ms) > MAX_COMMAND_LIFETIME
@@ -65,20 +65,20 @@ impl CommandExecutionRequest {
 
 /// Handle for scheduling commands. Can be cloned and shared across the application.
 #[derive(Clone)]
-pub struct CommandScheduler {
+pub(crate) struct CommandScheduler {
     tx: mpsc::Sender<CommandExecutionRequest>,
 }
 
 impl CommandScheduler {
     /// Create a new command scheduler channel pair.
     /// Returns the scheduler (for sending commands) and a receiver (for the executor).
-    pub fn channel() -> (Self, mpsc::Receiver<CommandExecutionRequest>) {
+    pub(crate) fn channel() -> (Self, mpsc::Receiver<CommandExecutionRequest>) {
         let (tx, rx) = mpsc::channel::<CommandExecutionRequest>(COMMAND_QUEUE_PARALLELISM);
         (Self { tx }, rx)
     }
 
     /// Schedule a command for execution. Logs an error if scheduling fails.
-    pub async fn schedule(&self, request: CommandExecutionRequest) {
+    pub(crate) async fn schedule(&self, request: CommandExecutionRequest) {
         let command_name = request.command().name();
         let delay = request.delay().min(MAX_COMMAND_DELAY);
 
@@ -113,7 +113,7 @@ impl CommandScheduler {
     }
 }
 
-pub struct CommandExecutor {
+pub(crate) struct CommandExecutor {
     command_resolver: CommandResolver,
     scheduler: CommandScheduler,
     rx: Arc<Mutex<mpsc::Receiver<CommandExecutionRequest>>>,
@@ -126,7 +126,7 @@ pub struct CommandExecutor {
 //   - add error handling
 
 impl CommandExecutor {
-    pub fn new(context: Arc<Context>, rx: mpsc::Receiver<CommandExecutionRequest>) -> Self {
+    pub(crate) fn new(context: Arc<Context>, rx: mpsc::Receiver<CommandExecutionRequest>) -> Self {
         Self {
             command_resolver: CommandResolver::new(Arc::clone(&context)),
             scheduler: context.command_scheduler().clone(),
@@ -136,13 +136,13 @@ impl CommandExecutor {
     }
 
     /// Schedule initial commands to be executed.
-    pub async fn schedule_commands(&self, requests: Vec<CommandExecutionRequest>) {
+    pub(crate) async fn schedule_commands(&self, requests: Vec<CommandExecutionRequest>) {
         for request in requests {
             self.scheduler.schedule(request).await;
         }
     }
 
-    pub async fn run(&self) {
+    pub(crate) async fn run(&self) {
         let mut pending_tasks = FuturesUnordered::new();
 
         loop {
@@ -156,7 +156,7 @@ impl CommandExecutor {
                     match command {
                         Some(request) => {
                             drop(locked_rx);
-                            let permit = self.semaphore.clone().acquire_owned().await.unwrap();
+                            let permit = self.semaphore.clone().acquire_owned().await.expect("Permit aquired");
                             pending_tasks.push(self.execute(request, permit));
                         }
                         None => {

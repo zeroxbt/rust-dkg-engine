@@ -1,11 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
-use blockchain::{AccessPolicy, BlockchainManager};
 use futures::future::join_all;
 use libp2p::PeerId;
-use network::NetworkManager;
-use repository::RepositoryManager;
-use triple_store::{Assertion, TokenIds, Visibility};
 use uuid::Uuid;
 
 use crate::{
@@ -14,6 +10,12 @@ use crate::{
     controllers::rpc_controller::{
         NetworkProtocols,
         messages::{GetRequestData, GetResponseData},
+    },
+    managers::{
+        blockchain::{AccessPolicy, BlockchainManager},
+        network::NetworkManager,
+        repository::RepositoryManager,
+        triple_store::{Assertion, TokenIds, Visibility},
     },
     operations::{GetOperation, GetOperationResult},
     services::{
@@ -28,7 +30,7 @@ use crate::{
 
 /// Command data for sending get requests to network nodes.
 #[derive(Clone)]
-pub struct SendGetRequestsCommandData {
+pub(crate) struct SendGetRequestsCommandData {
     pub operation_id: Uuid,
     pub ual: String,
     pub include_metadata: bool,
@@ -37,7 +39,7 @@ pub struct SendGetRequestsCommandData {
 }
 
 impl SendGetRequestsCommandData {
-    pub fn new(
+    pub(crate) fn new(
         operation_id: Uuid,
         ual: String,
         include_metadata: bool,
@@ -54,7 +56,7 @@ impl SendGetRequestsCommandData {
     }
 }
 
-pub struct SendGetRequestsCommandHandler {
+pub(crate) struct SendGetRequestsCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     triple_store_service: Arc<TripleStoreService>,
     repository_manager: Arc<RepositoryManager>,
@@ -64,7 +66,7 @@ pub struct SendGetRequestsCommandHandler {
 }
 
 impl SendGetRequestsCommandHandler {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             triple_store_service: Arc::clone(context.triple_store_service()),
@@ -150,16 +152,13 @@ impl SendGetRequestsCommandHandler {
         };
 
         // 2. Validate paranet UAL has knowledge_asset_id
-        let ka_id = match paranet_parsed.knowledge_asset_id {
-            Some(id) => id,
-            None => {
-                let error_message = "Paranet UAL must include knowledge asset ID".to_string();
-                tracing::error!(operation_id = %operation_id, %error_message);
-                self.get_operation_service
-                    .mark_failed(operation_id, error_message)
-                    .await;
-                return Err(());
-            }
+        let Some(ka_id) = paranet_parsed.knowledge_asset_id else {
+            let error_message = "Paranet UAL must include knowledge asset ID".to_string();
+            tracing::error!(operation_id = %operation_id, %error_message);
+            self.get_operation_service
+                .mark_failed(operation_id, error_message)
+                .await;
+            return Err(());
         };
 
         // 3. Construct paranet ID

@@ -1,16 +1,20 @@
-use key_value_store::{KeyValueStoreError, KeyValueStoreManager, Table};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use triple_store::Assertion;
 use uuid::Uuid;
 
-use crate::error::NodeError;
+use crate::{
+    error::NodeError,
+    managers::{
+        key_value_store::{KeyValueStoreError, KeyValueStoreManager, Table},
+        triple_store::Assertion,
+    },
+};
 
 /// Table name for pending storage data.
 const TABLE_NAME: &str = "pending_storage";
 
 #[derive(Error, Debug)]
-pub enum PendingStorageError {
+pub(crate) enum PendingStorageError {
     #[error("Key-value store error: {0}")]
     Store(#[from] KeyValueStoreError),
 
@@ -25,14 +29,14 @@ impl From<PendingStorageError> for NodeError {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct PendingStorageData {
+pub(crate) struct PendingStorageData {
     dataset_root: String,
     dataset: Assertion,
     publisher_peer_id: String,
 }
 
 impl PendingStorageData {
-    pub fn new(dataset_root: String, dataset: Assertion, publisher_peer_id: String) -> Self {
+    pub(crate) fn new(dataset_root: String, dataset: Assertion, publisher_peer_id: String) -> Self {
         Self {
             dataset_root,
             dataset,
@@ -40,33 +44,33 @@ impl PendingStorageData {
         }
     }
 
-    pub fn dataset_root(&self) -> &str {
+    pub(crate) fn dataset_root(&self) -> &str {
         &self.dataset_root
     }
 
-    pub fn dataset(&self) -> &Assertion {
+    pub(crate) fn dataset(&self) -> &Assertion {
         &self.dataset
     }
 
-    pub fn publisher_peer_id(&self) -> &str {
+    pub(crate) fn publisher_peer_id(&self) -> &str {
         &self.publisher_peer_id
     }
 }
 
 /// Service for storing pending datasets awaiting finality.
-pub struct PendingStorageService {
+pub(crate) struct PendingStorageService {
     table: Table<PendingStorageData>,
 }
 
 impl PendingStorageService {
     /// Create a new pending storage service from a key-value store manager.
-    pub fn new(kv_store_manager: &KeyValueStoreManager) -> Result<Self, KeyValueStoreError> {
+    pub(crate) fn new(kv_store_manager: &KeyValueStoreManager) -> Result<Self, KeyValueStoreError> {
         let table = kv_store_manager.table(TABLE_NAME)?;
         Ok(Self { table })
     }
 
     /// Store a dataset pending finality confirmation.
-    pub fn store_dataset(
+    pub(crate) fn store_dataset(
         &self,
         operation_id: Uuid,
         dataset_root: &str,
@@ -92,7 +96,7 @@ impl PendingStorageService {
     }
 
     /// Retrieve a dataset from pending storage.
-    pub fn get_dataset(
+    pub(crate) fn get_dataset(
         &self,
         operation_id: Uuid,
     ) -> Result<PendingStorageData, PendingStorageError> {
@@ -115,7 +119,7 @@ impl PendingStorageService {
     }
 
     /// Remove a dataset from pending storage (after finality is confirmed).
-    pub fn remove(&self, operation_id: Uuid) -> Result<bool, PendingStorageError> {
+    pub(crate) fn remove(&self, operation_id: Uuid) -> Result<bool, PendingStorageError> {
         let removed = self.table.remove(operation_id)?;
 
         if removed {
@@ -131,10 +135,12 @@ impl PendingStorageService {
 
 #[cfg(test)]
 mod tests {
-    use key_value_store::KeyValueStoreManager;
+    #![allow(clippy::unwrap_used)]
+
     use tempfile::TempDir;
 
     use super::*;
+    use crate::managers::key_value_store::KeyValueStoreManager;
 
     fn create_test_assertion() -> Assertion {
         Assertion {

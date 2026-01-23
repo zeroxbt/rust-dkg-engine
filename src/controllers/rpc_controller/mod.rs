@@ -1,7 +1,7 @@
 mod constants;
-pub mod messages;
-pub mod protocols;
-pub mod rpc_router;
+pub(crate) mod messages;
+pub(crate) mod protocols;
+pub(crate) mod rpc_router;
 mod v1;
 
-pub use protocols::{NetworkProtocols, ProtocolRequest, ProtocolResponse};
+pub(crate) use protocols::{NetworkProtocols, ProtocolRequest, ProtocolResponse};

@@ -4,13 +4,14 @@ use alloy::{
     primitives::B256,
     sol_types::{SolEvent, SolEventInterface},
 };
-use blockchain::{
+
+use crate::managers::blockchain::{
     AssetStorageChangedFilter, ContractChangedFilter, ContractName, Hub,
     KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorage, NewAssetStorageFilter,
     NewContractFilter, ParameterChangedFilter, ParametersStorage,
 };
 
-pub enum ContractEvent {
+pub(crate) enum ContractEvent {
     Hub(Hub::HubEvents),
     ParametersStorage(ParametersStorage::ParametersStorageEvents),
     KnowledgeCollectionStorage(KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents),
@@ -21,7 +22,7 @@ fn decode_event<E: SolEventInterface>(log: &alloy::rpc::types::Log) -> Option<E>
 }
 
 /// Contracts and events to monitor (aligned with JS implementation).
-pub fn monitored_contract_events() -> HashMap<ContractName, Vec<B256>> {
+pub(crate) fn monitored_contract_events() -> HashMap<ContractName, Vec<B256>> {
     let mut map = HashMap::new();
     map.insert(
         ContractName::Hub,
@@ -43,7 +44,7 @@ pub fn monitored_contract_events() -> HashMap<ContractName, Vec<B256>> {
     map
 }
 
-pub fn decode_contract_event(
+pub(crate) fn decode_contract_event(
     contract_name: &ContractName,
     log: &alloy::rpc::types::Log,
 ) -> Option<ContractEvent> {

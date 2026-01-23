@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use network::{
+use crate::managers::network::{
     PeerId,
     message::{RequestMessage, ResponseMessage},
     request_response,
@@ -17,20 +17,20 @@ use crate::{
     services::ResponseChannels,
 };
 
-pub struct FinalityRpcController {
+pub(crate) struct FinalityRpcController {
     response_channels: Arc<ResponseChannels<FinalityResponseData>>,
     command_scheduler: CommandScheduler,
 }
 
 impl FinalityRpcController {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             response_channels: Arc::clone(context.finality_response_channels()),
             command_scheduler: context.command_scheduler().clone(),
         }
     }
 
-    pub async fn handle_request(
+    pub(crate) async fn   handle_request(
         &self,
         request: RequestMessage<FinalityRequestData>,
         channel: request_response::ResponseChannel<ResponseMessage<FinalityResponseData>>,
@@ -67,7 +67,7 @@ impl FinalityRpcController {
             .await;
     }
 
-    pub async fn handle_response(
+    pub(crate) async fn   handle_response(
         &self,
         _response: ResponseMessage<FinalityResponseData>,
         _peer: PeerId,

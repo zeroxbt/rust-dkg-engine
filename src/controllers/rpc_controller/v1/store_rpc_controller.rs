@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use network::{
+use crate::managers::network::{
     PeerId,
     message::{RequestMessage, ResponseMessage},
     request_response,
 };
-use triple_store::Assertion;
+use crate::managers::triple_store::Assertion;
 
 use crate::{
     commands::{
@@ -19,14 +19,14 @@ use crate::{
     services::{ResponseChannels, operation::OperationService as GenericOperationService},
 };
 
-pub struct StoreRpcController {
+pub(crate) struct StoreRpcController {
     publish_operation_service: Arc<GenericOperationService<PublishOperation>>,
     response_channels: Arc<ResponseChannels<StoreResponseData>>,
     command_scheduler: CommandScheduler,
 }
 
 impl StoreRpcController {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             publish_operation_service: Arc::clone(context.publish_operation_service()),
             response_channels: Arc::clone(context.store_response_channels()),
@@ -35,11 +35,11 @@ impl StoreRpcController {
     }
 
     /// Returns a reference to the operation service for this controller.
-    pub fn operation_service(&self) -> &Arc<GenericOperationService<PublishOperation>> {
+    pub(crate) fn operation_service(&self) -> &Arc<GenericOperationService<PublishOperation>> {
         &self.publish_operation_service
     }
 
-    pub async fn handle_request(
+    pub(crate) async fn   handle_request(
         &self,
         request: RequestMessage<StoreRequestData>,
         channel: request_response::ResponseChannel<ResponseMessage<StoreResponseData>>,

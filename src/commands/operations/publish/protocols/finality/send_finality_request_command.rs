@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use blockchain::{Address, BlockchainId, BlockchainManager, H256, U256};
-use network::{
+use crate::managers::blockchain::{Address, BlockchainId, BlockchainManager, H256, U256};
+use crate::managers::network::{
     NetworkManager, PeerId, RequestMessage,
     message::{RequestMessageHeader, RequestMessageType},
 };
-use repository::RepositoryManager;
-use triple_store::KnowledgeCollectionMetadata;
+use crate::managers::repository::RepositoryManager;
+use crate::managers::triple_store::KnowledgeCollectionMetadata;
 use uuid::Uuid;
 
 use crate::{
@@ -22,7 +22,7 @@ use crate::{
 /// Raw event data from KnowledgeCollectionCreated event.
 /// Parsing and validation happens in the command handler, not the event listener.
 #[derive(Clone)]
-pub struct SendFinalityRequestCommandData {
+pub(crate) struct SendFinalityRequestCommandData {
     /// The blockchain where the event was emitted
     pub blockchain: BlockchainId,
     /// The publish operation ID (raw string from event, parsed to UUID in handler)
@@ -45,7 +45,7 @@ pub struct SendFinalityRequestCommandData {
 
 impl SendFinalityRequestCommandData {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         blockchain: BlockchainId,
         publish_operation_id: String,
         knowledge_collection_id: U256,
@@ -70,7 +70,7 @@ impl SendFinalityRequestCommandData {
     }
 }
 
-pub struct SendFinalityRequestCommandHandler {
+pub(crate) struct SendFinalityRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -79,7 +79,7 @@ pub struct SendFinalityRequestCommandHandler {
 }
 
 impl SendFinalityRequestCommandHandler {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
@@ -172,7 +172,7 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
 
         // Validate merkle root matches
         let blockchain_merkle_root =
-            format!("0x{}", blockchain::utils::to_hex_string(data.dataset_root));
+            format!("0x{}", crate::managers::blockchain::utils::to_hex_string(data.dataset_root));
         if blockchain_merkle_root != pending_data.dataset_root() {
             tracing::error!(
                 operation_id = %operation_id,

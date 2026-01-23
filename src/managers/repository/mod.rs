@@ -1,28 +1,27 @@
-pub mod error;
+pub(crate) mod error;
 mod migrations;
-pub mod models;
+mod models;
 mod repositories;
 mod types;
 
 use std::sync::Arc;
 
 use error::RepositoryError;
-pub use repositories::shard_repository::ShardRecordInput;
+pub(crate) use repositories::shard_repository::ShardRecordInput;
 use repositories::{
     blockchain_repository::BlockchainRepository,
     finality_status_repository::FinalityStatusRepository,
     operation_repository::OperationRepository, shard_repository::ShardRepository,
     triples_insert_count_repository::TriplesInsertCountRepository,
 };
-pub use sea_orm::ActiveValue;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::Deserialize;
-pub use types::OperationStatus;
+pub(crate) use types::OperationStatus;
 
 use self::migrations::Migrator;
 
-pub struct RepositoryManager {
+pub(crate) struct RepositoryManager {
     shard_repository: ShardRepository,
     blockchain_repository: BlockchainRepository,
     operation_repository: OperationRepository,
@@ -39,7 +38,7 @@ impl RepositoryManager {
     /// - Database connection fails
     /// - Database creation fails
     /// - Migrations fail
-    pub async fn connect(config: &RepositoryManagerConfig) -> Result<Self, RepositoryError> {
+    pub(crate) async fn connect(config: &RepositoryManagerConfig) -> Result<Self, RepositoryError> {
         // Connect to MySQL server
         let conn = Database::connect(config.root_connection_string()).await?;
 
@@ -71,29 +70,29 @@ impl RepositoryManager {
         })
     }
 
-    pub fn shard_repository(&self) -> &ShardRepository {
+    pub(crate) fn shard_repository(&self) -> &ShardRepository {
         &self.shard_repository
     }
 
-    pub fn blockchain_repository(&self) -> &BlockchainRepository {
+    pub(crate) fn blockchain_repository(&self) -> &BlockchainRepository {
         &self.blockchain_repository
     }
 
-    pub fn operation_repository(&self) -> &OperationRepository {
+    pub(crate) fn operation_repository(&self) -> &OperationRepository {
         &self.operation_repository
     }
 
-    pub fn finality_status_repository(&self) -> &FinalityStatusRepository {
+    pub(crate) fn finality_status_repository(&self) -> &FinalityStatusRepository {
         &self.finality_status_repository
     }
 
-    pub fn triples_insert_count_repository(&self) -> &TriplesInsertCountRepository {
+    pub(crate) fn triples_insert_count_repository(&self) -> &TriplesInsertCountRepository {
         &self.triples_insert_count_repository
     }
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct RepositoryManagerConfig {
+pub(crate) struct RepositoryManagerConfig {
     user: String,
     password: String,
     database: String,

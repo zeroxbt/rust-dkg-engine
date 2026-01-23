@@ -14,10 +14,10 @@ use crate::{
     controllers::http_api_controller::v1::dto::publish::{PublishRequest, PublishResponse},
 };
 
-pub struct PublishHttpApiController;
+pub(crate) struct PublishHttpApiController;
 
 impl PublishHttpApiController {
-    pub async fn handle_request(
+    pub(crate) async fn   handle_request(
         State(context): State<Arc<Context>>,
         Json(req): Json<PublishRequest>,
     ) -> impl IntoResponse {

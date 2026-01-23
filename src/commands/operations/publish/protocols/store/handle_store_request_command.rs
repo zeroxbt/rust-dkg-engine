@@ -1,14 +1,6 @@
 use std::sync::Arc;
 
-use blockchain::{BlockchainId, BlockchainManager};
 use libp2p::PeerId;
-use network::{
-    NetworkManager, ResponseMessage,
-    message::{ResponseMessageHeader, ResponseMessageType},
-    request_response::ResponseChannel,
-};
-use repository::RepositoryManager;
-use triple_store::Assertion;
 use uuid::Uuid;
 
 use crate::{
@@ -17,6 +9,16 @@ use crate::{
     controllers::rpc_controller::{
         NetworkProtocols, ProtocolResponse, messages::StoreResponseData,
     },
+    managers::{
+        blockchain::{BlockchainId, BlockchainManager},
+        network::{
+            NetworkManager, ResponseMessage,
+            message::{ResponseMessageHeader, ResponseMessageType},
+            request_response::ResponseChannel,
+        },
+        repository::RepositoryManager,
+        triple_store::Assertion,
+    },
     services::{ResponseChannels, pending_storage_service::PendingStorageService},
     utils::validation,
 };
@@ -24,7 +26,7 @@ use crate::{
 /// Command data for handling incoming publish/store requests.
 /// Dataset is passed inline; channel is retrieved from session manager.
 #[derive(Clone)]
-pub struct HandleStoreRequestCommandData {
+pub(crate) struct HandleStoreRequestCommandData {
     pub blockchain: BlockchainId,
     pub operation_id: Uuid,
     pub dataset_root: String,
@@ -33,7 +35,7 @@ pub struct HandleStoreRequestCommandData {
 }
 
 impl HandleStoreRequestCommandData {
-    pub fn new(
+    pub(crate) fn new(
         blockchain: BlockchainId,
         operation_id: Uuid,
         dataset_root: String,
@@ -50,7 +52,7 @@ impl HandleStoreRequestCommandData {
     }
 }
 
-pub struct HandleStoreRequestCommandHandler {
+pub(crate) struct HandleStoreRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -59,7 +61,7 @@ pub struct HandleStoreRequestCommandHandler {
 }
 
 impl HandleStoreRequestCommandHandler {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
@@ -276,19 +278,16 @@ impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommand
             }
         };
 
-        let dataset_root_hex = match dataset_root.strip_prefix("0x") {
-            Some(hex) => hex,
-            None => {
-                tracing::warn!(
-                    operation_id = %operation_id,
-                    dataset_root = %dataset_root,
-                    "Dataset root missing '0x' prefix - sending NACK"
-                );
-                self.send_nack(channel, operation_id, "Dataset root missing '0x' prefix")
-                    .await;
+        let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
+            tracing::warn!(
+            operation_id = %operation_id,
+            dataset_root = %dataset_root,
+            "Dataset root missing '0x' prefix - sending NACK"
+            );
+            self.send_nack(channel, operation_id, "Dataset root missing '0x' prefix")
+                .await;
 
-                return CommandExecutionResult::Completed;
-            }
+            return CommandExecutionResult::Completed;
         };
 
         tracing::debug!(

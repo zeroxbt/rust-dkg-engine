@@ -13,7 +13,7 @@ use crate::utils::ual::parse_ual;
 /// Examples:
 /// - `did:dkg:base:84532/0x6C1AeF3601cd0e04cD5e8E70e7ea2c11D2eF60f4/123`
 /// - `did:dkg:base:84532/0x6C1AeF3601cd0e04cD5e8E70e7ea2c11D2eF60f4/123/1`
-pub fn validate_ual_format(ual: &str) -> Result<(), ValidationError> {
+pub(crate) fn validate_ual_format(ual: &str) -> Result<(), ValidationError> {
     if ual.trim().is_empty() {
         let mut error = ValidationError::new("ual_empty");
         error.message = Some("UAL cannot be empty".into());
@@ -32,7 +32,7 @@ pub fn validate_ual_format(ual: &str) -> Result<(), ValidationError> {
 /// Validates an optional UAL field - only validates format if present and non-empty.
 /// Note: validator crate passes inner value for Option<T>, so we receive &String not
 /// &Option<String>
-pub fn validate_optional_ual(ual: &str) -> Result<(), ValidationError> {
+pub(crate) fn validate_optional_ual(ual: &str) -> Result<(), ValidationError> {
     if !ual.trim().is_empty() {
         return validate_ual_format(ual);
     }
@@ -40,7 +40,7 @@ pub fn validate_optional_ual(ual: &str) -> Result<(), ValidationError> {
 }
 
 /// Validates BlockchainId format: `type:chain_id` (e.g., "hardhat1:31337", "base:8453")
-pub fn validate_blockchain_id_format(id: &str) -> Result<(), ValidationError> {
+pub(crate) fn validate_blockchain_id_format(id: &str) -> Result<(), ValidationError> {
     if !id.contains(':') {
         let mut error = ValidationError::new("blockchain_id_format");
         error.message =

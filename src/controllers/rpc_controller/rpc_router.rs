@@ -2,9 +2,6 @@ use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
 use libp2p::request_response::Message;
-use network::{
-    CompositeBehaviourEvent, NetworkManager, SwarmEvent, identify, kad, request_response,
-};
 use tokio::sync::{Semaphore, mpsc};
 
 use super::{
@@ -17,14 +14,18 @@ use crate::{
         finality_rpc_controller::FinalityRpcController, get_rpc_controller::GetRpcController,
         store_rpc_controller::StoreRpcController,
     },
+    managers::network::{
+        CompositeBehaviour, CompositeBehaviourEvent, NetworkBehaviour, NetworkManager, SwarmEvent,
+        identify, kad, request_response,
+    },
     services::{PeerDiscoveryTracker, RequestError},
 };
 
 // Type alias for the complete behaviour and its event type
-type Behaviour = network::CompositeBehaviour<NetworkProtocols>;
-type BehaviourEvent = <Behaviour as network::NetworkBehaviour>::ToSwarm;
+type Behaviour = CompositeBehaviour<NetworkProtocols>;
+type BehaviourEvent = <Behaviour as NetworkBehaviour>::ToSwarm;
 
-pub struct RpcRouter {
+pub(crate) struct RpcRouter {
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     store_controller: Arc<StoreRpcController>,
     get_controller: Arc<GetRpcController>,
@@ -34,7 +35,7 @@ pub struct RpcRouter {
 }
 
 impl RpcRouter {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         RpcRouter {
             network_manager: Arc::clone(context.network_manager()),
             store_controller: Arc::new(StoreRpcController::new(Arc::clone(&context))),
@@ -45,7 +46,7 @@ impl RpcRouter {
         }
     }
 
-    pub async fn listen_and_handle_network_events(
+    pub(crate) async fn listen_and_handle_network_events(
         &self,
         mut event_rx: mpsc::Receiver<SwarmEvent<BehaviourEvent>>,
     ) {
@@ -59,7 +60,7 @@ impl RpcRouter {
                 event = event_rx.recv() => {
                     match event {
                         Some(event) => {
-                            let permit = self.semaphore.clone().acquire_owned().await.unwrap();
+                            let permit = self.semaphore.clone().acquire_owned().await.expect("Acquire permit");
                             pending_tasks.push(self.handle_network_event(event, permit));
                         }
                         None => {
@@ -335,9 +336,8 @@ impl RpcRouter {
                     // Handle completed GetClosestPeers queries (from find_peers)
                     match result {
                         Ok(kad::GetClosestPeersOk { key, peers }) => {
-                            let target_peer_id = match libp2p::PeerId::from_bytes(&key) {
-                                Ok(peer_id) => peer_id,
-                                Err(_) => return,
+                            let Ok(target_peer_id) = libp2p::PeerId::from_bytes(&key) else {
+                                return;
                             };
 
                             // Check if our target peer is among the closest peers found
@@ -358,9 +358,8 @@ impl RpcRouter {
                             }
                         }
                         Err(kad::GetClosestPeersError::Timeout { key, peers }) => {
-                            let target_peer_id = match libp2p::PeerId::from_bytes(&key) {
-                                Ok(peer_id) => peer_id,
-                                Err(_) => return,
+                            let Ok(target_peer_id) = libp2p::PeerId::from_bytes(&key) else {
+                                return;
                             };
 
                             // Even on timeout, check if target was among partial results

@@ -2,13 +2,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use dashmap::DashMap;
-use key_value_store::{KeyValueStoreManager, Table};
 use libp2p::PeerId;
-use network::{
-    NetworkManager, RequestMessage,
-    message::{RequestMessageHeader, RequestMessageType},
-};
-use repository::{OperationStatus, RepositoryManager};
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -17,7 +11,18 @@ use super::{
     result_store::{ResultStoreError, TABLE_NAME},
     traits::Operation,
 };
-use crate::{controllers::rpc_controller::NetworkProtocols, error::NodeError};
+use crate::{
+    controllers::rpc_controller::NetworkProtocols,
+    error::NodeError,
+    managers::{
+        key_value_store::{KeyValueStoreManager, Table},
+        network::{
+            NetworkManager, RequestMessage,
+            message::{RequestMessageHeader, RequestMessageType},
+        },
+        repository::{OperationStatus, RepositoryManager},
+    },
+};
 
 /// Generic operation service that handles all shared operation logic.
 ///
@@ -29,7 +34,7 @@ use crate::{controllers::rpc_controller::NetworkProtocols, error::NodeError};
 /// - Completion signals - owned here
 /// - `PendingRequests<Op::Response>` - tracks outbound requests awaiting responses
 /// - `NetworkManager` - shared reference for sending requests
-pub struct OperationService<Op: Operation> {
+pub(crate) struct OperationService<Op: Operation> {
     repository: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     result_table: Table<Op::Result>,
@@ -39,7 +44,7 @@ pub struct OperationService<Op: Operation> {
 
 impl<Op: Operation> OperationService<Op> {
     /// Create a new operation service.
-    pub fn new(
+    pub(crate) fn new(
         repository: Arc<RepositoryManager>,
         network_manager: Arc<NetworkManager<NetworkProtocols>>,
         kv_store_manager: &KeyValueStoreManager,
@@ -57,7 +62,7 @@ impl<Op: Operation> OperationService<Op> {
     /// Access the pending requests tracker.
     ///
     /// Used by RpcRouter to complete pending requests when responses arrive.
-    pub fn pending_requests(&self) -> &PendingRequests<Op::Response> {
+    pub(crate) fn pending_requests(&self) -> &PendingRequests<Op::Response> {
         &self.pending_requests
     }
 
@@ -80,7 +85,7 @@ impl<Op: Operation> OperationService<Op> {
     /// # Returns
     /// * `Ok(response)` - The peer's response
     /// * `Err(RequestError)` - Timeout, connection failure, or channel error
-    pub async fn send_request(
+    pub(crate) async fn send_request(
         &self,
         operation_id: Uuid,
         peer: PeerId,
@@ -123,7 +128,7 @@ impl<Op: Operation> OperationService<Op> {
     ///
     /// For callers that just want to trigger an operation without awaiting, the receiver
     /// can be dropped immediately.
-    pub async fn create_operation(
+    pub(crate) async fn create_operation(
         &self,
         operation_id: Uuid,
     ) -> Result<watch::Receiver<OperationStatus>, NodeError> {
@@ -151,7 +156,7 @@ impl<Op: Operation> OperationService<Op> {
     }
 
     /// Store a result in the key-value store.
-    pub fn store_result(
+    pub(crate) fn store_result(
         &self,
         operation_id: Uuid,
         result: &Op::Result,
@@ -166,14 +171,17 @@ impl<Op: Operation> OperationService<Op> {
     }
 
     /// Get a cached operation result from the key-value store.
-    pub fn get_result(&self, operation_id: Uuid) -> Result<Option<Op::Result>, ResultStoreError> {
+    pub(crate) fn get_result(
+        &self,
+        operation_id: Uuid,
+    ) -> Result<Option<Op::Result>, ResultStoreError> {
         Ok(self.result_table.get(operation_id)?)
     }
 
     /// Update a result in the key-value store using a closure.
     /// If no result exists, creates one from the default value.
     /// This enables incremental updates (e.g., adding signatures one at a time).
-    pub fn update_result<F>(
+    pub(crate) fn update_result<F>(
         &self,
         operation_id: Uuid,
         default: Op::Result,
@@ -198,7 +206,7 @@ impl<Op: Operation> OperationService<Op> {
     /// * `operation_id` - The operation identifier
     /// * `success_count` - Number of successful responses received
     /// * `failure_count` - Number of failed responses received
-    pub async fn mark_completed(
+    pub(crate) async fn mark_completed(
         &self,
         operation_id: Uuid,
         success_count: u16,
@@ -232,7 +240,7 @@ impl<Op: Operation> OperationService<Op> {
     }
 
     /// Manually fail an operation (e.g., due to external error before sending requests).
-    pub async fn mark_failed(&self, operation_id: Uuid, reason: String) {
+    pub(crate) async fn mark_failed(&self, operation_id: Uuid, reason: String) {
         let result = self
             .repository
             .operation_repository()

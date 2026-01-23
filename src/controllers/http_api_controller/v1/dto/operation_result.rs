@@ -3,7 +3,7 @@ use serde::Serialize;
 /// Signature data returned in the operation result
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct SignatureData {
+pub(crate) struct SignatureData {
     pub identity_id: String,
     pub v: u8,
     pub r: String,
@@ -14,7 +14,7 @@ pub struct SignatureData {
 /// Data specific to publish operation results
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PublishOperationData {
+pub(crate) struct PublishOperationData {
     pub min_acks_reached: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publisher_node_signature: Option<SignatureData>,
@@ -29,21 +29,21 @@ pub struct PublishOperationData {
 /// Response for operation result endpoint
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct OperationResultResponse {
+pub(crate) struct OperationResultResponse {
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<PublishOperationData>,
 }
 
 impl OperationResultResponse {
-    pub fn in_progress() -> Self {
+    pub(crate) fn in_progress() -> Self {
         Self {
             status: "IN_PROGRESS".to_string(),
             data: None,
         }
     }
 
-    pub fn completed_with_signatures(
+    pub(crate) fn completed_with_signatures(
         publisher_signature: Option<SignatureData>,
         network_signatures: Vec<SignatureData>,
     ) -> Self {
@@ -59,7 +59,7 @@ impl OperationResultResponse {
         }
     }
 
-    pub fn failed(error_message: Option<String>) -> Self {
+    pub(crate) fn failed(error_message: Option<String>) -> Self {
         Self {
             status: "FAILED".to_string(),
             data: Some(PublishOperationData {
@@ -75,13 +75,13 @@ impl OperationResultResponse {
 
 /// Error response for operation result endpoint
 #[derive(Debug, Serialize)]
-pub struct OperationResultErrorResponse {
+pub(crate) struct OperationResultErrorResponse {
     pub code: u16,
     pub message: String,
 }
 
 impl OperationResultErrorResponse {
-    pub fn new(code: u16, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: u16, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),

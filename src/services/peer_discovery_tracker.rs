@@ -7,7 +7,7 @@ use libp2p::PeerId;
 ///
 /// When a DHT lookup fails to find a peer, we record the failure and apply
 /// exponential backoff to avoid repeatedly querying for offline peers.
-pub struct PeerDiscoveryTracker {
+pub(crate) struct PeerDiscoveryTracker {
     /// Maps peer ID to (failure_count, last_attempt_time)
     failed_peers: DashMap<PeerId, (u32, Instant)>,
     /// Base delay (applied after first failure)
@@ -17,7 +17,7 @@ pub struct PeerDiscoveryTracker {
 }
 
 impl PeerDiscoveryTracker {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             failed_peers: DashMap::new(),
             base_delay: Duration::from_secs(60), // 1 minute base delay
@@ -27,7 +27,7 @@ impl PeerDiscoveryTracker {
 
     /// Check if we should attempt to discover this peer.
     /// Returns true if enough time has passed since the last failed attempt.
-    pub fn should_attempt(&self, peer_id: &PeerId) -> bool {
+    pub(crate) fn should_attempt(&self, peer_id: &PeerId) -> bool {
         match self.failed_peers.get(peer_id) {
             Some(entry) => {
                 let (failure_count, last_attempt) = *entry;
@@ -39,7 +39,7 @@ impl PeerDiscoveryTracker {
     }
 
     /// Record a failed discovery attempt for a peer.
-    pub fn record_failure(&self, peer_id: PeerId) {
+    pub(crate) fn record_failure(&self, peer_id: PeerId) {
         self.failed_peers
             .entry(peer_id)
             .and_modify(|(count, last_attempt)| {
@@ -50,7 +50,7 @@ impl PeerDiscoveryTracker {
     }
 
     /// Record a successful connection - removes the peer from failed tracking.
-    pub fn record_success(&self, peer_id: &PeerId) {
+    pub(crate) fn record_success(&self, peer_id: &PeerId) {
         self.failed_peers.remove(peer_id);
     }
 
@@ -67,7 +67,7 @@ impl PeerDiscoveryTracker {
     }
 
     /// Get the current backoff delay for a peer (for logging).
-    pub fn get_backoff(&self, peer_id: &PeerId) -> Option<Duration> {
+    pub(crate) fn get_backoff(&self, peer_id: &PeerId) -> Option<Duration> {
         self.failed_peers
             .get(peer_id)
             .map(|entry| self.calculate_backoff(entry.0))

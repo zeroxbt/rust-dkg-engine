@@ -1,11 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
-use blockchain::{
+use crate::managers::blockchain::{
     AssetStorageChangedFilter, BlockchainId, BlockchainManager, ContractChangedFilter, ContractLog,
-    ContractName, KnowledgeCollectionCreatedFilter, NewAssetStorageFilter, NewContractFilter,
-    ParameterChangedFilter, error::BlockchainError, utils::to_hex_string,
+    ContractName, Hub, KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorage,
+    NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter, ParametersStorage,
+    error::BlockchainError, utils::to_hex_string,
 };
-use repository::RepositoryManager;
+use crate::managers::repository::RepositoryManager;
 
 use crate::{
     commands::{
@@ -33,7 +34,7 @@ const EVENT_FETCH_INTERVAL_DEV: Duration = Duration::from_secs(4);
 const MAX_BLOCKS_TO_SYNC_MAINNET: u64 = 300; // ~1 hour at 12s blocks
 const MAX_BLOCKS_TO_SYNC_DEV: u64 = u64::MAX; // unlimited for dev
 
-pub struct BlockchainEventListenerCommandHandler {
+pub(crate) struct BlockchainEventListenerCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
     command_scheduler: CommandScheduler,
@@ -44,7 +45,7 @@ pub struct BlockchainEventListenerCommandHandler {
 }
 
 impl BlockchainEventListenerCommandHandler {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         let is_dev_env = context.config().is_dev_env;
 
         let poll_interval = if is_dev_env {
@@ -205,7 +206,7 @@ impl BlockchainEventListenerCommandHandler {
         let log = event.log();
         match decode_contract_event(event.contract_name(), log) {
             Some(ContractEvent::KnowledgeCollectionStorage(decoded)) => {
-                if let blockchain::KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents::KnowledgeCollectionCreated(
+                if let KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents::KnowledgeCollectionCreated(
                     filter,
                 ) = decoded
                 {
@@ -214,25 +215,25 @@ impl BlockchainEventListenerCommandHandler {
                 }
             }
             Some(ContractEvent::ParametersStorage(decoded)) => {
-                let blockchain::ParametersStorage::ParametersStorageEvents::ParameterChanged(
+                let ParametersStorage::ParametersStorageEvents::ParameterChanged(
                     filter,
                 ) = decoded;
                 self.handle_parameter_changed_event(blockchain_id, &filter)
                     .await?;
             }
             Some(ContractEvent::Hub(decoded)) => match decoded {
-                blockchain::Hub::HubEvents::NewContract(filter) => {
+                Hub::HubEvents::NewContract(filter) => {
                     self.handle_new_contract_event(blockchain_id, &filter).await?;
                 }
-                blockchain::Hub::HubEvents::ContractChanged(filter) => {
+                Hub::HubEvents::ContractChanged(filter) => {
                     self.handle_contract_changed_event(blockchain_id, &filter)
                         .await?;
                 }
-                blockchain::Hub::HubEvents::NewAssetStorage(filter) => {
+                Hub::HubEvents::NewAssetStorage(filter) => {
                     self.handle_new_asset_storage_event(blockchain_id, &filter)
                         .await?;
                 }
-                blockchain::Hub::HubEvents::AssetStorageChanged(filter) => {
+                Hub::HubEvents::AssetStorageChanged(filter) => {
                     self.handle_asset_storage_changed_event(blockchain_id, &filter)
                         .await?;
                 }
@@ -391,12 +392,12 @@ impl BlockchainEventListenerCommandHandler {
 }
 
 #[derive(Clone)]
-pub struct BlockchainEventListenerCommandData {
+pub(crate) struct BlockchainEventListenerCommandData {
     pub blockchain_id: BlockchainId,
 }
 
 impl BlockchainEventListenerCommandData {
-    pub fn new(blockchain_id: BlockchainId) -> Self {
+    pub(crate) fn new(blockchain_id: BlockchainId) -> Self {
         Self { blockchain_id }
     }
 }

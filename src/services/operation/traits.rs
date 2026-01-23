@@ -1,14 +1,13 @@
 use libp2p::PeerId;
-use network::RequestMessage;
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::controllers::rpc_controller::ProtocolRequest;
+use crate::{controllers::rpc_controller::ProtocolRequest, managers::network::RequestMessage};
 
 /// Trait defining an operation type and its associated types.
 ///
 /// Each operation (Get, Publish, etc.) implements this trait to specify
 /// its request/response message types and persisted result.
-pub trait Operation: Send + Sync + 'static {
+pub(crate) trait Operation: Send + Sync + 'static {
     /// Human-readable name for logging and database records.
     const NAME: &'static str;
 

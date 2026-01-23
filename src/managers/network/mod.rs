@@ -1,30 +1,29 @@
-pub mod error;
-pub mod key_manager;
-pub mod message;
+pub(crate) mod error;
+mod key_manager;
+pub(crate) mod message;
 
 use std::time::Duration;
 
 use error::NetworkError;
-pub use key_manager::KeyManager;
-pub use libp2p::request_response::ProtocolSupport;
+pub(crate) use key_manager::KeyManager;
+pub(crate) use libp2p::request_response::ProtocolSupport;
 // Re-export libp2p types and identity for application use
-pub use libp2p::{
+pub(crate) use libp2p::{
     Multiaddr, PeerId, StreamProtocol, Swarm, identify, identity,
     kad::{self, BucketInserts, Config as KademliaConfig, Mode, store::MemoryStore},
     request_response,
     swarm::{NetworkBehaviour, SwarmEvent},
 };
 // Internal libp2p imports for NetworkManager implementation
-use libp2p::{SwarmBuilder, noise, swarm::derive_prelude::Either, tcp};
+use libp2p::{SwarmBuilder, noise, tcp};
 // Re-export message types
-pub use message::{ErrorMessage, RequestMessage, ResponseMessage};
+pub(crate) use message::{RequestMessage, ResponseMessage};
 use serde::Deserialize;
 use tokio::sync::{Mutex, mpsc};
 use tracing::info;
-use void::Void;
 
 /// Trait for dispatching application protocol messages through the network manager.
-pub trait ProtocolDispatch {
+pub(crate) trait ProtocolDispatch {
     type Request: Send;
     type Response: Send;
 
@@ -58,11 +57,9 @@ where
         response: B::Response,
     },
 }
-pub type NestedError = Either<Either<Either<std::io::Error, std::io::Error>, Void>, Void>;
-pub type SwarmError = Either<NestedError, Void>;
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct NetworkManagerConfig {
+pub(crate) struct NetworkManagerConfig {
     pub port: u32,
     pub bootstrap: Vec<String>,
     /// External IP address to announce to peers (for NAT traversal).
@@ -82,7 +79,7 @@ fn default_idle_connection_timeout() -> u64 {
 
 impl NetworkManagerConfig {
     /// Get idle connection timeout as Duration
-    pub fn idle_connection_timeout(&self) -> Duration {
+    pub(crate) fn idle_connection_timeout(&self) -> Duration {
         Duration::from_secs(self.idle_connection_timeout_secs)
     }
 }
@@ -92,7 +89,7 @@ impl NetworkManagerConfig {
 /// NetworkManager provides the base protocols (kad, identify, ping) and the application
 /// provides its custom protocols via the generic parameter B.
 #[derive(NetworkBehaviour)]
-pub struct CompositeBehaviour<B: NetworkBehaviour> {
+pub(crate) struct CompositeBehaviour<B: NetworkBehaviour> {
     pub kad: kad::Behaviour<MemoryStore>,
     pub identify: identify::Behaviour,
     pub protocols: B,
@@ -102,7 +99,7 @@ pub struct CompositeBehaviour<B: NetworkBehaviour> {
 ///
 /// The application layer defines the Behaviour struct using re-exported libp2p types,
 /// including whatever protocols it needs (store, get, custom protocols, etc.)
-pub struct NetworkManager<B>
+pub(crate) struct NetworkManager<B>
 where
     B: NetworkBehaviour + ProtocolDispatch,
 {
@@ -134,7 +131,7 @@ where
     /// - Bootstrap node parsing fails
     /// - Transport creation fails
     /// - Swarm building fails
-    pub async fn connect(
+    pub(crate) async fn connect(
         config: &NetworkManagerConfig,
         key: identity::Keypair,
         behaviour: B,
@@ -264,7 +261,7 @@ where
     /// Returns `NetworkError` if:
     /// - Multiaddr parsing fails
     /// - Listener initialization fails
-    pub async fn start_listening(&self) -> Result<(), NetworkError> {
+    pub(crate) async fn start_listening(&self) -> Result<(), NetworkError> {
         let listen_addr = format!("/ip4/0.0.0.0/tcp/{}", self.config.port);
         let listen_addr: libp2p::Multiaddr =
             listen_addr
@@ -287,7 +284,7 @@ where
     }
 
     /// Returns the peer ID of this node
-    pub fn peer_id(&self) -> &PeerId {
+    pub(crate) fn peer_id(&self) -> &PeerId {
         &self.peer_id
     }
 
@@ -299,18 +296,15 @@ where
     ///
     /// # Parameters
     /// - `event_tx`: Channel sender for outgoing swarm events
-    pub async fn run(
+    pub(crate) async fn run(
         &self,
         event_tx: mpsc::Sender<SwarmEvent<<CompositeBehaviour<B> as NetworkBehaviour>::ToSwarm>>,
     ) {
         use libp2p::futures::StreamExt;
 
-        let mut action_rx = match self.action_rx.lock().await.take() {
-            Some(action_rx) => action_rx,
-            None => {
-                tracing::error!("Action receiver already taken, shutting down network loop");
-                return;
-            }
+        let Some(mut action_rx) = self.action_rx.lock().await.take() else {
+            tracing::error!("Action receiver already taken, shutting down network loop");
+            return;
         };
 
         let mut swarm = self.swarm.lock().await;
@@ -380,18 +374,18 @@ where
     /// Discover peers via Kademlia DHT lookup.
     /// This initiates a get_closest_peers query for each peer, which will discover
     /// their addresses through the DHT and add them to the routing table.
-    pub async fn find_peers(&self, peers: Vec<PeerId>) -> Result<(), NetworkError> {
+    pub(crate) async fn find_peers(&self, peers: Vec<PeerId>) -> Result<(), NetworkError> {
         self.enqueue_action(NetworkAction::FindPeers(peers)).await
     }
 
     /// Directly dial a peer to establish a connection.
     /// The peer's addresses must already be known (e.g., from a previous DHT lookup).
-    pub async fn dial_peer(&self, peer: PeerId) -> Result<(), NetworkError> {
+    pub(crate) async fn dial_peer(&self, peer: PeerId) -> Result<(), NetworkError> {
         self.enqueue_action(NetworkAction::DialPeer(peer)).await
     }
 
     /// Get the list of currently connected peers.
-    pub async fn connected_peers(&self) -> Result<Vec<PeerId>, NetworkError> {
+    pub(crate) async fn connected_peers(&self) -> Result<Vec<PeerId>, NetworkError> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.enqueue_action(NetworkAction::GetConnectedPeers(tx))
             .await?;
@@ -399,7 +393,7 @@ where
     }
 
     /// Enqueue Kademlia address updates for a peer.
-    pub async fn add_kad_addresses(
+    pub(crate) async fn add_kad_addresses(
         &self,
         peer_id: PeerId,
         listen_addrs: Vec<Multiaddr>,
@@ -414,7 +408,7 @@ where
     /// Enqueue a protocol request for dispatch by the swarm.
     /// Returns the OutboundRequestId which can be used to track the request
     /// and correlate it with timeout/response events.
-    pub async fn send_protocol_request(
+    pub(crate) async fn send_protocol_request(
         &self,
         request: B::Request,
     ) -> Result<request_response::OutboundRequestId, NetworkError> {
@@ -430,7 +424,10 @@ where
     }
 
     /// Enqueue a protocol response for dispatch by the swarm.
-    pub async fn send_protocol_response(&self, response: B::Response) -> Result<(), NetworkError> {
+    pub(crate) async fn send_protocol_response(
+        &self,
+        response: B::Response,
+    ) -> Result<(), NetworkError> {
         self.enqueue_action(NetworkAction::SendProtocolResponse { response })
             .await
     }

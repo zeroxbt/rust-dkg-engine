@@ -1,28 +1,29 @@
-pub mod blockchains;
-pub mod error;
-pub mod error_utils;
-pub mod gas;
-pub mod substrate;
-pub mod utils;
+pub(crate) mod blockchains;
+pub(crate) mod error;
+mod error_utils;
+mod gas;
+mod substrate;
+pub(crate) mod utils;
 
 use std::collections::HashMap;
 
 use blockchains::evm_chain::EvmChain;
-pub use blockchains::{
+pub(crate) use blockchains::{
     blockchain_creator::{Hub, KnowledgeCollectionStorage, ParametersStorage},
     evm_chain::{ContractLog, ContractName},
 };
-pub use gas::{GasConfig, GasOracleError};
+pub(crate) use gas::GasConfig;
 
 // Re-export event types for use by consumers
 // In alloy's sol! macro, events are nested under the contract module
-pub type NewContractFilter = Hub::NewContract;
-pub type ContractChangedFilter = Hub::ContractChanged;
-pub type NewAssetStorageFilter = Hub::NewAssetStorage;
-pub type AssetStorageChangedFilter = Hub::AssetStorageChanged;
-pub type ParameterChangedFilter = ParametersStorage::ParameterChanged;
-pub type KnowledgeCollectionCreatedFilter = KnowledgeCollectionStorage::KnowledgeCollectionCreated;
-pub use alloy::primitives::{Address, B256, B256 as H256, U256};
+pub(crate) type NewContractFilter = Hub::NewContract;
+pub(crate) type ContractChangedFilter = Hub::ContractChanged;
+pub(crate) type NewAssetStorageFilter = Hub::NewAssetStorage;
+pub(crate) type AssetStorageChangedFilter = Hub::AssetStorageChanged;
+pub(crate) type ParameterChangedFilter = ParametersStorage::ParameterChanged;
+pub(crate) type KnowledgeCollectionCreatedFilter =
+    KnowledgeCollectionStorage::KnowledgeCollectionCreated;
+pub(crate) use alloy::primitives::{Address, B256, B256 as H256, U256};
 use serde::{Deserialize, Serialize};
 
 /// Access policy for paranet nodes (matches on-chain enum).
@@ -30,7 +31,7 @@ use serde::{Deserialize, Serialize};
 /// PERMISSIONED = 1: Only approved nodes can participate
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub enum AccessPolicy {
+pub(crate) enum AccessPolicy {
     Open = 0,
     Permissioned = 1,
 }
@@ -46,41 +47,41 @@ impl From<u8> for AccessPolicy {
 
 /// A node permitted to participate in a permissioned paranet.
 #[derive(Debug, Clone)]
-pub struct PermissionedNode {
+pub(crate) struct PermissionedNode {
     /// The node's identity ID on-chain
     pub identity_id: u128,
     /// The node's peer ID as bytes
     pub node_id: Vec<u8>,
 }
 
-use crate::{
+use crate::managers::blockchain::{
     blockchains::blockchain_creator::sharding_table::ShardingTableLib::NodeInfo,
     error::BlockchainError,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(transparent)]
-pub struct BlockchainId(String);
+pub(crate) struct BlockchainId(String);
 
 impl BlockchainId {
-    pub fn new(id: impl Into<String>) -> Self {
+    pub(crate) fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
 
-    pub fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
 
     /// Parse the prefix from the blockchain ID.
     /// E.g., "hardhat1:31337" -> "hardhat1", "otp:2043" -> "otp"
-    pub fn prefix(&self) -> &str {
+    pub(crate) fn prefix(&self) -> &str {
         self.0.split(':').next().unwrap_or(&self.0)
     }
 
     /// Parse the chain ID from the blockchain ID.
     /// E.g., "hardhat1:31337" -> 31337, "otp:2043" -> 2043
     /// Returns None if the chain ID is missing or not a valid number.
-    pub fn chain_id(&self) -> Option<u64> {
+    pub(crate) fn chain_id(&self) -> Option<u64> {
         self.0.split(':').nth(1).and_then(|s| s.parse().ok())
     }
 }
@@ -105,7 +106,7 @@ impl From<&str> for BlockchainId {
 
 /// ECDSA signature components for EVM transactions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SignatureComponents {
+pub(crate) struct SignatureComponents {
     pub v: u8,
     pub r: String,
     pub s: String,
@@ -117,7 +118,7 @@ pub struct SignatureComponents {
 /// This struct contains all the settings needed to connect to and operate on
 /// a specific blockchain network.
 #[derive(Debug, Clone, Deserialize)]
-pub struct BlockchainConfig {
+pub(crate) struct BlockchainConfig {
     /// Unique identifier for this blockchain instance.
     /// Format: "chaintype:chainid" (e.g., "hardhat:31337", "gnosis:100", "neuroweb:2043").
     /// The chain type determines the gas configuration and other chain-specific behavior.
@@ -176,63 +177,63 @@ pub struct BlockchainConfig {
 }
 
 impl BlockchainConfig {
-    pub fn blockchain_id(&self) -> &BlockchainId {
+    pub(crate) fn blockchain_id(&self) -> &BlockchainId {
         &self.blockchain_id
     }
 
     /// Returns the chain ID parsed from the blockchain_id.
     /// Panics if the blockchain_id is malformed (should be validated at config load time).
-    pub fn chain_id(&self) -> u64 {
+    pub(crate) fn chain_id(&self) -> u64 {
         self.blockchain_id
             .chain_id()
             .expect("blockchain_id should contain valid chain_id (format: 'type:chainid')")
     }
 
-    pub fn evm_operational_wallet_private_key(&self) -> &str {
+    pub(crate) fn evm_operational_wallet_private_key(&self) -> &str {
         &self.evm_operational_wallet_private_key
     }
 
-    pub fn evm_operational_wallet_address(&self) -> &str {
+    pub(crate) fn evm_operational_wallet_address(&self) -> &str {
         &self.evm_operational_wallet_address
     }
 
-    pub fn evm_management_wallet_address(&self) -> &str {
+    pub(crate) fn evm_management_wallet_address(&self) -> &str {
         &self.evm_management_wallet_address
     }
 
-    pub fn evm_management_wallet_private_key(&self) -> Option<&String> {
+    pub(crate) fn evm_management_wallet_private_key(&self) -> Option<&String> {
         self.evm_management_wallet_private_key.as_ref()
     }
 
-    pub fn hub_contract_address(&self) -> &str {
+    pub(crate) fn hub_contract_address(&self) -> &str {
         &self.hub_contract_address
     }
 
-    pub fn rpc_endpoints(&self) -> &Vec<String> {
+    pub(crate) fn rpc_endpoints(&self) -> &Vec<String> {
         &self.rpc_endpoints
     }
 
-    pub fn node_name(&self) -> &str {
+    pub(crate) fn node_name(&self) -> &str {
         &self.node_name
     }
 
-    pub fn gas_price_oracle_url(&self) -> Option<&str> {
+    pub(crate) fn gas_price_oracle_url(&self) -> Option<&str> {
         self.gas_price_oracle_url.as_deref()
     }
 
-    pub fn operator_fee(&self) -> Option<u8> {
+    pub(crate) fn operator_fee(&self) -> Option<u8> {
         self.operator_fee
     }
 
-    pub fn initial_stake_amount(&self) -> Option<u64> {
+    pub(crate) fn initial_stake_amount(&self) -> Option<u64> {
         self.initial_stake_amount
     }
 
-    pub fn initial_ask_amount(&self) -> Option<f64> {
+    pub(crate) fn initial_ask_amount(&self) -> Option<f64> {
         self.initial_ask_amount
     }
 
-    pub fn substrate_rpc_endpoints(&self) -> Option<&Vec<String>> {
+    pub(crate) fn substrate_rpc_endpoints(&self) -> Option<&Vec<String>> {
         self.substrate_rpc_endpoints.as_ref()
     }
 }
@@ -243,7 +244,7 @@ impl BlockchainConfig {
 /// and is used for TOML config structure (e.g., `[managers.blockchain.Hardhat]`).
 /// The `blockchain_id` field is a protocol identifier for network communication.
 #[derive(Debug, Deserialize, Clone)]
-pub enum Blockchain {
+pub(crate) enum Blockchain {
     /// Local Hardhat network for development/testing
     Hardhat(BlockchainConfig),
     /// Gnosis Chain (formerly xDai) - mainnet chain_id: 100, testnet (Chiado): 10200
@@ -255,7 +256,7 @@ pub enum Blockchain {
 }
 
 impl Blockchain {
-    pub fn get_config(&self) -> &BlockchainConfig {
+    pub(crate) fn get_config(&self) -> &BlockchainConfig {
         match self {
             Blockchain::Hardhat(config)
             | Blockchain::Gnosis(config)
@@ -265,7 +266,7 @@ impl Blockchain {
     }
 
     /// Creates the appropriate gas configuration based on blockchain type.
-    pub fn gas_config(&self) -> GasConfig {
+    pub(crate) fn gas_config(&self) -> GasConfig {
         let oracle_url = self
             .get_config()
             .gas_price_oracle_url()
@@ -280,7 +281,7 @@ impl Blockchain {
 
     /// Native token decimal places.
     /// NeuroWeb uses 12 decimals (NEURO), others use standard 18 (ETH/xDAI).
-    pub fn native_token_decimals(&self) -> u8 {
+    pub(crate) fn native_token_decimals(&self) -> u8 {
         match self {
             Blockchain::NeuroWeb(_) => 12,
             _ => 18,
@@ -288,7 +289,7 @@ impl Blockchain {
     }
 
     /// Native token ticker symbol.
-    pub fn native_token_ticker(&self) -> &'static str {
+    pub(crate) fn native_token_ticker(&self) -> &'static str {
         match self {
             Blockchain::Hardhat(_) => "ETH",
             Blockchain::Gnosis(_) => "xDAI",
@@ -298,20 +299,20 @@ impl Blockchain {
     }
 
     /// Whether this is a development/test chain.
-    pub fn is_development_chain(&self) -> bool {
+    pub(crate) fn is_development_chain(&self) -> bool {
         matches!(self, Blockchain::Hardhat(_))
     }
 
     /// Whether this chain requires EVM account mapping validation.
     ///
     /// On NeuroWeb, EVM addresses must be mapped to Substrate accounts.
-    pub fn requires_evm_account_mapping(&self) -> bool {
+    pub(crate) fn requires_evm_account_mapping(&self) -> bool {
         matches!(self, Blockchain::NeuroWeb(_))
     }
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct BlockchainManagerConfig(pub Vec<Blockchain>);
+pub(crate) struct BlockchainManagerConfig(pub Vec<Blockchain>);
 
 /// Manages multiple blockchain connections.
 ///
@@ -322,12 +323,12 @@ pub struct BlockchainManagerConfig(pub Vec<Blockchain>);
 /// - Native token ticker symbols
 /// - Development chain flag
 /// - EVM account mapping requirements (NeuroWeb)
-pub struct BlockchainManager {
+pub(crate) struct BlockchainManager {
     blockchains: HashMap<BlockchainId, EvmChain>,
 }
 
 impl BlockchainManager {
-    pub async fn connect(config: &BlockchainManagerConfig) -> Result<Self, BlockchainError> {
+    pub(crate) async fn connect(config: &BlockchainManagerConfig) -> Result<Self, BlockchainError> {
         let mut blockchains = HashMap::new();
 
         for blockchain in config.0.iter() {
@@ -363,11 +364,11 @@ impl BlockchainManager {
         Ok(Self { blockchains })
     }
 
-    pub fn get_blockchain_ids(&self) -> Vec<&BlockchainId> {
+    pub(crate) fn get_blockchain_ids(&self) -> Vec<&BlockchainId> {
         self.blockchains.keys().collect()
     }
 
-    pub fn get_blockchain_config(
+    pub(crate) fn get_blockchain_config(
         &self,
         blockchain: &BlockchainId,
     ) -> Result<&BlockchainConfig, BlockchainError> {
@@ -379,7 +380,7 @@ impl BlockchainManager {
             })
     }
 
-    pub async fn identity_id_exists(
+    pub(crate) async fn identity_id_exists(
         &self,
         blockchain: &BlockchainId,
     ) -> Result<bool, BlockchainError> {
@@ -391,7 +392,7 @@ impl BlockchainManager {
         Ok(blockchain_impl.identity_id_exists().await)
     }
 
-    pub async fn get_identity_id(
+    pub(crate) async fn get_identity_id(
         &self,
         blockchain: &BlockchainId,
     ) -> Result<Option<u128>, BlockchainError> {
@@ -403,7 +404,10 @@ impl BlockchainManager {
         Ok(blockchain_impl.get_identity_id().await)
     }
 
-    pub async fn initialize_identities(&mut self, peer_id: &str) -> Result<(), BlockchainError> {
+    pub(crate) async fn initialize_identities(
+        &mut self,
+        peer_id: &str,
+    ) -> Result<(), BlockchainError> {
         for blockchain in self.blockchains.values_mut() {
             blockchain.initialize_identity(peer_id).await?;
         }
@@ -411,7 +415,7 @@ impl BlockchainManager {
         Ok(())
     }
 
-    pub async fn get_event_logs(
+    pub(crate) async fn get_event_logs(
         &self,
         blockchain: &BlockchainId,
         contract_name: &ContractName,
@@ -429,7 +433,7 @@ impl BlockchainManager {
             .await
     }
 
-    pub async fn get_block_number(
+    pub(crate) async fn get_block_number(
         &self,
         blockchain: &BlockchainId,
     ) -> Result<u64, BlockchainError> {
@@ -442,7 +446,7 @@ impl BlockchainManager {
     }
 
     /// Get the sender address of a transaction by its hash.
-    pub async fn get_transaction_sender(
+    pub(crate) async fn get_transaction_sender(
         &self,
         blockchain: &BlockchainId,
         tx_hash: H256,
@@ -455,7 +459,7 @@ impl BlockchainManager {
         blockchain_impl.get_transaction_sender(tx_hash).await
     }
 
-    pub async fn get_sharding_table_head(
+    pub(crate) async fn get_sharding_table_head(
         &self,
         blockchain: &BlockchainId,
     ) -> Result<u128, BlockchainError> {
@@ -468,7 +472,7 @@ impl BlockchainManager {
         blockchain_impl.get_sharding_table_head().await
     }
 
-    pub async fn get_minimum_required_signatures(
+    pub(crate) async fn get_minimum_required_signatures(
         &self,
         blockchain: &BlockchainId,
     ) -> Result<u64, BlockchainError> {
@@ -481,7 +485,7 @@ impl BlockchainManager {
         blockchain_impl.get_minimum_required_signatures().await
     }
 
-    pub async fn get_sharding_table_length(
+    pub(crate) async fn get_sharding_table_length(
         &self,
         blockchain: &BlockchainId,
     ) -> Result<u128, BlockchainError> {
@@ -494,7 +498,7 @@ impl BlockchainManager {
         blockchain_impl.get_sharding_table_length().await
     }
 
-    pub async fn get_sharding_table_page(
+    pub(crate) async fn get_sharding_table_page(
         &self,
         blockchain: &BlockchainId,
         starting_identity_id: u128,
@@ -511,7 +515,7 @@ impl BlockchainManager {
             .await
     }
 
-    pub async fn re_initialize_contract(
+    pub(crate) async fn re_initialize_contract(
         &self,
         blockchain: &BlockchainId,
         contract_name: String,
@@ -527,7 +531,7 @@ impl BlockchainManager {
             .await
     }
 
-    pub async fn sign_message(
+    pub(crate) async fn sign_message(
         &self,
         blockchain: &BlockchainId,
         message_hash: &str,
@@ -542,7 +546,7 @@ impl BlockchainManager {
 
     /// Sets the stake for a node's identity (dev environment only).
     /// stake_wei should be the stake amount in wei (e.g., 50_000 * 10^18 for 50,000 tokens).
-    pub async fn set_stake(
+    pub(crate) async fn set_stake(
         &self,
         blockchain: &BlockchainId,
         stake_wei: u128,
@@ -557,7 +561,7 @@ impl BlockchainManager {
 
     /// Sets the ask price for a node's identity (dev environment only).
     /// ask_wei should be the ask amount in wei (e.g., 0.2 * 10^18 for 0.2 tokens).
-    pub async fn set_ask(
+    pub(crate) async fn set_ask(
         &self,
         blockchain: &BlockchainId,
         ask_wei: u128,
@@ -571,7 +575,10 @@ impl BlockchainManager {
     }
 
     /// Get the current gas price for a blockchain.
-    pub async fn get_gas_price(&self, blockchain: &BlockchainId) -> Result<U256, BlockchainError> {
+    pub(crate) async fn get_gas_price(
+        &self,
+        blockchain: &BlockchainId,
+    ) -> Result<U256, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
                 blockchain_id: blockchain.as_str().to_string(),
@@ -581,7 +588,10 @@ impl BlockchainManager {
     }
 
     /// Get the gas configuration for a blockchain.
-    pub fn get_gas_config(&self, blockchain: &BlockchainId) -> Result<&GasConfig, BlockchainError> {
+    pub(crate) fn get_gas_config(
+        &self,
+        blockchain: &BlockchainId,
+    ) -> Result<&GasConfig, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
                 blockchain_id: blockchain.as_str().to_string(),
@@ -591,7 +601,7 @@ impl BlockchainManager {
     }
 
     /// Get the native token decimals for a blockchain.
-    pub fn get_native_token_decimals(
+    pub(crate) fn get_native_token_decimals(
         &self,
         blockchain: &BlockchainId,
     ) -> Result<u8, BlockchainError> {
@@ -604,7 +614,7 @@ impl BlockchainManager {
     }
 
     /// Get the native token ticker for a blockchain.
-    pub fn get_native_token_ticker(
+    pub(crate) fn get_native_token_ticker(
         &self,
         blockchain: &BlockchainId,
     ) -> Result<&'static str, BlockchainError> {
@@ -617,7 +627,10 @@ impl BlockchainManager {
     }
 
     /// Check if a blockchain is a development chain.
-    pub fn is_development_chain(&self, blockchain: &BlockchainId) -> Result<bool, BlockchainError> {
+    pub(crate) fn is_development_chain(
+        &self,
+        blockchain: &BlockchainId,
+    ) -> Result<bool, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
             BlockchainError::BlockchainNotFound {
                 blockchain_id: blockchain.as_str().to_string(),
@@ -627,7 +640,7 @@ impl BlockchainManager {
     }
 
     /// Get the native token balance for an address, formatted with correct decimals.
-    pub async fn get_native_token_balance(
+    pub(crate) async fn get_native_token_balance(
         &self,
         blockchain: &BlockchainId,
         address: Address,
@@ -644,7 +657,7 @@ impl BlockchainManager {
     ///
     /// Returns the publisher address if the collection exists, or None if it doesn't.
     /// This is used to validate UALs before sending get requests.
-    pub async fn get_knowledge_collection_publisher(
+    pub(crate) async fn get_knowledge_collection_publisher(
         &self,
         blockchain: &BlockchainId,
         knowledge_collection_id: u128,
@@ -663,7 +676,7 @@ impl BlockchainManager {
     ///
     /// Returns (start_token_id, end_token_id, burned_token_ids) or None if the collection
     /// doesn't exist.
-    pub async fn get_knowledge_assets_range(
+    pub(crate) async fn get_knowledge_assets_range(
         &self,
         blockchain: &BlockchainId,
         knowledge_collection_id: u128,
@@ -682,7 +695,7 @@ impl BlockchainManager {
     ///
     /// Returns the merkle root as a hex string (with 0x prefix), or None if the collection
     /// doesn't exist.
-    pub async fn get_knowledge_collection_merkle_root(
+    pub(crate) async fn get_knowledge_collection_merkle_root(
         &self,
         blockchain: &BlockchainId,
         knowledge_collection_id: u128,
@@ -700,7 +713,7 @@ impl BlockchainManager {
     // ==================== Paranet Methods ====================
 
     /// Check if a paranet exists on-chain.
-    pub async fn paranet_exists(
+    pub(crate) async fn paranet_exists(
         &self,
         blockchain: &BlockchainId,
         paranet_id: B256,
@@ -714,7 +727,7 @@ impl BlockchainManager {
     }
 
     /// Get the nodes access policy for a paranet.
-    pub async fn get_nodes_access_policy(
+    pub(crate) async fn get_nodes_access_policy(
         &self,
         blockchain: &BlockchainId,
         paranet_id: B256,
@@ -728,7 +741,7 @@ impl BlockchainManager {
     }
 
     /// Get the list of permissioned nodes for a paranet.
-    pub async fn get_permissioned_nodes(
+    pub(crate) async fn get_permissioned_nodes(
         &self,
         blockchain: &BlockchainId,
         paranet_id: B256,
@@ -742,7 +755,7 @@ impl BlockchainManager {
     }
 
     /// Check if a knowledge collection is registered in a paranet.
-    pub async fn is_knowledge_collection_registered(
+    pub(crate) async fn is_knowledge_collection_registered(
         &self,
         blockchain: &BlockchainId,
         paranet_id: B256,

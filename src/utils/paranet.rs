@@ -13,7 +13,7 @@ use alloy::{
 /// ```
 ///
 /// The resulting hash is used as the unique identifier for a paranet on-chain.
-pub fn construct_paranet_id(
+pub(crate) fn construct_paranet_id(
     contract: Address,
     knowledge_collection_id: u128,
     knowledge_asset_id: u128,
@@ -35,7 +35,7 @@ pub fn construct_paranet_id(
 /// ```
 ///
 /// The resulting hash is used to check if a knowledge collection is registered in a paranet.
-pub fn construct_knowledge_collection_onchain_id(
+pub(crate) fn construct_knowledge_collection_onchain_id(
     contract: Address,
     knowledge_collection_id: u128,
 ) -> B256 {

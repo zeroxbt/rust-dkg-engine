@@ -20,7 +20,7 @@ use tower::{Layer, Service};
 /// By default, only localhost (127.0.0.1 and ::1) is allowed to access the API.
 /// This matches the behavior of the JS implementation.
 #[derive(Clone, Debug, Deserialize)]
-pub struct AuthConfig {
+pub(crate) struct AuthConfig {
     /// Whether authentication is enabled. Defaults to true.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
@@ -52,7 +52,7 @@ impl AuthConfig {
     /// Build the authentication middleware layer.
     ///
     /// Returns `None` if authentication is disabled.
-    pub fn build_layer(&self) -> Option<AuthLayer> {
+    pub(crate) fn build_layer(&self) -> Option<AuthLayer> {
         if !self.enabled {
             return None;
         }
@@ -62,7 +62,7 @@ impl AuthConfig {
     }
 
     /// Check if the given IP address is in the whitelist.
-    pub fn is_ip_allowed(&self, ip: &IpAddr) -> bool {
+    pub(crate) fn is_ip_allowed(&self, ip: &IpAddr) -> bool {
         let ip_str = ip.to_string();
         self.ip_whitelist.iter().any(|allowed| {
             // Direct match
@@ -84,7 +84,7 @@ impl AuthConfig {
 
 /// Authentication middleware layer.
 #[derive(Clone)]
-pub struct AuthLayer {
+pub(crate) struct AuthLayer {
     config: AuthConfig,
 }
 
@@ -101,7 +101,7 @@ impl<S> Layer<S> for AuthLayer {
 
 /// Authentication middleware service.
 #[derive(Clone)]
-pub struct AuthService<S> {
+pub(crate) struct AuthService<S> {
     inner: S,
     config: AuthConfig,
 }
@@ -180,6 +180,7 @@ fn unauthorized_response() -> Response {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]

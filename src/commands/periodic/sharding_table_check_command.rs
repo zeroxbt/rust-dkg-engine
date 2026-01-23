@@ -1,12 +1,13 @@
 use std::{sync::Arc, time::Duration};
 
-use blockchain::{
+use crate::managers::blockchain::{
     BlockchainId, BlockchainManager,
     blockchains::blockchain_creator::sharding_table::ShardingTableLib::NodeInfo,
     utils::{from_wei, sha256_hex},
 };
+use crate::managers::network::PeerId;
 use futures::future::join_all;
-use repository::{RepositoryManager, ShardRecordInput};
+use crate::managers::repository::{RepositoryManager, ShardRecordInput};
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
@@ -17,13 +18,13 @@ use crate::{
 const SHARDING_TABLE_CHECK_PERIOD: Duration = Duration::from_secs(10);
 const SHARDING_TABLE_PAGE_SIZE: u128 = 100;
 
-pub struct ShardingTableCheckCommandHandler {
+pub(crate) struct ShardingTableCheckCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     blockchain_manager: Arc<BlockchainManager>,
 }
 
 impl ShardingTableCheckCommandHandler {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
@@ -149,7 +150,7 @@ impl ShardingTableCheckCommandHandler {
                 }
             };
 
-            let peer_id: network::PeerId = match peer_id_str.parse() {
+            let peer_id: PeerId = match peer_id_str.parse() {
                 Ok(peer_id) => peer_id,
                 Err(err) => {
                     tracing::warn!(
@@ -178,7 +179,7 @@ impl ShardingTableCheckCommandHandler {
 }
 
 #[derive(Clone, Default)]
-pub struct ShardingTableCheckCommandData;
+pub(crate) struct ShardingTableCheckCommandData;
 
 impl CommandHandler<ShardingTableCheckCommandData> for ShardingTableCheckCommandHandler {
     async fn execute(&self, _: &ShardingTableCheckCommandData) -> CommandExecutionResult {

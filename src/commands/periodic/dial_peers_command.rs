@@ -1,8 +1,8 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use libp2p::PeerId;
-use network::NetworkManager;
-use repository::RepositoryManager;
+use crate::managers::network::NetworkManager;
+use crate::managers::repository::RepositoryManager;
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
@@ -15,14 +15,14 @@ use crate::{
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
 const DIAL_BATCH_SIZE: usize = 10;
 
-pub struct DialPeersCommandHandler {
+pub(crate) struct DialPeersCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
 }
 
 impl DialPeersCommandHandler {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
@@ -32,7 +32,7 @@ impl DialPeersCommandHandler {
 }
 
 #[derive(Clone, Default)]
-pub struct DialPeersCommandData;
+pub(crate) struct DialPeersCommandData;
 
 impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
     async fn execute(&self, _: &DialPeersCommandData) -> CommandExecutionResult {

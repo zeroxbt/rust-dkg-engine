@@ -1,5 +1,4 @@
 use libp2p::PeerId;
-use network::RequestMessage;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -7,12 +6,13 @@ use crate::{
         ProtocolRequest,
         messages::{StoreRequestData, StoreResponseData},
     },
+    managers::network::RequestMessage,
     services::operation::Operation,
 };
 
 /// Signature data stored after Publish operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SignatureData {
+pub(crate) struct SignatureData {
     pub identity_id: String,
     pub v: u8,
     pub r: String,
@@ -21,7 +21,7 @@ pub struct SignatureData {
 }
 
 impl SignatureData {
-    pub fn new(identity_id: String, v: u8, r: String, s: String, vs: String) -> Self {
+    pub(crate) fn new(identity_id: String, v: u8, r: String, s: String, vs: String) -> Self {
         Self {
             identity_id,
             v,
@@ -36,7 +36,7 @@ impl SignatureData {
 ///
 /// Contains all signatures collected during the publish operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PublishOperationResult {
+pub(crate) struct PublishOperationResult {
     /// The publisher's own signature over the dataset
     pub publisher_signature: Option<SignatureData>,
     /// Signatures from network nodes that stored the dataset
@@ -44,7 +44,7 @@ pub struct PublishOperationResult {
 }
 
 impl PublishOperationResult {
-    pub fn new(
+    pub(crate) fn new(
         publisher_signature: Option<SignatureData>,
         network_signatures: Vec<SignatureData>,
     ) -> Self {
@@ -60,7 +60,7 @@ impl PublishOperationResult {
 /// For publish operations, `min_ack_responses` is typically configurable
 /// based on network requirements. The default config uses a placeholder
 /// value that should be overridden when creating the operation.
-pub struct PublishOperation;
+pub(crate) struct PublishOperation;
 
 impl Operation for PublishOperation {
     const NAME: &'static str = "publish";

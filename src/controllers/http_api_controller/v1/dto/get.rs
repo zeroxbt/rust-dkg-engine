@@ -1,5 +1,5 @@
 use serde::Serialize;
-use triple_store::{Assertion, Visibility};
+use crate::managers::triple_store::{Assertion, Visibility};
 use uuid::Uuid;
 use validator_derive::Validate;
 
@@ -9,7 +9,7 @@ use crate::controllers::http_api_controller::validators::{
 
 #[derive(serde::Deserialize, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
-pub struct GetRequest {
+pub(crate) struct GetRequest {
     /// The UAL (Universal Asset Locator) of the knowledge asset/collection to retrieve
     #[validate(custom(function = "validate_ual_format"))]
     pub id: String,
@@ -30,12 +30,12 @@ pub struct GetRequest {
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct GetResponse {
+pub(crate) struct GetResponse {
     pub operation_id: Uuid,
 }
 
 impl GetResponse {
-    pub fn new(operation_id: Uuid) -> Self {
+    pub(crate) fn new(operation_id: Uuid) -> Self {
         Self { operation_id }
     }
 }
@@ -43,7 +43,7 @@ impl GetResponse {
 /// Data specific to get operation results
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetOperationData {
+pub(crate) struct GetOperationData {
     pub assertion: Assertion,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Vec<String>>,
@@ -56,21 +56,21 @@ pub struct GetOperationData {
 /// Response for get operation result endpoint
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetOperationResultResponse {
+pub(crate) struct GetOperationResultResponse {
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<GetOperationData>,
 }
 
 impl GetOperationResultResponse {
-    pub fn in_progress() -> Self {
+    pub(crate) fn in_progress() -> Self {
         Self {
             status: "IN_PROGRESS".to_string(),
             data: None,
         }
     }
 
-    pub fn completed(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
+    pub(crate) fn completed(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
         Self {
             status: "COMPLETED".to_string(),
             data: Some(GetOperationData {
@@ -82,7 +82,7 @@ impl GetOperationResultResponse {
         }
     }
 
-    pub fn failed(error_message: Option<String>) -> Self {
+    pub(crate) fn failed(error_message: Option<String>) -> Self {
         Self {
             status: "FAILED".to_string(),
             data: Some(GetOperationData {

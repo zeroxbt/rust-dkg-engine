@@ -1,11 +1,7 @@
 use std::sync::Arc;
 
-use blockchain::{BlockchainId, BlockchainManager, H256, utils::keccak256_encode_packed};
 use futures::future::join_all;
 use libp2p::PeerId;
-use network::NetworkManager;
-use repository::RepositoryManager;
-use triple_store::Assertion;
 use uuid::Uuid;
 
 use crate::{
@@ -14,6 +10,12 @@ use crate::{
     controllers::rpc_controller::{
         NetworkProtocols,
         messages::{StoreRequestData, StoreResponseData},
+    },
+    managers::{
+        blockchain::{BlockchainId, BlockchainManager, H256, utils::keccak256_encode_packed},
+        network::NetworkManager,
+        repository::RepositoryManager,
+        triple_store::Assertion,
     },
     operations::{PublishOperation, PublishOperationResult, SignatureData},
     services::{
@@ -25,7 +27,7 @@ use crate::{
 /// Command data for sending publish requests to network nodes.
 /// Dataset is passed inline instead of being retrieved from storage.
 #[derive(Clone)]
-pub struct SendStoreRequestsCommandData {
+pub(crate) struct SendStoreRequestsCommandData {
     pub operation_id: Uuid,
     pub blockchain: BlockchainId,
     pub dataset_root: String,
@@ -34,7 +36,7 @@ pub struct SendStoreRequestsCommandData {
 }
 
 impl SendStoreRequestsCommandData {
-    pub fn new(
+    pub(crate) fn new(
         operation_id: Uuid,
         blockchain: BlockchainId,
         dataset_root: String,
@@ -51,7 +53,7 @@ impl SendStoreRequestsCommandData {
     }
 }
 
-pub struct SendStoreRequestsCommandHandler {
+pub(crate) struct SendStoreRequestsCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -60,7 +62,7 @@ pub struct SendStoreRequestsCommandHandler {
 }
 
 impl SendStoreRequestsCommandHandler {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
@@ -128,7 +130,10 @@ impl SendStoreRequestsCommandHandler {
             .blockchain_manager
             .sign_message(
                 blockchain,
-                &format!("0x{}", blockchain::utils::to_hex_string(message_hash)),
+                &format!(
+                    "0x{}",
+                    crate::managers::blockchain::utils::to_hex_string(message_hash)
+                ),
             )
             .await?;
 
@@ -333,14 +338,11 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
             }
         };
 
-        let dataset_root_hex = match dataset_root.strip_prefix("0x") {
-            Some(hex) => hex,
-            None => {
-                self.publish_operation_service
-                    .mark_failed(operation_id, "Dataset root missing '0x' prefix".to_string())
-                    .await;
-                return CommandExecutionResult::Completed;
-            }
+        let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
+            self.publish_operation_service
+                .mark_failed(operation_id, "Dataset root missing '0x' prefix".to_string())
+                .await;
+            return CommandExecutionResult::Completed;
         };
 
         // Create and store publisher signature directly to redb

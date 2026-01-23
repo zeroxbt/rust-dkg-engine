@@ -1,19 +1,18 @@
 use libp2p::PeerId;
-use network::RequestMessage;
 use serde::{Deserialize, Serialize};
-use triple_store::Assertion;
 
 use crate::{
     controllers::rpc_controller::{
         ProtocolRequest,
         messages::{GetRequestData, GetResponseData},
     },
+    managers::{network::RequestMessage, triple_store::Assertion},
     services::operation::Operation,
 };
 
 /// Result stored after successful Get operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GetOperationResult {
+pub(crate) struct GetOperationResult {
     /// The retrieved assertion data (public and optionally private triples)
     pub assertion: Assertion,
     /// Optional metadata triples if requested
@@ -23,7 +22,7 @@ pub struct GetOperationResult {
 
 impl GetOperationResult {
     /// Create a new get operation result.
-    pub fn new(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
+    pub(crate) fn new(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
         Self {
             assertion,
             metadata,
@@ -32,7 +31,7 @@ impl GetOperationResult {
 }
 
 /// Get operation type implementation.
-pub struct GetOperation;
+pub(crate) struct GetOperation;
 
 impl Operation for GetOperation {
     const NAME: &'static str = "get";

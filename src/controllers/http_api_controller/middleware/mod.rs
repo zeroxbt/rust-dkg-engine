@@ -1,5 +1,5 @@
 mod auth;
 mod rate_limiter;
 
-pub use auth::AuthConfig;
-pub use rate_limiter::RateLimiterConfig;
+pub(crate) use auth::AuthConfig;
+pub(crate) use rate_limiter::RateLimiterConfig;

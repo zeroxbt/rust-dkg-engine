@@ -1,16 +1,21 @@
-use blockchain::{BlockchainId, SignatureComponents};
 use serde::{Deserialize, Serialize};
+
+use crate::managers::blockchain::{BlockchainId, SignatureComponents};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct StoreRequestData {
+pub(crate) struct StoreRequestData {
     dataset: Vec<String>,
     dataset_root: String,
     blockchain: BlockchainId,
 }
 
 impl StoreRequestData {
-    pub fn new(dataset: Vec<String>, dataset_root: String, blockchain: BlockchainId) -> Self {
+    pub(crate) fn new(
+        dataset: Vec<String>,
+        dataset_root: String,
+        blockchain: BlockchainId,
+    ) -> Self {
         Self {
             dataset,
             dataset_root,
@@ -18,15 +23,15 @@ impl StoreRequestData {
         }
     }
 
-    pub fn dataset(&self) -> &Vec<String> {
+    pub(crate) fn dataset(&self) -> &Vec<String> {
         &self.dataset
     }
 
-    pub fn dataset_root(&self) -> &str {
+    pub(crate) fn dataset_root(&self) -> &str {
         &self.dataset_root
     }
 
-    pub fn blockchain(&self) -> &BlockchainId {
+    pub(crate) fn blockchain(&self) -> &BlockchainId {
         &self.blockchain
     }
 }
@@ -34,7 +39,7 @@ impl StoreRequestData {
 // TODO: This will not work for js implementation because of enum. I tried using #[serde(untagged)]
 // to remove enum variant names from the json but it has deserialization issues and throws errors.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum StoreResponseData {
+pub(crate) enum StoreResponseData {
     #[serde(rename_all = "camelCase")]
     Error { error_message: String },
     #[serde(rename_all = "camelCase")]

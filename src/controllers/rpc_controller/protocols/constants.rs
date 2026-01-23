@@ -4,17 +4,17 @@ use std::time::Duration;
 ///
 /// These timeouts define how long to wait for a response before considering
 /// a request as failed (triggering OutboundFailure::Timeout).
-pub struct ProtocolTimeouts;
+pub(crate) struct ProtocolTimeouts;
 
 impl ProtocolTimeouts {
     /// Store protocol timeout (used during publish operations)
-    pub const STORE: Duration = Duration::from_secs(15);
+    pub(crate) const STORE: Duration = Duration::from_secs(15);
 
     /// Get protocol timeout
-    pub const GET: Duration = Duration::from_secs(15);
+    pub(crate) const GET: Duration = Duration::from_secs(15);
 
     /// Finality protocol timeout
-    pub const FINALITY: Duration = Duration::from_secs(60);
+    pub(crate) const FINALITY: Duration = Duration::from_secs(60);
 
     // Future protocols (not yet implemented in Rust):
     // UPDATE: 60 seconds

@@ -24,7 +24,7 @@ sol!(
     "../../abi/ParametersStorage.json"
 );
 
-pub struct TestParametersStorageParams {
+pub(crate) struct TestParametersStorageParams {
     ask_lower_bound_factor: u128,
     ask_upper_bound_factor: u128,
     maximum_stake: u128,
@@ -37,10 +37,10 @@ pub struct TestParametersStorageParams {
     v81_release_epoch: u128,
 }
 
-pub struct LocalBlockchain;
+pub(crate) struct LocalBlockchain;
 
 impl LocalBlockchain {
-    pub async fn run(port: u16, set_parameters: bool) -> Result<(), Box<dyn std::error::Error>> {
+    pub(crate) async fn   run(port: u16, set_parameters: bool) -> Result<(), Box<dyn std::error::Error>> {
         if !Self::is_port_open(port) {
             Self::start_local_blockchain(port)?;
         }

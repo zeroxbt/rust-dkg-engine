@@ -1,16 +1,17 @@
 use std::{collections::HashMap, sync::Arc};
 
-use triple_store::{
-    Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, TokenIds, TripleStoreManager,
-    Visibility, extract_subject, group_nquads_by_subject,
-    query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
+use crate::{
+    managers::triple_store::{
+        Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, TokenIds, TripleStoreManager,
+        Visibility, error::TripleStoreError, extract_subject, group_nquads_by_subject,
+        query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
+    },
+    utils::ual::ParsedUal,
 };
-
-use crate::utils::ual::ParsedUal;
 
 /// Result of querying assertion data from the triple store.
 #[derive(Debug, Clone)]
-pub struct AssertionQueryResult {
+pub(crate) struct AssertionQueryResult {
     pub public: Vec<String>,
     pub private: Option<Vec<String>>,
     pub metadata: Option<Vec<String>>,
@@ -18,7 +19,7 @@ pub struct AssertionQueryResult {
 
 impl AssertionQueryResult {
     /// Check if the result contains any data.
-    pub fn has_data(&self) -> bool {
+    pub(crate) fn has_data(&self) -> bool {
         !self.public.is_empty() || self.private.as_ref().is_some_and(|p| !p.is_empty())
     }
 }
@@ -28,12 +29,12 @@ impl AssertionQueryResult {
 /// This service provides a unified interface for querying knowledge assets
 /// and collections, used by both the get sender (local query) and receiver
 /// (handling remote requests).
-pub struct TripleStoreService {
+pub(crate) struct TripleStoreService {
     triple_store_manager: Arc<TripleStoreManager>,
 }
 
 impl TripleStoreService {
-    pub fn new(triple_store_manager: Arc<TripleStoreManager>) -> Self {
+    pub(crate) fn new(triple_store_manager: Arc<TripleStoreManager>) -> Self {
         Self {
             triple_store_manager,
         }
@@ -47,7 +48,7 @@ impl TripleStoreService {
     ///
     /// Returns the query result with public, private, and metadata triples,
     /// or None if not found or an error occurred.
-    pub async fn query_assertion(
+    pub(crate) async fn query_assertion(
         &self,
         parsed_ual: &ParsedUal,
         token_ids: &TokenIds,
@@ -230,12 +231,12 @@ impl TripleStoreService {
     /// 4. Delegates RDF serialization and SPARQL building to TripleStoreManager
     ///
     /// Returns the total number of triples inserted, or an error.
-    pub async fn insert_knowledge_collection(
+    pub(crate) async fn insert_knowledge_collection(
         &self,
         knowledge_collection_ual: &str,
         dataset: &Assertion,
         metadata: &KnowledgeCollectionMetadata,
-    ) -> Result<usize, triple_store::Error> {
+    ) -> Result<usize, TripleStoreError> {
         // Build knowledge assets from the dataset
         let knowledge_assets = Self::build_knowledge_assets(knowledge_collection_ual, dataset);
 
@@ -322,7 +323,9 @@ impl TripleStoreService {
                         let hashed_subject = format!(
                             "<{}{}>",
                             PRIVATE_HASH_SUBJECT_PREFIX,
-                            blockchain::utils::sha256_hex(subject_without_brackets.as_bytes())
+                            crate::managers::blockchain::utils::sha256_hex(
+                                subject_without_brackets.as_bytes()
+                            )
                         );
                         public_subject_map.get(hashed_subject.as_str()).copied()
                     };
@@ -343,7 +346,10 @@ impl TripleStoreService {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
+    use crate::managers::blockchain;
 
     // Note: Tests for the business logic in build_knowledge_assets:
     // - Private-hash triple separation

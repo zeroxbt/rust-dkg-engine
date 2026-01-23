@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use network::request_response::OutboundRequestId;
 use tokio::sync::oneshot;
+
+use crate::managers::network::request_response::OutboundRequestId;
 
 /// Error type for pending request operations.
 #[derive(Debug, Clone, thiserror::Error)]
-pub enum RequestError {
+pub(crate) enum RequestError {
     #[error("Request timed out")]
     Timeout,
 
@@ -39,7 +40,7 @@ pub enum RequestError {
 ///
 /// All operations are thread-safe via DashMap. Multiple requests can be in flight
 /// concurrently.
-pub struct PendingRequests<T> {
+pub(crate) struct PendingRequests<T> {
     /// Maps request_id -> oneshot sender for delivering responses
     pending: Arc<DashMap<OutboundRequestId, oneshot::Sender<Result<T, RequestError>>>>,
 }
@@ -48,7 +49,7 @@ impl<T> PendingRequests<T>
 where
     T: Send + 'static,
 {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             pending: Arc::new(DashMap::new()),
         }
@@ -58,7 +59,7 @@ where
     ///
     /// Call this after sending the request with the `OutboundRequestId` from
     /// the network manager.
-    pub fn insert(
+    pub(crate) fn insert(
         &self,
         request_id: OutboundRequestId,
     ) -> oneshot::Receiver<Result<T, RequestError>> {
@@ -75,7 +76,7 @@ where
     /// Called by RpcRouter when a response arrives.
     /// Returns true if the request was found and completed, false if it was
     /// already completed or timed out.
-    pub fn complete_success(&self, request_id: OutboundRequestId, response: T) -> bool {
+    pub(crate) fn complete_success(&self, request_id: OutboundRequestId, response: T) -> bool {
         if let Some((_, sender)) = self.pending.remove(&request_id) {
             let _ = sender.send(Ok(response));
             tracing::trace!(?request_id, "Completed pending request with success");
@@ -94,7 +95,11 @@ where
     /// Called by RpcRouter when a timeout or other failure occurs.
     /// Returns true if the request was found and completed, false if it was
     /// already completed.
-    pub fn complete_failure(&self, request_id: OutboundRequestId, error: RequestError) -> bool {
+    pub(crate) fn complete_failure(
+        &self,
+        request_id: OutboundRequestId,
+        error: RequestError,
+    ) -> bool {
         if let Some((_, sender)) = self.pending.remove(&request_id) {
             let _ = sender.send(Err(error));
             tracing::trace!(?request_id, "Completed pending request with failure");

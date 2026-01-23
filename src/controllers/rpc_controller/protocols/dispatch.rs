@@ -1,12 +1,15 @@
-use network::{PeerId, ProtocolDispatch, RequestMessage, ResponseMessage, request_response};
-
 use super::behaviour::NetworkProtocols;
-use crate::controllers::rpc_controller::messages::{
-    FinalityRequestData, FinalityResponseData, GetRequestData, GetResponseData, StoreRequestData,
-    StoreResponseData,
+use crate::{
+    controllers::rpc_controller::messages::{
+        FinalityRequestData, FinalityResponseData, GetRequestData, GetResponseData,
+        StoreRequestData, StoreResponseData,
+    },
+    managers::network::{
+        PeerId, ProtocolDispatch, RequestMessage, ResponseMessage, request_response,
+    },
 };
 
-pub enum ProtocolRequest {
+pub(crate) enum ProtocolRequest {
     Store {
         peer: PeerId,
         message: RequestMessage<StoreRequestData>,
@@ -21,7 +24,7 @@ pub enum ProtocolRequest {
     },
 }
 
-pub enum ProtocolResponse {
+pub(crate) enum ProtocolResponse {
     Store {
         channel: request_response::ResponseChannel<ResponseMessage<StoreResponseData>>,
         message: ResponseMessage<StoreResponseData>,

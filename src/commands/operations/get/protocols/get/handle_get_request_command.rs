@@ -1,19 +1,21 @@
 use std::{collections::HashSet, sync::Arc};
 
-use blockchain::{AccessPolicy, BlockchainManager};
 use libp2p::PeerId;
-use network::{
-    NetworkManager, ResponseMessage,
-    message::{ResponseMessageHeader, ResponseMessageType},
-    request_response::ResponseChannel,
-};
-use triple_store::{Assertion, TokenIds, Visibility};
 use uuid::Uuid;
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     controllers::rpc_controller::{NetworkProtocols, ProtocolResponse, messages::GetResponseData},
+    managers::{
+        blockchain::{AccessPolicy, BlockchainManager},
+        network::{
+            NetworkManager, ResponseMessage,
+            message::{ResponseMessageHeader, ResponseMessageType},
+            request_response::ResponseChannel,
+        },
+        triple_store::{Assertion, TokenIds, Visibility},
+    },
     services::{ResponseChannels, TripleStoreService},
     utils::{
         paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
@@ -23,7 +25,7 @@ use crate::{
 
 /// Command data for handling incoming get requests.
 #[derive(Clone)]
-pub struct HandleGetRequestCommandData {
+pub(crate) struct HandleGetRequestCommandData {
     pub operation_id: Uuid,
     pub ual: String,
     pub token_ids: TokenIds,
@@ -34,7 +36,7 @@ pub struct HandleGetRequestCommandData {
 }
 
 impl HandleGetRequestCommandData {
-    pub fn new(
+    pub(crate) fn new(
         operation_id: Uuid,
         ual: String,
         token_ids: TokenIds,
@@ -55,7 +57,7 @@ impl HandleGetRequestCommandData {
     }
 }
 
-pub struct HandleGetRequestCommandHandler {
+pub(crate) struct HandleGetRequestCommandHandler {
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     triple_store_service: Arc<TripleStoreService>,
     response_channels: Arc<ResponseChannels<GetResponseData>>,
@@ -63,7 +65,7 @@ pub struct HandleGetRequestCommandHandler {
 }
 
 impl HandleGetRequestCommandHandler {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             network_manager: Arc::clone(context.network_manager()),
             triple_store_service: Arc::clone(context.triple_store_service()),

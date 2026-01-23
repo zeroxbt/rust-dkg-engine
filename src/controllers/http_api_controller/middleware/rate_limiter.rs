@@ -13,7 +13,7 @@ use tower_governor::{
 /// Clients can make burst requests up to `burst_size`, then are limited to
 /// `max_requests` per `time_window`.
 #[derive(Clone, Debug, Deserialize)]
-pub struct RateLimiterConfig {
+pub(crate) struct RateLimiterConfig {
     /// Whether rate limiting is enabled. Defaults to true.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
@@ -57,14 +57,16 @@ impl Default for RateLimiterConfig {
 
 impl RateLimiterConfig {
     /// Get the effective burst size (defaults to max_requests if not specified).
-    pub fn effective_burst_size(&self) -> u32 {
+    pub(crate) fn effective_burst_size(&self) -> u32 {
         self.burst_size.unwrap_or(self.max_requests)
     }
 
     /// Build the rate limiter layer.
     ///
     /// Returns `None` if rate limiting is disabled.
-    pub fn build_layer(&self) -> Option<GovernorLayer<PeerIpKeyExtractor, NoOpMiddleware, Body>> {
+    pub(crate) fn build_layer(
+        &self,
+    ) -> Option<GovernorLayer<PeerIpKeyExtractor, NoOpMiddleware, Body>> {
         if !self.enabled {
             return None;
         }

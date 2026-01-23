@@ -1,5 +1,5 @@
-pub mod finality;
-pub mod get;
-pub mod info;
-pub mod operation_result;
-pub mod publish;
+pub(crate) mod finality;
+pub(crate) mod get;
+pub(crate) mod info;
+pub(crate) mod operation_result;
+pub(crate) mod publish;

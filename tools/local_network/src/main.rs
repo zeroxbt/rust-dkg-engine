@@ -196,9 +196,14 @@ async fn main() {
             .replace("{{NODE_NAME}}", &node_name)
             .replace("{{NODE_SYMBOL}}", &node_symbol);
 
-        let toml_file_name = format!("tools/local_network/.node{}_config.toml", i);
-        fs::write(&toml_file_name, toml_config).expect("Failed to write the TOML config file");
-        println!("Generated {}", toml_file_name);
+        // Write .origintrail_noderc.toml to the data folder
+        let config_path = Path::new(&data_folder).join(".origintrail_noderc.toml");
+
+        // Ensure data folder exists
+        fs::create_dir_all(&data_folder).expect("Failed to create data folder");
+
+        fs::write(&config_path, toml_config).expect("Failed to write the TOML config file");
+        println!("Generated {}", config_path.display());
     }
 
     let current_dir = std::env::current_dir().expect("Failed to get current directory");
@@ -235,7 +240,10 @@ async fn main() {
         let triple_store_repository = format!("DKG-{}", i);
         clear_oxigraph_store(&data_folder, &triple_store_repository);
 
-        let config_path = format!("tools/local_network/.node{}_config.toml", i);
+        // Config file path relative to workspace root
+        let config_path = format!("{}/{}", data_folder, ".origintrail_noderc.toml");
+
+        // Run node from workspace root with --config flag
         open_terminal_with_command(&format!(
             "cd {} && {} --config {}",
             current_dir_str, binary_path, config_path

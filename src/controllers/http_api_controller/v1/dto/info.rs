@@ -1,12 +1,12 @@
 use serde::Serialize;
 
 #[derive(Serialize)]
-pub struct InfoResponse {
+pub(crate) struct InfoResponse {
     pub version: &'static str,
 }
 
 impl InfoResponse {
-    pub fn new(version: &'static str) -> Self {
+    pub(crate) fn new(version: &'static str) -> Self {
         Self { version }
     }
 }

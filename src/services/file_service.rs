@@ -6,7 +6,7 @@ use thiserror::Error;
 use tokio::{fs, io::AsyncWriteExt};
 
 #[derive(Error, Debug)]
-pub enum FileServiceError {
+pub(crate) enum FileServiceError {
     #[error("File not found: {0}")]
     FileNotFound(PathBuf),
 
@@ -20,19 +20,19 @@ pub enum FileServiceError {
     Json(#[from] serde_json::Error),
 }
 
-pub type Result<T> = std::result::Result<T, FileServiceError>;
+pub(crate) type Result<T> = std::result::Result<T, FileServiceError>;
 
-pub struct FileService {
+pub(crate) struct FileService {
     data_path: PathBuf,
 }
 
 impl FileService {
-    pub fn new(data_path: PathBuf) -> Self {
+    pub(crate) fn new(data_path: PathBuf) -> Self {
         Self { data_path }
     }
 
     /// Write data to a file, creating parent directories if needed
-    pub async fn write(
+    pub(crate) async fn write(
         &self,
         dir: impl AsRef<Path>,
         filename: &str,
@@ -49,7 +49,7 @@ impl FileService {
     }
 
     /// Append data to a file, creating it if it doesn't exist
-    pub async fn append(
+    pub(crate) async fn append(
         &self,
         dir: impl AsRef<Path>,
         filename: &str,
@@ -72,7 +72,7 @@ impl FileService {
     }
 
     /// Read a file as bytes
-    pub async fn read_bytes(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
+    pub(crate) async fn read_bytes(&self, path: impl AsRef<Path>) -> Result<Vec<u8>> {
         let path = path.as_ref();
         fs::read(path).await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -84,7 +84,7 @@ impl FileService {
     }
 
     /// Read a file as UTF-8 string
-    pub async fn read_string(&self, path: impl AsRef<Path>) -> Result<String> {
+    pub(crate) async fn read_string(&self, path: impl AsRef<Path>) -> Result<String> {
         let path = path.as_ref();
         fs::read_to_string(path).await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -96,7 +96,7 @@ impl FileService {
     }
 
     /// Read and parse a JSON file
-    pub async fn read_json<T: serde::de::DeserializeOwned>(
+    pub(crate) async fn read_json<T: serde::de::DeserializeOwned>(
         &self,
         path: impl AsRef<Path>,
     ) -> Result<T> {
@@ -104,7 +104,7 @@ impl FileService {
         Ok(serde_json::from_slice(&data)?)
     }
 
-    pub async fn metadata(&self, path: impl AsRef<Path>) -> Result<std::fs::Metadata> {
+    pub(crate) async fn metadata(&self, path: impl AsRef<Path>) -> Result<std::fs::Metadata> {
         let path = path.as_ref();
         tokio::fs::metadata(path).await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -116,7 +116,7 @@ impl FileService {
     }
 
     /// Write JSON data to a file
-    pub async fn write_json<T: serde::Serialize>(
+    pub(crate) async fn write_json<T: serde::Serialize>(
         &self,
         dir: impl AsRef<Path>,
         filename: &str,
@@ -127,7 +127,7 @@ impl FileService {
     }
 
     /// List entries in a directory
-    pub async fn read_dir(&self, path: impl AsRef<Path>) -> Result<Vec<String>> {
+    pub(crate) async fn read_dir(&self, path: impl AsRef<Path>) -> Result<Vec<String>> {
         let path = path.as_ref();
         let mut entries = fs::read_dir(path).await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -148,7 +148,7 @@ impl FileService {
     }
 
     /// Remove a file. Returns true if file existed and was removed.
-    pub async fn remove_file(&self, path: impl AsRef<Path>) -> Result<bool> {
+    pub(crate) async fn remove_file(&self, path: impl AsRef<Path>) -> Result<bool> {
         let path = path.as_ref();
         match fs::remove_file(path).await {
             Ok(_) => {
@@ -161,7 +161,7 @@ impl FileService {
     }
 
     /// Remove a directory and all its contents. Returns true if directory existed and was removed.
-    pub async fn remove_dir(&self, path: impl AsRef<Path>) -> Result<bool> {
+    pub(crate) async fn remove_dir(&self, path: impl AsRef<Path>) -> Result<bool> {
         let path = path.as_ref();
         match fs::remove_dir_all(path).await {
             Ok(_) => {
@@ -176,6 +176,8 @@ impl FileService {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use serde::{Deserialize, Serialize};
     use tempfile::TempDir;
 

@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use blockchain::BlockchainId;
-
 use super::{
     command_executor::CommandExecutionRequest,
     operations::{
@@ -42,7 +40,10 @@ use super::{
         },
     },
 };
-use crate::{commands::command_executor::CommandExecutionResult, context::Context};
+use crate::{
+    commands::command_executor::CommandExecutionResult, context::Context,
+    managers::blockchain::BlockchainId,
+};
 
 macro_rules! command_registry {
     (
@@ -54,12 +55,12 @@ macro_rules! command_registry {
         ),+ $(,)?
     ) => {
         #[derive(Clone)]
-        pub enum Command {
+        pub(crate) enum Command {
             $( $variant($data), )+
         }
 
         impl Command {
-            pub fn name(&self) -> &'static str {
+            pub(crate) fn name(&self) -> &'static str {
                 match self {
                     $( Self::$variant(_) => stringify!($variant), )+
                 }
@@ -74,18 +75,18 @@ macro_rules! command_registry {
             }
         )+
 
-        pub struct CommandResolver {
+        pub(crate) struct CommandResolver {
             $( $field: Arc<$handler>, )+
         }
 
         impl CommandResolver {
-            pub fn new(context: Arc<Context>) -> Self {
+            pub(crate) fn new(context: Arc<Context>) -> Self {
                 Self {
                     $( $field: Arc::new(<$handler>::new(Arc::clone(&context))), )+
                 }
             }
 
-            pub async fn execute(&self, command: &Command) -> CommandExecutionResult {
+            pub(crate) async fn   execute(&self, command: &Command) -> CommandExecutionResult {
                 match command {
                     $( Command::$variant(data) => self.$field.execute(data).await, )+
                 }
@@ -95,7 +96,7 @@ macro_rules! command_registry {
     };
 }
 
-pub trait CommandHandler<D: Send + Sync + 'static>: Send + Sync {
+pub(crate) trait CommandHandler<D: Send + Sync + 'static>: Send + Sync {
     async fn execute(&self, data: &D) -> CommandExecutionResult;
 }
 
@@ -142,7 +143,9 @@ command_registry! {
 }
 
 /// Default commands scheduled at startup. Keep this list explicit for clarity.
-pub fn default_command_requests(blockchain_ids: &[BlockchainId]) -> Vec<CommandExecutionRequest> {
+pub(crate) fn default_command_requests(
+    blockchain_ids: &[BlockchainId],
+) -> Vec<CommandExecutionRequest> {
     let mut requests = vec![
         CommandExecutionRequest::new(Command::DialPeers(DialPeersCommandData)),
         CommandExecutionRequest::new(Command::ShardingTableCheck(ShardingTableCheckCommandData)),

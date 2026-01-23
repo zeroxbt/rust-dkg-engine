@@ -15,10 +15,10 @@ use crate::{
     },
 };
 
-pub struct FinalityStatusHttpApiController;
+pub(crate) struct FinalityStatusHttpApiController;
 
 impl FinalityStatusHttpApiController {
-    pub async fn handle_request(
+    pub(crate) async fn   handle_request(
         State(context): State<Arc<Context>>,
         Query(req): Query<FinalityRequest>,
     ) -> impl IntoResponse {

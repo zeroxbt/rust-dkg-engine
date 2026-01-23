@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
-use triple_store::{Assertion, TokenIds, Visibility};
+
+use crate::managers::triple_store::{Assertion, TokenIds, Visibility};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetRequestData {
+pub(crate) struct GetRequestData {
     ual: String,
     token_ids: TokenIds,
     include_metadata: bool,
@@ -12,7 +13,7 @@ pub struct GetRequestData {
 }
 
 impl GetRequestData {
-    pub fn new(
+    pub(crate) fn new(
         ual: String,
         token_ids: TokenIds,
         include_metadata: bool,
@@ -29,34 +30,34 @@ impl GetRequestData {
     }
 
     /// Returns the UAL.
-    pub fn ual(&self) -> &str {
+    pub(crate) fn ual(&self) -> &str {
         &self.ual
     }
 
     /// Returns the token IDs.
-    pub fn token_ids(&self) -> &TokenIds {
+    pub(crate) fn token_ids(&self) -> &TokenIds {
         &self.token_ids
     }
 
     /// Returns whether metadata should be included.
-    pub fn include_metadata(&self) -> bool {
+    pub(crate) fn include_metadata(&self) -> bool {
         self.include_metadata
     }
 
     /// Returns the paranet UAL, if any.
-    pub fn paranet_ual(&self) -> Option<&str> {
+    pub(crate) fn paranet_ual(&self) -> Option<&str> {
         self.paranet_ual.as_deref()
     }
 
     /// Returns the content type (visibility).
-    pub fn content_type(&self) -> Visibility {
+    pub(crate) fn content_type(&self) -> Visibility {
         self.content_type
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum GetResponseData {
+pub(crate) enum GetResponseData {
     #[serde(rename_all = "camelCase")]
     Error { error_message: String },
     Data {
@@ -67,14 +68,14 @@ pub enum GetResponseData {
 }
 
 impl GetResponseData {
-    pub fn data(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
+    pub(crate) fn data(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
         Self::Data {
             assertion,
             metadata,
         }
     }
 
-    pub fn error(message: impl Into<String>) -> Self {
+    pub(crate) fn error(message: impl Into<String>) -> Self {
         Self::Error {
             error_message: message.into(),
         }

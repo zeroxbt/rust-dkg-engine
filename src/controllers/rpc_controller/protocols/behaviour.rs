@@ -1,12 +1,13 @@
-use network::{
-    NetworkBehaviour, ProtocolSupport, RequestMessage, ResponseMessage, StreamProtocol,
-    request_response,
-};
-
 use super::constants::ProtocolTimeouts;
-use crate::controllers::rpc_controller::messages::{
-    FinalityRequestData, FinalityResponseData, GetRequestData, GetResponseData, StoreRequestData,
-    StoreResponseData,
+use crate::{
+    controllers::rpc_controller::messages::{
+        FinalityRequestData, FinalityResponseData, GetRequestData, GetResponseData,
+        StoreRequestData, StoreResponseData,
+    },
+    managers::network::{
+        NetworkBehaviour, ProtocolSupport, RequestMessage, ResponseMessage, StreamProtocol,
+        request_response,
+    },
 };
 
 /// Application-specific protocols
@@ -14,7 +15,7 @@ use crate::controllers::rpc_controller::messages::{
 /// Only contains app-specific protocols (store, get, finality).
 /// Base protocols (kad, identify, ping) are provided by NetworkManager via NetworkBehaviour.
 #[derive(NetworkBehaviour)]
-pub struct NetworkProtocols {
+pub(crate) struct NetworkProtocols {
     pub store: request_response::json::Behaviour<
         RequestMessage<StoreRequestData>,
         ResponseMessage<StoreResponseData>,
@@ -36,7 +37,7 @@ impl NetworkProtocols {
     /// - Store: 15 seconds
     /// - Get: 15 seconds
     /// - Finality: 60 seconds
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let store_config =
             request_response::Config::default().with_request_timeout(ProtocolTimeouts::STORE);
 

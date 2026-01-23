@@ -2,7 +2,7 @@ mod error;
 
 use std::{path::Path, sync::Arc};
 
-pub use error::KeyValueStoreError;
+pub(crate) use error::KeyValueStoreError;
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
@@ -14,7 +14,7 @@ type TableDef = TableDefinition<'static, &'static [u8], &'static [u8]>;
 ///
 /// This provides type-safe access to a table in the key-value store,
 /// with automatic serialization/deserialization of values.
-pub struct Table<V> {
+pub(crate) struct Table<V> {
     db: Arc<Database>,
     table_def: TableDef,
     _marker: std::marker::PhantomData<V>,
@@ -30,7 +30,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
     }
 
     /// Store a value with a UUID key.
-    pub fn store(&self, key: Uuid, value: &V) -> Result<(), KeyValueStoreError> {
+    pub(crate) fn store(&self, key: Uuid, value: &V) -> Result<(), KeyValueStoreError> {
         let key_bytes = key.as_bytes();
         let value_bytes = serde_json::to_vec(value)?;
 
@@ -46,7 +46,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
     }
 
     /// Get a value by UUID key.
-    pub fn get(&self, key: Uuid) -> Result<Option<V>, KeyValueStoreError> {
+    pub(crate) fn get(&self, key: Uuid) -> Result<Option<V>, KeyValueStoreError> {
         let key_bytes = key.as_bytes();
 
         let read_txn = self.db.begin_read()?;
@@ -62,7 +62,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
     }
 
     /// Remove a value by UUID key. Returns true if the key existed.
-    pub fn remove(&self, key: Uuid) -> Result<bool, KeyValueStoreError> {
+    pub(crate) fn remove(&self, key: Uuid) -> Result<bool, KeyValueStoreError> {
         let key_bytes = key.as_bytes();
 
         let write_txn = self.db.begin_write()?;
@@ -80,7 +80,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
     }
 
     /// Check if a key exists.
-    pub fn exists(&self, key: Uuid) -> Result<bool, KeyValueStoreError> {
+    fn exists(&self, key: Uuid) -> Result<bool, KeyValueStoreError> {
         let key_bytes = key.as_bytes();
 
         let read_txn = self.db.begin_read()?;
@@ -91,7 +91,12 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
 
     /// Update a value using a closure, performing read-modify-write atomically.
     /// If the key doesn't exist, creates a new entry using the default value.
-    pub fn update<F>(&self, key: Uuid, default: V, update_fn: F) -> Result<(), KeyValueStoreError>
+    pub(crate) fn update<F>(
+        &self,
+        key: Uuid,
+        default: V,
+        update_fn: F,
+    ) -> Result<(), KeyValueStoreError>
     where
         F: FnOnce(&mut V),
     {
@@ -128,7 +133,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
 ///
 /// Provides access to typed tables backed by redb.
 /// Each table stores values keyed by UUID, with automatic JSON serialization.
-pub struct KeyValueStoreManager {
+pub(crate) struct KeyValueStoreManager {
     db: Arc<Database>,
 }
 
@@ -136,7 +141,7 @@ impl KeyValueStoreManager {
     /// Open or create a key-value store at the given path.
     ///
     /// Creates parent directories if they don't exist.
-    pub fn connect(path: impl AsRef<Path>) -> Result<Self, KeyValueStoreError> {
+    pub(crate) fn connect(path: impl AsRef<Path>) -> Result<Self, KeyValueStoreError> {
         let path = path.as_ref();
 
         // Ensure parent directory exists
@@ -160,7 +165,7 @@ impl KeyValueStoreManager {
     /// let results_table: Table<MyResult> = manager.table("operation_results")?;
     /// results_table.store(uuid, &my_result)?;
     /// ```
-    pub fn table<V: Serialize + DeserializeOwned>(
+    pub(crate) fn table<V: Serialize + DeserializeOwned>(
         &self,
         name: &'static str,
     ) -> Result<Table<V>, KeyValueStoreError> {
@@ -179,6 +184,8 @@ impl KeyValueStoreManager {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use serde::Deserialize;
     use tempfile::TempDir;
 

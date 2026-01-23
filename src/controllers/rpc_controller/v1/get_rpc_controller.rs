@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use network::{
+use crate::managers::network::{
     PeerId,
     message::{RequestMessage, ResponseMessage},
     request_response,
@@ -18,14 +18,14 @@ use crate::{
     services::{ResponseChannels, operation::OperationService as GenericOperationService},
 };
 
-pub struct GetRpcController {
+pub(crate) struct GetRpcController {
     get_operation_service: Arc<GenericOperationService<GetOperation>>,
     response_channels: Arc<ResponseChannels<GetResponseData>>,
     command_scheduler: CommandScheduler,
 }
 
 impl GetRpcController {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             get_operation_service: Arc::clone(context.get_operation_service()),
             response_channels: Arc::clone(context.get_response_channels()),
@@ -34,11 +34,11 @@ impl GetRpcController {
     }
 
     /// Returns a reference to the operation service for this controller.
-    pub fn operation_service(&self) -> &Arc<GenericOperationService<GetOperation>> {
+    pub(crate) fn operation_service(&self) -> &Arc<GenericOperationService<GetOperation>> {
         &self.get_operation_service
     }
 
-    pub async fn handle_request(
+    pub(crate) async fn   handle_request(
         &self,
         request: RequestMessage<GetRequestData>,
         channel: request_response::ResponseChannel<ResponseMessage<GetResponseData>>,

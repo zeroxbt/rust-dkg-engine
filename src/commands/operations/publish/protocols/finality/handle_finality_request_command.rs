@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use libp2p::PeerId;
-use network::{
+use crate::managers::network::{
     NetworkManager, ResponseMessage,
     message::{ResponseMessageHeader, ResponseMessageType},
     request_response::ResponseChannel,
 };
-use repository::RepositoryManager;
+use crate::managers::repository::RepositoryManager;
 use uuid::Uuid;
 
 use crate::{
@@ -21,7 +21,7 @@ use crate::{
 /// Command data for handling incoming finality requests from storage nodes.
 /// This runs on the publisher node when a storage node confirms it has stored the data.
 #[derive(Clone)]
-pub struct HandleFinalityRequestCommandData {
+pub(crate) struct HandleFinalityRequestCommandData {
     /// The operation ID for this finality request
     pub operation_id: Uuid,
     /// The UAL (Universal Asset Locator) of the knowledge collection
@@ -33,7 +33,7 @@ pub struct HandleFinalityRequestCommandData {
 }
 
 impl HandleFinalityRequestCommandData {
-    pub fn new(
+    pub(crate) fn new(
         operation_id: Uuid,
         ual: String,
         publish_operation_id: String,
@@ -48,14 +48,14 @@ impl HandleFinalityRequestCommandData {
     }
 }
 
-pub struct HandleFinalityRequestCommandHandler {
+pub(crate) struct HandleFinalityRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager<NetworkProtocols>>,
     response_channels: Arc<ResponseChannels<FinalityResponseData>>,
 }
 
 impl HandleFinalityRequestCommandHandler {
-    pub fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),

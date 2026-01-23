@@ -1,6 +1,6 @@
-use blockchain::BlockchainId;
+use crate::managers::blockchain::BlockchainId;
 use serde::{Deserialize, Serialize};
-use triple_store::Assertion;
+use crate::managers::triple_store::Assertion;
 use uuid::Uuid;
 use validator::{Validate as _, ValidationError};
 use validator_derive::Validate;
@@ -14,7 +14,7 @@ fn validate_blockchain_id(id: &BlockchainId) -> Result<(), ValidationError> {
 
 #[derive(Deserialize, Debug, Validate)]
 #[serde(rename_all = "camelCase")]
-pub struct PublishRequest {
+pub(crate) struct PublishRequest {
     #[validate(length(
         equal = 66,
         message = "dataset_root must be exactly 66 characters (0x + 64 hex chars)"
@@ -34,12 +34,12 @@ pub struct PublishRequest {
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct PublishResponse {
+pub(crate) struct PublishResponse {
     pub operation_id: Uuid,
 }
 
 impl PublishResponse {
-    pub fn new(operation_id: Uuid) -> Self {
+    pub(crate) fn new(operation_id: Uuid) -> Self {
         Self { operation_id }
     }
 }
