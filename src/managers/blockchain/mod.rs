@@ -546,6 +546,7 @@ impl BlockchainManager {
 
     /// Sets the stake for a node's identity (dev environment only).
     /// stake_wei should be the stake amount in wei (e.g., 50_000 * 10^18 for 50,000 tokens).
+    #[cfg(feature = "dev-tools")]
     pub(crate) async fn set_stake(
         &self,
         blockchain: &BlockchainId,
@@ -561,6 +562,7 @@ impl BlockchainManager {
 
     /// Sets the ask price for a node's identity (dev environment only).
     /// ask_wei should be the ask amount in wei (e.g., 0.2 * 10^18 for 0.2 tokens).
+    #[cfg(feature = "dev-tools")]
     pub(crate) async fn set_ask(
         &self,
         blockchain: &BlockchainId,
