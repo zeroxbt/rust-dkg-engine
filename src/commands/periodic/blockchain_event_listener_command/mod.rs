@@ -1,8 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::managers::blockchain::{
-    AssetStorageChangedFilter, BlockchainId, BlockchainManager, ContractChangedFilter, ContractLog,
-    ContractName, Hub, KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorage,
+    Address, AssetStorageChangedFilter, BlockchainId, BlockchainManager, ContractChangedFilter,
+    ContractLog, ContractName, Hub, KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorage,
     NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter, ParametersStorage,
     error::BlockchainError, utils::to_hex_string,
 };
@@ -83,60 +83,105 @@ impl BlockchainEventListenerCommandHandler {
 
         // Fetch events from all monitored contracts
         let mut all_events = Vec::new();
-        let mut contracts_to_update = Vec::new();
+        // Track (contract_name, contract_address) pairs to update
+        let mut contracts_to_update: Vec<(ContractName, String)> = Vec::new();
         let monitored = monitored_contract_events();
 
         for (contract_name, events_to_filter) in &monitored {
-            let last_checked_block = self
-                .repository_manager
-                .blockchain_repository()
-                .get_last_checked_block(blockchain_id.as_str(), contract_name.as_str())
+            // Get all addresses for this contract type (supports multiple for KnowledgeCollectionStorage)
+            let contract_addresses = self
+                .blockchain_manager
+                .get_all_contract_addresses(blockchain_id, contract_name)
                 .await?;
 
-            let from_block = last_checked_block + 1;
+            // If no addresses, use empty string for single-address contracts
+            let addresses_to_check: Vec<String> = if contract_addresses.is_empty() {
+                vec![String::new()]
+            } else {
+                contract_addresses
+                    .iter()
+                    .map(|addr| format!("{:?}", addr))
+                    .collect()
+            };
 
-            // Skip if we're already up to date
-            if from_block > current_block {
-                continue;
-            }
-
-            // Check for extended downtime - if we missed too many blocks, skip them
-            let blocks_behind = current_block.saturating_sub(last_checked_block);
-            if blocks_behind > self.max_blocks_to_sync {
-                tracing::warn!(
-                    "Extended downtime detected for {} on {}: {} blocks behind (max: {}). Skipping missed events.",
-                    contract_name.as_str(),
-                    blockchain_id,
-                    blocks_behind,
-                    self.max_blocks_to_sync
-                );
-
-                self.repository_manager
+            for contract_address_str in addresses_to_check {
+                let last_checked_block = self
+                    .repository_manager
                     .blockchain_repository()
-                    .update_last_checked_block(
+                    .get_last_checked_block(
                         blockchain_id.as_str(),
                         contract_name.as_str(),
-                        current_block,
-                        chrono::Utc::now(),
+                        &contract_address_str,
                     )
                     .await?;
-                continue;
+
+                let from_block = last_checked_block + 1;
+
+                // Skip if we're already up to date
+                if from_block > current_block {
+                    continue;
+                }
+
+                // Check for extended downtime - if we missed too many blocks, skip them
+                let blocks_behind = current_block.saturating_sub(last_checked_block);
+                if blocks_behind > self.max_blocks_to_sync {
+                    tracing::warn!(
+                        "Extended downtime detected for {} ({}) on {}: {} blocks behind (max: {}). Skipping missed events.",
+                        contract_name.as_str(),
+                        contract_address_str,
+                        blockchain_id,
+                        blocks_behind,
+                        self.max_blocks_to_sync
+                    );
+
+                    self.repository_manager
+                        .blockchain_repository()
+                        .update_last_checked_block(
+                            blockchain_id.as_str(),
+                            contract_name.as_str(),
+                            &contract_address_str,
+                            current_block,
+                            chrono::Utc::now(),
+                        )
+                        .await?;
+                    continue;
+                }
+
+                // Fetch events for this contract address
+                let events = if contract_address_str.is_empty() {
+                    // Single-address contract - use original method
+                    self.blockchain_manager
+                        .get_event_logs(
+                            blockchain_id,
+                            contract_name,
+                            events_to_filter,
+                            from_block,
+                            current_block,
+                        )
+                        .await?
+                } else {
+                    // Multi-address contract - fetch for specific address
+                    let contract_address: Address = contract_address_str
+                        .parse()
+                        .map_err(|_| BlockchainError::Custom(format!(
+                            "Invalid contract address: {}",
+                            contract_address_str
+                        )))?;
+                    self.blockchain_manager
+                        .get_event_logs_for_address(
+                            blockchain_id,
+                            contract_name.clone(),
+                            contract_address,
+                            events_to_filter,
+                            from_block,
+                            current_block,
+                        )
+                        .await?
+                };
+
+                all_events.extend(events);
+                contracts_to_update.push((contract_name.clone(), contract_address_str));
             }
-
-            // Fetch events for this contract
-            let events = self
-                .blockchain_manager
-                .get_event_logs(
-                    blockchain_id,
-                    contract_name,
-                    events_to_filter,
-                    from_block,
-                    current_block,
-                )
-                .await?;
-
-            all_events.extend(events);
-            contracts_to_update.push(contract_name.clone());
         }
 
         if !all_events.is_empty() {
@@ -175,12 +220,13 @@ impl BlockchainEventListenerCommandHandler {
         }
 
         // Update last checked block only after successful processing.
-        for contract_name in contracts_to_update {
+        for (contract_name, contract_address_str) in contracts_to_update {
             self.repository_manager
                 .blockchain_repository()
                 .update_last_checked_block(
                     blockchain_id.as_str(),
                     contract_name.as_str(),
+                    &contract_address_str,
                     current_block,
                     chrono::Utc::now(),
                 )

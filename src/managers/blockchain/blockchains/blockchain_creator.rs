@@ -77,7 +77,7 @@ pub(crate) mod paranets_registry {
     );
 }
 
-use std::{num::NonZeroUsize, sync::Arc};
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 
 use alloy::{
     network::{Ethereum, EthereumWallet},
@@ -105,8 +105,10 @@ pub(crate) type BlockchainProvider = Arc<DynProvider<Ethereum>>;
 
 pub(crate) struct Contracts {
     hub: Hub::HubInstance<BlockchainProvider>,
-    knowledge_collection_storage:
-        Option<KnowledgeCollectionStorage::KnowledgeCollectionStorageInstance<BlockchainProvider>>,
+    knowledge_collection_storages: HashMap<
+        Address,
+        KnowledgeCollectionStorage::KnowledgeCollectionStorageInstance<BlockchainProvider>,
+    >,
     staking: Staking::StakingInstance<BlockchainProvider>,
     identity_storage: IdentityStorage::IdentityStorageInstance<BlockchainProvider>,
     parameters_storage: ParametersStorage::ParametersStorageInstance<BlockchainProvider>,
@@ -154,17 +156,19 @@ impl Contracts {
         &self.parameters_storage
     }
 
-    pub(crate) fn knowledge_collection_storage(
+    /// Get a KnowledgeCollectionStorage contract by its address.
+    pub(crate) fn knowledge_collection_storage_by_address(
         &self,
-    ) -> Result<
+        address: &Address,
+    ) -> Option<
         &KnowledgeCollectionStorage::KnowledgeCollectionStorageInstance<BlockchainProvider>,
-        BlockchainError,
     > {
-        self.knowledge_collection_storage.as_ref().ok_or_else(|| {
-            BlockchainError::Custom(
-                "KnowledgeCollectionStorage contract is not initialized".to_string(),
-            )
-        })
+        self.knowledge_collection_storages.get(address)
+    }
+
+    /// Get all KnowledgeCollectionStorage contract addresses.
+    pub(crate) fn knowledge_collection_storage_addresses(&self) -> Vec<Address> {
+        self.knowledge_collection_storages.keys().copied().collect()
     }
 
     pub(crate) fn paranets_registry(
@@ -188,12 +192,13 @@ impl Contracts {
             ContractName::Profile => Ok(*self.profile.address()),
             ContractName::ParametersStorage => Ok(*self.parameters_storage.address()),
             ContractName::KnowledgeCollectionStorage => self
-                .knowledge_collection_storage
-                .as_ref()
-                .map(|storage| *storage.address())
+                .knowledge_collection_storages
+                .keys()
+                .next()
+                .copied()
                 .ok_or_else(|| {
                     BlockchainError::Custom(
-                        "KnowledgeCollectionStorage contract is not initialized".to_string(),
+                        "No KnowledgeCollectionStorage contracts initialized".to_string(),
                     )
                 }),
             ContractName::ParanetsRegistry => self
@@ -205,6 +210,18 @@ impl Contracts {
                         "ParanetsRegistry contract is not initialized".to_string(),
                     )
                 }),
+        }
+    }
+
+    /// Get all addresses for a contract type.
+    /// For KnowledgeCollectionStorage, returns all registered addresses.
+    /// For other contracts, returns a single address.
+    pub(crate) fn get_all_addresses(&self, contract_name: &ContractName) -> Vec<Address> {
+        match contract_name {
+            ContractName::KnowledgeCollectionStorage => {
+                self.knowledge_collection_storages.keys().copied().collect()
+            }
+            _ => self.get_address(contract_name).into_iter().collect(),
         }
     }
 
@@ -236,10 +253,18 @@ impl Contracts {
                     ParametersStorage::new(contract_address, provider.clone());
             }
             ContractName::KnowledgeCollectionStorage => {
-                self.knowledge_collection_storage = Some(KnowledgeCollectionStorage::new(
-                    contract_address,
-                    provider.clone(),
-                ));
+                // ADD contract instead of replacing (supports multiple storage contracts)
+                if !self.knowledge_collection_storages.contains_key(&contract_address) {
+                    self.knowledge_collection_storages.insert(
+                        contract_address,
+                        KnowledgeCollectionStorage::new(contract_address, provider.clone()),
+                    );
+                    tracing::info!(
+                        "Added KnowledgeCollectionStorage at {:?} (total: {})",
+                        contract_address,
+                        self.knowledge_collection_storages.len()
+                    );
+                }
             }
             ContractName::ParanetsRegistry => {
                 self.paranets_registry =
@@ -365,19 +390,34 @@ pub(crate) async fn initialize_contracts(
 
     let asset_storages_addresses = hub.getAllAssetStorages().call().await?;
 
-    let knowledge_collection_storage_addr =
-        asset_storages_addresses.iter().rev().find_map(|contract| {
-            match contract.name.parse::<ContractName>() {
-                Ok(ContractName::KnowledgeCollectionStorage) => Some(contract.addr),
-                _ => None,
-            }
-        });
-    let knowledge_collection_storage = knowledge_collection_storage_addr
-        .map(|addr| KnowledgeCollectionStorage::new(addr, provider.clone()));
+    // Collect ALL KnowledgeCollectionStorage contracts into HashMap
+    let mut knowledge_collection_storages = HashMap::new();
+    for contract in &asset_storages_addresses {
+        if let Ok(ContractName::KnowledgeCollectionStorage) = contract.name.parse::<ContractName>()
+        {
+            knowledge_collection_storages.insert(
+                contract.addr,
+                KnowledgeCollectionStorage::new(contract.addr, provider.clone()),
+            );
+            tracing::info!(
+                "Initialized KnowledgeCollectionStorage at {:?}",
+                contract.addr
+            );
+        }
+    }
+
+    if knowledge_collection_storages.is_empty() {
+        tracing::warn!("No KnowledgeCollectionStorage contracts found from Hub");
+    } else {
+        tracing::info!(
+            "Initialized {} KnowledgeCollectionStorage contract(s)",
+            knowledge_collection_storages.len()
+        );
+    }
 
     Ok(Contracts {
         hub: hub.clone(),
-        knowledge_collection_storage,
+        knowledge_collection_storages,
         staking: Staking::new(
             Address::from(
                 hub.getContractAddress("Staking".to_string())

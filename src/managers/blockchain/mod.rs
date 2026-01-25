@@ -662,6 +662,7 @@ impl BlockchainManager {
     pub(crate) async fn get_knowledge_collection_publisher(
         &self,
         blockchain: &BlockchainId,
+        contract_address: Address,
         knowledge_collection_id: u128,
     ) -> Result<Option<Address>, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
@@ -670,7 +671,7 @@ impl BlockchainManager {
             }
         })?;
         blockchain_impl
-            .get_knowledge_collection_publisher(knowledge_collection_id)
+            .get_knowledge_collection_publisher(contract_address, knowledge_collection_id)
             .await
     }
 
@@ -681,6 +682,7 @@ impl BlockchainManager {
     pub(crate) async fn get_knowledge_assets_range(
         &self,
         blockchain: &BlockchainId,
+        contract_address: Address,
         knowledge_collection_id: u128,
     ) -> Result<Option<(u64, u64, Vec<u64>)>, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
@@ -689,7 +691,7 @@ impl BlockchainManager {
             }
         })?;
         blockchain_impl
-            .get_knowledge_assets_range(knowledge_collection_id)
+            .get_knowledge_assets_range(contract_address, knowledge_collection_id)
             .await
     }
 
@@ -700,6 +702,7 @@ impl BlockchainManager {
     pub(crate) async fn get_knowledge_collection_merkle_root(
         &self,
         blockchain: &BlockchainId,
+        contract_address: Address,
         knowledge_collection_id: u128,
     ) -> Result<Option<String>, BlockchainError> {
         let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
@@ -708,7 +711,41 @@ impl BlockchainManager {
             }
         })?;
         blockchain_impl
-            .get_knowledge_collection_merkle_root(knowledge_collection_id)
+            .get_knowledge_collection_merkle_root(contract_address, knowledge_collection_id)
+            .await
+    }
+
+    /// Get all contract addresses for a contract type on a blockchain.
+    pub(crate) async fn get_all_contract_addresses(
+        &self,
+        blockchain: &BlockchainId,
+        contract_name: &ContractName,
+    ) -> Result<Vec<Address>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        Ok(blockchain_impl.get_all_contract_addresses(contract_name).await)
+    }
+
+    /// Get event logs for a specific contract address.
+    pub(crate) async fn get_event_logs_for_address(
+        &self,
+        blockchain: &BlockchainId,
+        contract_name: ContractName,
+        contract_address: Address,
+        event_signatures: &[B256],
+        from_block: u64,
+        current_block: u64,
+    ) -> Result<Vec<ContractLog>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
+            .get_event_logs_for_address(contract_name, contract_address, event_signatures, from_block, current_block)
             .await
     }
 

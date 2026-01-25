@@ -139,6 +139,7 @@ impl GetValidationService {
             .blockchain_manager
             .get_knowledge_collection_merkle_root(
                 &parsed_ual.blockchain,
+                parsed_ual.contract,
                 parsed_ual.knowledge_collection_id,
             )
             .await

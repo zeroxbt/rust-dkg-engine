@@ -358,13 +358,24 @@ impl EvmChain {
         from_block: u64,
         current_block: u64,
     ) -> Result<Vec<ContractLog>, BlockchainError> {
-        let topic_signatures: Vec<B256> = event_signatures.to_vec();
-
         let contracts = self.contracts().await;
-
         let address = contracts.get_address(contract_name)?;
         drop(contracts);
 
+        self.get_event_logs_for_address(contract_name.clone(), address, event_signatures, from_block, current_block).await
+    }
+
+    /// Get event logs for a specific contract address.
+    /// Use this for contracts that may have multiple addresses (e.g., KnowledgeCollectionStorage).
+    pub(crate) async fn get_event_logs_for_address(
+        &self,
+        contract_name: ContractName,
+        contract_address: Address,
+        event_signatures: &[B256],
+        from_block: u64,
+        current_block: u64,
+    ) -> Result<Vec<ContractLog>, BlockchainError> {
+        let topic_signatures: Vec<B256> = event_signatures.to_vec();
         let mut all_events = Vec::new();
 
         let mut block = from_block;
@@ -375,7 +386,7 @@ impl EvmChain {
             );
 
             let mut filter = Filter::new()
-                .address(address)
+                .address(contract_address)
                 .from_block(block)
                 .to_block(to_block);
             if !topic_signatures.is_empty() {
@@ -398,6 +409,15 @@ impl EvmChain {
         }
 
         Ok(all_events)
+    }
+
+    /// Get all contract addresses for a contract type.
+    pub(crate) async fn get_all_contract_addresses(
+        &self,
+        contract_name: &ContractName,
+    ) -> Vec<Address> {
+        let contracts = self.contracts().await;
+        contracts.get_all_addresses(contract_name)
     }
 
     pub(crate) async fn get_sharding_table_head(&self) -> Result<u128, BlockchainError> {
@@ -771,12 +791,24 @@ impl EvmChain {
     ///
     /// Validates that the knowledge collection ID exists by checking if it has a publisher.
     /// Returns the publisher address if the collection exists, or None if it doesn't.
+    ///
+    /// Returns an error if the contract address is not a registered KnowledgeCollectionStorage.
+    /// The node only works with contracts discovered at initialization or via NewAssetStorage events.
     pub(crate) async fn get_knowledge_collection_publisher(
         &self,
+        contract_address: Address,
         knowledge_collection_id: u128,
     ) -> Result<Option<Address>, BlockchainError> {
         let contracts = self.contracts().await;
-        let kc_storage = contracts.knowledge_collection_storage()?;
+        let kc_storage = contracts
+            .knowledge_collection_storage_by_address(&contract_address)
+            .ok_or_else(|| {
+                BlockchainError::Custom(format!(
+                    "KnowledgeCollectionStorage at {:?} is not registered. \
+                     The node only knows about contracts from initialization or NewAssetStorage events.",
+                    contract_address
+                ))
+            })?;
 
         let publisher = kc_storage
             .getLatestMerkleRootPublisher(U256::from(knowledge_collection_id))
@@ -784,8 +816,8 @@ impl EvmChain {
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(
-                    "Failed to get knowledge collection publisher: {}",
-                    e
+                    "Failed to get knowledge collection publisher from {:?}: {}",
+                    contract_address, e
                 ))
             })?;
 
@@ -801,19 +833,33 @@ impl EvmChain {
     ///
     /// Returns (start_token_id, end_token_id, burned_token_ids) or None if the collection
     /// doesn't exist.
+    ///
+    /// Returns an error if the contract address is not a registered KnowledgeCollectionStorage.
     pub(crate) async fn get_knowledge_assets_range(
         &self,
+        contract_address: Address,
         knowledge_collection_id: u128,
     ) -> Result<Option<(u64, u64, Vec<u64>)>, BlockchainError> {
         let contracts = self.contracts().await;
-        let kc_storage = contracts.knowledge_collection_storage()?;
+        let kc_storage = contracts
+            .knowledge_collection_storage_by_address(&contract_address)
+            .ok_or_else(|| {
+                BlockchainError::Custom(format!(
+                    "KnowledgeCollectionStorage at {:?} is not registered. \
+                     The node only knows about contracts from initialization or NewAssetStorage events.",
+                    contract_address
+                ))
+            })?;
 
         let result = kc_storage
             .getKnowledgeAssetsRange(U256::from(knowledge_collection_id))
             .call()
             .await
             .map_err(|e| {
-                BlockchainError::Custom(format!("Failed to get knowledge assets range: {}", e))
+                BlockchainError::Custom(format!(
+                    "Failed to get knowledge assets range from {:?}: {}",
+                    contract_address, e
+                ))
             })?;
 
         let start_token_id = result
@@ -842,12 +888,23 @@ impl EvmChain {
     ///
     /// Returns the merkle root as a hex string (with 0x prefix), or None if the collection
     /// doesn't exist.
+    ///
+    /// Returns an error if the contract address is not a registered KnowledgeCollectionStorage.
     pub(crate) async fn get_knowledge_collection_merkle_root(
         &self,
+        contract_address: Address,
         knowledge_collection_id: u128,
     ) -> Result<Option<String>, BlockchainError> {
         let contracts = self.contracts().await;
-        let kc_storage = contracts.knowledge_collection_storage()?;
+        let kc_storage = contracts
+            .knowledge_collection_storage_by_address(&contract_address)
+            .ok_or_else(|| {
+                BlockchainError::Custom(format!(
+                    "KnowledgeCollectionStorage at {:?} is not registered. \
+                     The node only knows about contracts from initialization or NewAssetStorage events.",
+                    contract_address
+                ))
+            })?;
 
         let merkle_root = kc_storage
             .getLatestMerkleRoot(U256::from(knowledge_collection_id))
@@ -855,8 +912,8 @@ impl EvmChain {
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(
-                    "Failed to get knowledge collection merkle root: {}",
-                    e
+                    "Failed to get knowledge collection merkle root from {:?}: {}",
+                    contract_address, e
                 ))
             })?;
 

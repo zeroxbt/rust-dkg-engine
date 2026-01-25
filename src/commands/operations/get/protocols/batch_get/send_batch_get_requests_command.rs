@@ -93,6 +93,7 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
                     .blockchain_manager
                     .get_knowledge_assets_range(
                         &parsed_ual.blockchain,
+                        parsed_ual.contract,
                         parsed_ual.knowledge_collection_id,
                     )
                     .await

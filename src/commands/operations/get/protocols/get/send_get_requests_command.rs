@@ -363,6 +363,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             .blockchain_manager
             .get_knowledge_collection_publisher(
                 &parsed_ual.blockchain,
+                parsed_ual.contract,
                 parsed_ual.knowledge_collection_id,
             )
             .await
@@ -403,6 +404,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                 .blockchain_manager
                 .get_knowledge_assets_range(
                     &parsed_ual.blockchain,
+                    parsed_ual.contract,
                     parsed_ual.knowledge_collection_id,
                 )
                 .await

@@ -23,10 +23,15 @@ impl BlockchainRepository {
         &self,
         blockchain_id: &str,
         contract: &str,
+        contract_address: &str,
     ) -> Result<u64> {
-        let model = Entity::find_by_id((blockchain_id.to_owned(), contract.to_owned()))
-            .one(self.conn.as_ref())
-            .await?;
+        let model = Entity::find_by_id((
+            blockchain_id.to_owned(),
+            contract.to_owned(),
+            contract_address.to_owned(),
+        ))
+        .one(self.conn.as_ref())
+        .await?;
 
         let Some(model) = model else {
             return Ok(0);
@@ -39,6 +44,7 @@ impl BlockchainRepository {
         &self,
         blockchain_id: &str,
         contract: &str,
+        contract_address: &str,
         last_checked_block: u64,
         last_checked_timestamp: DateTimeUtc,
     ) -> Result<()> {
@@ -48,12 +54,13 @@ impl BlockchainRepository {
         let model = ActiveModel {
             id: ActiveValue::Set(blockchain_id.to_owned()),
             contract: ActiveValue::Set(contract.to_owned()),
+            contract_address: ActiveValue::Set(contract_address.to_owned()),
             last_checked_block: ActiveValue::Set(last_checked_block),
             last_checked_timestamp: ActiveValue::Set(last_checked_timestamp),
         };
         Entity::insert(model)
             .on_conflict(
-                OnConflict::columns([Column::Id, Column::Contract])
+                OnConflict::columns([Column::Id, Column::Contract, Column::ContractAddress])
                     .update_columns([Column::LastCheckedBlock, Column::LastCheckedTimestamp])
                     .to_owned(),
             )
