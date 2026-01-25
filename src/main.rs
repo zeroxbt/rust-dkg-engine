@@ -32,7 +32,7 @@ use crate::{
         repository::RepositoryManager,
         triple_store::TripleStoreManager,
     },
-    operations::{GetOperation, PublishOperation},
+    operations::{BatchGetOperation, GetOperation, PublishOperation},
     services::{
         GetValidationService, PeerDiscoveryTracker, ResponseChannels, TripleStoreService,
         operation::OperationService as GenericOperationService,
@@ -66,12 +66,13 @@ async fn main() {
     let store_response_channels = Arc::new(ResponseChannels::new());
     let get_response_channels = Arc::new(ResponseChannels::new());
     let finality_response_channels = Arc::new(ResponseChannels::new());
+    let batch_get_response_channels = Arc::new(ResponseChannels::new());
     let get_validation_service =
         Arc::new(GetValidationService::new(Arc::clone(&blockchain_manager)));
     let triple_store_service = Arc::new(TripleStoreService::new(Arc::clone(&triple_store_manager)));
 
     // Initialize operation services (need result_store and request_tracker)
-    let (publish_operation_service, get_operation_service, pending_storage_service) =
+    let (publish_operation_service, get_operation_service, batch_get_operation_service, pending_storage_service) =
         initialize_services(&paths, &repository_manager, &network_manager);
 
     let peer_discovery_tracker = Arc::new(PeerDiscoveryTracker::new());
@@ -89,8 +90,10 @@ async fn main() {
         Arc::clone(&store_response_channels),
         Arc::clone(&get_response_channels),
         Arc::clone(&finality_response_channels),
+        Arc::clone(&batch_get_response_channels),
         Arc::clone(&get_operation_service),
         Arc::clone(&publish_operation_service),
+        Arc::clone(&batch_get_operation_service),
     ));
 
     #[cfg(feature = "dev-tools")]
@@ -246,6 +249,7 @@ fn initialize_services(
 ) -> (
     Arc<GenericOperationService<PublishOperation>>,
     Arc<GenericOperationService<GetOperation>>,
+    Arc<GenericOperationService<BatchGetOperation>>,
     Arc<PendingStorageService>,
 ) {
     // Create shared key-value store manager using centralized path
@@ -275,10 +279,19 @@ fn initialize_services(
         )
         .expect("Failed to create get operation service"),
     );
+    let batch_get_operation_service = Arc::new(
+        GenericOperationService::<BatchGetOperation>::new(
+            Arc::clone(repository_manager),
+            Arc::clone(network_manager),
+            &kv_store_manager,
+        )
+        .expect("Failed to create batch get operation service"),
+    );
 
     (
         publish_operation_service,
         get_operation_service,
+        batch_get_operation_service,
         pending_storage_service,
     )
 }

@@ -16,8 +16,10 @@ impl ProtocolTimeouts {
     /// Finality protocol timeout
     pub(crate) const FINALITY: Duration = Duration::from_secs(60);
 
+    /// Batch get protocol timeout
+    pub(crate) const BATCH_GET: Duration = Duration::from_secs(30);
+
     // Future protocols (not yet implemented in Rust):
     // UPDATE: 60 seconds
     // ASK: 60 seconds
-    // BATCH_GET: 30 seconds
 }

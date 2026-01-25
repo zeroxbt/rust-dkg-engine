@@ -15,7 +15,7 @@ use crate::{
         blockchain::{AccessPolicy, BlockchainManager},
         network::NetworkManager,
         repository::RepositoryManager,
-        triple_store::{Assertion, TokenIds, Visibility},
+        triple_store::{Assertion, MAX_TOKENS_PER_KC, TokenIds, Visibility},
     },
     operations::{GetOperation, GetOperationResult},
     services::{
@@ -74,53 +74,6 @@ impl SendGetRequestsCommandHandler {
             network_manager: Arc::clone(context.network_manager()),
             get_operation_service: Arc::clone(context.get_operation_service()),
             get_validation_service: Arc::clone(context.get_validation_service()),
-        }
-    }
-
-    /// Maximum number of knowledge assets per collection.
-    /// Used to convert between global token IDs and local 1-based indices.
-    /// Global token ID formula: (kc_id - 1) * MAX_TOKENS_PER_KC + local_token_id
-    const MAX_TOKENS_PER_KC: u64 = 1_000_000;
-
-    /// Build token IDs from on-chain data or parsed UAL.
-    ///
-    /// If requesting a specific asset, returns a single token ID.
-    /// If requesting entire collection, converts the on-chain global token ID range
-    /// to local 1-based indices used for storage.
-    ///
-    /// Note: The blockchain returns global token IDs using the formula:
-    /// `global_token_id = (kc_id - 1) * 1_000_000 + local_token_id`
-    /// but knowledge assets are stored with 1-based local indices within each collection.
-    /// This function converts the global range back to local indices.
-    fn build_token_ids_from_chain(
-        parsed_ual: &ParsedUal,
-        chain_range: Option<(u64, u64, Vec<u64>)>,
-    ) -> TokenIds {
-        match parsed_ual.knowledge_asset_id {
-            Some(asset_id) => TokenIds::single(asset_id as u64),
-            None => {
-                // Use on-chain data if available
-                match chain_range {
-                    Some((global_start, global_end, global_burned)) => {
-                        // Convert global token IDs to local 1-based indices
-                        // Global: (kc_id - 1) * 1_000_000 + local_id
-                        // Local: global - (kc_id - 1) * 1_000_000
-                        let offset = (parsed_ual.knowledge_collection_id as u64 - 1)
-                            * Self::MAX_TOKENS_PER_KC;
-                        let local_start = global_start.saturating_sub(offset);
-                        let local_end = global_end.saturating_sub(offset);
-                        let local_burned: Vec<u64> = global_burned
-                            .into_iter()
-                            .map(|b| b.saturating_sub(offset))
-                            .collect();
-                        TokenIds::new(local_start, local_end, local_burned)
-                    }
-                    None => {
-                        // Fallback for old ContentAssetStorage contracts
-                        TokenIds::single(1)
-                    }
-                }
-            }
         }
     }
 
@@ -313,12 +266,7 @@ impl SendGetRequestsCommandHandler {
                 // Validate the assertion
                 let is_valid = self
                     .get_validation_service
-                    .validate_response(
-                        &assertion.public,
-                        assertion.private.as_deref(),
-                        parsed_ual,
-                        visibility,
-                    )
+                    .validate_response(assertion, parsed_ual, visibility)
                     .await;
 
                 if !is_valid {
@@ -447,37 +395,63 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             }
         }
 
-        // Get token IDs range from blockchain
-        let chain_range = match self
-            .blockchain_manager
-            .get_knowledge_assets_range(&parsed_ual.blockchain, parsed_ual.knowledge_collection_id)
-            .await
-        {
-            Ok(range) => {
-                if let Some((start, end, ref burned)) = range {
-                    tracing::debug!(
-                        operation_id = %operation_id,
-                        start_token_id = start,
-                        end_token_id = end,
-                        burned_count = burned.len(),
-                        "Retrieved knowledge assets range from chain"
-                    );
+        let token_ids = if let Some(token_id) = parsed_ual.knowledge_asset_id {
+            TokenIds::single(token_id as u64)
+        } else {
+            // Get token IDs range from blockchain
+            let chain_range = match self
+                .blockchain_manager
+                .get_knowledge_assets_range(
+                    &parsed_ual.blockchain,
+                    parsed_ual.knowledge_collection_id,
+                )
+                .await
+            {
+                Ok(range) => {
+                    if let Some((start, end, ref burned)) = range {
+                        tracing::debug!(
+                            operation_id = %operation_id,
+                            start_token_id = start,
+                            end_token_id = end,
+                            burned_count = burned.len(),
+                            "Retrieved knowledge assets range from chain"
+                        );
+                    }
+                    range
                 }
-                range
-            }
-            Err(e) => {
-                // Fallback for old ContentAssetStorage contracts
-                tracing::warn!(
-                    operation_id = %operation_id,
-                    error = %e,
-                    "Failed to get knowledge assets range, using fallback"
-                );
-                None
+                Err(e) => {
+                    // Fallback for old ContentAssetStorage contracts
+                    tracing::warn!(
+                        operation_id = %operation_id,
+                        error = %e,
+                        "Failed to get knowledge assets range, using fallback"
+                    );
+                    None
+                }
+            };
+
+            // Use on-chain data if available
+            match chain_range {
+                Some((global_start, global_end, global_burned)) => {
+                    // Convert global token IDs to local 1-based indices
+                    // Global: (kc_id - 1) * 1_000_000 + local_id
+                    // Local: global - (kc_id - 1) * 1_000_000
+                    let offset =
+                        (parsed_ual.knowledge_collection_id as u64 - 1) * MAX_TOKENS_PER_KC;
+                    let local_start = global_start.saturating_sub(offset);
+                    let local_end = global_end.saturating_sub(offset);
+                    let local_burned: Vec<u64> = global_burned
+                        .into_iter()
+                        .map(|b| b.saturating_sub(offset))
+                        .collect();
+                    TokenIds::new(local_start, local_end, local_burned)
+                }
+                None => {
+                    // Fallback for old ContentAssetStorage contracts
+                    TokenIds::single(1)
+                }
             }
         };
-
-        // Build token IDs for local query
-        let token_ids = Self::build_token_ids_from_chain(&parsed_ual, chain_range.clone());
 
         // Try local triple store query first (local-first pattern)
         let local_result = self
@@ -491,12 +465,12 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             .await;
 
         if let Some(result) = local_result
-            && result.has_data()
+            && result.assertion.has_data()
         {
             tracing::debug!(
                 operation_id = %operation_id,
-                public_count = result.public.len(),
-                has_private = result.private.is_some(),
+                public_count = result.assertion.public.len(),
+                has_private = result.assertion.private.is_some(),
                 has_metadata = result.metadata.is_some(),
                 "Found data locally, validating..."
             );
@@ -504,27 +478,22 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             // Validate local result
             let is_valid = self
                 .get_validation_service
-                .validate_response(
-                    &result.public,
-                    result.private.as_deref(),
-                    &parsed_ual,
-                    data.visibility,
-                )
+                .validate_response(&result.assertion, &parsed_ual, data.visibility)
                 .await;
 
             if is_valid {
                 tracing::info!(
                     operation_id = %operation_id,
-                    public_count = result.public.len(),
-                    has_private = result.private.is_some(),
+                    public_count = result.assertion.public.len(),
+                    has_private = result.assertion.private.is_some(),
                     has_metadata = result.metadata.is_some(),
                     "Local data validated, completing operation"
                 );
 
                 // Build the assertion from local data and store result
                 let assertion = Assertion {
-                    public: result.public.clone(),
-                    private: result.private.clone(),
+                    public: result.assertion.public.clone(),
+                    private: result.assertion.private.clone(),
                 };
                 let get_result = GetOperationResult::new(assertion, result.metadata.clone());
 

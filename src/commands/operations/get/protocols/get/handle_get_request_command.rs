@@ -334,22 +334,17 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             .await;
 
         match query_result {
-            Some(result) if result.has_data() => {
+            Some(result) if result.assertion.has_data() => {
                 tracing::info!(
                     operation_id = %operation_id,
                     ual = %ual,
-                    public_count = result.public.len(),
-                    has_private = result.private.is_some(),
+                    public_count = result.assertion.public.len(),
+                    has_private = result.assertion.private.is_some(),
                     has_metadata = result.metadata.is_some(),
                     "Found assertion data - sending ACK"
                 );
 
-                let assertion = Assertion {
-                    public: result.public,
-                    private: result.private,
-                };
-
-                self.send_ack(channel, operation_id, assertion, result.metadata)
+                self.send_ack(channel, operation_id, result.assertion, result.metadata)
                     .await;
             }
             _ => {

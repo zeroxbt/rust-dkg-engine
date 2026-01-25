@@ -3,12 +3,18 @@ use std::sync::Arc;
 use super::{
     command_executor::CommandExecutionRequest,
     operations::{
-        get::protocols::get::{
-            handle_get_request_command::{
-                HandleGetRequestCommandData, HandleGetRequestCommandHandler,
+        get::protocols::{
+            batch_get::{
+                HandleBatchGetRequestCommandData, HandleBatchGetRequestCommandHandler,
+                SendBatchGetRequestsCommandData, SendBatchGetRequestsCommandHandler,
             },
-            send_get_requests_command::{
-                SendGetRequestsCommandData, SendGetRequestsCommandHandler,
+            get::{
+                handle_get_request_command::{
+                    HandleGetRequestCommandData, HandleGetRequestCommandHandler,
+                },
+                send_get_requests_command::{
+                    SendGetRequestsCommandData, SendGetRequestsCommandHandler,
+                },
             },
         },
         publish::protocols::{
@@ -139,6 +145,14 @@ command_registry! {
     handle_get_request: HandleGetRequest => {
         data: HandleGetRequestCommandData,
         handler: HandleGetRequestCommandHandler
+    },
+    send_batch_get_requests: SendBatchGetRequests => {
+        data: SendBatchGetRequestsCommandData,
+        handler: SendBatchGetRequestsCommandHandler
+    },
+    handle_batch_get_request: HandleBatchGetRequest => {
+        data: HandleBatchGetRequestCommandData,
+        handler: HandleBatchGetRequestCommandHandler
     }
 }
 

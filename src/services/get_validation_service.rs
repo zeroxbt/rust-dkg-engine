@@ -4,7 +4,7 @@ use crate::{
     managers::{
         blockchain::BlockchainManager,
         triple_store::{
-            Visibility, group_nquads_by_subject,
+            Assertion, Visibility, group_nquads_by_subject,
             query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
         },
     },
@@ -35,8 +35,7 @@ impl GetValidationService {
     /// Returns true if the response is valid, false otherwise.
     pub(crate) async fn validate_response(
         &self,
-        public_triples: &[String],
-        private_triples: Option<&[String]>,
+        assertion: &Assertion,
         parsed_ual: &ParsedUal,
         visibility: Visibility,
     ) -> bool {
@@ -46,17 +45,17 @@ impl GetValidationService {
         }
 
         // If only private content is requested and there's no public, skip validation
-        if public_triples.is_empty()
-            && private_triples.is_some()
+        if assertion.public.is_empty()
+            && assertion.private.is_some()
             && visibility == Visibility::Private
         {
             return true;
         }
 
         // Validate public assertion if present
-        if !public_triples.is_empty() {
+        if !assertion.public.is_empty() {
             match self
-                .validate_public_assertion(public_triples, parsed_ual)
+                .validate_public_assertion(&assertion.public, parsed_ual)
                 .await
             {
                 Ok(true) => {}
@@ -72,10 +71,10 @@ impl GetValidationService {
         }
 
         // Validate private assertion if present
-        if let Some(private) = private_triples
+        if let Some(private) = &assertion.private
             && !private.is_empty()
         {
-            match self.validate_private_assertion(public_triples, private) {
+            match self.validate_private_assertion(&assertion.public, private) {
                 Ok(true) => {}
                 Ok(false) => {
                     tracing::debug!("Private assertion validation failed");

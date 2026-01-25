@@ -1,8 +1,8 @@
 use super::behaviour::NetworkProtocols;
 use crate::{
     controllers::rpc_controller::messages::{
-        FinalityRequestData, FinalityResponseData, GetRequestData, GetResponseData,
-        StoreRequestData, StoreResponseData,
+        BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
+        GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
     },
     managers::network::{
         PeerId, ProtocolDispatch, RequestMessage, ResponseMessage, request_response,
@@ -22,6 +22,10 @@ pub(crate) enum ProtocolRequest {
         peer: PeerId,
         message: RequestMessage<FinalityRequestData>,
     },
+    BatchGet {
+        peer: PeerId,
+        message: RequestMessage<BatchGetRequestData>,
+    },
 }
 
 pub(crate) enum ProtocolResponse {
@@ -37,6 +41,10 @@ pub(crate) enum ProtocolResponse {
         channel: request_response::ResponseChannel<ResponseMessage<FinalityResponseData>>,
         message: ResponseMessage<FinalityResponseData>,
     },
+    BatchGet {
+        channel: request_response::ResponseChannel<ResponseMessage<BatchGetResponseData>>,
+        message: ResponseMessage<BatchGetResponseData>,
+    },
 }
 
 impl ProtocolDispatch for NetworkProtocols {
@@ -49,6 +57,9 @@ impl ProtocolDispatch for NetworkProtocols {
             ProtocolRequest::Get { peer, message } => self.get.send_request(&peer, message),
             ProtocolRequest::Finality { peer, message } => {
                 self.finality.send_request(&peer, message)
+            }
+            ProtocolRequest::BatchGet { peer, message } => {
+                self.batch_get.send_request(&peer, message)
             }
         }
     }
@@ -63,6 +74,9 @@ impl ProtocolDispatch for NetworkProtocols {
             }
             ProtocolResponse::Finality { channel, message } => {
                 let _ = self.finality.send_response(channel, message);
+            }
+            ProtocolResponse::BatchGet { channel, message } => {
+                let _ = self.batch_get.send_response(channel, message);
             }
         }
     }

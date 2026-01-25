@@ -9,9 +9,9 @@ use crate::{
     config::Config,
     controllers::rpc_controller::{
         NetworkProtocols,
-        messages::{FinalityResponseData, GetResponseData, StoreResponseData},
+        messages::{BatchGetResponseData, FinalityResponseData, GetResponseData, StoreResponseData},
     },
-    operations::{GetOperation, PublishOperation},
+    operations::{BatchGetOperation, GetOperation, PublishOperation},
     services::{
         GetValidationService, PeerDiscoveryTracker, ResponseChannels, TripleStoreService,
         operation::OperationService as GenericOperationService,
@@ -32,8 +32,10 @@ pub(crate) struct Context {
     store_response_channels: Arc<ResponseChannels<StoreResponseData>>,
     get_response_channels: Arc<ResponseChannels<GetResponseData>>,
     finality_response_channels: Arc<ResponseChannels<FinalityResponseData>>,
+    batch_get_response_channels: Arc<ResponseChannels<BatchGetResponseData>>,
     get_operation_service: Arc<GenericOperationService<GetOperation>>,
     publish_operation_service: Arc<GenericOperationService<PublishOperation>>,
+    batch_get_operation_service: Arc<GenericOperationService<BatchGetOperation>>,
 }
 
 impl Context {
@@ -51,8 +53,10 @@ impl Context {
         store_response_channels: Arc<ResponseChannels<StoreResponseData>>,
         get_response_channels: Arc<ResponseChannels<GetResponseData>>,
         finality_response_channels: Arc<ResponseChannels<FinalityResponseData>>,
+        batch_get_response_channels: Arc<ResponseChannels<BatchGetResponseData>>,
         get_operation_service: Arc<GenericOperationService<GetOperation>>,
         publish_operation_service: Arc<GenericOperationService<PublishOperation>>,
+        batch_get_operation_service: Arc<GenericOperationService<BatchGetOperation>>,
     ) -> Self {
         Self {
             config,
@@ -67,8 +71,10 @@ impl Context {
             store_response_channels,
             get_response_channels,
             finality_response_channels,
+            batch_get_response_channels,
             get_operation_service,
             publish_operation_service,
+            batch_get_operation_service,
         }
     }
 
@@ -126,5 +132,13 @@ impl Context {
 
     pub(crate) fn publish_operation_service(&self) -> &Arc<GenericOperationService<PublishOperation>> {
         &self.publish_operation_service
+    }
+
+    pub(crate) fn batch_get_response_channels(&self) -> &Arc<ResponseChannels<BatchGetResponseData>> {
+        &self.batch_get_response_channels
+    }
+
+    pub(crate) fn batch_get_operation_service(&self) -> &Arc<GenericOperationService<BatchGetOperation>> {
+        &self.batch_get_operation_service
     }
 }

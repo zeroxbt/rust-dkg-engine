@@ -1,8 +1,8 @@
 use super::constants::ProtocolTimeouts;
 use crate::{
     controllers::rpc_controller::messages::{
-        FinalityRequestData, FinalityResponseData, GetRequestData, GetResponseData,
-        StoreRequestData, StoreResponseData,
+        BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
+        GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
     },
     managers::network::{
         NetworkBehaviour, ProtocolSupport, RequestMessage, ResponseMessage, StreamProtocol,
@@ -12,7 +12,7 @@ use crate::{
 
 /// Application-specific protocols
 ///
-/// Only contains app-specific protocols (store, get, finality).
+/// Only contains app-specific protocols (store, get, finality, batch_get).
 /// Base protocols (kad, identify, ping) are provided by NetworkManager via NetworkBehaviour.
 #[derive(NetworkBehaviour)]
 pub(crate) struct NetworkProtocols {
@@ -27,6 +27,10 @@ pub(crate) struct NetworkProtocols {
     pub finality: request_response::json::Behaviour<
         RequestMessage<FinalityRequestData>,
         ResponseMessage<FinalityResponseData>,
+    >,
+    pub batch_get: request_response::json::Behaviour<
+        RequestMessage<BatchGetRequestData>,
+        ResponseMessage<BatchGetResponseData>,
     >,
 }
 
@@ -75,10 +79,25 @@ impl NetworkProtocols {
             finality_config,
         );
 
+        let batch_get_config =
+            request_response::Config::default().with_request_timeout(ProtocolTimeouts::BATCH_GET);
+
+        let batch_get = request_response::json::Behaviour::<
+            RequestMessage<BatchGetRequestData>,
+            ResponseMessage<BatchGetResponseData>,
+        >::new(
+            [(
+                StreamProtocol::new("/batch-get/1.0.0"),
+                ProtocolSupport::Full,
+            )],
+            batch_get_config,
+        );
+
         Self {
             store,
             get,
             finality,
+            batch_get,
         }
     }
 }

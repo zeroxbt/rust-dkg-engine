@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+/// Maximum number of knowledge assets per collection.
+/// Used to convert between global token IDs and local 1-based indices.
+/// Global token ID formula: (kc_id - 1) * MAX_TOKENS_PER_KC + local_token_id
+pub(crate) const MAX_TOKENS_PER_KC: u64 = 1_000_000;
+
 /// Token ID range for knowledge assets within a collection.
 ///
 /// Represents the range of knowledge asset token IDs, including

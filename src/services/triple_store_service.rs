@@ -12,16 +12,8 @@ use crate::{
 /// Result of querying assertion data from the triple store.
 #[derive(Debug, Clone)]
 pub(crate) struct AssertionQueryResult {
-    pub public: Vec<String>,
-    pub private: Option<Vec<String>>,
+    pub assertion: Assertion,
     pub metadata: Option<Vec<String>>,
-}
-
-impl AssertionQueryResult {
-    /// Check if the result contains any data.
-    pub(crate) fn has_data(&self) -> bool {
-        !self.public.is_empty() || self.private.as_ref().is_some_and(|p| !p.is_empty())
-    }
 }
 
 /// Service for querying assertion data from the triple store.
@@ -57,7 +49,7 @@ impl TripleStoreService {
     ) -> Option<AssertionQueryResult> {
         let kc_ual = parsed_ual.knowledge_collection_ual();
 
-        let (public_triples, private_triples) = if parsed_ual.knowledge_asset_id.is_some() {
+        let assertion = if parsed_ual.knowledge_asset_id.is_some() {
             self.query_single_asset(&parsed_ual.to_ual_string(), visibility)
                 .await?
         } else {
@@ -66,7 +58,7 @@ impl TripleStoreService {
         };
 
         // Check if we found any data
-        if public_triples.is_empty() && private_triples.is_none() {
+        if !assertion.has_data() {
             return None;
         }
 
@@ -78,18 +70,13 @@ impl TripleStoreService {
         };
 
         Some(AssertionQueryResult {
-            public: public_triples,
-            private: private_triples,
+            assertion,
             metadata,
         })
     }
 
     /// Query a single knowledge asset.
-    async fn query_single_asset(
-        &self,
-        ka_ual: &str,
-        visibility: Visibility,
-    ) -> Option<(Vec<String>, Option<Vec<String>>)> {
+    async fn query_single_asset(&self, ka_ual: &str, visibility: Visibility) -> Option<Assertion> {
         // Query public triples if requested
         let public = if visibility == Visibility::Public || visibility == Visibility::All {
             match self
@@ -121,7 +108,7 @@ impl TripleStoreService {
             None
         };
 
-        Some((public, private))
+        Some(Assertion::new(public, private))
     }
 
     /// Query a knowledge collection.
@@ -130,7 +117,7 @@ impl TripleStoreService {
         kc_ual: &str,
         token_ids: &TokenIds,
         visibility: Visibility,
-    ) -> Option<(Vec<String>, Option<Vec<String>>)> {
+    ) -> Option<Assertion> {
         // First check if first and last KA exist (like JS)
         let first_ka_ual = format!("{}/{}/public", kc_ual, token_ids.start_token_id());
         let last_ka_ual = format!("{}/{}/public", kc_ual, token_ids.end_token_id());
@@ -197,7 +184,7 @@ impl TripleStoreService {
             None
         };
 
-        Some((public, private))
+        Some(Assertion::new(public, private))
     }
 
     /// Query metadata for a knowledge collection.
@@ -220,6 +207,36 @@ impl TripleStoreService {
                 None
             }
         }
+    }
+
+    /// Query assertion data for multiple UALs in batch.
+    ///
+    /// Iterates over the provided UALs and queries each one, collecting results
+    /// into a HashMap. Only UALs that have data are included in the result.
+    ///
+    /// This method is used by the batch get protocol to efficiently query
+    /// multiple assets in a single operation.
+    pub(crate) async fn query_assertions_batch(
+        &self,
+        uals_with_token_ids: &[(ParsedUal, TokenIds)],
+        visibility: Visibility,
+        include_metadata: bool,
+    ) -> HashMap<String, AssertionQueryResult> {
+        let mut results = HashMap::new();
+
+        for (parsed_ual, token_ids) in uals_with_token_ids {
+            let ual_string = parsed_ual.to_ual_string();
+
+            if let Some(result) = self
+                .query_assertion(parsed_ual, token_ids, visibility, include_metadata)
+                .await
+                && result.assertion.has_data()
+            {
+                results.insert(ual_string, result);
+            }
+        }
+
+        results
     }
 
     /// Insert a knowledge collection into the triple store.

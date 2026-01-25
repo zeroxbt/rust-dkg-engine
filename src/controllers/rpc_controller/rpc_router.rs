@@ -11,8 +11,8 @@ use super::{
 use crate::{
     context::Context,
     controllers::rpc_controller::v1::{
-        finality_rpc_controller::FinalityRpcController, get_rpc_controller::GetRpcController,
-        store_rpc_controller::StoreRpcController,
+        batch_get_rpc_controller::BatchGetRpcController, finality_rpc_controller::FinalityRpcController,
+        get_rpc_controller::GetRpcController, store_rpc_controller::StoreRpcController,
     },
     managers::network::{
         CompositeBehaviour, CompositeBehaviourEvent, NetworkBehaviour, NetworkManager, SwarmEvent,
@@ -30,6 +30,7 @@ pub(crate) struct RpcRouter {
     store_controller: Arc<StoreRpcController>,
     get_controller: Arc<GetRpcController>,
     finality_controller: Arc<FinalityRpcController>,
+    batch_get_controller: Arc<BatchGetRpcController>,
     peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
     semaphore: Arc<Semaphore>,
 }
@@ -41,6 +42,7 @@ impl RpcRouter {
             store_controller: Arc::new(StoreRpcController::new(Arc::clone(&context))),
             get_controller: Arc::new(GetRpcController::new(Arc::clone(&context))),
             finality_controller: Arc::new(FinalityRpcController::new(Arc::clone(&context))),
+            batch_get_controller: Arc::new(BatchGetRpcController::new(Arc::clone(&context))),
             peer_discovery_tracker: Arc::clone(context.peer_discovery_tracker()),
             semaphore: Arc::new(Semaphore::new(NETWORK_EVENT_QUEUE_PARALLELISM)),
         }
@@ -310,6 +312,85 @@ impl RpcRouter {
                                 %peer,
                                 ?request_id,
                                 "Finality response sent successfully"
+                            );
+                        }
+                    },
+                    NetworkProtocolsEvent::BatchGet(inner_event) => match inner_event {
+                        request_response::Event::Message { message, peer, .. } => {
+                            match message {
+                                Message::Request {
+                                    request, channel, ..
+                                } => {
+                                    self.batch_get_controller
+                                        .handle_request(request, channel, peer)
+                                        .await;
+                                }
+                                Message::Response {
+                                    response,
+                                    request_id,
+                                } => {
+                                    // Complete pending request for send_request callers
+                                    self.batch_get_controller
+                                        .operation_service()
+                                        .pending_requests()
+                                        .complete_success(request_id, response.data);
+                                }
+                            };
+                        }
+                        request_response::Event::OutboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                            ..
+                        } => {
+                            tracing::warn!(
+                                %peer,
+                                ?request_id,
+                                ?error,
+                                "Batch get request failed"
+                            );
+
+                            // Complete pending request with failure for send_request callers
+                            let request_error = match &error {
+                                request_response::OutboundFailure::Timeout => RequestError::Timeout,
+                                request_response::OutboundFailure::ConnectionClosed => {
+                                    RequestError::ConnectionFailed("Connection closed".to_string())
+                                }
+                                request_response::OutboundFailure::DialFailure => {
+                                    RequestError::NotConnected
+                                }
+                                request_response::OutboundFailure::UnsupportedProtocols => {
+                                    RequestError::ConnectionFailed(
+                                        "Unsupported protocols".to_string(),
+                                    )
+                                }
+                                _ => RequestError::ConnectionFailed(error.to_string()),
+                            };
+                            self.batch_get_controller
+                                .operation_service()
+                                .pending_requests()
+                                .complete_failure(request_id, request_error);
+                        }
+                        request_response::Event::InboundFailure {
+                            peer,
+                            request_id,
+                            error,
+                            ..
+                        } => {
+                            tracing::warn!(
+                                %peer,
+                                ?request_id,
+                                ?error,
+                                "Failed to respond to batch get request from peer"
+                            );
+                        }
+                        request_response::Event::ResponseSent {
+                            peer, request_id, ..
+                        } => {
+                            tracing::trace!(
+                                %peer,
+                                ?request_id,
+                                "Batch get response sent successfully"
                             );
                         }
                     },
