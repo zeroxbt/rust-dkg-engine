@@ -17,17 +17,24 @@ const SYNC_PERIOD: Duration = Duration::from_secs(30);
 /// Maximum number of new KCs to enqueue per contract per cycle
 const MAX_NEW_KCS_PER_CONTRACT: u64 = 1000;
 
-/// Maximum number of KCs to process per sync cycle per contract
-#[allow(dead_code)]
-const SYNC_BATCH_SIZE: u64 = 1000;
-
-/// Maximum retry attempts before marking a KC as permanently failed
-#[allow(dead_code)]
+/// Maximum retry attempts before a KC is no longer retried (stays in DB for future recovery)
 const MAX_RETRY_ATTEMPTS: u32 = 2;
+
+/// Maximum number of KCs per network batch GET request (dictated by receiver nodes)
+#[allow(dead_code)]
+const NETWORK_BATCH_SIZE: u64 = 1000;
 
 pub(crate) struct SyncCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
+}
+
+/// Result of syncing a single contract
+struct ContractSyncResult {
+    enqueued: u64,
+    pending: usize,
+    synced: u64,
+    failed: u64,
 }
 
 impl SyncCommandHandler {
@@ -38,14 +45,68 @@ impl SyncCommandHandler {
         }
     }
 
-    /// Check for new KCs on a single contract and enqueue any that need syncing.
-    async fn check_contract_for_new_kcs(
+    /// Sync a single contract: enqueue new KCs from chain, then process pending KCs.
+    async fn sync_contract(
         &self,
         blockchain_id: &BlockchainId,
         contract_address: Address,
-    ) -> Result<u64, String> {
+    ) -> Result<ContractSyncResult, String> {
         let contract_addr_str = format!("{:?}", contract_address);
 
+        // Step 1: Check for new KCs on chain and enqueue them
+        let enqueued = self
+            .enqueue_new_kcs(blockchain_id, contract_address, &contract_addr_str)
+            .await?;
+
+        // Step 2: Fetch pending KCs for this contract from DB
+        let pending_kcs = self
+            .repository_manager
+            .kc_sync_repository()
+            .get_pending_kcs_for_contract(
+                blockchain_id.as_str(),
+                &contract_addr_str,
+                MAX_RETRY_ATTEMPTS,
+            )
+            .await
+            .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
+
+        let pending = pending_kcs.len();
+
+        if pending == 0 {
+            return Ok(ContractSyncResult {
+                enqueued,
+                pending: 0,
+                synced: 0,
+                failed: 0,
+            });
+        }
+
+        // TODO 4: For each pending KC:
+        //         a. Check if expired on chain - if so, remove from queue (don't count as retry)
+        //         b. Check if we already have it locally in triple store - if so, remove from queue
+
+        // TODO 5: For KCs not found locally and not expired, batch GET from network
+        //         (in chunks of NETWORK_BATCH_SIZE)
+
+        // TODO 6: Store fetched KCs in triple store
+
+        // TODO 7: Update DB: mark successful KCs as synced, increment retry_count for failed ones
+
+        Ok(ContractSyncResult {
+            enqueued,
+            pending,
+            synced: 0,
+            failed: 0,
+        })
+    }
+
+    /// Check for new KCs on chain and enqueue any that need syncing.
+    async fn enqueue_new_kcs(
+        &self,
+        blockchain_id: &BlockchainId,
+        contract_address: Address,
+        contract_addr_str: &str,
+    ) -> Result<u64, String> {
         // Get latest KC ID from chain
         let latest_on_chain = self
             .blockchain_manager
@@ -57,7 +118,7 @@ impl SyncCommandHandler {
         let last_checked = self
             .repository_manager
             .kc_sync_repository()
-            .get_progress(blockchain_id.as_str(), &contract_addr_str)
+            .get_progress(blockchain_id.as_str(), contract_addr_str)
             .await
             .map_err(|e| format!("Failed to get sync progress: {}", e))?
             .map(|p| p.last_checked_id)
@@ -77,14 +138,14 @@ impl SyncCommandHandler {
         // Enqueue the new KC IDs
         self.repository_manager
             .kc_sync_repository()
-            .enqueue_kcs(blockchain_id.as_str(), &contract_addr_str, &new_kc_ids)
+            .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, &new_kc_ids)
             .await
             .map_err(|e| format!("Failed to enqueue KCs: {}", e))?;
 
         // Update progress to the highest ID we've now checked
         self.repository_manager
             .kc_sync_repository()
-            .upsert_progress(blockchain_id.as_str(), &contract_addr_str, end_id)
+            .upsert_progress(blockchain_id.as_str(), contract_addr_str, end_id)
             .await
             .map_err(|e| format!("Failed to update progress: {}", e))?;
 
@@ -136,24 +197,36 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
             "[DKG SYNC] Found KC storage contracts"
         );
 
-        // Check each contract for new KCs and enqueue them (in parallel)
-        let check_futures = contract_addresses.iter().map(|&contract_address| {
-            self.check_contract_for_new_kcs(&data.blockchain_id, contract_address)
+        // Sync each contract in parallel
+        let sync_futures = contract_addresses.iter().map(|&contract_address| {
+            self.sync_contract(&data.blockchain_id, contract_address)
         });
 
-        let results = join_all(check_futures).await;
+        let results = join_all(sync_futures).await;
 
+        // Aggregate results
         let mut total_enqueued = 0u64;
+        let mut total_pending = 0usize;
+        let mut total_synced = 0u64;
+        let mut total_failed = 0u64;
+
         for (i, result) in results.into_iter().enumerate() {
             match result {
-                Ok(count) => {
-                    total_enqueued += count;
-                    if count > 0 {
+                Ok(r) => {
+                    total_enqueued += r.enqueued;
+                    total_pending += r.pending;
+                    total_synced += r.synced;
+                    total_failed += r.failed;
+
+                    if r.enqueued > 0 || r.pending > 0 {
                         tracing::debug!(
                             blockchain_id = %data.blockchain_id,
                             contract = ?contract_addresses[i],
-                            enqueued = count,
-                            "[DKG SYNC] Enqueued new KCs"
+                            enqueued = r.enqueued,
+                            pending = r.pending,
+                            synced = r.synced,
+                            failed = r.failed,
+                            "[DKG SYNC] Contract sync completed"
                         );
                     }
                 }
@@ -162,34 +235,22 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
                         blockchain_id = %data.blockchain_id,
                         contract = ?contract_addresses[i],
                         error = %e,
-                        "[DKG SYNC] Failed to check contract for new KCs"
+                        "[DKG SYNC] Failed to sync contract"
                     );
                 }
             }
         }
 
-        if total_enqueued > 0 {
+        if total_enqueued > 0 || total_pending > 0 {
             tracing::info!(
                 blockchain_id = %data.blockchain_id,
                 total_enqueued,
-                "[DKG SYNC] Enqueued new KCs for syncing"
+                total_pending,
+                total_synced,
+                total_failed,
+                "[DKG SYNC] Sync cycle summary"
             );
         }
-
-        // TODO 3: Fetch a batch of pending KCs from DB for this blockchain
-        //         (limit SYNC_BATCH_SIZE, retry_count < MAX_RETRY_ATTEMPTS)
-
-        // TODO 4: For each pending KC:
-        //         a. Check if expired on chain - if so, remove from queue (don't count as retry)
-        //         b. Check if we already have it locally in triple store - if so, remove from queue
-
-        // TODO 5: For KCs not found locally and not expired, batch GET from network
-
-        // TODO 6: Store fetched KCs in triple store
-
-        // TODO 7: Update DB: mark successful KCs as synced, increment retry_count for failed ones
-
-        // TODO 8: Update last synced KC ID in DB for each contract
 
         tracing::info!(
             blockchain_id = %data.blockchain_id,

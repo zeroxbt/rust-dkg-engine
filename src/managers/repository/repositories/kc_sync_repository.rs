@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use sea_orm::{
     ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, error::DbErr,
+    error::DbErr,
 };
 
 use crate::managers::repository::models::{
@@ -119,18 +119,18 @@ impl KcSyncRepository {
         Ok(())
     }
 
-    /// Get a batch of KCs that need syncing (retry_count < max_retries).
-    pub(crate) async fn get_pending_kcs(
+    /// Get all KCs that need syncing for a specific contract (retry_count < max_retries).
+    pub(crate) async fn get_pending_kcs_for_contract(
         &self,
         blockchain_id: &str,
+        contract_address: &str,
         max_retries: u32,
-        limit: u64,
     ) -> Result<Vec<QueueModel>, DbErr> {
         QueueEntity::find()
             .filter(QueueColumn::BlockchainId.eq(blockchain_id))
+            .filter(QueueColumn::ContractAddress.eq(contract_address))
             .filter(QueueColumn::RetryCount.lt(max_retries))
             .order_by_asc(QueueColumn::KcId)
-            .limit(limit)
             .all(self.conn.as_ref())
             .await
     }
@@ -194,4 +194,5 @@ impl KcSyncRepository {
 
         Ok(())
     }
+
 }
