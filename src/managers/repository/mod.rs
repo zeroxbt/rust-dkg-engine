@@ -11,6 +11,7 @@ pub(crate) use repositories::shard_repository::ShardRecordInput;
 use repositories::{
     blockchain_repository::BlockchainRepository,
     finality_status_repository::FinalityStatusRepository,
+    kc_sync_repository::KcSyncRepository,
     operation_repository::OperationRepository, shard_repository::ShardRepository,
     triples_insert_count_repository::TriplesInsertCountRepository,
 };
@@ -27,6 +28,7 @@ pub(crate) struct RepositoryManager {
     operation_repository: OperationRepository,
     finality_status_repository: FinalityStatusRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
+    kc_sync_repository: KcSyncRepository,
 }
 
 impl RepositoryManager {
@@ -67,6 +69,7 @@ impl RepositoryManager {
             operation_repository: OperationRepository::new(Arc::clone(&conn)),
             finality_status_repository: FinalityStatusRepository::new(Arc::clone(&conn)),
             triples_insert_count_repository: TriplesInsertCountRepository::new(Arc::clone(&conn)),
+            kc_sync_repository: KcSyncRepository::new(Arc::clone(&conn)),
         })
     }
 
@@ -88,6 +91,10 @@ impl RepositoryManager {
 
     pub(crate) fn triples_insert_count_repository(&self) -> &TriplesInsertCountRepository {
         &self.triples_insert_count_repository
+    }
+
+    pub(crate) fn kc_sync_repository(&self) -> &KcSyncRepository {
+        &self.kc_sync_repository
     }
 }
 

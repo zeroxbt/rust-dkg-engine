@@ -5,6 +5,8 @@ mod m003_create_blockchain;
 mod m004_create_operations;
 mod m007_create_finality_status;
 mod m008_create_triples_insert_count;
+mod m009_create_kc_sync_progress;
+mod m010_create_kc_sync_queue;
 
 pub(crate) struct Migrator;
 
@@ -17,6 +19,8 @@ impl MigratorTrait for Migrator {
             Box::new(m004_create_operations::Migration),
             Box::new(m007_create_finality_status::Migration),
             Box::new(m008_create_triples_insert_count::Migration),
+            Box::new(m009_create_kc_sync_progress::Migration),
+            Box::new(m010_create_kc_sync_queue::Migration),
         ]
     }
 }
