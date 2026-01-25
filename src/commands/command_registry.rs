@@ -44,6 +44,7 @@ use super::{
         sharding_table_check_command::{
             ShardingTableCheckCommandData, ShardingTableCheckCommandHandler,
         },
+        sync_command::{SyncCommandData, SyncCommandHandler},
     },
 };
 use crate::{
@@ -153,6 +154,10 @@ command_registry! {
     handle_batch_get_request: HandleBatchGetRequest => {
         data: HandleBatchGetRequestCommandData,
         handler: HandleBatchGetRequestCommandHandler
+    },
+    sync: Sync => {
+        data: SyncCommandData,
+        handler: SyncCommandHandler
     }
 }
 
@@ -165,12 +170,15 @@ pub(crate) fn default_command_requests(
         CommandExecutionRequest::new(Command::ShardingTableCheck(ShardingTableCheckCommandData)),
     ];
 
-    // Schedule one blockchain event listener per blockchain
+    // Schedule one blockchain event listener and one sync command per blockchain
     for blockchain_id in blockchain_ids {
         requests.push(CommandExecutionRequest::new(
             Command::BlockchainEventListener(BlockchainEventListenerCommandData::new(
                 blockchain_id.clone(),
             )),
+        ));
+        requests.push(CommandExecutionRequest::new(
+            Command::Sync(SyncCommandData::new(blockchain_id.clone())),
         ));
     }
 
