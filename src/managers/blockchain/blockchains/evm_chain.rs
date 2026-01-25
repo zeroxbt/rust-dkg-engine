@@ -928,6 +928,41 @@ impl EvmChain {
         }
     }
 
+    /// Get the latest knowledge collection ID for a contract.
+    ///
+    /// Returns the highest KC ID that has been created on this contract.
+    /// Returns 0 if no collections have been created yet.
+    pub(crate) async fn get_latest_knowledge_collection_id(
+        &self,
+        contract_address: Address,
+    ) -> Result<u64, BlockchainError> {
+        let contracts = self.contracts().await;
+        let kc_storage = contracts
+            .knowledge_collection_storage_by_address(&contract_address)
+            .ok_or_else(|| {
+                BlockchainError::Custom(format!(
+                    "KnowledgeCollectionStorage at {:?} is not registered. \
+                     The node only knows about contracts from initialization or NewAssetStorage events.",
+                    contract_address
+                ))
+            })?;
+
+        let latest_id = kc_storage
+            .getLatestKnowledgeCollectionId()
+            .call()
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!(
+                    "Failed to get latest knowledge collection ID from {:?}: {}",
+                    contract_address, e
+                ))
+            })?;
+
+        latest_id.try_into().map_err(|_| {
+            BlockchainError::Custom("Latest knowledge collection ID overflow".to_string())
+        })
+    }
+
     // ==================== Paranet Methods ====================
 
     /// Check if a paranet exists on-chain.

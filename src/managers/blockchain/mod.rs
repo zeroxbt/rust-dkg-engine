@@ -715,6 +715,25 @@ impl BlockchainManager {
             .await
     }
 
+    /// Get the latest knowledge collection ID for a contract.
+    ///
+    /// Returns the highest KC ID that has been created on this contract.
+    /// Returns 0 if no collections have been created yet.
+    pub(crate) async fn get_latest_knowledge_collection_id(
+        &self,
+        blockchain: &BlockchainId,
+        contract_address: Address,
+    ) -> Result<u64, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
+            .get_latest_knowledge_collection_id(contract_address)
+            .await
+    }
+
     /// Get all contract addresses for a contract type on a blockchain.
     pub(crate) async fn get_all_contract_addresses(
         &self,
