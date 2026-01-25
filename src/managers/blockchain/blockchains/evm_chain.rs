@@ -963,6 +963,54 @@ impl EvmChain {
         })
     }
 
+    /// Get the current epoch from the Chronos contract.
+    pub(crate) async fn get_current_epoch(&self) -> Result<u64, BlockchainError> {
+        let contracts = self.contracts().await;
+        let chronos = contracts.chronos();
+
+        let current_epoch = chronos.getCurrentEpoch().call().await.map_err(|e| {
+            BlockchainError::Custom(format!("Failed to get current epoch: {}", e))
+        })?;
+
+        current_epoch.try_into().map_err(|_| {
+            BlockchainError::Custom("Current epoch overflow".to_string())
+        })
+    }
+
+    /// Get the end epoch (expiration) for a knowledge collection.
+    ///
+    /// Returns None if the KC doesn't exist or hasn't been created yet.
+    pub(crate) async fn get_kc_end_epoch(
+        &self,
+        contract_address: Address,
+        knowledge_collection_id: u128,
+    ) -> Result<u64, BlockchainError> {
+        let contracts = self.contracts().await;
+        let kc_storage = contracts
+            .knowledge_collection_storage_by_address(&contract_address)
+            .ok_or_else(|| {
+                BlockchainError::Custom(format!(
+                    "KnowledgeCollectionStorage at {:?} is not registered.",
+                    contract_address
+                ))
+            })?;
+
+        let end_epoch = kc_storage
+            .getEndEpoch(U256::from(knowledge_collection_id))
+            .call()
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!(
+                    "Failed to get KC end epoch from {:?}: {}",
+                    contract_address, e
+                ))
+            })?;
+
+        // end_epoch is Uint<40, 1> - get the inner value and convert
+        // The Uint type has a limbs() method or we can use to_limbs()
+        Ok(end_epoch.to::<u64>())
+    }
+
     // ==================== Paranet Methods ====================
 
     /// Check if a paranet exists on-chain.

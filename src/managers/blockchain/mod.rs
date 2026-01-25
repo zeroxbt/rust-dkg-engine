@@ -734,6 +734,36 @@ impl BlockchainManager {
             .await
     }
 
+    /// Get the current epoch from the Chronos contract.
+    pub(crate) async fn get_current_epoch(
+        &self,
+        blockchain: &BlockchainId,
+    ) -> Result<u64, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl.get_current_epoch().await
+    }
+
+    /// Get the end epoch (expiration) for a knowledge collection.
+    pub(crate) async fn get_kc_end_epoch(
+        &self,
+        blockchain: &BlockchainId,
+        contract_address: Address,
+        knowledge_collection_id: u128,
+    ) -> Result<u64, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
+            .get_kc_end_epoch(contract_address, knowledge_collection_id)
+            .await
+    }
+
     /// Get all contract addresses for a contract type on a blockchain.
     pub(crate) async fn get_all_contract_addresses(
         &self,

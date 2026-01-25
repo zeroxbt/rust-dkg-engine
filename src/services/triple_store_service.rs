@@ -263,6 +263,27 @@ impl TripleStoreService {
             .await
     }
 
+    /// Check if a knowledge collection exists locally in the triple store.
+    ///
+    /// Checks if both the first and last knowledge assets exist, which indicates
+    /// the entire collection is present locally.
+    pub(crate) async fn knowledge_collection_exists(
+        &self,
+        kc_ual: &str,
+        start_token_id: u64,
+        end_token_id: u64,
+    ) -> bool {
+        let first_ka_ual = format!("{}/{}/public", kc_ual, start_token_id);
+        let last_ka_ual = format!("{}/{}/public", kc_ual, end_token_id);
+
+        let (first_exists, last_exists) = tokio::join!(
+            self.triple_store_manager.knowledge_asset_exists(&first_ka_ual),
+            self.triple_store_manager.knowledge_asset_exists(&last_ka_ual)
+        );
+
+        first_exists.unwrap_or(false) && last_exists.unwrap_or(false)
+    }
+
     /// Build knowledge assets from a dataset.
     ///
     /// This contains the DKG business logic:

@@ -9,6 +9,8 @@ use crate::{
         blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
         repository::RepositoryManager,
     },
+    services::TripleStoreService,
+    utils::ual::derive_ual,
 };
 
 /// Interval between sync cycles (30 seconds)
@@ -27,6 +29,7 @@ const NETWORK_BATCH_SIZE: u64 = 1000;
 pub(crate) struct SyncCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
+    triple_store_service: Arc<TripleStoreService>,
 }
 
 /// Result of syncing a single contract
@@ -37,11 +40,22 @@ struct ContractSyncResult {
     failed: u64,
 }
 
+/// KC that needs to be fetched from the network
+#[allow(dead_code)]
+struct KcToSync {
+    kc_id: u64,
+    ual: String,
+    start_token_id: u64,
+    end_token_id: u64,
+    burned: Vec<u64>,
+}
+
 impl SyncCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             repository_manager: Arc::clone(context.repository_manager()),
+            triple_store_service: Arc::clone(context.triple_store_service()),
         }
     }
 
@@ -70,7 +84,8 @@ impl SyncCommandHandler {
             .await
             .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
 
-        let pending = pending_kcs.len();
+        let pending_kc_ids: Vec<u64> = pending_kcs.into_iter().map(|kc| kc.kc_id).collect();
+        let pending = pending_kc_ids.len();
 
         if pending == 0 {
             return Ok(ContractSyncResult {
@@ -81,9 +96,51 @@ impl SyncCommandHandler {
             });
         }
 
-        // TODO 4: For each pending KC:
-        //         a. Check if expired on chain - if so, remove from queue (don't count as retry)
-        //         b. Check if we already have it locally in triple store - if so, remove from queue
+        // Step 3: Filter out expired and already-synced KCs
+        let (kcs_to_sync, expired_kc_ids, already_synced_kc_ids) = self
+            .filter_pending_kcs(blockchain_id, contract_address, &contract_addr_str, &pending_kc_ids)
+            .await;
+
+        // Remove expired KCs from queue (don't count as retry)
+        if !expired_kc_ids.is_empty() {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                count = expired_kc_ids.len(),
+                "[DKG SYNC] Removing expired KCs from queue"
+            );
+            self.repository_manager
+                .kc_sync_repository()
+                .remove_kcs(blockchain_id.as_str(), &contract_addr_str, &expired_kc_ids)
+                .await
+                .map_err(|e| format!("Failed to remove expired KCs: {}", e))?;
+        }
+
+        // Remove already-synced KCs from queue
+        if !already_synced_kc_ids.is_empty() {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                count = already_synced_kc_ids.len(),
+                "[DKG SYNC] Removing already-synced KCs from queue"
+            );
+            self.repository_manager
+                .kc_sync_repository()
+                .remove_kcs(blockchain_id.as_str(), &contract_addr_str, &already_synced_kc_ids)
+                .await
+                .map_err(|e| format!("Failed to remove already-synced KCs: {}", e))?;
+        }
+
+        let synced = already_synced_kc_ids.len() as u64;
+
+        if kcs_to_sync.is_empty() {
+            return Ok(ContractSyncResult {
+                enqueued,
+                pending,
+                synced,
+                failed: 0,
+            });
+        }
 
         // TODO 5: For KCs not found locally and not expired, batch GET from network
         //         (in chunks of NETWORK_BATCH_SIZE)
@@ -95,9 +152,121 @@ impl SyncCommandHandler {
         Ok(ContractSyncResult {
             enqueued,
             pending,
-            synced: 0,
+            synced,
             failed: 0,
         })
+    }
+
+    /// Filter pending KCs: check which are expired on chain or already exist locally.
+    /// Returns (kcs_to_sync, expired_kc_ids, already_synced_kc_ids)
+    async fn filter_pending_kcs(
+        &self,
+        blockchain_id: &BlockchainId,
+        contract_address: Address,
+        contract_addr_str: &str,
+        pending_kc_ids: &[u64],
+    ) -> (Vec<KcToSync>, Vec<u64>, Vec<u64>) {
+        let mut kcs_to_sync = Vec::new();
+        let mut expired_kc_ids = Vec::new();
+        let mut already_synced_kc_ids = Vec::new();
+
+        // Get current epoch once for all KCs
+        let current_epoch = match self.blockchain_manager.get_current_epoch(blockchain_id).await {
+            Ok(epoch) => epoch,
+            Err(e) => {
+                tracing::error!(
+                    blockchain_id = %blockchain_id,
+                    error = %e,
+                    "[DKG SYNC] Failed to get current epoch, skipping expiration checks"
+                );
+                // Can't check expiration without current epoch, process all KCs
+                u64::MAX
+            }
+        };
+
+        for &kc_id in pending_kc_ids {
+            // Check if KC is expired (currentEpoch > endEpoch)
+            let end_epoch = match self
+                .blockchain_manager
+                .get_kc_end_epoch(blockchain_id, contract_address, kc_id as u128)
+                .await
+            {
+                Ok(epoch) => epoch,
+                Err(e) => {
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        contract = %contract_addr_str,
+                        kc_id = kc_id,
+                        error = %e,
+                        "[DKG SYNC] Failed to get KC end epoch, will retry later"
+                    );
+                    continue;
+                }
+            };
+
+            // KC is expired if current epoch > end epoch
+            if current_epoch > end_epoch {
+                expired_kc_ids.push(kc_id);
+                continue;
+            }
+
+            // Get token ID range for the KC
+            let token_range = match self
+                .blockchain_manager
+                .get_knowledge_assets_range(blockchain_id, contract_address, kc_id as u128)
+                .await
+            {
+                Ok(Some(range)) => range,
+                Ok(None) => {
+                    // KC doesn't exist on chain (shouldn't happen if we got end_epoch)
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        contract = %contract_addr_str,
+                        kc_id = kc_id,
+                        "[DKG SYNC] KC has end_epoch but no token range, skipping"
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        contract = %contract_addr_str,
+                        kc_id = kc_id,
+                        error = %e,
+                        "[DKG SYNC] Failed to get KC token range, will retry later"
+                    );
+                    continue;
+                }
+            };
+
+            let (start_token_id, end_token_id, burned) = token_range;
+
+            // Build UAL to check local existence
+            let kc_ual = derive_ual(blockchain_id, &contract_address, kc_id as u128, None);
+
+            // Check if KC already exists locally
+            let exists_locally = self
+                .triple_store_service
+                .knowledge_collection_exists(&kc_ual, start_token_id, end_token_id)
+                .await;
+
+            if exists_locally {
+                // KC already exists locally
+                already_synced_kc_ids.push(kc_id);
+                continue;
+            }
+
+            // KC needs to be synced
+            kcs_to_sync.push(KcToSync {
+                kc_id,
+                ual: kc_ual,
+                start_token_id,
+                end_token_id,
+                burned,
+            });
+        }
+
+        (kcs_to_sync, expired_kc_ids, already_synced_kc_ids)
     }
 
     /// Check for new KCs on chain and enqueue any that need syncing.

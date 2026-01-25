@@ -66,6 +66,12 @@ sol!(
     "abi/Token.json"
 );
 
+sol!(
+    #[sol(rpc)]
+    Chronos,
+    "abi/Chronos.json"
+);
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) mod paranets_registry {
     use alloy::sol;
@@ -116,6 +122,7 @@ pub(crate) struct Contracts {
     sharding_table: ShardingTable::ShardingTableInstance<BlockchainProvider>,
     sharding_table_storage: ShardingTableStorage::ShardingTableStorageInstance<BlockchainProvider>,
     token: Token::TokenInstance<BlockchainProvider>,
+    chronos: Chronos::ChronosInstance<BlockchainProvider>,
     paranets_registry: Option<ParanetsRegistry::ParanetsRegistryInstance<BlockchainProvider>>,
 }
 
@@ -169,6 +176,10 @@ impl Contracts {
     /// Get all KnowledgeCollectionStorage contract addresses.
     pub(crate) fn knowledge_collection_storage_addresses(&self) -> Vec<Address> {
         self.knowledge_collection_storages.keys().copied().collect()
+    }
+
+    pub(crate) fn chronos(&self) -> &Chronos::ChronosInstance<BlockchainProvider> {
+        &self.chronos
     }
 
     pub(crate) fn paranets_registry(
@@ -474,6 +485,10 @@ pub(crate) async fn initialize_contracts(
         ),
         token: Token::new(
             Address::from(hub.getContractAddress("Token".to_string()).call().await?.0),
+            provider.clone(),
+        ),
+        chronos: Chronos::new(
+            Address::from(hub.getContractAddress("Chronos".to_string()).call().await?.0),
             provider.clone(),
         ),
         paranets_registry: Some(ParanetsRegistry::new(
