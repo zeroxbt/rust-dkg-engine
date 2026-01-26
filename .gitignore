@@ -24,7 +24,7 @@ Temporary Items
 *.code-workspace
 
 .env
-.*origintrail_noderc
+config.toml
 .node*_config.toml
 data*/
 dkg-engine/*

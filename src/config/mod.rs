@@ -98,8 +98,8 @@ fn load_configuration() -> Result<Config, ConfigError> {
     let mut figment = Figment::new()
         // Base configuration from TOML
         .merge(Toml::file(format!("config/{}.toml", node_env)))
-        // User overrides from .origintrail_noderc.toml
-        .merge(Toml::file(".origintrail_noderc.toml"));
+        // User overrides from config.toml
+        .merge(Toml::file("config.toml"));
 
     // Parse CLI arguments for custom config file (dev-tools feature only)
     #[cfg(feature = "dev-tools")]

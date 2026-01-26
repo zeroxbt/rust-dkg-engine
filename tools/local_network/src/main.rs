@@ -27,7 +27,7 @@ const MANAGEMENT_PUBLIC_KEYS_PATH: &str =
 const JS_BOOTSTRAP_PRIVATE_KEY: &str = "CAAS4QQwggJdAgEAAoGBALOYSCZsmINMpFdH8ydA9CL46fB08F3ELfb9qiIq+z4RhsFwi7lByysRnYT/NLm8jZ4RvlsSqOn2ZORJwBywYD5MCvU1TbEWGKxl5LriW85ZGepUwiTZJgZdDmoLIawkpSdmUOc1Fbnflhmj/XzAxlnl30yaa/YvKgnWtZI1/IwfAgMBAAECgYEAiZq2PWqbeI6ypIVmUr87z8f0Rt7yhIWZylMVllRkaGw5WeGHzQwSRQ+cJ5j6pw1HXMOvnEwxzAGT0C6J2fFx60C6R90TPos9W0zSU+XXLHA7AtazjlSnp6vHD+RxcoUhm1RUPeKU6OuUNcQVJu1ZOx6cAcP/I8cqL38JUOOS7XECQQDex9WUKtDnpHEHU/fl7SvCt0y2FbGgGdhq6k8nrWtBladP5SoRUFuQhCY8a20fszyiAIfxQrtpQw1iFPBpzoq1AkEAzl/s3XPGi5vFSNGLsLqbVKbvoW9RUaGN8o4rU9oZmPFL31Jo9FLA744YRer6dYE7jJMel7h9VVWsqa9oLGS8AwJALYwfv45Nbb6yGTRyr4Cg/MtrFKM00K3YEGvdSRhsoFkPfwc0ZZvPTKmoA5xXEC8eC2UeZhYlqOy7lL0BNjCzLQJBAMpvcgtwa8u6SvU5B0ueYIvTDLBQX3YxgOny5zFjeUR7PS+cyPMQ0cyql8jNzEzDLcSg85tkDx1L4wi31Pnm/j0CQFH/6MYn3r9benPm2bYSe9aoJp7y6ht2DmXmoveNbjlEbb8f7jAvYoTklJxmJCcrdbNx/iCj2BuAinPPgEmUzfQ=";
 const JS_BOOTSTRAP_PEER_ID: &str = "QmWyf3dtqJnhuCpzEDTNmNFYc5tjxTrXhGcUUmGHdg2gtj";
 
-// JS node config template (JSON format for .origintrail_noderc)
+// JS node config template (JSON format for .origintrail_noderc - required by JS implementation)
 // Based on dkg-engine/tools/local-network-setup/.origintrail_noderc_template.json
 const JS_NODE_CONFIG_TEMPLATE: &str = r#"{
     "logLevel": "trace",
@@ -516,8 +516,8 @@ async fn main() {
                 .replace("{{NODE_NAME}}", &node_name)
                 .replace("{{NODE_SYMBOL}}", &node_symbol);
 
-            // Write .origintrail_noderc.toml to the data folder
-            let config_path = Path::new(&data_folder).join(".origintrail_noderc.toml");
+            // Write config.toml to the data folder
+            let config_path = Path::new(&data_folder).join("config.toml");
             fs::write(&config_path, toml_config).expect("Failed to write the TOML config file");
             println!("Generated {} (Rust node{})", config_path.display(),
                 if i == BOOTSTRAP_NODE_INDEX && !bootstrap_is_js { " - BOOTSTRAP" } else { "" });
@@ -574,7 +574,7 @@ async fn main() {
             let data_folder = format!("data{}", i);
 
             // Config file path relative to workspace root
-            let config_path = format!("{}/{}", data_folder, ".origintrail_noderc.toml");
+            let config_path = format!("{}/{}", data_folder, "config.toml");
 
             // Run Rust node from workspace root with --config flag
             open_terminal_with_command(&format!(
@@ -600,7 +600,7 @@ async fn main() {
             let data_folder = format!("data{}", i);
 
             // Config file path relative to workspace root
-            let config_path = format!("{}/{}", data_folder, ".origintrail_noderc.toml");
+            let config_path = format!("{}/{}", data_folder, "config.toml");
 
             // Run Rust node from workspace root with --config flag
             open_terminal_with_command(&format!(

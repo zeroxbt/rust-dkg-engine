@@ -2,7 +2,7 @@
 # Mainnet Production Configuration
 # ============================================
 # IMPORTANT: This is a template for production deployment
-# You MUST override these values using .origintrail_noderc.toml or environment variables
+# Sensitive data (wallets, database credentials) should be in config.toml
 # NEVER commit real credentials to version control!
 
 is_dev_env = false
@@ -34,27 +34,23 @@ ip_whitelist = ["127.0.0.1", "::1"]  # Only localhost allowed by default
 port = 9000
 
 # Production bootstrap nodes (OriginTrail mainnet)
-# Add your bootstrap nodes here or override in .origintrail_noderc.toml
 bootstrap = [
-    # "/ip4/157.230.96.194/tcp/9000/p2p/QmZFcns6eGUosD96beHyevKu1jGJ1bA56Reg2f1J4q59Jt",
-    # "/ip4/18.132.135.102/tcp/9000/p2p/QmemqyXyvrTAm7PwrcTcFiEEFx69efdR92GSZ1oQprbdja"
+    "/ip4/157.230.96.194/tcp/9000/p2p/QmZFcns6eGUosD96beHyevKu1jGJ1bA56Reg2f1J4q59Jt",
+    "/ip4/18.132.135.102/tcp/9000/p2p/QmemqyXyvrTAm7PwrcTcFiEEFx69efdR92GSZ1oQprbdja"
 ]
 
 # ============================================
 # Repository Manager Configuration
 # ============================================
 [managers.repository]
-# REQUIRED: Set these values in .origintrail_noderc.toml or via environment variables:
-# - OT_MANAGERS__REPOSITORY__DATABASE
-# - OT_MANAGERS__REPOSITORY__USER
-# - OT_MANAGERS__REPOSITORY__PASSWORD (recommended: use env var for security)
-# - OT_MANAGERS__REPOSITORY__HOST
-
-database = ""
-host = ""
+# Configure these values in config.toml:
+# - database
+# - host
+# - user
+# - password
 port = 3306
-user = ""
-password = "" # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
+max_connections = 120
+min_connections = 1
 
 # ============================================
 # Validation Manager Configuration
@@ -63,60 +59,35 @@ password = "" # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # Validation settings here
 
 # ============================================
+# Triple Store Manager Configuration
+# ============================================
+[managers.triple_store]
+backend = "oxigraph"  # Embedded Rust-native backend, no external service needed
+# data_path is automatically set to "{app_data_path}/triple-store"
+
+[managers.triple_store.timeouts]
+query_ms = 60000
+insert_ms = 300000
+ask_ms = 10000
+
+# ============================================
 # Blockchain Configuration
 # ============================================
-# REQUIRED: Configure your blockchain networks in .origintrail_noderc.toml
-# See config/development.toml for example structure
+# Configure your blockchain networks in config.toml
+# See comments below for example structure
 #
 # Supported chain types: Hardhat, Gnosis, NeuroWeb, Base
-
-# --------------------------------------------
-# NeuroWeb (OriginTrail Parachain) - Mainnet
-# --------------------------------------------
-# [[managers.blockchain]]
-# [managers.blockchain.NeuroWeb]
-# blockchain_id = "otp:2043"
-# hub_contract_address = "0x0957e25BD33034948abc28204ddA54b6E1142D6F"
-# rpc_endpoints = [
-#     "https://astrosat-parachain-rpc.origin-trail.network",
-#     "https://astrosat.origintrail.network/",
-#     "https://astrosat-2.origintrail.network/"
-# ]
-# # Substrate RPC for EVM account mapping validation (required for NeuroWeb)
-# substrate_rpc_endpoints = [
-#     "wss://parachain-rpc.origin-trail.network"
-# ]
-# operator_fee = 0
-# evm_operational_wallet_address = "0x..."
-# evm_operational_wallet_private_key = ""  # Use env: OT_MANAGERS__BLOCKCHAIN__0__NEUROWEB__EVM_OPERATIONAL_WALLET_PRIVATE_KEY
-# evm_management_wallet_address = "0x..."
-# node_name = "YourNodeName"
-
-# --------------------------------------------
-# Gnosis Chain - Mainnet
-# --------------------------------------------
+#
+# Example blockchain configuration (put in config.toml):
+#
 # [[managers.blockchain]]
 # [managers.blockchain.Gnosis]
 # blockchain_id = "gnosis:100"
 # hub_contract_address = "0x882D0BF07F956b1b94BBfe9E77F47c6fc7D4EC8f"
-# rpc_endpoints = ["https://rpc.gnosischain.com"]
+# rpc_endpoints = ["wss://your-rpc-endpoint"]
 # gas_price_oracle_url = "https://gnosis.blockscout.com/api/v1/gas-price-oracle"
 # operator_fee = 0
 # evm_operational_wallet_address = "0x..."
-# evm_operational_wallet_private_key = ""  # Use env var
-# evm_management_wallet_address = "0x..."
-# node_name = "YourNodeName"
-
-# --------------------------------------------
-# Base - Mainnet
-# --------------------------------------------
-# [[managers.blockchain]]
-# [managers.blockchain.Base]
-# blockchain_id = "base:8453"
-# hub_contract_address = "0x99Aa571fD5e681c2D27ee08A7b7989DB02541d13"
-# rpc_endpoints = ["https://mainnet.base.org"]
-# operator_fee = 0
-# evm_operational_wallet_address = "0x..."
-# evm_operational_wallet_private_key = ""  # Use env var
+# evm_operational_wallet_private_key = "your-private-key"
 # evm_management_wallet_address = "0x..."
 # node_name = "YourNodeName"
