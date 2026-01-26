@@ -42,3 +42,6 @@ pub(crate) const PRIVATE_MERKLE_ROOT: &str =
 /// Predicate marking a resource as representing private data
 pub(crate) const REPRESENTS_PRIVATE_RESOURCE: &str =
     "https://ontology.origintrail.io/dkg/1.0#representsPrivateResource";
+
+/// Prefix for publisher key DID in metadata triples
+pub(crate) const PUBLISHER_KEY_PREFIX: &str = "did:dkg:publisherKey/";

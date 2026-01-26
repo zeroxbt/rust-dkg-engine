@@ -10,7 +10,11 @@ use crate::{
         blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
         network::{NetworkManager, PeerId},
         repository::RepositoryManager,
-        triple_store::{Assertion, TokenIds, Visibility},
+        triple_store::{
+            Assertion, KnowledgeCollectionMetadata, TokenIds, Visibility,
+            query::predicates,
+            rdf::{extract_datetime_as_unix, extract_quoted_integer, extract_quoted_string, extract_uri_suffix},
+        },
     },
     operations::BatchGetOperation,
     services::{
@@ -153,7 +157,7 @@ impl SyncCommandHandler {
                 .map_err(|e| format!("Failed to remove already-synced KCs: {}", e))?;
         }
 
-        let synced = already_synced_kc_ids.len() as u64;
+        let mut synced = already_synced_kc_ids.len() as u64;
 
         if kcs_to_sync.is_empty() {
             return Ok(ContractSyncResult {
@@ -177,15 +181,124 @@ impl SyncCommandHandler {
             "[DKG SYNC] Network fetch completed for contract"
         );
 
-        // TODO 6: Store fetched KCs in triple store
+        // Step 6: Store fetched KCs in triple store with chain-verified metadata
+        let mut failed_kc_ids = failed_kc_ids;
+        let mut successfully_synced_kc_ids: Vec<u64> = Vec::new();
 
-        // TODO 7: Update DB: mark successful KCs as synced, increment retry_count for failed ones
+        // Build a lookup from UAL to KC info
+        let ual_to_kc: HashMap<&str, &KcToSync> =
+            kcs_to_sync.iter().map(|kc| (kc.ual.as_str(), kc)).collect();
+
+        for (ual, fetch_result) in &fetched_kcs {
+            let Some(kc) = ual_to_kc.get(ual.as_str()) else {
+                continue;
+            };
+
+            // Parse metadata from network response (trusting network like JS implementation)
+            let metadata = match &fetch_result.metadata {
+                Some(triples) => match parse_metadata_from_triples(triples) {
+                    Some(m) => m,
+                    None => {
+                        tracing::warn!(
+                            blockchain_id = %blockchain_id,
+                            contract = %contract_addr_str,
+                            kc_id = kc.kc_id,
+                            "[DKG SYNC] Failed to parse metadata from network response"
+                        );
+                        if !failed_kc_ids.contains(&kc.kc_id) {
+                            failed_kc_ids.push(kc.kc_id);
+                        }
+                        continue;
+                    }
+                },
+                None => {
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        contract = %contract_addr_str,
+                        kc_id = kc.kc_id,
+                        "[DKG SYNC] No metadata in network response"
+                    );
+                    if !failed_kc_ids.contains(&kc.kc_id) {
+                        failed_kc_ids.push(kc.kc_id);
+                    }
+                    continue;
+                }
+            };
+
+            // Insert into triple store
+            match self
+                .triple_store_service
+                .insert_knowledge_collection(ual, &fetch_result.assertion, &metadata)
+                .await
+            {
+                Ok(triples_inserted) => {
+                    tracing::debug!(
+                        blockchain_id = %blockchain_id,
+                        contract = %contract_addr_str,
+                        kc_id = kc.kc_id,
+                        ual = %ual,
+                        triples = triples_inserted,
+                        "[DKG SYNC] Stored synced KC in triple store"
+                    );
+                    successfully_synced_kc_ids.push(kc.kc_id);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        contract = %contract_addr_str,
+                        kc_id = kc.kc_id,
+                        error = %e,
+                        "[DKG SYNC] Failed to store KC in triple store"
+                    );
+                    if !failed_kc_ids.contains(&kc.kc_id) {
+                        failed_kc_ids.push(kc.kc_id);
+                    }
+                }
+            }
+        }
+
+        // Step 7: Update DB - remove successfully synced KCs, increment retry_count for failed ones
+        if !successfully_synced_kc_ids.is_empty() {
+            if let Err(e) = self
+                .repository_manager
+                .kc_sync_repository()
+                .remove_kcs(
+                    blockchain_id.as_str(),
+                    &contract_addr_str,
+                    &successfully_synced_kc_ids,
+                )
+                .await
+            {
+                tracing::error!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract_addr_str,
+                    error = %e,
+                    "[DKG SYNC] Failed to remove synced KCs from queue"
+                );
+            }
+            synced += successfully_synced_kc_ids.len() as u64;
+        }
+
+        if !failed_kc_ids.is_empty()
+            && let Err(e) = self
+                .repository_manager
+                .kc_sync_repository()
+                .increment_retry_count(blockchain_id.as_str(), &contract_addr_str, &failed_kc_ids)
+                .await
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "[DKG SYNC] Failed to increment retry count for failed KCs"
+            );
+        }
 
         Ok(ContractSyncResult {
             enqueued,
             pending,
             synced,
-            failed: 0,
+            failed: failed_kc_ids.len() as u64,
         })
     }
 
@@ -606,6 +719,45 @@ struct NetworkFetchResult {
 struct ChunkFetchResult {
     fetched: HashMap<String, NetworkFetchResult>,
     failed_kc_ids: Vec<u64>,
+}
+
+/// Parse metadata from network RDF triples.
+///
+/// Returns KnowledgeCollectionMetadata if all required fields are found, None otherwise.
+fn parse_metadata_from_triples(triples: &[String]) -> Option<KnowledgeCollectionMetadata> {
+    let mut publisher_address: Option<String> = None;
+    let mut block_number: Option<u64> = None;
+    let mut transaction_hash: Option<String> = None;
+    let mut block_timestamp: Option<u64> = None;
+
+    for triple in triples {
+        if triple.contains(predicates::PUBLISHED_BY) {
+            // Format: <ual> <predicate> <did:dkg:publisherKey/0x123...> .
+            publisher_address = extract_uri_suffix(triple, predicates::PUBLISHER_KEY_PREFIX);
+        } else if triple.contains(predicates::PUBLISHED_AT_BLOCK) {
+            // Format: <ual> <predicate> "12345" .
+            block_number = extract_quoted_integer(triple);
+        } else if triple.contains(predicates::PUBLISH_TX) {
+            // Format: <ual> <predicate> "0x..." .
+            transaction_hash = extract_quoted_string(triple);
+        } else if triple.contains(predicates::BLOCK_TIME) {
+            // Format: <ual> <predicate> "2024-01-15T10:30:00Z"^^<xsd:dateTime> .
+            block_timestamp = extract_datetime_as_unix(triple);
+        }
+    }
+
+    // All fields are required
+    match (
+        publisher_address,
+        block_number,
+        transaction_hash,
+        block_timestamp,
+    ) {
+        (Some(publisher), Some(block), Some(tx_hash), Some(timestamp)) => Some(
+            KnowledgeCollectionMetadata::new(publisher.to_lowercase(), block, tx_hash, timestamp),
+        ),
+        _ => None,
+    }
 }
 
 #[derive(Clone)]

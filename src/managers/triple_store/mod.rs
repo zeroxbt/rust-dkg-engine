@@ -2,7 +2,7 @@ mod backend;
 mod config;
 pub(crate) mod error;
 pub(crate) mod query;
-mod rdf;
+pub(crate) mod rdf;
 mod types;
 
 use std::{path::PathBuf, time::Duration};
