@@ -89,6 +89,7 @@ impl<Op: Operation> OperationService<Op> {
         &self,
         operation_id: Uuid,
         peer: PeerId,
+        addresses: Vec<libp2p::Multiaddr>,
         request_data: Op::Request,
     ) -> Result<Op::Response, RequestError> {
         let message = RequestMessage {
@@ -96,7 +97,7 @@ impl<Op: Operation> OperationService<Op> {
             data: request_data,
         };
 
-        let protocol_request = Op::build_protocol_request(peer, message);
+        let protocol_request = Op::build_protocol_request(peer, addresses, message);
 
         // Send the request and get the request ID
         let request_id = self

@@ -231,7 +231,7 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
 
         let total_triples = match self
             .triple_store_service
-            .insert_knowledge_collection(&ual, pending_data.dataset(), &metadata)
+            .insert_knowledge_collection(&ual, pending_data.dataset(), &Some(metadata))
             .await
         {
             Ok(count) => {
@@ -329,10 +329,18 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
             data: FinalityRequestData::new(ual, data.publish_operation_id.clone()),
         };
 
+        // Get peer addresses from Kademlia for reliable request delivery
+        let addresses = self
+            .network_manager
+            .get_peer_addresses(publisher_peer_id)
+            .await
+            .unwrap_or_default();
+
         if let Err(e) = self
             .network_manager
             .send_protocol_request(ProtocolRequest::Finality {
                 peer: publisher_peer_id,
+                addresses,
                 message,
             })
             .await

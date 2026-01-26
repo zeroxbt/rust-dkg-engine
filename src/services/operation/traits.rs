@@ -1,4 +1,4 @@
-use libp2p::PeerId;
+use libp2p::{Multiaddr, PeerId};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{controllers::rpc_controller::ProtocolRequest, managers::network::RequestMessage};
@@ -31,9 +31,11 @@ pub(crate) trait Operation: Send + Sync + 'static {
     /// Build the protocol request for sending to a peer.
     ///
     /// This wraps the request message in the appropriate ProtocolRequest variant
-    /// for the network layer.
+    /// for the network layer. Addresses are used by libp2p to dial the peer if
+    /// not already connected, ensuring requests don't hang indefinitely.
     fn build_protocol_request(
         peer: PeerId,
+        addresses: Vec<Multiaddr>,
         message: RequestMessage<Self::Request>,
     ) -> ProtocolRequest;
 }

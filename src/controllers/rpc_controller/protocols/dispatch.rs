@@ -5,25 +5,29 @@ use crate::{
         GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
     },
     managers::network::{
-        PeerId, ProtocolDispatch, RequestMessage, ResponseMessage, request_response,
+        Multiaddr, PeerId, ProtocolDispatch, RequestMessage, ResponseMessage, request_response,
     },
 };
 
 pub(crate) enum ProtocolRequest {
     Store {
         peer: PeerId,
+        addresses: Vec<Multiaddr>,
         message: RequestMessage<StoreRequestData>,
     },
     Get {
         peer: PeerId,
+        addresses: Vec<Multiaddr>,
         message: RequestMessage<GetRequestData>,
     },
     Finality {
         peer: PeerId,
+        addresses: Vec<Multiaddr>,
         message: RequestMessage<FinalityRequestData>,
     },
     BatchGet {
         peer: PeerId,
+        addresses: Vec<Multiaddr>,
         message: RequestMessage<BatchGetRequestData>,
     },
 }
@@ -53,14 +57,34 @@ impl ProtocolDispatch for NetworkProtocols {
 
     fn send_request(&mut self, request: Self::Request) -> request_response::OutboundRequestId {
         match request {
-            ProtocolRequest::Store { peer, message } => self.store.send_request(&peer, message),
-            ProtocolRequest::Get { peer, message } => self.get.send_request(&peer, message),
-            ProtocolRequest::Finality { peer, message } => {
-                self.finality.send_request(&peer, message)
-            }
-            ProtocolRequest::BatchGet { peer, message } => {
-                self.batch_get.send_request(&peer, message)
-            }
+            ProtocolRequest::Store {
+                peer,
+                addresses,
+                message,
+            } => self
+                .store
+                .send_request_with_addresses(&peer, message, addresses),
+            ProtocolRequest::Get {
+                peer,
+                addresses,
+                message,
+            } => self
+                .get
+                .send_request_with_addresses(&peer, message, addresses),
+            ProtocolRequest::Finality {
+                peer,
+                addresses,
+                message,
+            } => self
+                .finality
+                .send_request_with_addresses(&peer, message, addresses),
+            ProtocolRequest::BatchGet {
+                peer,
+                addresses,
+                message,
+            } => self
+                .batch_get
+                .send_request_with_addresses(&peer, message, addresses),
         }
     }
 

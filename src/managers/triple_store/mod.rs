@@ -259,7 +259,7 @@ impl TripleStoreManager {
         &self,
         kc_ual: &str,
         knowledge_assets: &[types::KnowledgeAsset],
-        metadata: &KnowledgeCollectionMetadata,
+        metadata: &Option<KnowledgeCollectionMetadata>,
     ) -> Result<usize> {
         let mut total_triples = 0;
 
@@ -359,48 +359,50 @@ impl TripleStoreManager {
             ));
         }
 
-        // KC metadata
-        metadata_triples.push_str(&format!(
-            "    <{}> <{}> <did:dkg:publisherKey/{}> .\n",
-            kc_ual,
-            predicates::PUBLISHED_BY,
-            metadata.publisher_address()
-        ));
-        metadata_triples.push_str(&format!(
-            "    <{}> <{}> \"{}\" .\n",
-            kc_ual,
-            predicates::PUBLISHED_AT_BLOCK,
-            metadata.block_number()
-        ));
-        metadata_triples.push_str(&format!(
-            "    <{}> <{}> \"{}\" .\n",
-            kc_ual,
-            predicates::PUBLISH_TX,
-            metadata.transaction_hash()
-        ));
+        // KC metadata (only if provided)
+        if let Some(meta) = metadata {
+            metadata_triples.push_str(&format!(
+                "    <{}> <{}> <did:dkg:publisherKey/{}> .\n",
+                kc_ual,
+                predicates::PUBLISHED_BY,
+                meta.publisher_address()
+            ));
+            metadata_triples.push_str(&format!(
+                "    <{}> <{}> \"{}\" .\n",
+                kc_ual,
+                predicates::PUBLISHED_AT_BLOCK,
+                meta.block_number()
+            ));
+            metadata_triples.push_str(&format!(
+                "    <{}> <{}> \"{}\" .\n",
+                kc_ual,
+                predicates::PUBLISH_TX,
+                meta.transaction_hash()
+            ));
 
-        // Publish time (current time)
-        let publish_time_iso = format_unix_timestamp(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
-        );
-        metadata_triples.push_str(&format!(
-            "    <{}> <{}> \"{}\"^^<http://www.w3.org/2001/XMLSchema#dateTime> .\n",
-            kc_ual,
-            predicates::PUBLISH_TIME,
-            publish_time_iso
-        ));
+            // Publish time (current time)
+            let publish_time_iso = format_unix_timestamp(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+            );
+            metadata_triples.push_str(&format!(
+                "    <{}> <{}> \"{}\"^^<http://www.w3.org/2001/XMLSchema#dateTime> .\n",
+                kc_ual,
+                predicates::PUBLISH_TIME,
+                publish_time_iso
+            ));
 
-        // Block time
-        let block_time_iso = format_unix_timestamp(metadata.block_timestamp());
-        metadata_triples.push_str(&format!(
-            "    <{}> <{}> \"{}\"^^<http://www.w3.org/2001/XMLSchema#dateTime> .\n",
-            kc_ual,
-            predicates::BLOCK_TIME,
-            block_time_iso
-        ));
+            // Block time
+            let block_time_iso = format_unix_timestamp(meta.block_timestamp());
+            metadata_triples.push_str(&format!(
+                "    <{}> <{}> \"{}\"^^<http://www.w3.org/2001/XMLSchema#dateTime> .\n",
+                kc_ual,
+                predicates::BLOCK_TIME,
+                block_time_iso
+            ));
+        }
 
         // Build the final INSERT DATA query
         let insert_query = format!(

@@ -8,6 +8,13 @@ is_dev_env = true
 app_data_path = "data"
 
 # ============================================
+# Observability Configuration
+# ============================================
+[observability.metrics]
+enabled = true
+port = 9090
+
+# ============================================
 # HTTP API Configuration
 # ============================================
 [http_api]

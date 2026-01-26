@@ -401,7 +401,7 @@ impl RpcRouter {
                     info,
                     ..
                 }) => {
-                    tracing::debug!(%peer_id, "received identify from peer");
+                    // tracing::debug!(%peer_id, "received identify from peer");
 
                     if let Err(error) = self
                         .network_manager
@@ -473,10 +473,10 @@ impl RpcRouter {
                 error,
                 ..
             } => {
-                tracing::debug!(%peer_id, %error, "outgoing connection failed");
+                // tracing::debug!(%peer_id, %error, "outgoing connection failed");
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                tracing::debug!(%peer_id, "connection established");
+                // tracing::debug!(%peer_id, "connection established");
                 // Clear backoff on successful connection
                 self.peer_discovery_tracker.record_success(&peer_id);
             }
@@ -485,7 +485,7 @@ impl RpcRouter {
                 num_established,
                 ..
             } => {
-                tracing::debug!(%peer_id, num_established, "connection closed");
+                // tracing::debug!(%peer_id, num_established, "connection closed");
             }
             _ => {}
         }

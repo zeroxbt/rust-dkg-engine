@@ -1,7 +1,8 @@
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration, time::Instant};
 
 use chrono::Utc;
 use futures::stream::{FuturesUnordered, StreamExt};
+use metrics::{counter, histogram};
 use tokio::sync::{Mutex, Semaphore, mpsc};
 
 use super::{
@@ -81,6 +82,8 @@ impl CommandScheduler {
     pub(crate) async fn schedule(&self, request: CommandExecutionRequest) {
         let command_name = request.command().name();
         let delay = request.delay().min(MAX_COMMAND_DELAY);
+
+        counter!("command_executor_scheduled_total", "command" => command_name).increment(1);
 
         let result = if delay > Duration::ZERO {
             let tx = self.tx.clone();
@@ -174,22 +177,31 @@ impl CommandExecutor {
         request: CommandExecutionRequest,
         _permit: tokio::sync::OwnedSemaphorePermit,
     ) {
+        let command_name = request.command().name();
+
         // Check if command has expired
         if request.is_expired() {
-            tracing::warn!("Command {} expired, dropping", request.command().name());
+            counter!("command_executor_executed_total", "command" => command_name, "result" => "expired").increment(1);
+            tracing::warn!("Command {} expired, dropping", command_name);
             return;
         }
 
+        let start = Instant::now();
         let result = self.command_resolver.execute(request.command()).await;
+        let duration = start.elapsed();
+
+        histogram!("command_executor_duration_seconds", "command" => command_name).record(duration.as_secs_f64());
 
         match result {
             CommandExecutionResult::Repeat { delay } => {
+                counter!("command_executor_executed_total", "command" => command_name, "result" => "rescheduled").increment(1);
                 let new_request =
                     CommandExecutionRequest::new(request.into_command()).with_delay(delay);
                 self.scheduler.schedule(new_request).await;
             }
             CommandExecutionResult::Completed => {
-                tracing::trace!("Command {} completed", request.command().name());
+                counter!("command_executor_executed_total", "command" => command_name, "result" => "completed").increment(1);
+                tracing::trace!("Command {} completed", command_name);
             }
         }
     }

@@ -648,9 +648,15 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     let peer = *peer;
                     let request_data = get_request_data.clone();
                     let operation_service = Arc::clone(&self.get_operation_service);
+                    let network_manager = Arc::clone(&self.network_manager);
                     async move {
+                        // Get peer addresses from Kademlia for reliable request delivery
+                        let addresses = network_manager
+                            .get_peer_addresses(peer)
+                            .await
+                            .unwrap_or_default();
                         let result = operation_service
-                            .send_request(operation_id, peer, request_data)
+                            .send_request(operation_id, peer, addresses, request_data)
                             .await;
                         (peer, result)
                     }

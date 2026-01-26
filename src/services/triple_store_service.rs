@@ -252,7 +252,7 @@ impl TripleStoreService {
         &self,
         knowledge_collection_ual: &str,
         dataset: &Assertion,
-        metadata: &KnowledgeCollectionMetadata,
+        metadata: &Option<KnowledgeCollectionMetadata>,
     ) -> Result<usize, TripleStoreError> {
         // Build knowledge assets from the dataset
         let knowledge_assets = Self::build_knowledge_assets(knowledge_collection_ual, dataset);

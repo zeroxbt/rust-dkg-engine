@@ -4,6 +4,7 @@ mod context;
 mod controllers;
 mod error;
 mod managers;
+mod observability;
 mod operations;
 mod services;
 mod utils;
@@ -21,6 +22,7 @@ use controllers::{
 };
 use dotenvy::dotenv;
 use libp2p::identity::Keypair;
+use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::select;
 
 use crate::{
@@ -51,6 +53,16 @@ async fn main() {
     initialize_logger();
     display_ot_node_ascii_art();
     let config = Arc::new(config::initialize_configuration());
+
+    // Initialize Prometheus metrics exporter if enabled
+    if config.observability.metrics.enabled {
+        let metrics_port = config.observability.metrics.port;
+        PrometheusBuilder::new()
+            .with_http_listener(([0, 0, 0, 0], metrics_port))
+            .install()
+            .expect("Failed to install Prometheus metrics exporter");
+        tracing::info!("Metrics endpoint enabled on port {}", metrics_port);
+    }
 
     // Derive all filesystem paths from the root data directory
     let paths = AppPaths::from_root(config.app_data_path.clone());

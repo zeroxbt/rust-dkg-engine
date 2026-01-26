@@ -1,6 +1,7 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration, time::Instant};
 
 use futures::future::join_all;
+use metrics::{counter, gauge, histogram};
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
@@ -39,6 +40,11 @@ const MAX_RETRY_ATTEMPTS: u32 = 2;
 /// Maximum number of UALs per network batch GET request (dictated by receiver nodes)
 /// This must match BATCH_GET_UAL_MAX_LIMIT in the batch_get messages module
 const NETWORK_BATCH_SIZE: usize = 1000;
+
+/// Maximum number of pending KCs to process per sync cycle.
+/// Keep this low because filter_pending_kcs makes 2 RPC calls per KC sequentially.
+/// At ~100ms per RPC call, 100 KCs = ~20 seconds of RPC calls per cycle.
+const MAX_PENDING_KCS_PER_CYCLE: u64 = 100;
 
 pub(crate) struct SyncCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
@@ -87,12 +93,25 @@ impl SyncCommandHandler {
     ) -> Result<ContractSyncResult, String> {
         let contract_addr_str = format!("{:?}", contract_address);
 
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            contract = %contract_addr_str,
+            "[DKG SYNC] Starting contract sync"
+        );
+
         // Step 1: Check for new KCs on chain and enqueue them
         let enqueued = self
             .enqueue_new_kcs(blockchain_id, contract_address, &contract_addr_str)
             .await?;
 
-        // Step 2: Fetch pending KCs for this contract from DB
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            contract = %contract_addr_str,
+            enqueued,
+            "[DKG SYNC] Enqueue step completed, fetching pending KCs from DB..."
+        );
+
+        // Step 2: Fetch pending KCs for this contract from DB (limited to avoid long cycles)
         let pending_kcs = self
             .repository_manager
             .kc_sync_repository()
@@ -100,9 +119,17 @@ impl SyncCommandHandler {
                 blockchain_id.as_str(),
                 &contract_addr_str,
                 MAX_RETRY_ATTEMPTS,
+                MAX_PENDING_KCS_PER_CYCLE,
             )
             .await
             .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
+
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            contract = %contract_addr_str,
+            count = pending_kcs.len(),
+            "[DKG SYNC] Fetched pending KCs from DB"
+        );
 
         let pending_kc_ids: Vec<u64> = pending_kcs.into_iter().map(|kc| kc.kc_id).collect();
         let pending = pending_kc_ids.len();
@@ -197,36 +224,25 @@ impl SyncCommandHandler {
                 continue;
             };
 
-            // Parse metadata from network response (trusting network like JS implementation)
-            let metadata = match &fetch_result.metadata {
-                Some(triples) => match parse_metadata_from_triples(triples) {
-                    Some(m) => m,
-                    None => {
-                        tracing::warn!(
-                            blockchain_id = %blockchain_id,
-                            contract = %contract_addr_str,
-                            kc_id = kc.kc_id,
-                            "[DKG SYNC] Failed to parse metadata from network response"
-                        );
-                        if !failed_kc_ids.contains(&kc.kc_id) {
-                            failed_kc_ids.push(kc.kc_id);
-                        }
-                        continue;
-                    }
-                },
-                None => {
-                    tracing::warn!(
-                        blockchain_id = %blockchain_id,
-                        contract = %contract_addr_str,
-                        kc_id = kc.kc_id,
-                        "[DKG SYNC] No metadata in network response"
-                    );
-                    if !failed_kc_ids.contains(&kc.kc_id) {
-                        failed_kc_ids.push(kc.kc_id);
-                    }
-                    continue;
-                }
-            };
+            // Parse metadata from network response (optional)
+            let metadata: Option<KnowledgeCollectionMetadata> = fetch_result
+                .metadata
+                .as_ref()
+                .and_then(|triples| parse_metadata_from_triples(triples));
+
+            if metadata.is_none() {
+                tracing::debug!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract_addr_str,
+                    kc_id = kc.kc_id,
+                    "[DKG SYNC] No metadata from network, storing assertion without metadata"
+                );
+                counter!("sync_metadata_source", "blockchain" => blockchain_id.as_str().to_string(), "source" => "none")
+                    .increment(1);
+            } else {
+                counter!("sync_metadata_source", "blockchain" => blockchain_id.as_str().to_string(), "source" => "network")
+                    .increment(1);
+            }
 
             // Insert into triple store
             match self
@@ -314,9 +330,19 @@ impl SyncCommandHandler {
         contract_addr_str: &str,
         pending_kc_ids: &[u64],
     ) -> (Vec<KcToSync>, Vec<u64>, Vec<u64>) {
+        let blockchain_label = blockchain_id.as_str();
         let mut kcs_to_sync = Vec::new();
         let mut expired_kc_ids = Vec::new();
         let mut already_synced_kc_ids = Vec::new();
+        let mut skipped_due_to_errors = 0u64;
+
+        let total_kcs = pending_kc_ids.len();
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            contract = %contract_addr_str,
+            total_kcs,
+            "[DKG SYNC] Starting filter step (2 RPC calls per KC)"
+        );
 
         // Get current epoch once for all KCs
         let current_epoch = match self
@@ -336,7 +362,15 @@ impl SyncCommandHandler {
             }
         };
 
-        for &kc_id in pending_kc_ids {
+        for (idx, &kc_id) in pending_kc_ids.iter().enumerate() {
+            // Log progress every 10 KCs
+            if idx > 0 && idx % 10 == 0 {
+                tracing::debug!(
+                    blockchain_id = %blockchain_id,
+                    progress = format!("{}/{}", idx, total_kcs),
+                    "[DKG SYNC] Filter progress"
+                );
+            }
             // Check if KC is expired (currentEpoch > endEpoch)
             let end_epoch = match self
                 .blockchain_manager
@@ -352,6 +386,7 @@ impl SyncCommandHandler {
                         error = %e,
                         "[DKG SYNC] Failed to get KC end epoch, will retry later"
                     );
+                    skipped_due_to_errors += 1;
                     continue;
                 }
             };
@@ -377,6 +412,7 @@ impl SyncCommandHandler {
                         kc_id = kc_id,
                         "[DKG SYNC] KC has end_epoch but no token range, skipping"
                     );
+                    skipped_due_to_errors += 1;
                     continue;
                 }
                 Err(e) => {
@@ -387,6 +423,7 @@ impl SyncCommandHandler {
                         error = %e,
                         "[DKG SYNC] Failed to get KC token range, will retry later"
                     );
+                    skipped_due_to_errors += 1;
                     continue;
                 }
             };
@@ -418,6 +455,16 @@ impl SyncCommandHandler {
             });
         }
 
+        // Record filter metrics
+        counter!("sync_filter_expired_total", "blockchain" => blockchain_label.to_string())
+            .increment(expired_kc_ids.len() as u64);
+        counter!("sync_filter_already_synced_total", "blockchain" => blockchain_label.to_string())
+            .increment(already_synced_kc_ids.len() as u64);
+        counter!("sync_filter_needs_sync_total", "blockchain" => blockchain_label.to_string())
+            .increment(kcs_to_sync.len() as u64);
+        counter!("sync_filter_skipped_errors_total", "blockchain" => blockchain_label.to_string())
+            .increment(skipped_due_to_errors);
+
         (kcs_to_sync, expired_kc_ids, already_synced_kc_ids)
     }
 
@@ -428,6 +475,12 @@ impl SyncCommandHandler {
         contract_address: Address,
         contract_addr_str: &str,
     ) -> Result<u64, String> {
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            contract = %contract_addr_str,
+            "[DKG SYNC] Fetching latest KC ID from chain..."
+        );
+
         // Get latest KC ID from chain
         let latest_on_chain = self
             .blockchain_manager
@@ -435,7 +488,20 @@ impl SyncCommandHandler {
             .await
             .map_err(|e| format!("Failed to get latest KC ID: {}", e))?;
 
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            contract = %contract_addr_str,
+            latest_on_chain,
+            "[DKG SYNC] Got latest KC ID from chain"
+        );
+
         // Get our last checked ID from DB
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            contract = %contract_addr_str,
+            "[DKG SYNC] Fetching sync progress from DB..."
+        );
+
         let last_checked = self
             .repository_manager
             .kc_sync_repository()
@@ -445,8 +511,20 @@ impl SyncCommandHandler {
             .map(|p| p.last_checked_id)
             .unwrap_or(0);
 
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            contract = %contract_addr_str,
+            last_checked,
+            "[DKG SYNC] Got sync progress from DB"
+        );
+
         // Nothing new to check
         if latest_on_chain <= last_checked {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                "[DKG SYNC] No new KCs to enqueue (latest_on_chain <= last_checked)"
+            );
             return Ok(0);
         }
 
@@ -494,6 +572,8 @@ impl SyncCommandHandler {
             return (fetched, failed_kc_ids);
         }
 
+        let blockchain_label = blockchain_id.as_str();
+
         // Get shard nodes (peers) for this blockchain
         let peers = match self.get_shard_peers(blockchain_id).await {
             Ok(peers) => peers,
@@ -503,6 +583,8 @@ impl SyncCommandHandler {
                     error = %e,
                     "[DKG SYNC] Failed to get shard peers, marking all KCs as failed"
                 );
+                counter!("sync_network_no_peers_total", "blockchain" => blockchain_label.to_string(), "reason" => "error")
+                    .increment(1);
                 failed_kc_ids = kcs_to_sync.iter().map(|kc| kc.kc_id).collect();
                 return (fetched, failed_kc_ids);
             }
@@ -513,9 +595,14 @@ impl SyncCommandHandler {
                 blockchain_id = %blockchain_id,
                 "[DKG SYNC] No peers available for network sync"
             );
+            counter!("sync_network_no_peers_total", "blockchain" => blockchain_label.to_string(), "reason" => "empty")
+                .increment(1);
             failed_kc_ids = kcs_to_sync.iter().map(|kc| kc.kc_id).collect();
             return (fetched, failed_kc_ids);
         }
+
+        gauge!("sync_network_peers_available", "blockchain" => blockchain_label.to_string())
+            .set(peers.len() as f64);
 
         tracing::info!(
             blockchain_id = %blockchain_id,
@@ -537,6 +624,11 @@ impl SyncCommandHandler {
             failed_kc_ids.extend(chunk_result.failed_kc_ids);
         }
 
+        counter!("sync_network_fetched_total", "blockchain" => blockchain_label.to_string())
+            .increment(fetched.len() as u64);
+        counter!("sync_network_fetch_failed_total", "blockchain" => blockchain_label.to_string())
+            .increment(failed_kc_ids.len() as u64);
+
         tracing::info!(
             blockchain_id = %blockchain_id,
             fetched = fetched.len(),
@@ -554,6 +646,7 @@ impl SyncCommandHandler {
         kcs: &[KcToSync],
         peers: &[PeerId],
     ) -> ChunkFetchResult {
+        let blockchain_label = blockchain_id.as_str();
         let mut fetched: HashMap<String, NetworkFetchResult> = HashMap::new();
         let mut uals_still_needed: Vec<String> = kcs.iter().map(|kc| kc.ual.clone()).collect();
 
@@ -610,12 +703,18 @@ impl SyncCommandHandler {
                     let peer = *peer;
                     let request_data = batch_request.clone();
                     let operation_service = Arc::clone(&self.batch_get_operation_service);
+                    let network_manager = Arc::clone(&self.network_manager);
                     // Generate a unique operation ID for tracking (not stored, just for the
                     // request)
                     let operation_id = uuid::Uuid::new_v4();
                     async move {
+                        // Get peer addresses from Kademlia for reliable request delivery
+                        let addresses = network_manager
+                            .get_peer_addresses(peer)
+                            .await
+                            .unwrap_or_default();
                         let result = operation_service
-                            .send_request(operation_id, peer, request_data)
+                            .send_request(operation_id, peer, addresses, request_data)
                             .await;
                         (peer, result)
                     }
@@ -628,11 +727,25 @@ impl SyncCommandHandler {
             for (peer, result) in results {
                 match result {
                     Ok(response) => {
+                        counter!("sync_peer_request_total", "blockchain" => blockchain_label.to_string(), "result" => "success")
+                            .increment(1);
                         let metadata_map = response.metadata();
 
                         for (ual, assertion) in response.assertions() {
                             // Skip if already satisfied
                             if !uals_still_needed.contains(ual) {
+                                continue;
+                            }
+
+                            // Skip empty assertions - peer doesn't have data
+                            if !assertion.has_data() {
+                                counter!("sync_validation_total", "blockchain" => blockchain_label.to_string(), "result" => "empty")
+                                    .increment(1);
+                                tracing::trace!(
+                                    ual = %ual,
+                                    peer = %peer,
+                                    "[DKG SYNC] Peer returned empty assertion, skipping"
+                                );
                                 continue;
                             }
 
@@ -644,6 +757,8 @@ impl SyncCommandHandler {
                                     .await;
 
                                 if is_valid {
+                                    counter!("sync_validation_total", "blockchain" => blockchain_label.to_string(), "result" => "valid")
+                                        .increment(1);
                                     let metadata = metadata_map.get(ual).cloned();
                                     fetched.insert(
                                         ual.clone(),
@@ -660,6 +775,8 @@ impl SyncCommandHandler {
                                         "[DKG SYNC] Received and validated KC from network"
                                     );
                                 } else {
+                                    counter!("sync_validation_total", "blockchain" => blockchain_label.to_string(), "result" => "invalid")
+                                        .increment(1);
                                     tracing::debug!(
                                         ual = %ual,
                                         peer = %peer,
@@ -670,6 +787,8 @@ impl SyncCommandHandler {
                         }
                     }
                     Err(e) => {
+                        counter!("sync_peer_request_total", "blockchain" => blockchain_label.to_string(), "result" => "error")
+                            .increment(1);
                         tracing::debug!(
                             peer = %peer,
                             error = %e,
@@ -763,6 +882,7 @@ fn parse_metadata_from_triples(triples: &[String]) -> Option<KnowledgeCollection
     }
 }
 
+
 #[derive(Clone)]
 pub(crate) struct SyncCommandData {
     pub blockchain_id: BlockchainId,
@@ -776,6 +896,9 @@ impl SyncCommandData {
 
 impl CommandHandler<SyncCommandData> for SyncCommandHandler {
     async fn execute(&self, data: &SyncCommandData) -> CommandExecutionResult {
+        let sync_start = Instant::now();
+        let blockchain_label = data.blockchain_id.as_str();
+
         tracing::info!(
             blockchain_id = %data.blockchain_id,
             "[DKG SYNC] Starting sync cycle"
@@ -850,6 +973,18 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
                 }
             }
         }
+
+        // Record sync metrics
+        counter!("sync_kcs_enqueued_total", "blockchain" => blockchain_label.to_string())
+            .increment(total_enqueued);
+        gauge!("sync_kcs_pending", "blockchain" => blockchain_label.to_string())
+            .set(total_pending as f64);
+        counter!("sync_kcs_synced_total", "blockchain" => blockchain_label.to_string())
+            .increment(total_synced);
+        counter!("sync_kcs_failed_total", "blockchain" => blockchain_label.to_string())
+            .increment(total_failed);
+        histogram!("sync_cycle_duration_seconds", "blockchain" => blockchain_label.to_string())
+            .record(sync_start.elapsed().as_secs_f64());
 
         if total_enqueued > 0 || total_pending > 0 {
             tracing::info!(

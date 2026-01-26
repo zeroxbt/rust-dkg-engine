@@ -44,13 +44,20 @@ where
     DialPeer(PeerId),
     /// Get the list of currently connected peers.
     GetConnectedPeers(tokio::sync::oneshot::Sender<Vec<PeerId>>),
+    /// Get known addresses for a peer from Kademlia routing table.
+    GetPeerAddresses {
+        peer_id: PeerId,
+        response_tx: tokio::sync::oneshot::Sender<Vec<Multiaddr>>,
+    },
     AddKadAddresses {
         peer_id: PeerId,
         listen_addrs: Vec<Multiaddr>,
     },
     SendProtocolRequest {
         request: B::Request,
-        /// Channel to return the OutboundRequestId for tracking
+        /// Channel to return both the OutboundRequestId and a pre-registered response receiver.
+        /// The receiver is created and registered before the request is sent to avoid race conditions
+        /// where libp2p emits a failure event before the caller can register for it.
         response_tx: tokio::sync::oneshot::Sender<request_response::OutboundRequestId>,
     },
     SendProtocolResponse {
@@ -337,6 +344,22 @@ where
                                 let peers: Vec<PeerId> = swarm.connected_peers().copied().collect();
                                 let _ = response_tx.send(peers);
                             }
+                            NetworkAction::GetPeerAddresses { peer_id, response_tx } => {
+                                // Get addresses from Kademlia routing table using the specific
+                                // k-bucket for this peer (more efficient than iterating all buckets)
+                                let addresses = swarm
+                                    .behaviour_mut()
+                                    .kad
+                                    .kbucket(peer_id)
+                                    .and_then(|bucket| {
+                                        bucket
+                                            .iter()
+                                            .find(|entry| *entry.node.key.preimage() == peer_id)
+                                            .map(|entry| entry.node.value.iter().cloned().collect())
+                                    })
+                                    .unwrap_or_default();
+                                let _ = response_tx.send(addresses);
+                            }
                             NetworkAction::AddKadAddresses {
                                 peer_id,
                                 listen_addrs,
@@ -389,6 +412,21 @@ where
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.enqueue_action(NetworkAction::GetConnectedPeers(tx))
             .await?;
+        rx.await.map_err(|_| NetworkError::RequestIdChannelClosed)
+    }
+
+    /// Get known addresses for a peer from the Kademlia routing table.
+    /// Returns an empty vector if the peer is not found.
+    pub(crate) async fn get_peer_addresses(
+        &self,
+        peer_id: PeerId,
+    ) -> Result<Vec<Multiaddr>, NetworkError> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.enqueue_action(NetworkAction::GetPeerAddresses {
+            peer_id,
+            response_tx: tx,
+        })
+        .await?;
         rx.await.map_err(|_| NetworkError::RequestIdChannelClosed)
     }
 

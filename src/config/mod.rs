@@ -70,10 +70,43 @@ pub(crate) struct Config {
     pub app_data_path: PathBuf,
     pub managers: ManagersConfig,
     pub http_api: HttpApiConfig,
+    #[serde(default)]
+    pub observability: ObservabilityConfig,
 }
 
 fn default_app_data_path() -> PathBuf {
     PathBuf::from("data".to_string())
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+pub(crate) struct ObservabilityConfig {
+    #[serde(default)]
+    pub metrics: MetricsConfig,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub(crate) struct MetricsConfig {
+    #[serde(default = "default_metrics_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_metrics_port")]
+    pub port: u16,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_metrics_enabled(),
+            port: default_metrics_port(),
+        }
+    }
+}
+
+fn default_metrics_enabled() -> bool {
+    true
+}
+
+fn default_metrics_port() -> u16 {
+    9090
 }
 
 #[derive(Debug, Deserialize, Clone)]

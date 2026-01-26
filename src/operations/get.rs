@@ -1,4 +1,4 @@
-use libp2p::PeerId;
+use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -44,8 +44,13 @@ impl Operation for GetOperation {
 
     fn build_protocol_request(
         peer: PeerId,
+        addresses: Vec<Multiaddr>,
         message: RequestMessage<Self::Request>,
     ) -> ProtocolRequest {
-        ProtocolRequest::Get { peer, message }
+        ProtocolRequest::Get {
+            peer,
+            addresses,
+            message,
+        }
     }
 }
