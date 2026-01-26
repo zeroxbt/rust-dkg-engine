@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use alloy::{
+    network::EthereumWallet,
     primitives::{Address, B256, Bytes, U256, hex},
     providers::Provider,
     rpc::types::Filter,
@@ -11,7 +12,8 @@ use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use crate::managers::blockchain::{
     AccessPolicy, BlockchainConfig, BlockchainId, GasConfig, PermissionedNode, SignatureComponents,
     blockchains::blockchain_creator::{
-        BlockchainProvider, Contracts, Profile, initialize_contracts, initialize_provider,
+        BlockchainProvider, Contracts, Profile, Staking, Token, initialize_contracts,
+        initialize_provider, initialize_provider_with_wallet,
         sharding_table::ShardingTableLib::NodeInfo,
     },
     error::BlockchainError,

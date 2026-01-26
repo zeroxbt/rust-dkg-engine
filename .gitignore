@@ -30,3 +30,4 @@ data*/
 dkg-engine/*
 dkg-engine
 contracts/*
+config/*

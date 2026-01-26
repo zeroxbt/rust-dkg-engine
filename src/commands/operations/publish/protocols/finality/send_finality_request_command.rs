@@ -154,17 +154,19 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
         );
 
         // Retrieve cached dataset from pending storage
+        // This will fail if this node doesn't have the dataset locally
+        // (e.g., KC was published by another node, node was offline, or wasn't contacted during publish)
         let pending_data = match self
             .pending_storage_service
             .get_dataset(publish_operation_id)
         {
             Ok(data) => data,
             Err(e) => {
-                tracing::error!(
+                tracing::debug!(
                     operation_id = %operation_id,
                     publish_operation_id = %publish_operation_id,
                     error = %e,
-                    "Failed to retrieve dataset from pending storage"
+                    "Dataset not in pending storage, skipping finality"
                 );
                 return CommandExecutionResult::Completed;
             }

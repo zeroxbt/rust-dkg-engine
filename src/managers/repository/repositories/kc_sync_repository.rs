@@ -101,7 +101,8 @@ impl KcSyncRepository {
             })
             .collect();
 
-        // Insert with ON CONFLICT DO NOTHING to skip existing entries
+        // Insert with ON DUPLICATE KEY UPDATE to skip existing entries (MySQL compatible)
+        // We update kc_id to itself, which is effectively a no-op but valid MySQL syntax
         QueueEntity::insert_many(models)
             .on_conflict(
                 sea_orm::sea_query::OnConflict::columns([
@@ -109,10 +110,9 @@ impl KcSyncRepository {
                     QueueColumn::ContractAddress,
                     QueueColumn::KcId,
                 ])
-                .do_nothing()
+                .update_column(QueueColumn::KcId)
                 .to_owned(),
             )
-            .do_nothing()
             .exec(self.conn.as_ref())
             .await?;
 

@@ -109,9 +109,9 @@ impl PendingStorageService {
                 Ok(data)
             }
             None => {
-                tracing::error!(
+                tracing::debug!(
                     operation_id = %operation_id,
-                    "Dataset not found in pending storage"
+                    "Dataset not found in pending storage (expected for KCs published by other nodes)"
                 );
                 Err(PendingStorageError::NotFound(operation_id))
             }

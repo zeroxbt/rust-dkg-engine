@@ -36,15 +36,20 @@ impl StoreRequestData {
     }
 }
 
-// TODO: This will not work for js implementation because of enum. I tried using #[serde(untagged)]
-// to remove enum variant names from the json but it has deserialization issues and throws errors.
+/// Store response data - uses untagged enum since JS sends flat JSON
+/// Error: {"errorMessage": "..."}
+/// Data: {"identityId": ..., "v": ..., "r": ..., "s": ..., "vs": ...}
+///
+/// Note: identity_id uses u64 instead of u128 because serde_json has issues
+/// with u128 in untagged enums. This is safe since identity IDs won't exceed u64::MAX.
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
 pub(crate) enum StoreResponseData {
     #[serde(rename_all = "camelCase")]
     Error { error_message: String },
     #[serde(rename_all = "camelCase")]
     Data {
-        identity_id: u128,
+        identity_id: u64,
         #[serde(flatten)]
         signature: SignatureComponents,
     },

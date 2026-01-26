@@ -1,4 +1,4 @@
-use super::constants::ProtocolTimeouts;
+use super::{JsCompatCodec, constants::ProtocolTimeouts};
 use crate::{
     controllers::rpc_controller::messages::{
         BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
@@ -14,23 +14,20 @@ use crate::{
 ///
 /// Only contains app-specific protocols (store, get, finality, batch_get).
 /// Base protocols (kad, identify, ping) are provided by NetworkManager via NetworkBehaviour.
+/// Uses JsCompatCodec to handle the JS node's chunked message format.
 #[derive(NetworkBehaviour)]
 pub(crate) struct NetworkProtocols {
-    pub store: request_response::json::Behaviour<
-        RequestMessage<StoreRequestData>,
-        ResponseMessage<StoreResponseData>,
+    pub store: request_response::Behaviour<
+        JsCompatCodec<RequestMessage<StoreRequestData>, ResponseMessage<StoreResponseData>>,
     >,
-    pub get: request_response::json::Behaviour<
-        RequestMessage<GetRequestData>,
-        ResponseMessage<GetResponseData>,
+    pub get: request_response::Behaviour<
+        JsCompatCodec<RequestMessage<GetRequestData>, ResponseMessage<GetResponseData>>,
     >,
-    pub finality: request_response::json::Behaviour<
-        RequestMessage<FinalityRequestData>,
-        ResponseMessage<FinalityResponseData>,
+    pub finality: request_response::Behaviour<
+        JsCompatCodec<RequestMessage<FinalityRequestData>, ResponseMessage<FinalityResponseData>>,
     >,
-    pub batch_get: request_response::json::Behaviour<
-        RequestMessage<BatchGetRequestData>,
-        ResponseMessage<BatchGetResponseData>,
+    pub batch_get: request_response::Behaviour<
+        JsCompatCodec<RequestMessage<BatchGetRequestData>, ResponseMessage<BatchGetResponseData>>,
     >,
 }
 
@@ -45,10 +42,8 @@ impl NetworkProtocols {
         let store_config =
             request_response::Config::default().with_request_timeout(ProtocolTimeouts::STORE);
 
-        let store = request_response::json::Behaviour::<
-            RequestMessage<StoreRequestData>,
-            ResponseMessage<StoreResponseData>,
-        >::new(
+        let store = request_response::Behaviour::with_codec(
+            JsCompatCodec::new(),
             [(StreamProtocol::new("/store/1.0.0"), ProtocolSupport::Full)],
             store_config,
         );
@@ -56,10 +51,8 @@ impl NetworkProtocols {
         let get_config =
             request_response::Config::default().with_request_timeout(ProtocolTimeouts::GET);
 
-        let get = request_response::json::Behaviour::<
-            RequestMessage<GetRequestData>,
-            ResponseMessage<GetResponseData>,
-        >::new(
+        let get = request_response::Behaviour::with_codec(
+            JsCompatCodec::new(),
             [(StreamProtocol::new("/get/1.0.0"), ProtocolSupport::Full)],
             get_config,
         );
@@ -67,10 +60,8 @@ impl NetworkProtocols {
         let finality_config =
             request_response::Config::default().with_request_timeout(ProtocolTimeouts::FINALITY);
 
-        let finality = request_response::json::Behaviour::<
-            RequestMessage<FinalityRequestData>,
-            ResponseMessage<FinalityResponseData>,
-        >::new(
+        let finality = request_response::Behaviour::with_codec(
+            JsCompatCodec::new(),
             [(
                 StreamProtocol::new("/finality/1.0.0"),
                 // TODO: verify with js nodes if this can be outbound only
@@ -82,10 +73,8 @@ impl NetworkProtocols {
         let batch_get_config =
             request_response::Config::default().with_request_timeout(ProtocolTimeouts::BATCH_GET);
 
-        let batch_get = request_response::json::Behaviour::<
-            RequestMessage<BatchGetRequestData>,
-            ResponseMessage<BatchGetResponseData>,
-        >::new(
+        let batch_get = request_response::Behaviour::with_codec(
+            JsCompatCodec::new(),
             [(
                 StreamProtocol::new("/batch-get/1.0.0"),
                 ProtocolSupport::Full,

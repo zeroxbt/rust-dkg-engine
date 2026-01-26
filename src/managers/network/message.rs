@@ -4,19 +4,24 @@ use uuid::Uuid;
 /// Request message types for protocol negotiation
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) enum RequestMessageType {
+    #[serde(rename = "PROTOCOL_REQUEST")]
     ProtocolRequest,
 }
 
 /// Response message types for flow control
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub(crate) enum ResponseMessageType {
+    #[serde(rename = "ACK")]
     Ack,
+    #[serde(rename = "NACK")]
     Nack,
+    #[serde(rename = "BUSY")]
     Busy,
 }
 
 /// Request message header containing operation tracking and message type
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RequestMessageHeader {
     operation_id: Uuid,
     message_type: RequestMessageType,
@@ -43,7 +48,8 @@ impl RequestMessageHeader {
 }
 
 /// Response message header containing operation tracking and message type
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ResponseMessageHeader {
     operation_id: Uuid,
     message_type: ResponseMessageType,
@@ -79,7 +85,7 @@ pub(crate) struct RequestMessage<T> {
 
 /// Generic response message envelope
 /// The generic parameter T should be an application-defined response data type
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct ResponseMessage<T> {
     pub header: ResponseMessageHeader,
     pub data: T,

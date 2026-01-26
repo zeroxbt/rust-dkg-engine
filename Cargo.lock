@@ -1063,6 +1063,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "asn1_der"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "155a5a185e42c6b77ac7b88a15143d930a9e9727a5b7b77eed417404ab15c247"
+
+[[package]]
 name = "async-channel"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4025,15 +4031,15 @@ dependencies = [
 [[package]]
 name = "libp2p-identity"
 version = "0.2.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0c7892c221730ba55f7196e98b0b8ba5e04b4155651736036628e9f73ed6fc3"
 dependencies = [
+ "asn1_der",
  "bs58",
  "ed25519-dalek",
  "hkdf",
  "multihash",
  "quick-protobuf",
  "rand 0.8.5",
+ "ring",
  "sha2 0.10.9",
  "thiserror 2.0.18",
  "tracing",
@@ -5985,6 +5991,7 @@ dependencies = [
  "oxigraph",
  "redb",
  "reqwest 0.13.1",
+ "rustls",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -6000,6 +6007,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "twox-hash 2.1.2",
+ "unsigned-varint 0.8.0",
  "uuid",
  "validator",
  "validator_derive",
@@ -8322,6 +8330,8 @@ checksum = "eb066959b24b5196ae73cb057f45598450d2c5f71460e98c49b738086eff9c06"
 dependencies = [
  "asynchronous-codec",
  "bytes",
+ "futures-io",
+ "futures-util",
 ]
 
 [[package]]

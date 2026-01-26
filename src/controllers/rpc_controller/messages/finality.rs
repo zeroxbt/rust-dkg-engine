@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FinalityRequestData {
     ual: String,
@@ -26,7 +26,11 @@ impl FinalityRequestData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+/// Finality response data - uses untagged enum since JS sends flat JSON
+/// ACK: {"message": "..."}
+/// NACK: {"errorMessage": "..."}
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
 pub(crate) enum FinalityResponseData {
     #[serde(rename_all = "camelCase")]
     Ack { message: String },
