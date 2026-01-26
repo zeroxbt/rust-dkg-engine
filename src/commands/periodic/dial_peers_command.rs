@@ -1,13 +1,12 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use libp2p::PeerId;
-use crate::managers::network::NetworkManager;
-use crate::managers::repository::RepositoryManager;
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     controllers::rpc_controller::NetworkProtocols,
+    managers::{network::NetworkManager, repository::RepositoryManager},
     services::PeerDiscoveryTracker,
 };
 

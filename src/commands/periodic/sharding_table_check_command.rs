@@ -1,17 +1,19 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::managers::blockchain::{
-    BlockchainId, BlockchainManager,
-    blockchains::blockchain_creator::sharding_table::ShardingTableLib::NodeInfo,
-    utils::{from_wei, sha256_hex},
-};
-use crate::managers::network::PeerId;
 use futures::future::join_all;
-use crate::managers::repository::{RepositoryManager, ShardRecordInput};
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
+    managers::{
+        blockchain::{
+            BlockchainId, BlockchainManager,
+            blockchains::blockchain_creator::sharding_table::ShardingTableLib::NodeInfo,
+            utils::{from_wei, sha256_hex},
+        },
+        network::PeerId,
+        repository::{RepositoryManager, ShardRecordInput},
+    },
 };
 
 /// Interval between sharding table synchronization checks (10 seconds)

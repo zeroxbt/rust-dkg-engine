@@ -10,8 +10,7 @@ use error::RepositoryError;
 pub(crate) use repositories::shard_repository::ShardRecordInput;
 use repositories::{
     blockchain_repository::BlockchainRepository,
-    finality_status_repository::FinalityStatusRepository,
-    kc_sync_repository::KcSyncRepository,
+    finality_status_repository::FinalityStatusRepository, kc_sync_repository::KcSyncRepository,
     operation_repository::OperationRepository, shard_repository::ShardRepository,
     triples_insert_count_repository::TriplesInsertCountRepository,
 };

@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use crate::managers::blockchain::BlockchainManager;
-use crate::managers::network::NetworkManager;
-use crate::managers::repository::RepositoryManager;
-
 use crate::{
     commands::command_executor::CommandScheduler,
     config::Config,
     controllers::rpc_controller::{
         NetworkProtocols,
-        messages::{BatchGetResponseData, FinalityResponseData, GetResponseData, StoreResponseData},
+        messages::{
+            BatchGetResponseData, FinalityResponseData, GetResponseData, StoreResponseData,
+        },
+    },
+    managers::{
+        blockchain::BlockchainManager, network::NetworkManager, repository::RepositoryManager,
     },
     operations::{BatchGetOperation, GetOperation, PublishOperation},
     services::{
@@ -122,7 +123,9 @@ impl Context {
         &self.get_response_channels
     }
 
-    pub(crate) fn finality_response_channels(&self) -> &Arc<ResponseChannels<FinalityResponseData>> {
+    pub(crate) fn finality_response_channels(
+        &self,
+    ) -> &Arc<ResponseChannels<FinalityResponseData>> {
         &self.finality_response_channels
     }
 
@@ -130,15 +133,21 @@ impl Context {
         &self.get_operation_service
     }
 
-    pub(crate) fn publish_operation_service(&self) -> &Arc<GenericOperationService<PublishOperation>> {
+    pub(crate) fn publish_operation_service(
+        &self,
+    ) -> &Arc<GenericOperationService<PublishOperation>> {
         &self.publish_operation_service
     }
 
-    pub(crate) fn batch_get_response_channels(&self) -> &Arc<ResponseChannels<BatchGetResponseData>> {
+    pub(crate) fn batch_get_response_channels(
+        &self,
+    ) -> &Arc<ResponseChannels<BatchGetResponseData>> {
         &self.batch_get_response_channels
     }
 
-    pub(crate) fn batch_get_operation_service(&self) -> &Arc<GenericOperationService<BatchGetOperation>> {
+    pub(crate) fn batch_get_operation_service(
+        &self,
+    ) -> &Arc<GenericOperationService<BatchGetOperation>> {
         &self.batch_get_operation_service
     }
 }

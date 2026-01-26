@@ -13,7 +13,10 @@ use crate::{
         triple_store::{
             Assertion, KnowledgeCollectionMetadata, TokenIds, Visibility,
             query::predicates,
-            rdf::{extract_datetime_as_unix, extract_quoted_integer, extract_quoted_string, extract_uri_suffix},
+            rdf::{
+                extract_datetime_as_unix, extract_quoted_integer, extract_quoted_string,
+                extract_uri_suffix,
+            },
         },
     },
     operations::BatchGetOperation,

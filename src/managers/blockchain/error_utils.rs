@@ -6,7 +6,7 @@ use alloy::{
 use crate::managers::blockchain::error::BlockchainError;
 
 /// Handle contract call result, waiting for receipt.
-pub(crate) async fn   handle_contract_call(
+pub(crate) async fn handle_contract_call(
     result: Result<PendingTransactionBuilder<alloy::network::Ethereum>, ContractError>,
 ) -> Result<TransactionReceipt, BlockchainError> {
     match result {

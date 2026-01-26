@@ -1,12 +1,5 @@
 use std::sync::Arc;
 
-use crate::managers::blockchain::{Address, BlockchainId, BlockchainManager, H256, U256};
-use crate::managers::network::{
-    NetworkManager, PeerId, RequestMessage,
-    message::{RequestMessageHeader, RequestMessageType},
-};
-use crate::managers::repository::RepositoryManager;
-use crate::managers::triple_store::KnowledgeCollectionMetadata;
 use uuid::Uuid;
 
 use crate::{
@@ -14,6 +7,15 @@ use crate::{
     context::Context,
     controllers::rpc_controller::{
         NetworkProtocols, ProtocolRequest, messages::FinalityRequestData,
+    },
+    managers::{
+        blockchain::{Address, BlockchainId, BlockchainManager, H256, U256},
+        network::{
+            NetworkManager, PeerId, RequestMessage,
+            message::{RequestMessageHeader, RequestMessageType},
+        },
+        repository::RepositoryManager,
+        triple_store::KnowledgeCollectionMetadata,
     },
     services::{TripleStoreService, pending_storage_service::PendingStorageService},
     utils::{ual::derive_ual, validation},
@@ -155,7 +157,8 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
 
         // Retrieve cached dataset from pending storage
         // This will fail if this node doesn't have the dataset locally
-        // (e.g., KC was published by another node, node was offline, or wasn't contacted during publish)
+        // (e.g., KC was published by another node, node was offline, or wasn't contacted during
+        // publish)
         let pending_data = match self
             .pending_storage_service
             .get_dataset(publish_operation_id)
@@ -173,8 +176,10 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
         };
 
         // Validate merkle root matches
-        let blockchain_merkle_root =
-            format!("0x{}", crate::managers::blockchain::utils::to_hex_string(data.dataset_root));
+        let blockchain_merkle_root = format!(
+            "0x{}",
+            crate::managers::blockchain::utils::to_hex_string(data.dataset_root)
+        );
         if blockchain_merkle_root != pending_data.dataset_root() {
             tracing::error!(
                 operation_id = %operation_id,

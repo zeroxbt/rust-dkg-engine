@@ -8,8 +8,8 @@ use sea_orm::{
 
 use crate::managers::repository::models::{
     kc_sync_progress::{
-        ActiveModel as ProgressActiveModel, Column as ProgressColumn,
-        Entity as ProgressEntity, Model as ProgressModel,
+        ActiveModel as ProgressActiveModel, Column as ProgressColumn, Entity as ProgressEntity,
+        Model as ProgressModel,
     },
     kc_sync_queue::{
         ActiveModel as QueueActiveModel, Column as QueueColumn, Entity as QueueEntity,
@@ -194,5 +194,4 @@ impl KcSyncRepository {
 
         Ok(())
     }
-
 }

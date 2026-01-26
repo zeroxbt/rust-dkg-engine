@@ -77,8 +77,12 @@ async fn main() {
     let triple_store_service = Arc::new(TripleStoreService::new(Arc::clone(&triple_store_manager)));
 
     // Initialize operation services (need result_store and request_tracker)
-    let (publish_operation_service, get_operation_service, batch_get_operation_service, pending_storage_service) =
-        initialize_services(&paths, &repository_manager, &network_manager);
+    let (
+        publish_operation_service,
+        get_operation_service,
+        batch_get_operation_service,
+        pending_storage_service,
+    ) = initialize_services(&paths, &repository_manager, &network_manager);
 
     let peer_discovery_tracker = Arc::new(PeerDiscoveryTracker::new());
 

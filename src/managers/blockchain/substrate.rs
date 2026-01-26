@@ -24,7 +24,7 @@ use crate::managers::blockchain::error::BlockchainError;
 /// * `Ok(true)` - The address has a valid mapping
 /// * `Ok(false)` - The address does not have a mapping
 /// * `Err(_)` - Failed to connect or query the chain
-pub(crate) async fn   check_evm_account_mapping(
+pub(crate) async fn check_evm_account_mapping(
     rpc_endpoints: &[String],
     evm_address: &str,
 ) -> Result<bool, BlockchainError> {
@@ -161,7 +161,7 @@ fn blake2_128(data: &[u8]) -> [u8; 16] {
 ///
 /// This checks that all configured EVM wallets have valid Substrate account mappings.
 /// Both management and operational wallet mappings are **required**.
-pub(crate) async fn   validate_evm_wallets(
+pub(crate) async fn validate_evm_wallets(
     rpc_endpoints: &[String],
     management_wallet: &str,
     operational_wallet: &str,

@@ -12,8 +12,7 @@ use async_trait::async_trait;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use libp2p::{StreamProtocol, request_response::Codec};
 use serde::{Serialize, de::DeserializeOwned};
-use unsigned_varint::aio::read_usize;
-use unsigned_varint::encode as varint_encode;
+use unsigned_varint::{aio::read_usize, encode as varint_encode};
 
 const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100 MB max total message size
 
@@ -40,9 +39,7 @@ impl<Req, Resp> JsCompatCodec<Req, Resp> {
 }
 
 /// Read a length-prefixed message chunk from the stream
-async fn read_length_prefixed<R: AsyncRead + Unpin>(
-    reader: &mut R,
-) -> io::Result<Option<Vec<u8>>> {
+async fn read_length_prefixed<R: AsyncRead + Unpin>(reader: &mut R) -> io::Result<Option<Vec<u8>>> {
     // Read the varint length prefix
     let length = match read_usize(&mut *reader).await {
         Ok(len) => len,
@@ -59,7 +56,10 @@ async fn read_length_prefixed<R: AsyncRead + Unpin>(
     if length > MAX_MESSAGE_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("Message size {} exceeds maximum {}", length, MAX_MESSAGE_SIZE),
+            format!(
+                "Message size {} exceeds maximum {}",
+                length, MAX_MESSAGE_SIZE
+            ),
         ));
     }
 
@@ -149,11 +149,7 @@ where
         })
     }
 
-    async fn read_response<T>(
-        &mut self,
-        _protocol: &Self::Protocol,
-        io: &mut T,
-    ) -> io::Result<Resp>
+    async fn read_response<T>(&mut self, _protocol: &Self::Protocol, io: &mut T) -> io::Result<Resp>
     where
         T: AsyncRead + Unpin + Send,
     {
@@ -272,9 +268,9 @@ where
             )
         })?;
 
-        let header = value.get("header").ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "Response missing header")
-        })?;
+        let header = value
+            .get("header")
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Response missing header"))?;
         let data = value
             .get("data")
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Response missing data"))?;

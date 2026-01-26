@@ -1,12 +1,5 @@
 use std::sync::Arc;
 
-use crate::managers::network::{
-    PeerId,
-    message::{RequestMessage, ResponseMessage},
-    request_response,
-};
-use crate::managers::triple_store::Assertion;
-
 use crate::{
     commands::{
         command_executor::{CommandExecutionRequest, CommandScheduler},
@@ -15,6 +8,14 @@ use crate::{
     },
     context::Context,
     controllers::rpc_controller::messages::{StoreRequestData, StoreResponseData},
+    managers::{
+        network::{
+            PeerId,
+            message::{RequestMessage, ResponseMessage},
+            request_response,
+        },
+        triple_store::Assertion,
+    },
     operations::PublishOperation,
     services::{ResponseChannels, operation::OperationService as GenericOperationService},
 };
@@ -39,7 +40,7 @@ impl StoreRpcController {
         &self.publish_operation_service
     }
 
-    pub(crate) async fn   handle_request(
+    pub(crate) async fn handle_request(
         &self,
         request: RequestMessage<StoreRequestData>,
         channel: request_response::ResponseChannel<ResponseMessage<StoreResponseData>>,

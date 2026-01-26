@@ -1,12 +1,6 @@
 use std::sync::Arc;
 
 use libp2p::PeerId;
-use crate::managers::network::{
-    NetworkManager, ResponseMessage,
-    message::{ResponseMessageHeader, ResponseMessageType},
-    request_response::ResponseChannel,
-};
-use crate::managers::repository::RepositoryManager;
 use uuid::Uuid;
 
 use crate::{
@@ -14,6 +8,14 @@ use crate::{
     context::Context,
     controllers::rpc_controller::{
         NetworkProtocols, ProtocolResponse, messages::FinalityResponseData,
+    },
+    managers::{
+        network::{
+            NetworkManager, ResponseMessage,
+            message::{ResponseMessageHeader, ResponseMessageType},
+            request_response::ResponseChannel,
+        },
+        repository::RepositoryManager,
     },
     services::ResponseChannels,
 };

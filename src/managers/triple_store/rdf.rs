@@ -102,7 +102,10 @@ pub(crate) fn group_nquads_by_subject_owned(triples: &[String]) -> Vec<Vec<Strin
 ///
 /// ```
 /// let triple = r#"<http://example.org/s> <http://example.org/p> "hello world" ."#;
-/// assert_eq!(extract_quoted_string(triple), Some("hello world".to_string()));
+/// assert_eq!(
+///     extract_quoted_string(triple),
+///     Some("hello world".to_string())
+/// );
 /// ```
 pub(crate) fn extract_quoted_string(triple: &str) -> Option<String> {
     // Find the last quote (closing quote of the value)
@@ -321,8 +324,7 @@ mod tests {
 
     #[test]
     fn test_extract_uri_suffix() {
-        let triple =
-            r#"<did:dkg:otp/0x123/456> <https://ontology.origintrail.io/dkg/1.0#publishedBy> <did:dkg:publisherKey/0xABCdef123> ."#;
+        let triple = r#"<did:dkg:otp/0x123/456> <https://ontology.origintrail.io/dkg/1.0#publishedBy> <did:dkg:publisherKey/0xABCdef123> ."#;
         assert_eq!(
             extract_uri_suffix(triple, "did:dkg:publisherKey/"),
             Some("0xABCdef123".to_string())

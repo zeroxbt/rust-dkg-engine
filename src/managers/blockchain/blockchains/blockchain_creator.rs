@@ -167,9 +167,8 @@ impl Contracts {
     pub(crate) fn knowledge_collection_storage_by_address(
         &self,
         address: &Address,
-    ) -> Option<
-        &KnowledgeCollectionStorage::KnowledgeCollectionStorageInstance<BlockchainProvider>,
-    > {
+    ) -> Option<&KnowledgeCollectionStorage::KnowledgeCollectionStorageInstance<BlockchainProvider>>
+    {
         self.knowledge_collection_storages.get(address)
     }
 
@@ -265,7 +264,10 @@ impl Contracts {
             }
             ContractName::KnowledgeCollectionStorage => {
                 // ADD contract instead of replacing (supports multiple storage contracts)
-                if !self.knowledge_collection_storages.contains_key(&contract_address) {
+                if !self
+                    .knowledge_collection_storages
+                    .contains_key(&contract_address)
+                {
                     self.knowledge_collection_storages.insert(
                         contract_address,
                         KnowledgeCollectionStorage::new(contract_address, provider.clone()),
@@ -488,7 +490,12 @@ pub(crate) async fn initialize_contracts(
             provider.clone(),
         ),
         chronos: Chronos::new(
-            Address::from(hub.getContractAddress("Chronos".to_string()).call().await?.0),
+            Address::from(
+                hub.getContractAddress("Chronos".to_string())
+                    .call()
+                    .await?
+                    .0,
+            ),
             provider.clone(),
         ),
         paranets_registry: Some(ParanetsRegistry::new(

@@ -775,7 +775,9 @@ impl BlockchainManager {
                 blockchain_id: blockchain.as_str().to_string(),
             }
         })?;
-        Ok(blockchain_impl.get_all_contract_addresses(contract_name).await)
+        Ok(blockchain_impl
+            .get_all_contract_addresses(contract_name)
+            .await)
     }
 
     /// Get event logs for a specific contract address.
@@ -794,7 +796,13 @@ impl BlockchainManager {
             }
         })?;
         blockchain_impl
-            .get_event_logs_for_address(contract_name, contract_address, event_signatures, from_block, current_block)
+            .get_event_logs_for_address(
+                contract_name,
+                contract_address,
+                event_signatures,
+                from_block,
+                current_block,
+            )
             .await
     }
 

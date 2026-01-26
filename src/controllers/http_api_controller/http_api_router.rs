@@ -121,7 +121,7 @@ impl HttpApiRouter {
         }
     }
 
-    pub(crate) async fn   listen_and_handle_http_requests(&self) {
+    pub(crate) async fn listen_and_handle_http_requests(&self) {
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, self.config.port));
 
         let cloned_router_for_serve = self.router.lock().await.clone();

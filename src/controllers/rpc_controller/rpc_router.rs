@@ -11,8 +11,9 @@ use super::{
 use crate::{
     context::Context,
     controllers::rpc_controller::v1::{
-        batch_get_rpc_controller::BatchGetRpcController, finality_rpc_controller::FinalityRpcController,
-        get_rpc_controller::GetRpcController, store_rpc_controller::StoreRpcController,
+        batch_get_rpc_controller::BatchGetRpcController,
+        finality_rpc_controller::FinalityRpcController, get_rpc_controller::GetRpcController,
+        store_rpc_controller::StoreRpcController,
     },
     managers::network::{
         CompositeBehaviour, CompositeBehaviourEvent, NetworkBehaviour, NetworkManager, SwarmEvent,

@@ -177,9 +177,9 @@ pub(crate) fn default_command_requests(
                 blockchain_id.clone(),
             )),
         ));
-        requests.push(CommandExecutionRequest::new(
-            Command::Sync(SyncCommandData::new(blockchain_id.clone())),
-        ));
+        requests.push(CommandExecutionRequest::new(Command::Sync(
+            SyncCommandData::new(blockchain_id.clone()),
+        )));
     }
 
     requests

@@ -1,13 +1,5 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::managers::blockchain::{
-    Address, AssetStorageChangedFilter, BlockchainId, BlockchainManager, ContractChangedFilter,
-    ContractLog, ContractName, Hub, KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorage,
-    NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter, ParametersStorage,
-    error::BlockchainError, utils::to_hex_string,
-};
-use crate::managers::repository::RepositoryManager;
-
 use crate::{
     commands::{
         command_executor::{CommandExecutionRequest, CommandExecutionResult, CommandScheduler},
@@ -15,6 +7,16 @@ use crate::{
         operations::publish::protocols::finality::send_finality_request_command::SendFinalityRequestCommandData,
     },
     context::Context,
+    managers::{
+        blockchain::{
+            Address, AssetStorageChangedFilter, BlockchainId, BlockchainManager,
+            ContractChangedFilter, ContractLog, ContractName, Hub,
+            KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorage, NewAssetStorageFilter,
+            NewContractFilter, ParameterChangedFilter, ParametersStorage, error::BlockchainError,
+            utils::to_hex_string,
+        },
+        repository::RepositoryManager,
+    },
 };
 
 mod blockchain_event_spec;
@@ -88,7 +90,8 @@ impl BlockchainEventListenerCommandHandler {
         let monitored = monitored_contract_events();
 
         for (contract_name, events_to_filter) in &monitored {
-            // Get all addresses for this contract type (supports multiple for KnowledgeCollectionStorage)
+            // Get all addresses for this contract type (supports multiple for
+            // KnowledgeCollectionStorage)
             let contract_addresses = self
                 .blockchain_manager
                 .get_all_contract_addresses(blockchain_id, contract_name)
@@ -161,12 +164,12 @@ impl BlockchainEventListenerCommandHandler {
                         .await?
                 } else {
                     // Multi-address contract - fetch for specific address
-                    let contract_address: Address = contract_address_str
-                        .parse()
-                        .map_err(|_| BlockchainError::Custom(format!(
+                    let contract_address: Address = contract_address_str.parse().map_err(|_| {
+                        BlockchainError::Custom(format!(
                             "Invalid contract address: {}",
                             contract_address_str
-                        )))?;
+                        ))
+                    })?;
                     self.blockchain_manager
                         .get_event_logs_for_address(
                             blockchain_id,

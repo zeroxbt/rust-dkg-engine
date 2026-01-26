@@ -17,7 +17,7 @@ use crate::{
 pub(crate) struct PublishHttpApiController;
 
 impl PublishHttpApiController {
-    pub(crate) async fn   handle_request(
+    pub(crate) async fn handle_request(
         State(context): State<Arc<Context>>,
         Json(req): Json<PublishRequest>,
     ) -> impl IntoResponse {

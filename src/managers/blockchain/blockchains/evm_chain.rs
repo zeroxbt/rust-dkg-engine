@@ -364,7 +364,14 @@ impl EvmChain {
         let address = contracts.get_address(contract_name)?;
         drop(contracts);
 
-        self.get_event_logs_for_address(contract_name.clone(), address, event_signatures, from_block, current_block).await
+        self.get_event_logs_for_address(
+            contract_name.clone(),
+            address,
+            event_signatures,
+            from_block,
+            current_block,
+        )
+        .await
     }
 
     /// Get event logs for a specific contract address.
@@ -795,7 +802,8 @@ impl EvmChain {
     /// Returns the publisher address if the collection exists, or None if it doesn't.
     ///
     /// Returns an error if the contract address is not a registered KnowledgeCollectionStorage.
-    /// The node only works with contracts discovered at initialization or via NewAssetStorage events.
+    /// The node only works with contracts discovered at initialization or via NewAssetStorage
+    /// events.
     pub(crate) async fn get_knowledge_collection_publisher(
         &self,
         contract_address: Address,
@@ -970,13 +978,14 @@ impl EvmChain {
         let contracts = self.contracts().await;
         let chronos = contracts.chronos();
 
-        let current_epoch = chronos.getCurrentEpoch().call().await.map_err(|e| {
-            BlockchainError::Custom(format!("Failed to get current epoch: {}", e))
-        })?;
+        let current_epoch =
+            chronos.getCurrentEpoch().call().await.map_err(|e| {
+                BlockchainError::Custom(format!("Failed to get current epoch: {}", e))
+            })?;
 
-        current_epoch.try_into().map_err(|_| {
-            BlockchainError::Custom("Current epoch overflow".to_string())
-        })
+        current_epoch
+            .try_into()
+            .map_err(|_| BlockchainError::Custom("Current epoch overflow".to_string()))
     }
 
     /// Get the end epoch (expiration) for a knowledge collection.

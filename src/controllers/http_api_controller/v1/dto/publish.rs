@@ -1,11 +1,12 @@
-use crate::managers::blockchain::BlockchainId;
 use serde::{Deserialize, Serialize};
-use crate::managers::triple_store::Assertion;
 use uuid::Uuid;
 use validator::{Validate as _, ValidationError};
 use validator_derive::Validate;
 
-use crate::controllers::http_api_controller::validators::validate_blockchain_id_format;
+use crate::{
+    controllers::http_api_controller::validators::validate_blockchain_id_format,
+    managers::{blockchain::BlockchainId, triple_store::Assertion},
+};
 
 /// Validates BlockchainId format at the DTO level.
 fn validate_blockchain_id(id: &BlockchainId) -> Result<(), ValidationError> {

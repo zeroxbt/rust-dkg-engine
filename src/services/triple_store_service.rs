@@ -277,8 +277,10 @@ impl TripleStoreService {
         let last_ka_ual = format!("{}/{}/public", kc_ual, end_token_id);
 
         let (first_exists, last_exists) = tokio::join!(
-            self.triple_store_manager.knowledge_asset_exists(&first_ka_ual),
-            self.triple_store_manager.knowledge_asset_exists(&last_ka_ual)
+            self.triple_store_manager
+                .knowledge_asset_exists(&first_ka_ual),
+            self.triple_store_manager
+                .knowledge_asset_exists(&last_ka_ual)
         );
 
         first_exists.unwrap_or(false) && last_exists.unwrap_or(false)

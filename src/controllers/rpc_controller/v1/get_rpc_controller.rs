@@ -1,11 +1,5 @@
 use std::sync::Arc;
 
-use crate::managers::network::{
-    PeerId,
-    message::{RequestMessage, ResponseMessage},
-    request_response,
-};
-
 use crate::{
     commands::{
         command_executor::{CommandExecutionRequest, CommandScheduler},
@@ -14,6 +8,11 @@ use crate::{
     },
     context::Context,
     controllers::rpc_controller::messages::{GetRequestData, GetResponseData},
+    managers::network::{
+        PeerId,
+        message::{RequestMessage, ResponseMessage},
+        request_response,
+    },
     operations::GetOperation,
     services::{ResponseChannels, operation::OperationService as GenericOperationService},
 };
@@ -38,7 +37,7 @@ impl GetRpcController {
         &self.get_operation_service
     }
 
-    pub(crate) async fn   handle_request(
+    pub(crate) async fn handle_request(
         &self,
         request: RequestMessage<GetRequestData>,
         channel: request_response::ResponseChannel<ResponseMessage<GetResponseData>>,
