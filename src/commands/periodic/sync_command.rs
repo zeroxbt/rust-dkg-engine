@@ -1,16 +1,23 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures::future::join_all;
 
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
+    controllers::rpc_controller::{NetworkProtocols, messages::BatchGetRequestData},
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
+        network::{NetworkManager, PeerId},
         repository::RepositoryManager,
+        triple_store::{Assertion, TokenIds, Visibility},
     },
-    services::TripleStoreService,
-    utils::ual::derive_ual,
+    operations::BatchGetOperation,
+    services::{
+        GetValidationService, TripleStoreService,
+        operation::{Operation, OperationService as GenericOperationService},
+    },
+    utils::ual::{ParsedUal, derive_ual, parse_ual},
 };
 
 /// Interval between sync cycles (30 seconds)
@@ -22,14 +29,17 @@ const MAX_NEW_KCS_PER_CONTRACT: u64 = 1000;
 /// Maximum retry attempts before a KC is no longer retried (stays in DB for future recovery)
 const MAX_RETRY_ATTEMPTS: u32 = 2;
 
-/// Maximum number of KCs per network batch GET request (dictated by receiver nodes)
-#[allow(dead_code)]
-const NETWORK_BATCH_SIZE: u64 = 1000;
+/// Maximum number of UALs per network batch GET request (dictated by receiver nodes)
+/// This must match BATCH_GET_UAL_MAX_LIMIT in the batch_get messages module
+const NETWORK_BATCH_SIZE: usize = 1000;
 
 pub(crate) struct SyncCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
     triple_store_service: Arc<TripleStoreService>,
+    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    batch_get_operation_service: Arc<GenericOperationService<BatchGetOperation>>,
+    get_validation_service: Arc<GetValidationService>,
 }
 
 /// Result of syncing a single contract
@@ -56,6 +66,9 @@ impl SyncCommandHandler {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             repository_manager: Arc::clone(context.repository_manager()),
             triple_store_service: Arc::clone(context.triple_store_service()),
+            network_manager: Arc::clone(context.network_manager()),
+            batch_get_operation_service: Arc::clone(context.batch_get_operation_service()),
+            get_validation_service: Arc::clone(context.get_validation_service()),
         }
     }
 
@@ -98,7 +111,12 @@ impl SyncCommandHandler {
 
         // Step 3: Filter out expired and already-synced KCs
         let (kcs_to_sync, expired_kc_ids, already_synced_kc_ids) = self
-            .filter_pending_kcs(blockchain_id, contract_address, &contract_addr_str, &pending_kc_ids)
+            .filter_pending_kcs(
+                blockchain_id,
+                contract_address,
+                &contract_addr_str,
+                &pending_kc_ids,
+            )
             .await;
 
         // Remove expired KCs from queue (don't count as retry)
@@ -126,7 +144,11 @@ impl SyncCommandHandler {
             );
             self.repository_manager
                 .kc_sync_repository()
-                .remove_kcs(blockchain_id.as_str(), &contract_addr_str, &already_synced_kc_ids)
+                .remove_kcs(
+                    blockchain_id.as_str(),
+                    &contract_addr_str,
+                    &already_synced_kc_ids,
+                )
                 .await
                 .map_err(|e| format!("Failed to remove already-synced KCs: {}", e))?;
         }
@@ -142,8 +164,18 @@ impl SyncCommandHandler {
             });
         }
 
-        // TODO 5: For KCs not found locally and not expired, batch GET from network
-        //         (in chunks of NETWORK_BATCH_SIZE)
+        // Step 5: For KCs not found locally and not expired, batch GET from network
+        let (fetched_kcs, failed_kc_ids) = self
+            .fetch_kcs_from_network(blockchain_id, &kcs_to_sync)
+            .await;
+
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            contract = %contract_addr_str,
+            fetched = fetched_kcs.len(),
+            failed = failed_kc_ids.len(),
+            "[DKG SYNC] Network fetch completed for contract"
+        );
 
         // TODO 6: Store fetched KCs in triple store
 
@@ -171,7 +203,11 @@ impl SyncCommandHandler {
         let mut already_synced_kc_ids = Vec::new();
 
         // Get current epoch once for all KCs
-        let current_epoch = match self.blockchain_manager.get_current_epoch(blockchain_id).await {
+        let current_epoch = match self
+            .blockchain_manager
+            .get_current_epoch(blockchain_id)
+            .await
+        {
             Ok(epoch) => epoch,
             Err(e) => {
                 tracing::error!(
@@ -320,6 +356,256 @@ impl SyncCommandHandler {
 
         Ok(count)
     }
+
+    /// Fetch KCs from the network by sending batch GET requests to peers.
+    ///
+    /// This function:
+    /// 1. Splits KCs into chunks of NETWORK_BATCH_SIZE
+    /// 2. For each chunk, queries peers in batches of BATCH_SIZE (5 peers at a time)
+    /// 3. Validates responses and aggregates successful results
+    ///
+    /// Returns a map of UAL -> (Assertion, metadata) for successfully fetched KCs,
+    /// and a list of KC IDs that could not be fetched.
+    async fn fetch_kcs_from_network(
+        &self,
+        blockchain_id: &BlockchainId,
+        kcs_to_sync: &[KcToSync],
+    ) -> (HashMap<String, NetworkFetchResult>, Vec<u64>) {
+        let mut fetched: HashMap<String, NetworkFetchResult> = HashMap::new();
+        let mut failed_kc_ids: Vec<u64> = Vec::new();
+
+        if kcs_to_sync.is_empty() {
+            return (fetched, failed_kc_ids);
+        }
+
+        // Get shard nodes (peers) for this blockchain
+        let peers = match self.get_shard_peers(blockchain_id).await {
+            Ok(peers) => peers,
+            Err(e) => {
+                tracing::error!(
+                    blockchain_id = %blockchain_id,
+                    error = %e,
+                    "[DKG SYNC] Failed to get shard peers, marking all KCs as failed"
+                );
+                failed_kc_ids = kcs_to_sync.iter().map(|kc| kc.kc_id).collect();
+                return (fetched, failed_kc_ids);
+            }
+        };
+
+        if peers.is_empty() {
+            tracing::warn!(
+                blockchain_id = %blockchain_id,
+                "[DKG SYNC] No peers available for network sync"
+            );
+            failed_kc_ids = kcs_to_sync.iter().map(|kc| kc.kc_id).collect();
+            return (fetched, failed_kc_ids);
+        }
+
+        tracing::info!(
+            blockchain_id = %blockchain_id,
+            kc_count = kcs_to_sync.len(),
+            peer_count = peers.len(),
+            "[DKG SYNC] Starting network fetch for KCs"
+        );
+
+        // Split KCs into chunks of NETWORK_BATCH_SIZE
+        for chunk in kcs_to_sync.chunks(NETWORK_BATCH_SIZE) {
+            let chunk_result = self
+                .fetch_kc_chunk_from_network(blockchain_id, chunk, &peers)
+                .await;
+
+            // Merge results
+            for (ual, result) in chunk_result.fetched {
+                fetched.insert(ual, result);
+            }
+            failed_kc_ids.extend(chunk_result.failed_kc_ids);
+        }
+
+        tracing::info!(
+            blockchain_id = %blockchain_id,
+            fetched = fetched.len(),
+            failed = failed_kc_ids.len(),
+            "[DKG SYNC] Network fetch completed"
+        );
+
+        (fetched, failed_kc_ids)
+    }
+
+    /// Fetch a single chunk of KCs from the network.
+    async fn fetch_kc_chunk_from_network(
+        &self,
+        blockchain_id: &BlockchainId,
+        kcs: &[KcToSync],
+        peers: &[PeerId],
+    ) -> ChunkFetchResult {
+        let mut fetched: HashMap<String, NetworkFetchResult> = HashMap::new();
+        let mut uals_still_needed: Vec<String> = kcs.iter().map(|kc| kc.ual.clone()).collect();
+
+        // Build lookup maps
+        let ual_to_kc: HashMap<&str, &KcToSync> =
+            kcs.iter().map(|kc| (kc.ual.as_str(), kc)).collect();
+
+        // Parse UALs for validation
+        let parsed_uals: HashMap<String, ParsedUal> = kcs
+            .iter()
+            .filter_map(|kc| {
+                parse_ual(&kc.ual)
+                    .ok()
+                    .map(|parsed| (kc.ual.clone(), parsed))
+            })
+            .collect();
+
+        // Build token IDs map for the request
+        let token_ids_map: HashMap<String, TokenIds> = kcs
+            .iter()
+            .map(|kc| {
+                let token_ids =
+                    TokenIds::new(kc.start_token_id, kc.end_token_id, kc.burned.clone());
+                (kc.ual.clone(), token_ids)
+            })
+            .collect();
+
+        // Build the batch request
+        let batch_request = BatchGetRequestData::new(
+            blockchain_id.to_string(),
+            uals_still_needed.clone(),
+            token_ids_map,
+            true, // include_metadata
+        );
+
+        // Send requests to peers in batches
+        for (batch_idx, peer_batch) in peers.chunks(BatchGetOperation::BATCH_SIZE).enumerate() {
+            if uals_still_needed.is_empty() {
+                break;
+            }
+
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                batch = batch_idx,
+                peers_in_batch = peer_batch.len(),
+                uals_needed = uals_still_needed.len(),
+                "[DKG SYNC] Sending batch request to peers"
+            );
+
+            // Send requests concurrently to all peers in this batch
+            let request_futures: Vec<_> = peer_batch
+                .iter()
+                .map(|peer| {
+                    let peer = *peer;
+                    let request_data = batch_request.clone();
+                    let operation_service = Arc::clone(&self.batch_get_operation_service);
+                    // Generate a unique operation ID for tracking (not stored, just for the
+                    // request)
+                    let operation_id = uuid::Uuid::new_v4();
+                    async move {
+                        let result = operation_service
+                            .send_request(operation_id, peer, request_data)
+                            .await;
+                        (peer, result)
+                    }
+                })
+                .collect();
+
+            let results = join_all(request_futures).await;
+
+            // Process responses
+            for (peer, result) in results {
+                match result {
+                    Ok(response) => {
+                        let metadata_map = response.metadata();
+
+                        for (ual, assertion) in response.assertions() {
+                            // Skip if already satisfied
+                            if !uals_still_needed.contains(ual) {
+                                continue;
+                            }
+
+                            // Validate the response
+                            if let Some(parsed_ual) = parsed_uals.get(ual) {
+                                let is_valid = self
+                                    .get_validation_service
+                                    .validate_response(assertion, parsed_ual, Visibility::All)
+                                    .await;
+
+                                if is_valid {
+                                    let metadata = metadata_map.get(ual).cloned();
+                                    fetched.insert(
+                                        ual.clone(),
+                                        NetworkFetchResult {
+                                            assertion: assertion.clone(),
+                                            metadata,
+                                        },
+                                    );
+                                    uals_still_needed.retain(|u| u != ual);
+
+                                    tracing::debug!(
+                                        ual = %ual,
+                                        peer = %peer,
+                                        "[DKG SYNC] Received and validated KC from network"
+                                    );
+                                } else {
+                                    tracing::debug!(
+                                        ual = %ual,
+                                        peer = %peer,
+                                        "[DKG SYNC] Response validation failed"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::debug!(
+                            peer = %peer,
+                            error = %e,
+                            "[DKG SYNC] Request to peer failed"
+                        );
+                    }
+                }
+            }
+        }
+
+        // Map remaining UALs back to KC IDs for the failed list
+        let failed_kc_ids: Vec<u64> = uals_still_needed
+            .iter()
+            .filter_map(|ual| ual_to_kc.get(ual.as_str()).map(|kc| kc.kc_id))
+            .collect();
+
+        ChunkFetchResult {
+            fetched,
+            failed_kc_ids,
+        }
+    }
+
+    /// Get shard peers for the given blockchain, excluding self.
+    async fn get_shard_peers(&self, blockchain_id: &BlockchainId) -> Result<Vec<PeerId>, String> {
+        let shard_nodes = self
+            .repository_manager
+            .shard_repository()
+            .get_all_peer_records(blockchain_id.as_str())
+            .await
+            .map_err(|e| format!("Failed to get shard nodes: {}", e))?;
+
+        let my_peer_id = *self.network_manager.peer_id();
+        let peers: Vec<PeerId> = shard_nodes
+            .iter()
+            .filter_map(|record| record.peer_id.parse().ok())
+            .filter(|peer_id| *peer_id != my_peer_id)
+            .collect();
+
+        Ok(peers)
+    }
+}
+
+/// Result of fetching a single KC from the network.
+struct NetworkFetchResult {
+    assertion: Assertion,
+    metadata: Option<Vec<String>>,
+}
+
+/// Result of fetching a chunk of KCs from the network.
+struct ChunkFetchResult {
+    fetched: HashMap<String, NetworkFetchResult>,
+    failed_kc_ids: Vec<u64>,
 }
 
 #[derive(Clone)]
@@ -367,9 +653,9 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
         );
 
         // Sync each contract in parallel
-        let sync_futures = contract_addresses.iter().map(|&contract_address| {
-            self.sync_contract(&data.blockchain_id, contract_address)
-        });
+        let sync_futures = contract_addresses
+            .iter()
+            .map(|&contract_address| self.sync_contract(&data.blockchain_id, contract_address));
 
         let results = join_all(sync_futures).await;
 
