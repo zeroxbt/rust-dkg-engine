@@ -31,20 +31,17 @@ where
         }
     }
 
-    /// Register a pending request and get a receiver for the response.
+    /// Register a pending request with a pre-created sender.
     ///
-    /// This is called atomically with sending the request (inside the network loop)
-    /// to prevent race conditions where the response/failure arrives before registration.
-    pub(crate) fn insert(
+    /// This is the preferred method - the caller creates the channel and passes the sender,
+    /// keeping the receiver to await the response. This avoids nested channel indirection.
+    pub(crate) fn insert_sender(
         &self,
         request_id: OutboundRequestId,
-    ) -> oneshot::Receiver<Result<T, NetworkError>> {
-        let (tx, rx) = oneshot::channel();
-        self.pending.insert(request_id, tx);
-
+        sender: oneshot::Sender<Result<T, NetworkError>>,
+    ) {
+        self.pending.insert(request_id, sender);
         tracing::trace!(?request_id, "Registered pending request");
-
-        rx
     }
 
     /// Complete a pending request with a successful response.

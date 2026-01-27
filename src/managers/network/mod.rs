@@ -39,6 +39,10 @@ use self::{
 
 /// Macro to handle protocol request actions in the swarm event loop.
 /// Reduces boilerplate for the identical pattern across all 4 protocols.
+///
+/// The response_tx is stored directly in PendingRequests, eliminating the need
+/// for nested oneshot channels. When the response arrives, it's sent directly
+/// through response_tx.
 macro_rules! handle_protocol_request {
     ($swarm:expr, $self:expr, $peer:expr, $addresses:expr, $operation_id:expr,
      $request_data:expr, $response_tx:expr, $protocol:ident, $pending:ident) => {{
@@ -46,13 +50,13 @@ macro_rules! handle_protocol_request {
             header: RequestMessageHeader::new($operation_id, RequestMessageType::ProtocolRequest),
             data: $request_data,
         };
-        // Atomically register pending request BEFORE sending to avoid race condition
+        // Send request and get request_id
         let request_id = $swarm
             .behaviour_mut()
             .$protocol
             .send_request_with_addresses(&$peer, message, $addresses);
-        let receiver = $self.$pending.insert(request_id);
-        let _ = $response_tx.send(receiver);
+        // Store the response channel directly - it will be used when the response arrives
+        $self.$pending.insert_sender(request_id, $response_tx);
     }};
 }
 
@@ -86,33 +90,34 @@ enum NetworkAction {
         listen_addrs: Vec<Multiaddr>,
     },
     // Protocol-specific request actions
+    // The response_tx is stored in PendingRequests and used to deliver the response directly
     SendStoreRequest {
         peer: PeerId,
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: StoreRequestData,
-        response_tx: oneshot::Sender<oneshot::Receiver<Result<StoreResponseData, NetworkError>>>,
+        response_tx: oneshot::Sender<Result<StoreResponseData, NetworkError>>,
     },
     SendGetRequest {
         peer: PeerId,
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: GetRequestData,
-        response_tx: oneshot::Sender<oneshot::Receiver<Result<GetResponseData, NetworkError>>>,
+        response_tx: oneshot::Sender<Result<GetResponseData, NetworkError>>,
     },
     SendFinalityRequest {
         peer: PeerId,
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: FinalityRequestData,
-        response_tx: oneshot::Sender<oneshot::Receiver<Result<FinalityResponseData, NetworkError>>>,
+        response_tx: oneshot::Sender<Result<FinalityResponseData, NetworkError>>,
     },
     SendBatchGetRequest {
         peer: PeerId,
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: BatchGetRequestData,
-        response_tx: oneshot::Sender<oneshot::Receiver<Result<BatchGetResponseData, NetworkError>>>,
+        response_tx: oneshot::Sender<Result<BatchGetResponseData, NetworkError>>,
     },
     // Protocol-specific response actions
     SendStoreResponse {
@@ -651,10 +656,7 @@ impl NetworkManager {
             response_tx: tx,
         })
         .await?;
-        let response_rx = rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?;
-        response_rx
-            .await
-            .map_err(|_| NetworkError::ResponseChannelClosed)?
+        rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
     /// Send a store response.
@@ -684,10 +686,7 @@ impl NetworkManager {
             response_tx: tx,
         })
         .await?;
-        let response_rx = rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?;
-        response_rx
-            .await
-            .map_err(|_| NetworkError::ResponseChannelClosed)?
+        rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
     /// Send a get response.
@@ -717,10 +716,7 @@ impl NetworkManager {
             response_tx: tx,
         })
         .await?;
-        let response_rx = rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?;
-        response_rx
-            .await
-            .map_err(|_| NetworkError::ResponseChannelClosed)?
+        rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
     /// Send a finality response.
@@ -750,10 +746,7 @@ impl NetworkManager {
             response_tx: tx,
         })
         .await?;
-        let response_rx = rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?;
-        response_rx
-            .await
-            .map_err(|_| NetworkError::ResponseChannelClosed)?
+        rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
     /// Send a batch get response.
