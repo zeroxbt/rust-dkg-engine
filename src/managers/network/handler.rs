@@ -1,5 +1,3 @@
-use async_trait::async_trait;
-
 use super::{
     Multiaddr, PeerId,
     message::{RequestMessage, ResponseMessage},
@@ -15,7 +13,6 @@ use super::{
 /// Response events (success/failure for outbound requests) are handled
 /// internally by NetworkManager via PendingRequests. This trait only
 /// receives events that need to be dispatched to the application layer.
-#[async_trait]
 pub(crate) trait NetworkEventHandler: Send + Sync {
     // ─────────────────────────────────────────────────────────────────────────
     // Protocol inbound requests

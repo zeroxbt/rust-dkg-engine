@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
-
 use crate::{
     context::Context,
     controllers::rpc_controller::v1::{
@@ -43,7 +41,6 @@ impl RpcRouter {
     }
 }
 
-#[async_trait]
 impl NetworkEventHandler for RpcRouter {
     // ─────────────────────────────────────────────────────────────────────────
     // Protocol inbound requests
