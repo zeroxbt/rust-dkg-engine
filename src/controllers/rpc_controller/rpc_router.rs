@@ -258,18 +258,19 @@ impl RpcRouter {
                                         .handle_request(request, channel, peer)
                                         .await;
                                 }
-                                // TODO: Track request_id to detect late responses after timeout.
-                                Message::Response { response, .. } => {
-                                    self.finality_controller
-                                        .handle_response(response, peer)
-                                        .await;
+                                Message::Response {
+                                    response,
+                                    request_id,
+                                } => {
+                                    // Complete pending request for send_request callers
+                                    self.network_manager
+                                        .pending_finality()
+                                        .complete_success(request_id, response.data);
                                 }
                             };
                         }
-                        // OutboundFailure: We sent a finality request and it failed.
-                        // Note: Finality is typically a notification, so failure handling
-                        // may differ from store protocol (no replication counting).
-                        // TODO: Decide if finality failures need specific handling.
+                        // OutboundFailure: We sent a finality request and it failed (timeout,
+                        // connection closed, etc.)
                         request_response::Event::OutboundFailure {
                             peer,
                             request_id,
@@ -282,6 +283,26 @@ impl RpcRouter {
                                 ?error,
                                 "Finality request failed"
                             );
+
+                            // Complete pending request with failure for send_request callers
+                            let request_error = match &error {
+                                request_response::OutboundFailure::Timeout => RequestError::Timeout,
+                                request_response::OutboundFailure::ConnectionClosed => {
+                                    RequestError::ConnectionFailed("Connection closed".to_string())
+                                }
+                                request_response::OutboundFailure::DialFailure => {
+                                    RequestError::NotConnected
+                                }
+                                request_response::OutboundFailure::UnsupportedProtocols => {
+                                    RequestError::ConnectionFailed(
+                                        "Unsupported protocols".to_string(),
+                                    )
+                                }
+                                _ => RequestError::ConnectionFailed(error.to_string()),
+                            };
+                            self.network_manager
+                                .pending_finality()
+                                .complete_failure(request_id, request_error);
                         }
                         // InboundFailure: Someone sent us a finality request and we failed to
                         // respond.

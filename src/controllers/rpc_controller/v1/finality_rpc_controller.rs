@@ -66,11 +66,4 @@ impl FinalityRpcController {
             .await;
     }
 
-    pub(crate) async fn handle_response(
-        &self,
-        _response: ResponseMessage<FinalityResponseData>,
-        _peer: PeerId,
-    ) {
-        // Do nothing on finality response
-    }
 }
