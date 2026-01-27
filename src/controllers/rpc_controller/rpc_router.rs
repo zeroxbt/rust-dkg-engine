@@ -19,6 +19,69 @@ use crate::{
     services::PeerDiscoveryTracker,
 };
 
+/// Macro to handle protocol events with consistent patterns across all protocols.
+/// Handles Message (Request/Response), OutboundFailure, InboundFailure, and ResponseSent events.
+macro_rules! handle_protocol_event {
+    (
+        $inner_event:expr,
+        $controller:expr,
+        $pending:expr,
+        $protocol_name:literal
+    ) => {
+        match $inner_event {
+            request_response::Event::Message { message, peer, .. } => match message {
+                Message::Request {
+                    request, channel, ..
+                } => {
+                    $controller.handle_request(request, channel, peer).await;
+                }
+                Message::Response {
+                    response,
+                    request_id,
+                } => {
+                    $pending.complete_success(request_id, response.data);
+                }
+            },
+            request_response::Event::OutboundFailure {
+                peer,
+                request_id,
+                error,
+                ..
+            } => {
+                tracing::warn!(
+                    %peer,
+                    ?request_id,
+                    ?error,
+                    concat!($protocol_name, " request failed")
+                );
+                $pending.complete_failure(request_id, RequestError::from(&error));
+            }
+            request_response::Event::InboundFailure {
+                peer,
+                request_id,
+                error,
+                ..
+            } => {
+                tracing::warn!(
+                    %peer,
+                    ?request_id,
+                    ?error,
+                    concat!("Failed to respond to ", $protocol_name, " request from peer")
+                );
+            }
+            request_response::Event::ResponseSent {
+                peer, request_id, ..
+            } => {
+                tracing::trace!(
+                    %peer,
+                    ?request_id,
+                    concat!($protocol_name, " response sent successfully")
+                );
+            }
+        }
+    };
+}
+
 // Type alias for the complete behaviour and its event type
 type BehaviourEvent = <CompositeBehaviour as NetworkBehaviour>::ToSwarm;
 
@@ -80,332 +143,38 @@ impl RpcRouter {
         match event {
             SwarmEvent::Behaviour(behaviour_event) => match behaviour_event {
                 CompositeBehaviourEvent::Protocols(protocol_event) => match protocol_event {
-                    NetworkProtocolsEvent::Store(inner_event) => match inner_event {
-                        request_response::Event::Message { message, peer, .. } => {
-                            match message {
-                                Message::Request {
-                                    request, channel, ..
-                                } => {
-                                    self.store_controller
-                                        .handle_request(request, channel, peer)
-                                        .await;
-                                }
-                                Message::Response {
-                                    response,
-                                    request_id,
-                                } => {
-                                    // Complete pending request for send_request callers
-                                    self.network_manager
-                                        .pending_store()
-                                        .complete_success(request_id, response.data);
-                                }
-                            };
-                        }
-                        // OutboundFailure: We sent a store request and it failed (timeout,
-                        // connection closed, etc.)
-                        request_response::Event::OutboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                            ..
-                        } => {
-                            tracing::warn!(
-                                %peer,
-                                ?request_id,
-                                ?error,
-                                "Store request failed"
-                            );
-
-                            // Complete pending request with failure for send_request callers
-                            let request_error = match &error {
-                                request_response::OutboundFailure::Timeout => RequestError::Timeout,
-                                request_response::OutboundFailure::ConnectionClosed => {
-                                    RequestError::ConnectionFailed("Connection closed".to_string())
-                                }
-                                request_response::OutboundFailure::DialFailure => {
-                                    RequestError::NotConnected
-                                }
-                                request_response::OutboundFailure::UnsupportedProtocols => {
-                                    RequestError::ConnectionFailed(
-                                        "Unsupported protocols".to_string(),
-                                    )
-                                }
-                                _ => RequestError::ConnectionFailed(error.to_string()),
-                            };
-                            self.network_manager
-                                .pending_store()
-                                .complete_failure(request_id, request_error);
-                        }
-                        // InboundFailure: Someone sent us a store request and we failed to respond.
-                        // This is informational - the requester will see OutboundFailure on their
-                        // end. Common causes:
-                        //   - Timeout: Our command handler took too long to call send_response
-                        //   - ResponseOmission: SessionManager channel was dropped without
-                        //     responding
-                        //   - ConnectionClosed: Requester disconnected before we could respond
-                        request_response::Event::InboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                            ..
-                        } => {
-                            tracing::warn!(
-                                %peer,
-                                ?request_id,
-                                ?error,
-                                "Failed to respond to store request from peer"
-                            );
-                        }
-                        // ResponseSent: Confirms our response was successfully sent.
-                        // Useful for debugging/metrics but no action needed.
-                        request_response::Event::ResponseSent {
-                            peer, request_id, ..
-                        } => {
-                            tracing::trace!(
-                                %peer,
-                                ?request_id,
-                                "Store response sent successfully"
-                            );
-                        }
-                    },
-                    NetworkProtocolsEvent::Get(inner_event) => match inner_event {
-                        request_response::Event::Message { message, peer, .. } => {
-                            match message {
-                                Message::Request {
-                                    request, channel, ..
-                                } => {
-                                    self.get_controller
-                                        .handle_request(request, channel, peer)
-                                        .await;
-                                }
-                                Message::Response {
-                                    response,
-                                    request_id,
-                                } => {
-                                    // Complete pending request for send_request callers
-                                    self.network_manager
-                                        .pending_get()
-                                        .complete_success(request_id, response.data);
-                                }
-                            };
-                        }
-                        // OutboundFailure: We sent a get request and it failed (timeout,
-                        // connection closed, etc.)
-                        request_response::Event::OutboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                            ..
-                        } => {
-                            tracing::warn!(
-                                %peer,
-                                ?request_id,
-                                ?error,
-                                "Get request failed"
-                            );
-
-                            // Complete pending request with failure for send_request callers
-                            let request_error = match &error {
-                                request_response::OutboundFailure::Timeout => RequestError::Timeout,
-                                request_response::OutboundFailure::ConnectionClosed => {
-                                    RequestError::ConnectionFailed("Connection closed".to_string())
-                                }
-                                request_response::OutboundFailure::DialFailure => {
-                                    RequestError::NotConnected
-                                }
-                                request_response::OutboundFailure::UnsupportedProtocols => {
-                                    RequestError::ConnectionFailed(
-                                        "Unsupported protocols".to_string(),
-                                    )
-                                }
-                                _ => RequestError::ConnectionFailed(error.to_string()),
-                            };
-                            self.network_manager
-                                .pending_get()
-                                .complete_failure(request_id, request_error);
-                        }
-                        // InboundFailure: Someone sent us a get request and we failed to respond.
-                        request_response::Event::InboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                            ..
-                        } => {
-                            tracing::warn!(
-                                %peer,
-                                ?request_id,
-                                ?error,
-                                "Failed to respond to get request from peer"
-                            );
-                        }
-                        request_response::Event::ResponseSent {
-                            peer, request_id, ..
-                        } => {
-                            tracing::trace!(
-                                %peer,
-                                ?request_id,
-                                "Get response sent successfully"
-                            );
-                        }
-                    },
-                    NetworkProtocolsEvent::Finality(inner_event) => match inner_event {
-                        request_response::Event::Message { message, peer, .. } => {
-                            match message {
-                                Message::Request {
-                                    request, channel, ..
-                                } => {
-                                    self.finality_controller
-                                        .handle_request(request, channel, peer)
-                                        .await;
-                                }
-                                Message::Response {
-                                    response,
-                                    request_id,
-                                } => {
-                                    // Complete pending request for send_request callers
-                                    self.network_manager
-                                        .pending_finality()
-                                        .complete_success(request_id, response.data);
-                                }
-                            };
-                        }
-                        // OutboundFailure: We sent a finality request and it failed (timeout,
-                        // connection closed, etc.)
-                        request_response::Event::OutboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                            ..
-                        } => {
-                            tracing::warn!(
-                                %peer,
-                                ?request_id,
-                                ?error,
-                                "Finality request failed"
-                            );
-
-                            // Complete pending request with failure for send_request callers
-                            let request_error = match &error {
-                                request_response::OutboundFailure::Timeout => RequestError::Timeout,
-                                request_response::OutboundFailure::ConnectionClosed => {
-                                    RequestError::ConnectionFailed("Connection closed".to_string())
-                                }
-                                request_response::OutboundFailure::DialFailure => {
-                                    RequestError::NotConnected
-                                }
-                                request_response::OutboundFailure::UnsupportedProtocols => {
-                                    RequestError::ConnectionFailed(
-                                        "Unsupported protocols".to_string(),
-                                    )
-                                }
-                                _ => RequestError::ConnectionFailed(error.to_string()),
-                            };
-                            self.network_manager
-                                .pending_finality()
-                                .complete_failure(request_id, request_error);
-                        }
-                        // InboundFailure: Someone sent us a finality request and we failed to
-                        // respond.
-                        request_response::Event::InboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                            ..
-                        } => {
-                            tracing::warn!(
-                                %peer,
-                                ?request_id,
-                                ?error,
-                                "Failed to respond to finality request from peer"
-                            );
-                        }
-                        request_response::Event::ResponseSent {
-                            peer, request_id, ..
-                        } => {
-                            tracing::trace!(
-                                %peer,
-                                ?request_id,
-                                "Finality response sent successfully"
-                            );
-                        }
-                    },
-                    NetworkProtocolsEvent::BatchGet(inner_event) => match inner_event {
-                        request_response::Event::Message { message, peer, .. } => {
-                            match message {
-                                Message::Request {
-                                    request, channel, ..
-                                } => {
-                                    self.batch_get_controller
-                                        .handle_request(request, channel, peer)
-                                        .await;
-                                }
-                                Message::Response {
-                                    response,
-                                    request_id,
-                                } => {
-                                    // Complete pending request for send_request callers
-                                    self.network_manager
-                                        .pending_batch_get()
-                                        .complete_success(request_id, response.data);
-                                }
-                            };
-                        }
-                        request_response::Event::OutboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                            ..
-                        } => {
-                            tracing::warn!(
-                                %peer,
-                                ?request_id,
-                                ?error,
-                                "Batch get request failed"
-                            );
-
-                            // Complete pending request with failure for send_request callers
-                            let request_error = match &error {
-                                request_response::OutboundFailure::Timeout => RequestError::Timeout,
-                                request_response::OutboundFailure::ConnectionClosed => {
-                                    RequestError::ConnectionFailed("Connection closed".to_string())
-                                }
-                                request_response::OutboundFailure::DialFailure => {
-                                    RequestError::NotConnected
-                                }
-                                request_response::OutboundFailure::UnsupportedProtocols => {
-                                    RequestError::ConnectionFailed(
-                                        "Unsupported protocols".to_string(),
-                                    )
-                                }
-                                _ => RequestError::ConnectionFailed(error.to_string()),
-                            };
-                            self.network_manager
-                                .pending_batch_get()
-                                .complete_failure(request_id, request_error);
-                        }
-                        request_response::Event::InboundFailure {
-                            peer,
-                            request_id,
-                            error,
-                            ..
-                        } => {
-                            tracing::warn!(
-                                %peer,
-                                ?request_id,
-                                ?error,
-                                "Failed to respond to batch get request from peer"
-                            );
-                        }
-                        request_response::Event::ResponseSent {
-                            peer, request_id, ..
-                        } => {
-                            tracing::trace!(
-                                %peer,
-                                ?request_id,
-                                "Batch get response sent successfully"
-                            );
-                        }
-                    },
+                    NetworkProtocolsEvent::Store(inner_event) => {
+                        handle_protocol_event!(
+                            inner_event,
+                            self.store_controller,
+                            self.network_manager.pending_store(),
+                            "Store"
+                        );
+                    }
+                    NetworkProtocolsEvent::Get(inner_event) => {
+                        handle_protocol_event!(
+                            inner_event,
+                            self.get_controller,
+                            self.network_manager.pending_get(),
+                            "Get"
+                        );
+                    }
+                    NetworkProtocolsEvent::Finality(inner_event) => {
+                        handle_protocol_event!(
+                            inner_event,
+                            self.finality_controller,
+                            self.network_manager.pending_finality(),
+                            "Finality"
+                        );
+                    }
+                    NetworkProtocolsEvent::BatchGet(inner_event) => {
+                        handle_protocol_event!(
+                            inner_event,
+                            self.batch_get_controller,
+                            self.network_manager.pending_batch_get(),
+                            "Batch get"
+                        );
+                    }
                 },
                 CompositeBehaviourEvent::Identify(identify::Event::Received {
                     peer_id,

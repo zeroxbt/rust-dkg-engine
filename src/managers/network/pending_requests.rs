@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use libp2p::request_response::OutboundFailure;
 use tokio::sync::oneshot;
 
 use super::request_response::OutboundRequestId;
@@ -19,6 +20,22 @@ pub(crate) enum RequestError {
 
     #[error("Response channel closed")]
     ChannelClosed,
+}
+
+impl From<&OutboundFailure> for RequestError {
+    fn from(error: &OutboundFailure) -> Self {
+        match error {
+            OutboundFailure::Timeout => RequestError::Timeout,
+            OutboundFailure::ConnectionClosed => {
+                RequestError::ConnectionFailed("Connection closed".to_string())
+            }
+            OutboundFailure::DialFailure => RequestError::NotConnected,
+            OutboundFailure::UnsupportedProtocols => {
+                RequestError::ConnectionFailed("Unsupported protocols".to_string())
+            }
+            _ => RequestError::ConnectionFailed(error.to_string()),
+        }
+    }
 }
 
 /// Tracks pending outbound requests and their oneshot channels for response delivery.

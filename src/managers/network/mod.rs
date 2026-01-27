@@ -36,6 +36,37 @@ use self::{
     },
 };
 
+/// Macro to handle protocol request actions in the swarm event loop.
+/// Reduces boilerplate for the identical pattern across all 4 protocols.
+macro_rules! handle_protocol_request {
+    ($swarm:expr, $self:expr, $peer:expr, $addresses:expr, $operation_id:expr,
+     $request_data:expr, $response_tx:expr, $protocol:ident, $pending:ident) => {{
+        let message = RequestMessage {
+            header: RequestMessageHeader::new($operation_id, RequestMessageType::ProtocolRequest),
+            data: $request_data,
+        };
+        // Atomically register pending request BEFORE sending to avoid race condition
+        let request_id = $swarm
+            .behaviour_mut()
+            .protocols
+            .$protocol
+            .send_request_with_addresses(&$peer, message, $addresses);
+        let receiver = $self.$pending.insert(request_id);
+        let _ = $response_tx.send(receiver);
+    }};
+}
+
+/// Macro to handle protocol response actions in the swarm event loop.
+macro_rules! handle_protocol_response {
+    ($swarm:expr, $channel:expr, $message:expr, $protocol:ident) => {{
+        let _ = $swarm
+            .behaviour_mut()
+            .protocols
+            .$protocol
+            .send_response($channel, $message);
+    }};
+}
+
 /// Network action commands sent to the swarm event loop.
 enum NetworkAction {
     /// Discover peers via Kademlia DHT lookup (get_closest_peers).
@@ -439,127 +470,58 @@ impl NetworkManager {
                     swarm.behaviour_mut().kad.add_address(&peer_id, address);
                 }
             }
-            // Store protocol
+            // Protocol request/response actions - using macros to reduce boilerplate
             NetworkAction::SendStoreRequest {
                 peer,
                 addresses,
                 operation_id,
                 request_data,
                 response_tx,
-            } => {
-                // Wrap request data in protocol message
-                let message = RequestMessage {
-                    header: RequestMessageHeader::new(
-                        operation_id,
-                        RequestMessageType::ProtocolRequest,
-                    ),
-                    data: request_data,
-                };
-                // Atomically register pending request BEFORE sending to avoid race condition
-                let request_id = swarm
-                    .behaviour_mut()
-                    .protocols
-                    .store
-                    .send_request_with_addresses(&peer, message, addresses);
-                let receiver = self.pending_store.insert(request_id);
-                let _ = response_tx.send(receiver);
-            }
+            } => handle_protocol_request!(
+                swarm, self, peer, addresses, operation_id, request_data, response_tx,
+                store, pending_store
+            ),
             NetworkAction::SendStoreResponse { channel, message } => {
-                let _ = swarm
-                    .behaviour_mut()
-                    .protocols
-                    .store
-                    .send_response(channel, message);
+                handle_protocol_response!(swarm, channel, message, store)
             }
-            // Get protocol
             NetworkAction::SendGetRequest {
                 peer,
                 addresses,
                 operation_id,
                 request_data,
                 response_tx,
-            } => {
-                let message = RequestMessage {
-                    header: RequestMessageHeader::new(
-                        operation_id,
-                        RequestMessageType::ProtocolRequest,
-                    ),
-                    data: request_data,
-                };
-                let request_id = swarm
-                    .behaviour_mut()
-                    .protocols
-                    .get
-                    .send_request_with_addresses(&peer, message, addresses);
-                let receiver = self.pending_get.insert(request_id);
-                let _ = response_tx.send(receiver);
-            }
+            } => handle_protocol_request!(
+                swarm, self, peer, addresses, operation_id, request_data, response_tx,
+                get, pending_get
+            ),
             NetworkAction::SendGetResponse { channel, message } => {
-                let _ = swarm
-                    .behaviour_mut()
-                    .protocols
-                    .get
-                    .send_response(channel, message);
+                handle_protocol_response!(swarm, channel, message, get)
             }
-            // Finality protocol
             NetworkAction::SendFinalityRequest {
                 peer,
                 addresses,
                 operation_id,
                 request_data,
                 response_tx,
-            } => {
-                let message = RequestMessage {
-                    header: RequestMessageHeader::new(
-                        operation_id,
-                        RequestMessageType::ProtocolRequest,
-                    ),
-                    data: request_data,
-                };
-                let request_id = swarm
-                    .behaviour_mut()
-                    .protocols
-                    .finality
-                    .send_request_with_addresses(&peer, message, addresses);
-                let receiver = self.pending_finality.insert(request_id);
-                let _ = response_tx.send(receiver);
-            }
+            } => handle_protocol_request!(
+                swarm, self, peer, addresses, operation_id, request_data, response_tx,
+                finality, pending_finality
+            ),
             NetworkAction::SendFinalityResponse { channel, message } => {
-                let _ = swarm
-                    .behaviour_mut()
-                    .protocols
-                    .finality
-                    .send_response(channel, message);
+                handle_protocol_response!(swarm, channel, message, finality)
             }
-            // BatchGet protocol
             NetworkAction::SendBatchGetRequest {
                 peer,
                 addresses,
                 operation_id,
                 request_data,
                 response_tx,
-            } => {
-                let message = RequestMessage {
-                    header: RequestMessageHeader::new(
-                        operation_id,
-                        RequestMessageType::ProtocolRequest,
-                    ),
-                    data: request_data,
-                };
-                let request_id = swarm
-                    .behaviour_mut()
-                    .protocols
-                    .batch_get
-                    .send_request_with_addresses(&peer, message, addresses);
-                let receiver = self.pending_batch_get.insert(request_id);
-                let _ = response_tx.send(receiver);
-            }
+            } => handle_protocol_request!(
+                swarm, self, peer, addresses, operation_id, request_data, response_tx,
+                batch_get, pending_batch_get
+            ),
             NetworkAction::SendBatchGetResponse { channel, message } => {
-                let _ = swarm
-                    .behaviour_mut()
-                    .protocols
-                    .batch_get
-                    .send_response(channel, message);
+                handle_protocol_response!(swarm, channel, message, batch_get)
             }
         }
     }
