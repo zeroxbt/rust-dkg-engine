@@ -22,12 +22,7 @@ use managers::network::KeyManager;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::{select, signal::unix::SignalKind, sync::oneshot};
 
-use crate::{
-    config::AppPaths,
-    services::{
-        GetValidationService, PeerDiscoveryTracker, ResponseChannels, TripleStoreService,
-    },
-};
+use crate::config::AppPaths;
 
 #[tokio::main]
 async fn main() {
@@ -62,46 +57,29 @@ async fn main() {
     // Create command scheduler channel
     let (command_scheduler, command_rx) = CommandScheduler::channel();
 
-    // Initialize managers, services, and supporting components
+    // Initialize managers and services
     let managers = managers::initialize(&config.managers, &paths, network_key).await;
-    let services = services::initialize(&paths, &managers.repository, &managers.network);
 
-    let store_response_channels = Arc::new(ResponseChannels::new());
-    let get_response_channels = Arc::new(ResponseChannels::new());
-    let finality_response_channels = Arc::new(ResponseChannels::new());
-    let batch_get_response_channels = Arc::new(ResponseChannels::new());
-    let get_validation_service =
-        Arc::new(GetValidationService::new(Arc::clone(&managers.blockchain)));
-    let triple_store_service = Arc::new(TripleStoreService::new(Arc::clone(&managers.triple_store)));
-    let peer_discovery_tracker = Arc::new(PeerDiscoveryTracker::new());
-
-    let context = Arc::new(Context::new(
-        config.clone(),
-        command_scheduler,
-        Arc::clone(&managers.repository),
-        Arc::clone(&managers.network),
-        Arc::clone(&managers.blockchain),
-        Arc::clone(&triple_store_service),
-        Arc::clone(&get_validation_service),
-        Arc::clone(&services.pending_storage),
-        Arc::clone(&peer_discovery_tracker),
-        Arc::clone(&store_response_channels),
-        Arc::clone(&get_response_channels),
-        Arc::clone(&finality_response_channels),
-        Arc::clone(&batch_get_response_channels),
-        Arc::clone(&services.get_operation),
-        Arc::clone(&services.publish_operation),
-        Arc::clone(&services.batch_get_operation),
-    ));
+    // Clone refs needed after managers is moved into Context
+    let network_manager_for_task = Arc::clone(&managers.network);
+    let blockchain_manager_for_ids = Arc::clone(&managers.blockchain);
 
     #[cfg(feature = "dev-tools")]
     initialize_dev_environment(&managers.blockchain).await;
 
+    let services = services::initialize(&managers);
+
+    let context = Arc::new(Context::new(
+        config.clone(),
+        command_scheduler,
+        managers,
+        services,
+    ));
+
     let command_executor = Arc::new(CommandExecutor::new(Arc::clone(&context), command_rx));
 
     // Schedule default commands (including per-blockchain event listeners)
-    let blockchain_ids: Vec<_> = managers
-        .blockchain
+    let blockchain_ids: Vec<_> = blockchain_manager_for_ids
         .get_blockchain_ids()
         .into_iter()
         .cloned()
@@ -120,16 +98,15 @@ async fn main() {
         tokio::task::spawn(async move { command_executor.run().await });
 
     // Spawn network manager event loop task with RPC router as the event handler
-    let network_manager = managers.network;
     let rpc_router = controllers.rpc_router;
     let network_event_loop_task = tokio::task::spawn(async move {
-        if let Err(error) = network_manager.start_listening().await {
+        if let Err(error) = network_manager_for_task.start_listening().await {
             tracing::error!("Failed to start swarm listener: {}", error);
             return;
         }
 
         // Run the network manager event loop with the RPC router handling events
-        network_manager.run(&rpc_router).await;
+        network_manager_for_task.run(&rpc_router).await;
     });
 
     // Spawn HTTP API task if enabled

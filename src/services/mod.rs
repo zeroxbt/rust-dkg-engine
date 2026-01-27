@@ -9,8 +9,12 @@ pub(crate) mod triple_store_service;
 use std::sync::Arc;
 
 use crate::{
-    config::AppPaths,
-    managers::{NetworkManager, RepositoryManager, key_value_store::KeyValueStoreManager},
+    managers::{
+        Managers,
+        network::messages::{
+            BatchGetResponseData, FinalityResponseData, GetResponseData, StoreResponseData,
+        },
+    },
     operations::{BatchGetOperation, GetOperation, PublishOperation},
 };
 
@@ -21,60 +25,106 @@ pub(crate) use pending_storage_service::PendingStorageService;
 pub(crate) use response_channels::ResponseChannels;
 pub(crate) use triple_store_service::TripleStoreService;
 
+/// Response channels for all protocol types.
+pub(crate) struct ResponseChannelsSet {
+    pub store: Arc<ResponseChannels<StoreResponseData>>,
+    pub get: Arc<ResponseChannels<GetResponseData>>,
+    pub finality: Arc<ResponseChannels<FinalityResponseData>>,
+    pub batch_get: Arc<ResponseChannels<BatchGetResponseData>>,
+}
+
+impl ResponseChannelsSet {
+    fn new() -> Self {
+        Self {
+            store: Arc::new(ResponseChannels::new()),
+            get: Arc::new(ResponseChannels::new()),
+            finality: Arc::new(ResponseChannels::new()),
+            batch_get: Arc::new(ResponseChannels::new()),
+        }
+    }
+}
+
 /// Container for all initialized services.
 pub(crate) struct Services {
+    // Operation services
     pub publish_operation: Arc<OperationService<PublishOperation>>,
     pub get_operation: Arc<OperationService<GetOperation>>,
     pub batch_get_operation: Arc<OperationService<BatchGetOperation>>,
+
+    // Storage services
     pub pending_storage: Arc<PendingStorageService>,
+    pub triple_store: Arc<TripleStoreService>,
+
+    // Validation services
+    pub get_validation: Arc<GetValidationService>,
+
+    // Infrastructure services
+    pub peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
+
+    // Response channels for all protocols
+    pub response_channels: ResponseChannelsSet,
 }
 
 /// Initialize all services.
-pub(crate) fn initialize(
-    paths: &AppPaths,
-    repository_manager: &Arc<RepositoryManager>,
-    network_manager: &Arc<NetworkManager>,
-) -> Services {
-    // Create shared key-value store manager using centralized path
-    let kv_store_manager = KeyValueStoreManager::connect(paths.key_value_store.clone())
-        .expect("Failed to connect to key-value store manager");
-
-    let pending_storage = Arc::new(
-        PendingStorageService::new(&kv_store_manager)
-            .expect("Failed to create pending storage service"),
-    );
-
+///
+/// Services depend only on Managers, establishing a clear dependency hierarchy:
+/// - Managers: lowest level, self-contained infrastructure
+/// - Services: business logic layer, depends only on Managers
+/// - Controllers/Commands: highest level, depends on both via Context
+pub(crate) fn initialize(managers: &Managers) -> Services {
+    // Operation services
     let publish_operation = Arc::new(
         OperationService::<PublishOperation>::new(
-            Arc::clone(repository_manager),
-            Arc::clone(network_manager),
-            &kv_store_manager,
+            Arc::clone(&managers.repository),
+            Arc::clone(&managers.network),
+            &managers.key_value_store,
         )
         .expect("Failed to create publish operation service"),
     );
 
     let get_operation = Arc::new(
         OperationService::<GetOperation>::new(
-            Arc::clone(repository_manager),
-            Arc::clone(network_manager),
-            &kv_store_manager,
+            Arc::clone(&managers.repository),
+            Arc::clone(&managers.network),
+            &managers.key_value_store,
         )
         .expect("Failed to create get operation service"),
     );
 
     let batch_get_operation = Arc::new(
         OperationService::<BatchGetOperation>::new(
-            Arc::clone(repository_manager),
-            Arc::clone(network_manager),
-            &kv_store_manager,
+            Arc::clone(&managers.repository),
+            Arc::clone(&managers.network),
+            &managers.key_value_store,
         )
         .expect("Failed to create batch get operation service"),
     );
+
+    // Storage services
+    let pending_storage = Arc::new(
+        PendingStorageService::new(&managers.key_value_store)
+            .expect("Failed to create pending storage service"),
+    );
+
+    let triple_store = Arc::new(TripleStoreService::new(Arc::clone(&managers.triple_store)));
+
+    // Validation services
+    let get_validation = Arc::new(GetValidationService::new(Arc::clone(&managers.blockchain)));
+
+    // Infrastructure services
+    let peer_discovery_tracker = Arc::new(PeerDiscoveryTracker::new());
+
+    // Response channels
+    let response_channels = ResponseChannelsSet::new();
 
     Services {
         publish_operation,
         get_operation,
         batch_get_operation,
         pending_storage,
+        triple_store,
+        get_validation,
+        peer_discovery_tracker,
+        response_channels,
     }
 }
