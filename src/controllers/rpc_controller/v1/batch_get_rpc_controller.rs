@@ -13,12 +13,10 @@ use crate::{
         message::{RequestMessage, ResponseMessage},
         request_response,
     },
-    operations::BatchGetOperation,
-    services::{ResponseChannels, operation::OperationService as GenericOperationService},
+    services::ResponseChannels,
 };
 
 pub(crate) struct BatchGetRpcController {
-    batch_get_operation_service: Arc<GenericOperationService<BatchGetOperation>>,
     response_channels: Arc<ResponseChannels<BatchGetResponseData>>,
     command_scheduler: CommandScheduler,
 }
@@ -26,15 +24,9 @@ pub(crate) struct BatchGetRpcController {
 impl BatchGetRpcController {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
-            batch_get_operation_service: Arc::clone(context.batch_get_operation_service()),
             response_channels: Arc::clone(context.batch_get_response_channels()),
             command_scheduler: context.command_scheduler().clone(),
         }
-    }
-
-    /// Returns a reference to the operation service for this controller.
-    pub(crate) fn operation_service(&self) -> &Arc<GenericOperationService<BatchGetOperation>> {
-        &self.batch_get_operation_service
     }
 
     pub(crate) async fn handle_request(

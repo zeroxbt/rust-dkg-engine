@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 use axum::{
     Json,
@@ -72,7 +72,24 @@ impl OperationResultHttpApiController {
             }
         };
 
-        let status = OperationStatus::from_str(&operation_record.status).unwrap();
+        let status = match operation_record.operation_status() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Invalid operation status in database"
+                );
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(OperationResultErrorResponse::new(
+                        500,
+                        "Invalid operation status".to_string(),
+                    )),
+                )
+                    .into_response();
+            }
+        };
 
         match status {
             OperationStatus::Failed => {
@@ -200,7 +217,24 @@ impl OperationResultHttpApiController {
             }
         };
 
-        let status = OperationStatus::from_str(&operation_record.status).unwrap();
+        let status = match operation_record.operation_status() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Invalid operation status in database"
+                );
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(OperationResultErrorResponse::new(
+                        500,
+                        "Invalid operation status".to_string(),
+                    )),
+                )
+                    .into_response();
+            }
+        };
 
         match status {
             OperationStatus::Failed => {

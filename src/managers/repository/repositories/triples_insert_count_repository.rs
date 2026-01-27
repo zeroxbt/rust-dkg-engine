@@ -27,8 +27,9 @@ impl TriplesInsertCountRepository {
         let existing = Entity::find().lock_exclusive().one(&txn).await?;
 
         let result = if let Some(record) = existing {
+            let current_count = record.count;
             let mut active_model: triples_insert_count::ActiveModel = record.into();
-            active_model.count = Set(active_model.count.unwrap() + by);
+            active_model.count = Set(current_count + by);
             active_model.update(&txn).await?
         } else {
             // No record exists, create one

@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::managers::repository::{
     error::RepositoryError,
     models::operations::{self, Entity, Model},
+    types::OperationStatus,
 };
 
 pub(crate) struct OperationRepository {
@@ -23,7 +24,7 @@ impl OperationRepository {
         &self,
         operation_id: Uuid,
         operation_name: &str,
-        status: &str,
+        status: OperationStatus,
         timestamp: i64,
     ) -> Result<Model, RepositoryError> {
         let now = Utc::now();
@@ -31,7 +32,7 @@ impl OperationRepository {
         let active_model = operations::ActiveModel {
             operation_id: Set(operation_id.to_string()),
             operation_name: Set(operation_name.to_string()),
-            status: Set(status.to_string()),
+            status: Set(status.as_str().to_string()),
             error_message: Set(None),
             timestamp: Set(timestamp),
             total_peers: Set(None),
@@ -62,7 +63,7 @@ impl OperationRepository {
     pub(crate) async fn update(
         &self,
         operation_id: Uuid,
-        status: Option<&str>,
+        status: Option<OperationStatus>,
         error_message: Option<String>,
         timestamp: Option<i64>,
     ) -> Result<Model, RepositoryError> {
@@ -77,8 +78,8 @@ impl OperationRepository {
         let mut active_model: operations::ActiveModel = existing.into();
 
         // Update fields if provided
-        if let Some(fs) = status {
-            active_model.status = Set(fs.to_string());
+        if let Some(s) = status {
+            active_model.status = Set(s.as_str().to_string());
         }
         if let Some(em) = error_message {
             active_model.error_message = Set(Some(em));
@@ -98,7 +99,7 @@ impl OperationRepository {
     pub(crate) async fn update_status(
         &self,
         operation_id: Uuid,
-        status: &str,
+        status: OperationStatus,
     ) -> Result<Model, RepositoryError> {
         self.update(operation_id, Some(status), None, None).await
     }

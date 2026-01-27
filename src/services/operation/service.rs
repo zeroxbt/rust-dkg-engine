@@ -67,7 +67,7 @@ impl<Op: Operation> OperationService<Op> {
             .create(
                 operation_id,
                 Op::NAME,
-                OperationStatus::InProgress.as_str(),
+                OperationStatus::InProgress,
                 Utc::now().timestamp_millis(),
             )
             .await?;
@@ -151,7 +151,7 @@ impl<Op: Operation> OperationService<Op> {
         // Update status in database
         self.repository
             .operation_repository()
-            .update_status(operation_id, OperationStatus::Completed.as_str())
+            .update_status(operation_id, OperationStatus::Completed)
             .await?;
 
         // Signal completion and clean up
@@ -176,7 +176,7 @@ impl<Op: Operation> OperationService<Op> {
             .operation_repository()
             .update(
                 operation_id,
-                Some(OperationStatus::Failed.as_str()),
+                Some(OperationStatus::Failed),
                 Some(reason),
                 None,
             )

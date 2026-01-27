@@ -198,6 +198,7 @@ pub(crate) enum GasOracleError {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     // =========================================================================
