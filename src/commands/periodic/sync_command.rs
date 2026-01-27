@@ -123,15 +123,14 @@ impl SyncCommandHandler {
             .await
             .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
 
+        let pending = pending_kcs.len();
+
         tracing::debug!(
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
-            count = pending_kcs.len(),
+            count = pending,
             "[DKG SYNC] Fetched pending KCs from DB"
         );
-
-        let pending_kc_ids: Vec<u64> = pending_kcs.into_iter().map(|kc| kc.kc_id).collect();
-        let pending = pending_kc_ids.len();
 
         if pending == 0 {
             return Ok(ContractSyncResult {
@@ -148,7 +147,7 @@ impl SyncCommandHandler {
                 blockchain_id,
                 contract_address,
                 &contract_addr_str,
-                &pending_kc_ids,
+                &pending_kcs,
             )
             .await;
 
@@ -321,26 +320,29 @@ impl SyncCommandHandler {
     }
 
     /// Filter pending KCs: check which are expired on chain or already exist locally.
+    /// Uses cached end_epoch from the queue when available to avoid RPC calls.
+    /// Only verifies on-chain if the cached value indicates expiration or is missing.
     /// Returns (kcs_to_sync, expired_kc_ids, already_synced_kc_ids)
     async fn filter_pending_kcs(
         &self,
         blockchain_id: &BlockchainId,
         contract_address: Address,
         contract_addr_str: &str,
-        pending_kc_ids: &[u64],
+        pending_kcs: &[crate::managers::repository::KcQueueModel],
     ) -> (Vec<KcToSync>, Vec<u64>, Vec<u64>) {
         let blockchain_label = blockchain_id.as_str();
         let mut kcs_to_sync = Vec::new();
         let mut expired_kc_ids = Vec::new();
         let mut already_synced_kc_ids = Vec::new();
         let mut skipped_due_to_errors = 0u64;
+        let mut cache_hits = 0u64;
 
-        let total_kcs = pending_kc_ids.len();
+        let total_kcs = pending_kcs.len();
         tracing::debug!(
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
             total_kcs,
-            "[DKG SYNC] Starting filter step (2 RPC calls per KC)"
+            "[DKG SYNC] Starting filter step"
         );
 
         // Get current epoch once for all KCs
@@ -361,7 +363,9 @@ impl SyncCommandHandler {
             }
         };
 
-        for (idx, &kc_id) in pending_kc_ids.iter().enumerate() {
+        for (idx, kc) in pending_kcs.iter().enumerate() {
+            let kc_id = kc.kc_id;
+
             // Log progress every 10 KCs
             if idx > 0 && idx % 10 == 0 {
                 tracing::debug!(
@@ -370,23 +374,53 @@ impl SyncCommandHandler {
                     "[DKG SYNC] Filter progress"
                 );
             }
-            // Check if KC is expired (currentEpoch > endEpoch)
-            let end_epoch = match self
-                .blockchain_manager
-                .get_kc_end_epoch(blockchain_id, contract_address, kc_id as u128)
-                .await
-            {
-                Ok(epoch) => epoch,
-                Err(e) => {
-                    tracing::warn!(
-                        blockchain_id = %blockchain_id,
-                        contract = %contract_addr_str,
-                        kc_id = kc_id,
-                        error = %e,
-                        "[DKG SYNC] Failed to get KC end epoch, will retry later"
-                    );
-                    skipped_due_to_errors += 1;
-                    continue;
+
+            // Use cached end_epoch if available, otherwise fetch from chain
+            let end_epoch = if let Some(cached_end_epoch) = kc.end_epoch {
+                // If cached value shows KC is not expired, trust it and skip RPC
+                if current_epoch <= cached_end_epoch {
+                    cache_hits += 1;
+                    cached_end_epoch
+                } else {
+                    // Cached value indicates expiration - verify on-chain to be sure
+                    match self
+                        .blockchain_manager
+                        .get_kc_end_epoch(blockchain_id, contract_address, kc_id as u128)
+                        .await
+                    {
+                        Ok(epoch) => epoch,
+                        Err(e) => {
+                            tracing::warn!(
+                                blockchain_id = %blockchain_id,
+                                contract = %contract_addr_str,
+                                kc_id = kc_id,
+                                error = %e,
+                                "[DKG SYNC] Failed to verify KC end epoch on-chain, will retry later"
+                            );
+                            skipped_due_to_errors += 1;
+                            continue;
+                        }
+                    }
+                }
+            } else {
+                // No cached value, must fetch from chain
+                match self
+                    .blockchain_manager
+                    .get_kc_end_epoch(blockchain_id, contract_address, kc_id as u128)
+                    .await
+                {
+                    Ok(epoch) => epoch,
+                    Err(e) => {
+                        tracing::warn!(
+                            blockchain_id = %blockchain_id,
+                            contract = %contract_addr_str,
+                            kc_id = kc_id,
+                            error = %e,
+                            "[DKG SYNC] Failed to get KC end epoch, will retry later"
+                        );
+                        skipped_due_to_errors += 1;
+                        continue;
+                    }
                 }
             };
 
@@ -463,11 +497,14 @@ impl SyncCommandHandler {
             .increment(kcs_to_sync.len() as u64);
         counter!("sync_filter_skipped_errors_total", "blockchain" => blockchain_label.to_string())
             .increment(skipped_due_to_errors);
+        counter!("sync_filter_cache_hits_total", "blockchain" => blockchain_label.to_string())
+            .increment(cache_hits);
 
         (kcs_to_sync, expired_kc_ids, already_synced_kc_ids)
     }
 
     /// Check for new KCs on chain and enqueue any that need syncing.
+    /// Filters out expired KCs before enqueuing to avoid storing them in the queue.
     async fn enqueue_new_kcs(
         &self,
         blockchain_id: &BlockchainId,
@@ -531,16 +568,96 @@ impl SyncCommandHandler {
         let start_id = last_checked + 1;
         let end_id = std::cmp::min(latest_on_chain, last_checked + MAX_NEW_KCS_PER_CONTRACT);
         let new_kc_ids: Vec<u64> = (start_id..=end_id).collect();
-        let count = new_kc_ids.len() as u64;
 
-        // Enqueue the new KC IDs
-        self.repository_manager
-            .kc_sync_repository()
-            .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, &new_kc_ids)
+        // Get current epoch to filter out expired KCs before enqueuing
+        let current_epoch = match self
+            .blockchain_manager
+            .get_current_epoch(blockchain_id)
             .await
-            .map_err(|e| format!("Failed to enqueue KCs: {}", e))?;
+        {
+            Ok(epoch) => Some(epoch),
+            Err(e) => {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    error = %e,
+                    "[DKG SYNC] Failed to get current epoch, will enqueue all KCs and filter later"
+                );
+                None
+            }
+        };
 
-        // Update progress to the highest ID we've now checked
+        // Filter out expired KCs if we have the current epoch, and cache end_epoch for later use
+        let (kcs_to_enqueue, expired_count): (Vec<(u64, Option<u64>)>, u64) =
+            if let Some(current_epoch) = current_epoch {
+                let mut valid_kc_entries = Vec::with_capacity(new_kc_ids.len());
+                let mut expired = 0u64;
+
+                for kc_id in &new_kc_ids {
+                    match self
+                        .blockchain_manager
+                        .get_kc_end_epoch(blockchain_id, contract_address, *kc_id as u128)
+                        .await
+                    {
+                        Ok(end_epoch) => {
+                            if current_epoch > end_epoch {
+                                // KC is expired, skip it
+                                expired += 1;
+                                tracing::trace!(
+                                    blockchain_id = %blockchain_id,
+                                    contract = %contract_addr_str,
+                                    kc_id = kc_id,
+                                    current_epoch,
+                                    end_epoch,
+                                    "[DKG SYNC] Skipping expired KC during enqueue"
+                                );
+                            } else {
+                                // Store kc_id with its end_epoch for caching
+                                valid_kc_entries.push((*kc_id, Some(end_epoch)));
+                            }
+                        }
+                        Err(e) => {
+                            // If we can't get the end epoch, enqueue it anyway and filter later
+                            tracing::trace!(
+                                blockchain_id = %blockchain_id,
+                                contract = %contract_addr_str,
+                                kc_id = kc_id,
+                                error = %e,
+                                "[DKG SYNC] Failed to get KC end epoch, will enqueue and check later"
+                            );
+                            valid_kc_entries.push((*kc_id, None));
+                        }
+                    }
+                }
+
+                (valid_kc_entries, expired)
+            } else {
+                // No current epoch available, enqueue all without cached end_epoch
+                (new_kc_ids.iter().map(|&id| (id, None)).collect(), 0)
+            };
+
+        if expired_count > 0 {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                expired_count,
+                "[DKG SYNC] Filtered out expired KCs during enqueue"
+            );
+            counter!("sync_enqueue_expired_total", "blockchain" => blockchain_id.as_str().to_string())
+                .increment(expired_count);
+        }
+
+        let count = kcs_to_enqueue.len() as u64;
+
+        // Only enqueue if there are valid KCs
+        if !kcs_to_enqueue.is_empty() {
+            self.repository_manager
+                .kc_sync_repository()
+                .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, &kcs_to_enqueue)
+                .await
+                .map_err(|e| format!("Failed to enqueue KCs: {}", e))?;
+        }
+
+        // Update progress to the highest ID we've now checked (even if some were expired)
         self.repository_manager
             .kc_sync_repository()
             .upsert_progress(blockchain_id.as_str(), contract_addr_str, end_id)

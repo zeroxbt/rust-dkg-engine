@@ -7,6 +7,7 @@ mod types;
 use std::sync::Arc;
 
 use error::RepositoryError;
+pub(crate) use models::kc_sync_queue::Model as KcQueueModel;
 pub(crate) use repositories::shard_repository::ShardRecordInput;
 use repositories::{
     blockchain_repository::BlockchainRepository,
