@@ -166,12 +166,22 @@ impl CommandExecutor {
                             pending_tasks.push(self.execute(request, permit));
                         }
                         None => {
-                            tracing::error!("Command channel closed, shutting down executor");
+                            tracing::info!("Command channel closed, shutting down executor");
                             break;
                         }
                     }
                 }
             }
+        }
+
+        // Drain pending tasks before returning
+        if !pending_tasks.is_empty() {
+            tracing::info!(
+                pending_count = pending_tasks.len(),
+                "Waiting for pending commands to complete"
+            );
+            while pending_tasks.next().await.is_some() {}
+            tracing::info!("All pending commands completed");
         }
     }
 

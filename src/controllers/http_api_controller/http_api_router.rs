@@ -8,7 +8,10 @@ use axum::{
     routing::{get, post},
 };
 use serde::Deserialize;
-use tokio::{net::TcpListener, sync::Mutex};
+use tokio::{
+    net::TcpListener,
+    sync::{Mutex, oneshot},
+};
 use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
 
 use super::{
@@ -121,7 +124,10 @@ impl HttpApiRouter {
         }
     }
 
-    pub(crate) async fn listen_and_handle_http_requests(&self) {
+    pub(crate) async fn listen_and_handle_http_requests(
+        &self,
+        shutdown_rx: oneshot::Receiver<()>,
+    ) {
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, self.config.port));
 
         let cloned_router_for_serve = self.router.lock().await.clone();
@@ -136,6 +142,10 @@ impl HttpApiRouter {
             listener,
             cloned_router_for_serve.into_make_service_with_connect_info::<SocketAddr>(),
         )
+        .with_graceful_shutdown(async move {
+            let _ = shutdown_rx.await;
+            tracing::info!("HTTP server shutting down gracefully");
+        })
         .await
         .expect("Server failed");
     }

@@ -10,7 +10,7 @@ mod services;
 mod types;
 mod utils;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use commands::{
     command_executor::{CommandExecutor, CommandScheduler},
@@ -24,7 +24,7 @@ use controllers::{
 use dotenvy::dotenv;
 use libp2p::identity::Keypair;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use tokio::select;
+use tokio::{select, signal::unix::SignalKind, sync::oneshot};
 
 use crate::{
     config::{AppPaths, ManagersConfig},
@@ -131,7 +131,12 @@ async fn main() {
 
     let (http_api_router, rpc_router) = initialize_controllers(&config.http_api, &context);
 
-    let execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
+    // Create HTTP shutdown channel (oneshot for single signal)
+    let (http_shutdown_tx, http_shutdown_rx) = oneshot::channel::<()>();
+
+    // Spawn command executor task
+    let execute_commands_task =
+        tokio::task::spawn(async move { command_executor.run().await });
 
     // Spawn network manager event loop task with RPC router as the event handler
     let network_event_loop_task = tokio::task::spawn(async move {
@@ -147,27 +152,73 @@ async fn main() {
     // Spawn HTTP API task if enabled
     let handle_http_events_task = tokio::task::spawn(async move {
         if let Some(router) = http_api_router {
-            router.listen_and_handle_http_requests().await;
+            router
+                .listen_and_handle_http_requests(http_shutdown_rx)
+                .await;
         } else {
-            // HTTP API disabled - wait forever (this task won't cause shutdown)
-            std::future::pending::<()>().await;
+            // HTTP API disabled - wait for shutdown signal
+            let _ = http_shutdown_rx.await;
         }
     });
 
+    // Wait for shutdown signal (SIGINT or SIGTERM)
+    let ctrl_c = tokio::signal::ctrl_c();
+    let mut sigterm = tokio::signal::unix::signal(SignalKind::terminate())
+        .expect("Failed to install SIGTERM handler");
+
     select! {
-        result = handle_http_events_task => {
-            tracing::error!("HTTP task exited unexpectedly: {:?}", result);
-        }
-        result = network_event_loop_task => {
-            tracing::error!("Network task exited unexpectedly: {:?}", result);
-        }
-        result = execute_commands_task => {
-            tracing::error!("Command executor exited unexpectedly: {:?}", result);
-        }
+        _ = ctrl_c => tracing::info!("Received SIGINT, initiating shutdown..."),
+        _ = sigterm.recv() => tracing::info!("Received SIGTERM, initiating shutdown..."),
     }
 
-    tracing::error!("Critical task failed, shutting down");
-    std::process::exit(1);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ORDERED SHUTDOWN SEQUENCE
+    // ═══════════════════════════════════════════════════════════════════════════
+    //
+    // 1. Stop HTTP server (stop accepting new requests)
+    // 2. Drop command_scheduler (close command channel)
+    // 3. Wait for executor to drain (commands still have network access)
+    // 4. Drop context (closes network action channel)
+    // 5. Wait for network loop to exit
+    // 6. Wait for HTTP to finish in-flight requests
+
+    tracing::info!("Shutting down gracefully...");
+
+    // Step 1: Signal HTTP server to stop accepting new connections
+    let _ = http_shutdown_tx.send(());
+
+    // Step 2: Drop command scheduler to close the command channel
+    // This causes the executor to stop accepting new commands
+    drop(context);
+
+    // Step 3: Wait for command executor to drain pending commands
+    // Commands still have network access during this phase
+    const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
+    tracing::info!("Waiting for command executor to drain...");
+    match tokio::time::timeout(SHUTDOWN_TIMEOUT, execute_commands_task).await {
+        Ok(Ok(())) => tracing::info!("Command executor shut down cleanly"),
+        Ok(Err(e)) => tracing::error!("Command executor task panicked: {:?}", e),
+        Err(_) => tracing::warn!("Command executor drain timeout after {:?}", SHUTDOWN_TIMEOUT),
+    }
+
+    // Step 4 & 5: Network manager shuts down when its action channel closes
+    // (which happened when we dropped context above)
+    tracing::info!("Waiting for network manager to shut down...");
+    match tokio::time::timeout(Duration::from_secs(5), network_event_loop_task).await {
+        Ok(Ok(())) => tracing::info!("Network manager shut down cleanly"),
+        Ok(Err(e)) => tracing::error!("Network task panicked: {:?}", e),
+        Err(_) => tracing::warn!("Network manager shutdown timeout"),
+    }
+
+    // Step 6: Wait for HTTP server to finish in-flight requests
+    tracing::info!("Waiting for HTTP server to shut down...");
+    match tokio::time::timeout(Duration::from_secs(5), handle_http_events_task).await {
+        Ok(Ok(())) => tracing::info!("HTTP server shut down cleanly"),
+        Ok(Err(e)) => tracing::error!("HTTP task panicked: {:?}", e),
+        Err(_) => tracing::warn!("HTTP server shutdown timeout"),
+    }
+
+    tracing::info!("Shutdown complete");
 }
 
 fn initialize_logger() {
