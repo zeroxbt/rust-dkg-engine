@@ -5,6 +5,7 @@ use futures::future::join_all;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
+    error::NodeError,
     managers::{
         blockchain::{
             BlockchainId, BlockchainManager,
@@ -36,7 +37,7 @@ impl ShardingTableCheckCommandHandler {
     async fn sync_blockchain_sharding_table(
         &self,
         blockchain: &BlockchainId,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(), NodeError> {
         let sharding_table_length = self
             .blockchain_manager
             .get_sharding_table_length(blockchain)
@@ -61,7 +62,7 @@ impl ShardingTableCheckCommandHandler {
         blockchain: &BlockchainId,
         sharding_table_length: u128,
         local_count: u64,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(), NodeError> {
         tracing::debug!(
             blockchain = %blockchain,
             chain_length = sharding_table_length,

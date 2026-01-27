@@ -7,6 +7,7 @@ use crate::{
         operations::publish::protocols::finality::send_finality_request_command::SendFinalityRequestCommandData,
     },
     context::Context,
+    error::NodeError,
     managers::{
         blockchain::{
             Address, AssetStorageChangedFilter, BlockchainId, BlockchainManager,
@@ -75,7 +76,7 @@ impl BlockchainEventListenerCommandHandler {
     async fn fetch_and_handle_blockchain_events(
         &self,
         blockchain_id: &BlockchainId,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(), NodeError> {
         // Get current block (use -2 for finality safety)
         let current_block = self
             .blockchain_manager

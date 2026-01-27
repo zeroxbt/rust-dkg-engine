@@ -3,17 +3,20 @@ use std::sync::Arc;
 use chrono::Utc;
 use sea_orm::{
     ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, error::DbErr,
+    QuerySelect,
 };
 
-use crate::managers::repository::models::{
-    kc_sync_progress::{
-        ActiveModel as ProgressActiveModel, Column as ProgressColumn, Entity as ProgressEntity,
-        Model as ProgressModel,
-    },
-    kc_sync_queue::{
-        ActiveModel as QueueActiveModel, Column as QueueColumn, Entity as QueueEntity,
-        Model as QueueModel,
+use crate::managers::repository::{
+    error::Result,
+    models::{
+        kc_sync_progress::{
+            ActiveModel as ProgressActiveModel, Column as ProgressColumn,
+            Entity as ProgressEntity, Model as ProgressModel,
+        },
+        kc_sync_queue::{
+            ActiveModel as QueueActiveModel, Column as QueueColumn, Entity as QueueEntity,
+            Model as QueueModel,
+        },
     },
 };
 
@@ -34,12 +37,12 @@ impl KcSyncRepository {
         &self,
         blockchain_id: &str,
         contract_address: &str,
-    ) -> Result<Option<ProgressModel>, DbErr> {
-        ProgressEntity::find()
+    ) -> Result<Option<ProgressModel>> {
+        Ok(ProgressEntity::find()
             .filter(ProgressColumn::BlockchainId.eq(blockchain_id))
             .filter(ProgressColumn::ContractAddress.eq(contract_address))
             .one(self.conn.as_ref())
-            .await
+            .await?)
     }
 
     /// Update or insert the sync progress for a contract.
@@ -48,7 +51,7 @@ impl KcSyncRepository {
         blockchain_id: &str,
         contract_address: &str,
         last_checked_id: u64,
-    ) -> Result<(), DbErr> {
+    ) -> Result<()> {
         let now = Utc::now().timestamp();
 
         let model = ProgressActiveModel {
@@ -82,7 +85,7 @@ impl KcSyncRepository {
         blockchain_id: &str,
         contract_address: &str,
         kc_ids: &[u64],
-    ) -> Result<(), DbErr> {
+    ) -> Result<()> {
         if kc_ids.is_empty() {
             return Ok(());
         }
@@ -127,15 +130,15 @@ impl KcSyncRepository {
         contract_address: &str,
         max_retries: u32,
         limit: u64,
-    ) -> Result<Vec<QueueModel>, DbErr> {
-        QueueEntity::find()
+    ) -> Result<Vec<QueueModel>> {
+        Ok(QueueEntity::find()
             .filter(QueueColumn::BlockchainId.eq(blockchain_id))
             .filter(QueueColumn::ContractAddress.eq(contract_address))
             .filter(QueueColumn::RetryCount.lt(max_retries))
             .order_by_asc(QueueColumn::KcId)
             .limit(limit)
             .all(self.conn.as_ref())
-            .await
+            .await?)
     }
 
     /// Remove successfully synced KCs from the queue.
@@ -144,7 +147,7 @@ impl KcSyncRepository {
         blockchain_id: &str,
         contract_address: &str,
         kc_ids: &[u64],
-    ) -> Result<(), DbErr> {
+    ) -> Result<()> {
         if kc_ids.is_empty() {
             return Ok(());
         }
@@ -165,7 +168,7 @@ impl KcSyncRepository {
         blockchain_id: &str,
         contract_address: &str,
         kc_ids: &[u64],
-    ) -> Result<(), DbErr> {
+    ) -> Result<()> {
         if kc_ids.is_empty() {
             return Ok(());
         }

@@ -6,7 +6,7 @@ use sea_orm::{
 };
 
 use crate::managers::repository::{
-    error::Result,
+    error::{RepositoryError, Result},
     models::blockchain::{ActiveModel, Column, Entity},
 };
 
@@ -48,8 +48,11 @@ impl BlockchainRepository {
         last_checked_block: u64,
         last_checked_timestamp: DateTimeUtc,
     ) -> Result<()> {
-        let last_checked_block = i64::try_from(last_checked_block)
-            .map_err(|_| DbErr::Custom("last_checked_block exceeds i64::MAX".to_string()))?;
+        let last_checked_block = i64::try_from(last_checked_block).map_err(|_| {
+            RepositoryError::Database(DbErr::Custom(
+                "last_checked_block exceeds i64::MAX".to_string(),
+            ))
+        })?;
 
         let model = ActiveModel {
             id: ActiveValue::Set(blockchain_id.to_owned()),

@@ -2,10 +2,13 @@ use std::sync::Arc;
 
 use sea_orm::{
     ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    TransactionTrait, error::DbErr,
+    TransactionTrait,
 };
 
-use crate::managers::repository::models::shard::{ActiveModel, Column, Entity, Model};
+use crate::managers::repository::{
+    error::Result,
+    models::shard::{ActiveModel, Column, Entity, Model},
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ShardRecordInput {
@@ -28,34 +31,34 @@ impl ShardRepository {
     pub(crate) async fn get_all_peer_records(
         &self,
         blockchain_id: &str,
-    ) -> Result<Vec<Model>, DbErr> {
-        Entity::find()
+    ) -> Result<Vec<Model>> {
+        Ok(Entity::find()
             .filter(Column::BlockchainId.eq(blockchain_id))
             .all(self.conn.as_ref())
-            .await
+            .await?)
     }
 
     pub(crate) async fn get_peer_record(
         &self,
         blockchain_id: &str,
         peer_id: &str,
-    ) -> Result<Option<Model>, DbErr> {
-        Entity::find()
+    ) -> Result<Option<Model>> {
+        Ok(Entity::find()
             .filter(Column::BlockchainId.eq(blockchain_id))
             .filter(Column::PeerId.eq(peer_id))
             .one(self.conn.as_ref())
-            .await
+            .await?)
     }
 
-    pub(crate) async fn get_peers_count(&self, blockchain_id: &str) -> Result<u64, DbErr> {
-        Entity::find()
+    pub(crate) async fn get_peers_count(&self, blockchain_id: &str) -> Result<u64> {
+        Ok(Entity::find()
             .filter(Column::BlockchainId.eq(blockchain_id))
             .count(self.conn.as_ref())
-            .await
+            .await?)
     }
 
     /// Get all unique peer IDs from the shard table.
-    pub(crate) async fn get_all_peer_ids(&self) -> Result<Vec<String>, DbErr> {
+    pub(crate) async fn get_all_peer_ids(&self) -> Result<Vec<String>> {
         let result: Vec<Model> = Entity::find().all(self.conn.as_ref()).await?;
 
         // Deduplicate peer IDs (peers may appear multiple times for different blockchains)
@@ -78,7 +81,7 @@ impl ShardRepository {
         &self,
         blockchain_id: &str,
         records: Vec<ShardRecordInput>,
-    ) -> Result<(), DbErr> {
+    ) -> Result<()> {
         let txn = self.conn.begin().await?;
 
         Entity::delete_many()
