@@ -114,7 +114,9 @@ impl SendStoreRequestsCommandHandler {
         dataset_root: &str,
         identity_id: u128,
     ) -> Result<SignatureData, NodeError> {
-        let dataset_root_h256: H256 = dataset_root.parse()?;
+        let dataset_root_h256: H256 = dataset_root
+            .parse()
+            .map_err(|e| NodeError::Other(format!("Invalid dataset root hex: {e}")))?;
         // JS uses: keccak256EncodePacked(['uint72', 'bytes32'], [identityId, datasetRoot])
         // uint72 = 9 bytes, so we encode identity_id as FixedBytes(9) to match Solidity's packed
         // encoding
