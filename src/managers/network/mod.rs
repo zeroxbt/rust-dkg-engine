@@ -8,6 +8,7 @@ pub(crate) mod protocols;
 
 use std::time::Duration;
 
+pub(crate) use error::NetworkError;
 pub(crate) use handler::NetworkEventHandler;
 pub(crate) use key_manager::KeyManager;
 pub(crate) use libp2p::request_response::ProtocolSupport;
@@ -23,7 +24,6 @@ pub(crate) use libp2p::{
 use libp2p::{SwarmBuilder, noise, tcp};
 // Re-export message types
 pub(crate) use message::{RequestMessage, ResponseMessage};
-pub(crate) use error::NetworkError;
 pub(crate) use pending_requests::PendingRequests;
 pub(crate) use protocols::{JsCompatCodec, ProtocolTimeouts};
 use serde::Deserialize;
@@ -368,12 +368,18 @@ impl NetworkManager {
         // Default libp2p timeout is 10 seconds, which causes connections to drop quickly.
         // We use a configurable timeout (default 5 minutes) to maintain shard table connections.
         let idle_timeout = config.idle_connection_timeout();
+        // Use yamux as the preferred multiplexer (better flow control, no head-of-line blocking)
+        // with mplex as fallback for compatibility with older JS libp2p nodes.
+        // Protocol negotiation selects the best common option automatically.
         let mut swarm = SwarmBuilder::with_existing_identity(key.clone())
             .with_tokio()
             .with_tcp(
                 tcp::Config::default(),
                 noise::Config::new,
-                libp2p_mplex::Config::default,
+                (
+                    libp2p::yamux::Config::default,
+                    libp2p_mplex::Config::default,
+                ),
             )
             .map_err(NetworkError::TransportCreation)?
             .with_behaviour(|_| behaviour)?
@@ -526,13 +532,7 @@ impl NetworkManager {
                     );
                 }
                 NodeBehaviourEvent::Get(inner) => {
-                    handle_protocol_event!(
-                        inner,
-                        self.pending_get,
-                        "Get",
-                        handler,
-                        on_get_request
-                    );
+                    handle_protocol_event!(inner, self.pending_get, "Get", handler, on_get_request);
                 }
                 NodeBehaviourEvent::Finality(inner) => {
                     handle_protocol_event!(
@@ -570,28 +570,26 @@ impl NetworkManager {
                 NodeBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
                     result: kad::QueryResult::GetClosestPeers(result),
                     ..
-                }) => {
-                    match result {
-                        Ok(kad::GetClosestPeersOk { key, peers }) => {
-                            if let Ok(target) = PeerId::from_bytes(&key) {
-                                if peers.iter().any(|p| p.peer_id == target) {
-                                    handler.on_kad_peer_found(target).await;
-                                } else {
-                                    handler.on_kad_peer_not_found(target).await;
-                                }
-                            }
-                        }
-                        Err(kad::GetClosestPeersError::Timeout { key, peers }) => {
-                            if let Ok(target) = PeerId::from_bytes(&key) {
-                                if peers.iter().any(|p| p.peer_id == target) {
-                                    handler.on_kad_peer_found(target).await;
-                                } else {
-                                    handler.on_kad_peer_not_found(target).await;
-                                }
+                }) => match result {
+                    Ok(kad::GetClosestPeersOk { key, peers }) => {
+                        if let Ok(target) = PeerId::from_bytes(&key) {
+                            if peers.iter().any(|p| p.peer_id == target) {
+                                handler.on_kad_peer_found(target).await;
+                            } else {
+                                handler.on_kad_peer_not_found(target).await;
                             }
                         }
                     }
-                }
+                    Err(kad::GetClosestPeersError::Timeout { key, peers }) => {
+                        if let Ok(target) = PeerId::from_bytes(&key) {
+                            if peers.iter().any(|p| p.peer_id == target) {
+                                handler.on_kad_peer_found(target).await;
+                            } else {
+                                handler.on_kad_peer_not_found(target).await;
+                            }
+                        }
+                    }
+                },
 
                 _ => {}
             },
@@ -663,8 +661,15 @@ impl NetworkManager {
                 request_data,
                 response_tx,
             } => send_protocol_request!(
-                swarm, self, peer, addresses, operation_id, request_data, response_tx,
-                store, pending_store
+                swarm,
+                self,
+                peer,
+                addresses,
+                operation_id,
+                request_data,
+                response_tx,
+                store,
+                pending_store
             ),
             NetworkAction::SendStoreResponse { channel, message } => {
                 send_protocol_response!(swarm, channel, message, store)
@@ -676,8 +681,15 @@ impl NetworkManager {
                 request_data,
                 response_tx,
             } => send_protocol_request!(
-                swarm, self, peer, addresses, operation_id, request_data, response_tx,
-                get, pending_get
+                swarm,
+                self,
+                peer,
+                addresses,
+                operation_id,
+                request_data,
+                response_tx,
+                get,
+                pending_get
             ),
             NetworkAction::SendGetResponse { channel, message } => {
                 send_protocol_response!(swarm, channel, message, get)
@@ -689,8 +701,15 @@ impl NetworkManager {
                 request_data,
                 response_tx,
             } => send_protocol_request!(
-                swarm, self, peer, addresses, operation_id, request_data, response_tx,
-                finality, pending_finality
+                swarm,
+                self,
+                peer,
+                addresses,
+                operation_id,
+                request_data,
+                response_tx,
+                finality,
+                pending_finality
             ),
             NetworkAction::SendFinalityResponse { channel, message } => {
                 send_protocol_response!(swarm, channel, message, finality)
@@ -702,8 +721,15 @@ impl NetworkManager {
                 request_data,
                 response_tx,
             } => send_protocol_request!(
-                swarm, self, peer, addresses, operation_id, request_data, response_tx,
-                batch_get, pending_batch_get
+                swarm,
+                self,
+                peer,
+                addresses,
+                operation_id,
+                request_data,
+                response_tx,
+                batch_get,
+                pending_batch_get
             ),
             NetworkAction::SendBatchGetResponse { channel, message } => {
                 send_protocol_response!(swarm, channel, message, batch_get)

@@ -33,7 +33,7 @@ validator = "0.20.0"
 validator_derive = "0.20.0"
 figment = { version = "0.10", features = ["toml"] }
 thiserror = "2.0.18"
-libp2p = { version = "0.56.0", features = ["macros", "kad", "identify", "request-response", "json", "noise", "tcp", "tokio", "rsa"] }
+libp2p = { version = "0.56.0", features = ["macros", "kad", "identify", "request-response", "json", "noise", "tcp", "tokio", "rsa", "yamux"] }
 alloy = { version = "1.5.2", default-features = false, features = [
     "std",
     "contract",
