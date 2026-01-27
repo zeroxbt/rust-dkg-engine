@@ -6,10 +6,9 @@ use metrics::{counter, gauge, histogram};
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{NetworkProtocols, messages::BatchGetRequestData},
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
-        network::{NetworkManager, PeerId},
+        network::{NetworkManager, PeerId, messages::BatchGetRequestData},
         repository::RepositoryManager,
         triple_store::{
             Assertion, KnowledgeCollectionMetadata, TokenIds, Visibility,
@@ -50,7 +49,7 @@ pub(crate) struct SyncCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
     triple_store_service: Arc<TripleStoreService>,
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     batch_get_operation_service: Arc<GenericOperationService<BatchGetOperation>>,
     get_validation_service: Arc<GetValidationService>,
 }
@@ -702,7 +701,6 @@ impl SyncCommandHandler {
                 .map(|peer| {
                     let peer = *peer;
                     let request_data = batch_request.clone();
-                    let operation_service = Arc::clone(&self.batch_get_operation_service);
                     let network_manager = Arc::clone(&self.network_manager);
                     // Generate a unique operation ID for tracking (not stored, just for the
                     // request)
@@ -713,8 +711,8 @@ impl SyncCommandHandler {
                             .get_peer_addresses(peer)
                             .await
                             .unwrap_or_default();
-                        let result = operation_service
-                            .send_request(operation_id, peer, addresses, request_data)
+                        let result = network_manager
+                            .send_batch_get_request(peer, addresses, operation_id, request_data)
                             .await;
                         (peer, result)
                     }

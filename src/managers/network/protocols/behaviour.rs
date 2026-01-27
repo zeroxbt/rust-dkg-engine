@@ -1,21 +1,21 @@
 use super::{JsCompatCodec, constants::ProtocolTimeouts};
-use crate::{
-    controllers::rpc_controller::messages::{
-        BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
-        GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
-    },
-    managers::network::{
-        NetworkBehaviour, ProtocolSupport, RequestMessage, ResponseMessage, StreamProtocol,
-        request_response,
-    },
+use crate::managers::network::{
+    ProtocolSupport, RequestMessage, ResponseMessage, StreamProtocol, request_response,
 };
+
+use super::super::messages::{
+    BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
+    GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
+};
+
+pub(crate) use libp2p::swarm::derive_prelude::*;
 
 /// Application-specific protocols
 ///
 /// Only contains app-specific protocols (store, get, finality, batch_get).
 /// Base protocols (kad, identify, ping) are provided by NetworkManager via NetworkBehaviour.
 /// Uses JsCompatCodec to handle the JS node's chunked message format.
-#[derive(NetworkBehaviour)]
+#[derive(libp2p::swarm::NetworkBehaviour)]
 pub(crate) struct NetworkProtocols {
     pub store: request_response::Behaviour<
         JsCompatCodec<RequestMessage<StoreRequestData>, ResponseMessage<StoreResponseData>>,
@@ -33,11 +33,6 @@ pub(crate) struct NetworkProtocols {
 
 impl NetworkProtocols {
     /// Creates a new instance of application protocols with configured timeouts.
-    ///
-    /// Timeouts match the JS implementation:
-    /// - Store: 15 seconds
-    /// - Get: 15 seconds
-    /// - Finality: 60 seconds
     pub(crate) fn new() -> Self {
         let store_config =
             request_response::Config::default().with_request_timeout(ProtocolTimeouts::STORE);

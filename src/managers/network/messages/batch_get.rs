@@ -2,10 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::managers::triple_store::{Assertion, TokenIds};
-
-/// Maximum number of UALs allowed in a single batch get request.
-pub(crate) const BATCH_GET_UAL_MAX_LIMIT: usize = 1000;
+use crate::types::{Assertion, TokenIds};
 
 /// Request data for batch get protocol.
 ///

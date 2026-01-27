@@ -3,17 +3,15 @@ use std::{collections::HashMap, sync::Arc};
 use libp2p::PeerId;
 use uuid::Uuid;
 
+use super::BATCH_GET_UAL_MAX_LIMIT;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{
-        NetworkProtocols, ProtocolResponse,
-        messages::{BATCH_GET_UAL_MAX_LIMIT, BatchGetResponseData},
-    },
     managers::{
         network::{
             NetworkManager, ResponseMessage,
             message::{ResponseMessageHeader, ResponseMessageType},
+            messages::BatchGetResponseData,
             request_response::ResponseChannel,
         },
         triple_store::{Assertion, TokenIds, Visibility},
@@ -51,7 +49,7 @@ impl HandleBatchGetRequestCommandData {
 }
 
 pub(crate) struct HandleBatchGetRequestCommandHandler {
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     triple_store_service: Arc<TripleStoreService>,
     response_channels: Arc<ResponseChannels<BatchGetResponseData>>,
 }
@@ -73,7 +71,7 @@ impl HandleBatchGetRequestCommandHandler {
     ) {
         if let Err(e) = self
             .network_manager
-            .send_protocol_response(ProtocolResponse::BatchGet { channel, message })
+            .send_batch_get_response(channel, message)
             .await
         {
             tracing::error!(

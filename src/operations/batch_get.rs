@@ -1,14 +1,12 @@
 use std::collections::HashMap;
 
-use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    controllers::rpc_controller::{
-        ProtocolRequest,
-        messages::{BatchGetRequestData, BatchGetResponseData},
+    managers::{
+        network::messages::{BatchGetRequestData, BatchGetResponseData},
+        triple_store::Assertion,
     },
-    managers::{network::RequestMessage, triple_store::Assertion},
     services::operation::Operation,
 };
 
@@ -59,16 +57,4 @@ impl Operation for BatchGetOperation {
     type Request = BatchGetRequestData;
     type Response = BatchGetResponseData;
     type Result = BatchGetOperationResult;
-
-    fn build_protocol_request(
-        peer: PeerId,
-        addresses: Vec<Multiaddr>,
-        message: RequestMessage<Self::Request>,
-    ) -> ProtocolRequest {
-        ProtocolRequest::BatchGet {
-            peer,
-            addresses,
-            message,
-        }
-    }
 }

@@ -5,15 +5,9 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{
-        NetworkProtocols, ProtocolRequest, messages::FinalityRequestData,
-    },
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, H256, U256},
-        network::{
-            NetworkManager, PeerId, RequestMessage,
-            message::{RequestMessageHeader, RequestMessageType},
-        },
+        network::{NetworkManager, PeerId, messages::FinalityRequestData},
         repository::RepositoryManager,
         triple_store::KnowledgeCollectionMetadata,
     },
@@ -74,7 +68,7 @@ impl SendFinalityRequestCommandData {
 
 pub(crate) struct SendFinalityRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
     pending_storage_service: Arc<PendingStorageService>,
     triple_store_service: Arc<TripleStoreService>,
@@ -324,10 +318,7 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
             return CommandExecutionResult::Completed;
         }
 
-        let message = RequestMessage {
-            header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
-            data: FinalityRequestData::new(ual, data.publish_operation_id.clone()),
-        };
+        let finality_request_data = FinalityRequestData::new(ual, data.publish_operation_id.clone());
 
         // Get peer addresses from Kademlia for reliable request delivery
         let addresses = self
@@ -338,11 +329,7 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
 
         if let Err(e) = self
             .network_manager
-            .send_protocol_request(ProtocolRequest::Finality {
-                peer: publisher_peer_id,
-                addresses,
-                message,
-            })
+            .send_finality_request(publisher_peer_id, addresses, operation_id, finality_request_data)
             .await
         {
             tracing::error!(

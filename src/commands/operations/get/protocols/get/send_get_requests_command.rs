@@ -7,13 +7,9 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{
-        NetworkProtocols,
-        messages::{GetRequestData, GetResponseData},
-    },
     managers::{
         blockchain::{AccessPolicy, BlockchainManager},
-        network::NetworkManager,
+        network::{NetworkManager, messages::{GetRequestData, GetResponseData}},
         repository::RepositoryManager,
         triple_store::{Assertion, MAX_TOKENS_PER_KC, TokenIds, Visibility},
     },
@@ -60,7 +56,7 @@ pub(crate) struct SendGetRequestsCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     triple_store_service: Arc<TripleStoreService>,
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     get_operation_service: Arc<GenericOperationService<GetOperation>>,
     get_validation_service: Arc<GetValidationService>,
 }
@@ -647,7 +643,6 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                 .map(|peer| {
                     let peer = *peer;
                     let request_data = get_request_data.clone();
-                    let operation_service = Arc::clone(&self.get_operation_service);
                     let network_manager = Arc::clone(&self.network_manager);
                     async move {
                         // Get peer addresses from Kademlia for reliable request delivery
@@ -655,8 +650,8 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                             .get_peer_addresses(peer)
                             .await
                             .unwrap_or_default();
-                        let result = operation_service
-                            .send_request(operation_id, peer, addresses, request_data)
+                        let result = network_manager
+                            .send_get_request(peer, addresses, operation_id, request_data)
                             .await;
                         (peer, result)
                     }

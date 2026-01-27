@@ -6,12 +6,12 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{NetworkProtocols, ProtocolResponse, messages::GetResponseData},
     managers::{
         blockchain::{AccessPolicy, BlockchainManager},
         network::{
             NetworkManager, ResponseMessage,
             message::{ResponseMessageHeader, ResponseMessageType},
+            messages::GetResponseData,
             request_response::ResponseChannel,
         },
         triple_store::{Assertion, TokenIds, Visibility},
@@ -58,7 +58,7 @@ impl HandleGetRequestCommandData {
 }
 
 pub(crate) struct HandleGetRequestCommandHandler {
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     triple_store_service: Arc<TripleStoreService>,
     response_channels: Arc<ResponseChannels<GetResponseData>>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -82,7 +82,7 @@ impl HandleGetRequestCommandHandler {
     ) {
         if let Err(e) = self
             .network_manager
-            .send_protocol_response(ProtocolResponse::Get { channel, message })
+            .send_get_response(channel, message)
             .await
         {
             tracing::error!(

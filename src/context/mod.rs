@@ -3,14 +3,15 @@ use std::sync::Arc;
 use crate::{
     commands::command_executor::CommandScheduler,
     config::Config,
-    controllers::rpc_controller::{
-        NetworkProtocols,
-        messages::{
-            BatchGetResponseData, FinalityResponseData, GetResponseData, StoreResponseData,
-        },
-    },
     managers::{
-        blockchain::BlockchainManager, network::NetworkManager, repository::RepositoryManager,
+        blockchain::BlockchainManager,
+        network::{
+            NetworkManager,
+            messages::{
+                BatchGetResponseData, FinalityResponseData, GetResponseData, StoreResponseData,
+            },
+        },
+        repository::RepositoryManager,
     },
     operations::{BatchGetOperation, GetOperation, PublishOperation},
     services::{
@@ -24,7 +25,7 @@ pub(crate) struct Context {
     config: Arc<Config>,
     command_scheduler: CommandScheduler,
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
     triple_store_service: Arc<TripleStoreService>,
     get_validation_service: Arc<GetValidationService>,
@@ -45,7 +46,7 @@ impl Context {
         config: Arc<Config>,
         command_scheduler: CommandScheduler,
         repository_manager: Arc<RepositoryManager>,
-        network_manager: Arc<NetworkManager<NetworkProtocols>>,
+        network_manager: Arc<NetworkManager>,
         blockchain_manager: Arc<BlockchainManager>,
         triple_store_service: Arc<TripleStoreService>,
         get_validation_service: Arc<GetValidationService>,
@@ -91,7 +92,7 @@ impl Context {
         &self.repository_manager
     }
 
-    pub(crate) fn network_manager(&self) -> &Arc<NetworkManager<NetworkProtocols>> {
+    pub(crate) fn network_manager(&self) -> &Arc<NetworkManager> {
         &self.network_manager
     }
 

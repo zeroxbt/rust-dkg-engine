@@ -2,24 +2,15 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use dashmap::DashMap;
-use libp2p::PeerId;
 use tokio::sync::watch;
 use uuid::Uuid;
 
-use super::{
-    pending_requests::{PendingRequests, RequestError},
-    result_store::{ResultStoreError, TABLE_NAME},
-    traits::Operation,
-};
+use super::{result_store::{ResultStoreError, TABLE_NAME}, traits::Operation};
 use crate::{
-    controllers::rpc_controller::NetworkProtocols,
     error::NodeError,
     managers::{
         key_value_store::{KeyValueStoreManager, Table},
-        network::{
-            NetworkManager, RequestMessage,
-            message::{RequestMessageHeader, RequestMessageType},
-        },
+        network::NetworkManager,
         repository::{OperationStatus, RepositoryManager},
     },
 };
@@ -32,21 +23,19 @@ use crate::{
 /// # Ownership
 /// - `Table<Op::Result>` - typed table for this operation's results
 /// - Completion signals - owned here
-/// - `PendingRequests<Op::Response>` - tracks outbound requests awaiting responses
-/// - `NetworkManager` - shared reference for sending requests
+/// - `NetworkManager` - shared reference for sending requests (with per-protocol pending requests)
 pub(crate) struct OperationService<Op: Operation> {
     repository: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     result_table: Table<Op::Result>,
     completion_signals: DashMap<Uuid, watch::Sender<OperationStatus>>,
-    pending_requests: PendingRequests<Op::Response>,
 }
 
 impl<Op: Operation> OperationService<Op> {
     /// Create a new operation service.
     pub(crate) fn new(
         repository: Arc<RepositoryManager>,
-        network_manager: Arc<NetworkManager<NetworkProtocols>>,
+        network_manager: Arc<NetworkManager>,
         kv_store_manager: &KeyValueStoreManager,
     ) -> Result<Self, ResultStoreError> {
         let result_table = kv_store_manager.table(TABLE_NAME)?;
@@ -55,70 +44,7 @@ impl<Op: Operation> OperationService<Op> {
             network_manager,
             result_table,
             completion_signals: DashMap::new(),
-            pending_requests: PendingRequests::new(),
         })
-    }
-
-    /// Access the pending requests tracker.
-    ///
-    /// Used by RpcRouter to complete pending requests when responses arrive.
-    pub(crate) fn pending_requests(&self) -> &PendingRequests<Op::Response> {
-        &self.pending_requests
-    }
-
-    /// Send a request to a peer and await the response.
-    ///
-    /// This method provides a synchronous request-response pattern on top of
-    /// libp2p's event-driven model. It:
-    /// 1. Sends the request via the network manager
-    /// 2. Registers a oneshot channel to receive the response
-    /// 3. Awaits the response (or timeout/failure from libp2p)
-    ///
-    /// The response is delivered when RpcRouter receives the libp2p event and
-    /// calls `pending_requests().complete_success()` or `complete_failure()`.
-    ///
-    /// # Arguments
-    /// * `operation_id` - The operation identifier for logging/tracking
-    /// * `peer` - The peer to send the request to
-    /// * `request_data` - The request payload
-    ///
-    /// # Returns
-    /// * `Ok(response)` - The peer's response
-    /// * `Err(RequestError)` - Timeout, connection failure, or channel error
-    pub(crate) async fn send_request(
-        &self,
-        operation_id: Uuid,
-        peer: PeerId,
-        addresses: Vec<libp2p::Multiaddr>,
-        request_data: Op::Request,
-    ) -> Result<Op::Response, RequestError> {
-        let message = RequestMessage {
-            header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
-            data: request_data,
-        };
-
-        let protocol_request = Op::build_protocol_request(peer, addresses, message);
-
-        // Send the request and get the request ID
-        let request_id = self
-            .network_manager
-            .send_protocol_request(protocol_request)
-            .await
-            .map_err(|e| RequestError::ConnectionFailed(e.to_string()))?;
-
-        // Register the pending request and get a receiver for the response
-        let response_rx = self.pending_requests.insert(request_id);
-
-        tracing::debug!(
-            operation_id = %operation_id,
-            peer = %peer,
-            ?request_id,
-            "[{}] Request sent, awaiting response",
-            Op::NAME
-        );
-
-        // Await the response
-        response_rx.await.map_err(|_| RequestError::ChannelClosed)?
     }
 
     /// Create a new operation record in the database and return a completion receiver.

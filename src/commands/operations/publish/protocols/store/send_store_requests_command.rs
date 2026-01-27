@@ -7,13 +7,9 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{
-        NetworkProtocols,
-        messages::{StoreRequestData, StoreResponseData},
-    },
     managers::{
         blockchain::{BlockchainId, BlockchainManager, H256, utils::keccak256_encode_packed},
-        network::NetworkManager,
+        network::{NetworkManager, messages::{StoreRequestData, StoreResponseData}},
         repository::RepositoryManager,
         triple_store::Assertion,
     },
@@ -55,7 +51,7 @@ impl SendStoreRequestsCommandData {
 
 pub(crate) struct SendStoreRequestsCommandHandler {
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
     publish_operation_service: Arc<GenericOperationService<PublishOperation>>,
     pending_storage_service: Arc<PendingStorageService>,
@@ -455,7 +451,6 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
                 .map(|peer| {
                     let peer = *peer;
                     let request_data = store_request_data.clone();
-                    let operation_service = Arc::clone(&self.publish_operation_service);
                     let network_manager = Arc::clone(&self.network_manager);
                     async move {
                         // Get peer addresses from Kademlia for reliable request delivery
@@ -463,8 +458,8 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
                             .get_peer_addresses(peer)
                             .await
                             .unwrap_or_default();
-                        let result = operation_service
-                            .send_request(operation_id, peer, addresses, request_data)
+                        let result = network_manager
+                            .send_store_request(peer, addresses, operation_id, request_data)
                             .await;
                         (peer, result)
                     }

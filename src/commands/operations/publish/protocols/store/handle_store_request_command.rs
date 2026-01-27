@@ -6,14 +6,12 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{
-        NetworkProtocols, ProtocolResponse, messages::StoreResponseData,
-    },
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
         network::{
             NetworkManager, ResponseMessage,
             message::{ResponseMessageHeader, ResponseMessageType},
+            messages::StoreResponseData,
             request_response::ResponseChannel,
         },
         repository::RepositoryManager,
@@ -54,7 +52,7 @@ impl HandleStoreRequestCommandData {
 
 pub(crate) struct HandleStoreRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
     response_channels: Arc<ResponseChannels<StoreResponseData>>,
     pending_storage_service: Arc<PendingStorageService>,
@@ -79,7 +77,7 @@ impl HandleStoreRequestCommandHandler {
     ) {
         if let Err(e) = self
             .network_manager
-            .send_protocol_response(ProtocolResponse::Store { channel, message })
+            .send_store_response(channel, message)
             .await
         {
             tracing::error!(

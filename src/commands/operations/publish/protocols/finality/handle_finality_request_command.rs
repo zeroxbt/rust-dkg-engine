@@ -6,13 +6,11 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::{
-        NetworkProtocols, ProtocolResponse, messages::FinalityResponseData,
-    },
     managers::{
         network::{
             NetworkManager, ResponseMessage,
             message::{ResponseMessageHeader, ResponseMessageType},
+            messages::FinalityResponseData,
             request_response::ResponseChannel,
         },
         repository::RepositoryManager,
@@ -52,7 +50,7 @@ impl HandleFinalityRequestCommandData {
 
 pub(crate) struct HandleFinalityRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     response_channels: Arc<ResponseChannels<FinalityResponseData>>,
 }
 
@@ -73,7 +71,7 @@ impl HandleFinalityRequestCommandHandler {
     ) {
         if let Err(e) = self
             .network_manager
-            .send_protocol_response(ProtocolResponse::Finality { channel, message })
+            .send_finality_response(channel, message)
             .await
         {
             tracing::error!(

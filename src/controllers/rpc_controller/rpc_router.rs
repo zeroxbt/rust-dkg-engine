@@ -4,10 +4,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use libp2p::request_response::Message;
 use tokio::sync::{Semaphore, mpsc};
 
-use super::{
-    constants::NETWORK_EVENT_QUEUE_PARALLELISM,
-    protocols::{NetworkProtocols, NetworkProtocolsEvent},
-};
+use super::constants::NETWORK_EVENT_QUEUE_PARALLELISM;
 use crate::{
     context::Context,
     controllers::rpc_controller::v1::{
@@ -16,18 +13,17 @@ use crate::{
         store_rpc_controller::StoreRpcController,
     },
     managers::network::{
-        CompositeBehaviour, CompositeBehaviourEvent, NetworkBehaviour, NetworkManager, SwarmEvent,
-        identify, kad, request_response,
+        CompositeBehaviour, CompositeBehaviourEvent, NetworkBehaviour, NetworkManager,
+        NetworkProtocolsEvent, RequestError, SwarmEvent, identify, kad, request_response,
     },
-    services::{PeerDiscoveryTracker, RequestError},
+    services::PeerDiscoveryTracker,
 };
 
 // Type alias for the complete behaviour and its event type
-type Behaviour = CompositeBehaviour<NetworkProtocols>;
-type BehaviourEvent = <Behaviour as NetworkBehaviour>::ToSwarm;
+type BehaviourEvent = <CompositeBehaviour as NetworkBehaviour>::ToSwarm;
 
 pub(crate) struct RpcRouter {
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     store_controller: Arc<StoreRpcController>,
     get_controller: Arc<GetRpcController>,
     finality_controller: Arc<FinalityRpcController>,
@@ -99,9 +95,8 @@ impl RpcRouter {
                                     request_id,
                                 } => {
                                     // Complete pending request for send_request callers
-                                    self.store_controller
-                                        .operation_service()
-                                        .pending_requests()
+                                    self.network_manager
+                                        .pending_store()
                                         .complete_success(request_id, response.data);
                                 }
                             };
@@ -137,9 +132,8 @@ impl RpcRouter {
                                 }
                                 _ => RequestError::ConnectionFailed(error.to_string()),
                             };
-                            self.store_controller
-                                .operation_service()
-                                .pending_requests()
+                            self.network_manager
+                                .pending_store()
                                 .complete_failure(request_id, request_error);
                         }
                         // InboundFailure: Someone sent us a store request and we failed to respond.
@@ -189,9 +183,8 @@ impl RpcRouter {
                                     request_id,
                                 } => {
                                     // Complete pending request for send_request callers
-                                    self.get_controller
-                                        .operation_service()
-                                        .pending_requests()
+                                    self.network_manager
+                                        .pending_get()
                                         .complete_success(request_id, response.data);
                                 }
                             };
@@ -227,9 +220,8 @@ impl RpcRouter {
                                 }
                                 _ => RequestError::ConnectionFailed(error.to_string()),
                             };
-                            self.get_controller
-                                .operation_service()
-                                .pending_requests()
+                            self.network_manager
+                                .pending_get()
                                 .complete_failure(request_id, request_error);
                         }
                         // InboundFailure: Someone sent us a get request and we failed to respond.
@@ -331,9 +323,8 @@ impl RpcRouter {
                                     request_id,
                                 } => {
                                     // Complete pending request for send_request callers
-                                    self.batch_get_controller
-                                        .operation_service()
-                                        .pending_requests()
+                                    self.network_manager
+                                        .pending_batch_get()
                                         .complete_success(request_id, response.data);
                                 }
                             };
@@ -367,9 +358,8 @@ impl RpcRouter {
                                 }
                                 _ => RequestError::ConnectionFailed(error.to_string()),
                             };
-                            self.batch_get_controller
-                                .operation_service()
-                                .pending_requests()
+                            self.network_manager
+                                .pending_batch_get()
                                 .complete_failure(request_id, request_error);
                         }
                         request_response::Event::InboundFailure {

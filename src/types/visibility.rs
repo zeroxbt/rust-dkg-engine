@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Visibility level for knowledge triples
+/// Visibility level for knowledge triples.
 ///
 /// Controls which triples are retrieved or stored based on their
 /// privacy annotations.
@@ -17,7 +17,7 @@ pub(crate) enum Visibility {
 }
 
 impl Visibility {
-    /// Get the suffix used in named graph URIs
+    /// Get the suffix used in named graph URIs.
     ///
     /// Returns `Some("public")` or `Some("private")` for specific visibility,
     /// or `None` for `All` which doesn't map to a specific named graph.
@@ -29,7 +29,7 @@ impl Visibility {
         }
     }
 
-    /// Check if this visibility should filter out private triples
+    /// Check if this visibility should filter out private triples.
     pub(crate) fn excludes_private(&self) -> bool {
         matches!(self, Self::Public)
     }

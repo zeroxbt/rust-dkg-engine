@@ -7,7 +7,6 @@ pub(crate) mod response_channels;
 pub(crate) mod triple_store_service;
 
 pub(crate) use get_validation_service::GetValidationService;
-pub(crate) use operation::RequestError;
 pub(crate) use peer_discovery_tracker::PeerDiscoveryTracker;
 pub(crate) use response_channels::ResponseChannels;
 pub(crate) use triple_store_service::TripleStoreService;

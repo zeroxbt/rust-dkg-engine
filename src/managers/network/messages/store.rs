@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::managers::blockchain::{BlockchainId, SignatureComponents};
+use crate::types::{BlockchainId, SignatureComponents};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]

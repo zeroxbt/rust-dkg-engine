@@ -7,6 +7,7 @@ mod managers;
 mod observability;
 mod operations;
 mod services;
+mod types;
 mod utils;
 
 use std::sync::Arc;
@@ -27,7 +28,6 @@ use tokio::select;
 
 use crate::{
     config::{AppPaths, ManagersConfig},
-    controllers::rpc_controller::NetworkProtocols,
     managers::{
         blockchain::BlockchainManager,
         network::{KeyManager, NetworkManager},
@@ -216,16 +216,14 @@ async fn initialize_managers(
     paths: &AppPaths,
     network_key: Keypair,
 ) -> (
-    Arc<NetworkManager<NetworkProtocols>>,
+    Arc<NetworkManager>,
     Arc<RepositoryManager>,
     Arc<BlockchainManager>,
     Arc<TripleStoreManager>,
 ) {
-    // NetworkManager creates base protocols (kad, identify, ping) and handles bootstraps
-    // Application creates its own protocol behaviours
-    let app_protocols = NetworkProtocols::new();
+    // NetworkManager creates base protocols (kad, identify) and app protocols (store, get, etc.)
     let network_manager = Arc::new(
-        NetworkManager::connect(&config.network, network_key, app_protocols)
+        NetworkManager::connect(&config.network, network_key)
             .await
             .expect("Failed to initialize network manager"),
     );
@@ -266,7 +264,7 @@ async fn initialize_managers(
 fn initialize_services(
     paths: &AppPaths,
     repository_manager: &Arc<RepositoryManager>,
-    network_manager: &Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: &Arc<NetworkManager>,
 ) -> (
     Arc<GenericOperationService<PublishOperation>>,
     Arc<GenericOperationService<GetOperation>>,

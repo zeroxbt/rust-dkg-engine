@@ -1,12 +1,10 @@
-use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    controllers::rpc_controller::{
-        ProtocolRequest,
-        messages::{GetRequestData, GetResponseData},
+    managers::{
+        network::messages::{GetRequestData, GetResponseData},
+        triple_store::Assertion,
     },
-    managers::{network::RequestMessage, triple_store::Assertion},
     services::operation::Operation,
 };
 
@@ -41,16 +39,4 @@ impl Operation for GetOperation {
     type Request = GetRequestData;
     type Response = GetResponseData;
     type Result = GetOperationResult;
-
-    fn build_protocol_request(
-        peer: PeerId,
-        addresses: Vec<Multiaddr>,
-        message: RequestMessage<Self::Request>,
-    ) -> ProtocolRequest {
-        ProtocolRequest::Get {
-            peer,
-            addresses,
-            message,
-        }
-    }
 }

@@ -5,7 +5,6 @@ use libp2p::PeerId;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    controllers::rpc_controller::NetworkProtocols,
     managers::{network::NetworkManager, repository::RepositoryManager},
     services::PeerDiscoveryTracker,
 };
@@ -16,7 +15,7 @@ const DIAL_BATCH_SIZE: usize = 10;
 
 pub(crate) struct DialPeersCommandHandler {
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager<NetworkProtocols>>,
+    network_manager: Arc<NetworkManager>,
     peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
 }
 

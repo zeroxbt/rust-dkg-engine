@@ -52,6 +52,11 @@ impl Assertion {
         !self.public.is_empty() || self.private.as_ref().is_some_and(|p| !p.is_empty())
     }
 
+    /// Check if the public triples are empty.
+    pub(crate) fn is_public_empty(&self) -> bool {
+        self.public.is_empty()
+    }
+
     /// Get the total number of triples in the assertion.
     pub(crate) fn total_triples(&self) -> usize {
         self.public.len() + self.private.as_ref().map_or(0, |p| p.len())

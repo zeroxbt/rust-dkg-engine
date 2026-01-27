@@ -1,6 +1,9 @@
 pub(crate) mod error;
 mod key_manager;
 pub(crate) mod message;
+pub(crate) mod messages;
+mod pending_requests;
+pub(crate) mod protocols;
 
 use std::time::Duration;
 
@@ -18,24 +21,23 @@ pub(crate) use libp2p::{
 use libp2p::{SwarmBuilder, noise, tcp};
 // Re-export message types
 pub(crate) use message::{RequestMessage, ResponseMessage};
+pub(crate) use pending_requests::{PendingRequests, RequestError};
+pub(crate) use protocols::{NetworkProtocols, NetworkProtocolsEvent};
 use serde::Deserialize;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tracing::info;
+use uuid::Uuid;
 
-/// Trait for dispatching application protocol messages through the network manager.
-pub(crate) trait ProtocolDispatch {
-    type Request: Send;
-    type Response: Send;
+use self::{
+    message::{RequestMessageHeader, RequestMessageType},
+    messages::{
+        BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
+        GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
+    },
+};
 
-    /// Send a request and return the OutboundRequestId for tracking.
-    fn send_request(&mut self, request: Self::Request) -> request_response::OutboundRequestId;
-    fn send_response(&mut self, response: Self::Response);
-}
-
-enum NetworkAction<B>
-where
-    B: ProtocolDispatch,
-{
+/// Network action commands sent to the swarm event loop.
+enum NetworkAction {
     /// Discover peers via Kademlia DHT lookup (get_closest_peers).
     /// This queries the network for nodes closest to the given peer IDs,
     /// which populates the routing table with their addresses.
@@ -43,25 +45,63 @@ where
     /// Directly dial a peer (requires addresses to be known in Kademlia).
     DialPeer(PeerId),
     /// Get the list of currently connected peers.
-    GetConnectedPeers(tokio::sync::oneshot::Sender<Vec<PeerId>>),
+    GetConnectedPeers(oneshot::Sender<Vec<PeerId>>),
     /// Get known addresses for a peer from Kademlia routing table.
     GetPeerAddresses {
         peer_id: PeerId,
-        response_tx: tokio::sync::oneshot::Sender<Vec<Multiaddr>>,
+        response_tx: oneshot::Sender<Vec<Multiaddr>>,
     },
     AddKadAddresses {
         peer_id: PeerId,
         listen_addrs: Vec<Multiaddr>,
     },
-    SendProtocolRequest {
-        request: B::Request,
-        /// Channel to return both the OutboundRequestId and a pre-registered response receiver.
-        /// The receiver is created and registered before the request is sent to avoid race conditions
-        /// where libp2p emits a failure event before the caller can register for it.
-        response_tx: tokio::sync::oneshot::Sender<request_response::OutboundRequestId>,
+    // Protocol-specific request actions
+    SendStoreRequest {
+        peer: PeerId,
+        addresses: Vec<Multiaddr>,
+        operation_id: Uuid,
+        request_data: StoreRequestData,
+        response_tx: oneshot::Sender<oneshot::Receiver<Result<StoreResponseData, RequestError>>>,
     },
-    SendProtocolResponse {
-        response: B::Response,
+    SendGetRequest {
+        peer: PeerId,
+        addresses: Vec<Multiaddr>,
+        operation_id: Uuid,
+        request_data: GetRequestData,
+        response_tx: oneshot::Sender<oneshot::Receiver<Result<GetResponseData, RequestError>>>,
+    },
+    SendFinalityRequest {
+        peer: PeerId,
+        addresses: Vec<Multiaddr>,
+        operation_id: Uuid,
+        request_data: FinalityRequestData,
+        response_tx:
+            oneshot::Sender<oneshot::Receiver<Result<FinalityResponseData, RequestError>>>,
+    },
+    SendBatchGetRequest {
+        peer: PeerId,
+        addresses: Vec<Multiaddr>,
+        operation_id: Uuid,
+        request_data: BatchGetRequestData,
+        response_tx:
+            oneshot::Sender<oneshot::Receiver<Result<BatchGetResponseData, RequestError>>>,
+    },
+    // Protocol-specific response actions
+    SendStoreResponse {
+        channel: request_response::ResponseChannel<ResponseMessage<StoreResponseData>>,
+        message: ResponseMessage<StoreResponseData>,
+    },
+    SendGetResponse {
+        channel: request_response::ResponseChannel<ResponseMessage<GetResponseData>>,
+        message: ResponseMessage<GetResponseData>,
+    },
+    SendFinalityResponse {
+        channel: request_response::ResponseChannel<ResponseMessage<FinalityResponseData>>,
+        message: ResponseMessage<FinalityResponseData>,
+    },
+    SendBatchGetResponse {
+        channel: request_response::ResponseChannel<ResponseMessage<BatchGetResponseData>>,
+        message: ResponseMessage<BatchGetResponseData>,
     },
 }
 
@@ -93,44 +133,38 @@ impl NetworkManagerConfig {
 
 /// Hierarchical network behaviour that combines base protocols with app-specific protocols
 ///
-/// NetworkManager provides the base protocols (kad, identify, ping) and the application
-/// provides its custom protocols via the generic parameter B.
+/// NetworkManager provides the base protocols (kad, identify) and the application
+/// provides its custom protocols via the NetworkProtocols struct.
 #[derive(NetworkBehaviour)]
-pub(crate) struct CompositeBehaviour<B: NetworkBehaviour> {
+pub(crate) struct CompositeBehaviour {
     pub kad: kad::Behaviour<MemoryStore>,
     pub identify: identify::Behaviour,
-    pub protocols: B,
+    pub protocols: NetworkProtocols,
 }
 
-/// Generic NetworkManager that works with any application-defined Behaviour
+/// NetworkManager handles all network communication for the node.
 ///
-/// The application layer defines the Behaviour struct using re-exported libp2p types,
-/// including whatever protocols it needs (store, get, custom protocols, etc.)
-pub(crate) struct NetworkManager<B>
-where
-    B: NetworkBehaviour + ProtocolDispatch,
-{
+/// It owns the protocol behaviours and pending request tracking, which allows
+/// for atomic registration of pending requests before sending to avoid race conditions.
+pub(crate) struct NetworkManager {
     config: NetworkManagerConfig,
-    swarm: Mutex<Swarm<CompositeBehaviour<B>>>,
-    action_tx: mpsc::Sender<NetworkAction<B>>,
-    action_rx: Mutex<Option<mpsc::Receiver<NetworkAction<B>>>>,
+    swarm: Mutex<Swarm<CompositeBehaviour>>,
+    action_tx: mpsc::Sender<NetworkAction>,
+    action_rx: Mutex<Option<mpsc::Receiver<NetworkAction>>>,
     peer_id: PeerId,
+    // Per-protocol pending request tracking
+    pending_store: PendingRequests<StoreResponseData>,
+    pending_get: PendingRequests<GetResponseData>,
+    pending_finality: PendingRequests<FinalityResponseData>,
+    pending_batch_get: PendingRequests<BatchGetResponseData>,
 }
 
-impl<B> NetworkManager<B>
-where
-    B: NetworkBehaviour + ProtocolDispatch,
-{
-    /// Creates a new NetworkManager instance with application-defined behaviour
-    ///
-    /// NetworkManager creates and configures the base protocols (kad, identify, ping)
-    /// and handles bootstrap configuration. The Builder constructs the complete Behaviour
-    /// including app-specific protocols.
+impl NetworkManager {
+    /// Creates a new NetworkManager instance.
     ///
     /// # Arguments
     /// * `config` - Network configuration (port, bootstrap nodes)
     /// * `key` - Pre-loaded libp2p identity keypair
-    /// * `behaviour` - Application-defined protocol behaviour
     ///
     /// # Errors
     ///
@@ -141,7 +175,6 @@ where
     pub(crate) async fn connect(
         config: &NetworkManagerConfig,
         key: identity::Keypair,
-        behaviour: B,
     ) -> Result<Self, NetworkError> {
         let public_key = key.public();
         let local_peer_id = PeerId::from(&public_key);
@@ -190,13 +223,13 @@ where
             public_key.clone(),
         ));
 
-        // Application creates its Behaviour with base protocols + app-specific protocols
-        // let behaviour = Builder::build(kad, identify, ping);
+        // 3. Application protocols
+        let protocols = NetworkProtocols::new();
 
-        let custom_behaviour = CompositeBehaviour::<B> {
+        let custom_behaviour = CompositeBehaviour {
             kad,
             identify,
-            protocols: behaviour,
+            protocols,
         };
 
         // Build the swarm with configurable idle connection timeout.
@@ -258,6 +291,10 @@ where
             action_tx,
             action_rx: Mutex::new(Some(action_rx)),
             peer_id: local_peer_id,
+            pending_store: PendingRequests::new(),
+            pending_get: PendingRequests::new(),
+            pending_finality: PendingRequests::new(),
+            pending_batch_get: PendingRequests::new(),
         })
     }
 
@@ -295,6 +332,26 @@ where
         &self.peer_id
     }
 
+    /// Returns a reference to pending store requests for event handling.
+    pub(crate) fn pending_store(&self) -> &PendingRequests<StoreResponseData> {
+        &self.pending_store
+    }
+
+    /// Returns a reference to pending get requests for event handling.
+    pub(crate) fn pending_get(&self) -> &PendingRequests<GetResponseData> {
+        &self.pending_get
+    }
+
+    /// Returns a reference to pending finality requests for event handling.
+    pub(crate) fn pending_finality(&self) -> &PendingRequests<FinalityResponseData> {
+        &self.pending_finality
+    }
+
+    /// Returns a reference to pending batch get requests for event handling.
+    pub(crate) fn pending_batch_get(&self) -> &PendingRequests<BatchGetResponseData> {
+        &self.pending_batch_get
+    }
+
     /// Runs the network event loop, processing swarm events and actions
     ///
     /// This method runs the event loop using the internal swarm and action channel.
@@ -305,7 +362,7 @@ where
     /// - `event_tx`: Channel sender for outgoing swarm events
     pub(crate) async fn run(
         &self,
-        event_tx: mpsc::Sender<SwarmEvent<<CompositeBehaviour<B> as NetworkBehaviour>::ToSwarm>>,
+        event_tx: mpsc::Sender<SwarmEvent<<CompositeBehaviour as NetworkBehaviour>::ToSwarm>>,
     ) {
         use libp2p::futures::StreamExt;
 
@@ -327,56 +384,7 @@ where
                 }
                 action = action_rx.recv() => {
                     match action {
-                        Some(action) => match action {
-                            NetworkAction::FindPeers(peers) => {
-                                for peer in peers {
-                                    swarm.behaviour_mut().kad.get_closest_peers(peer);
-                                }
-                            }
-                            NetworkAction::DialPeer(peer) => {
-                                if swarm.is_connected(&peer) {
-                                    tracing::trace!(%peer, "already connected to peer, skipping dial");
-                                } else if let Err(e) = swarm.dial(peer) {
-                                    tracing::debug!(%peer, error = %e, "failed to dial peer");
-                                }
-                            }
-                            NetworkAction::GetConnectedPeers(response_tx) => {
-                                let peers: Vec<PeerId> = swarm.connected_peers().copied().collect();
-                                let _ = response_tx.send(peers);
-                            }
-                            NetworkAction::GetPeerAddresses { peer_id, response_tx } => {
-                                // Get addresses from Kademlia routing table using the specific
-                                // k-bucket for this peer (more efficient than iterating all buckets)
-                                let addresses = swarm
-                                    .behaviour_mut()
-                                    .kad
-                                    .kbucket(peer_id)
-                                    .and_then(|bucket| {
-                                        bucket
-                                            .iter()
-                                            .find(|entry| *entry.node.key.preimage() == peer_id)
-                                            .map(|entry| entry.node.value.iter().cloned().collect())
-                                    })
-                                    .unwrap_or_default();
-                                let _ = response_tx.send(addresses);
-                            }
-                            NetworkAction::AddKadAddresses {
-                                peer_id,
-                                listen_addrs,
-                            } => {
-                                for address in listen_addrs {
-                                    swarm.behaviour_mut().kad.add_address(&peer_id, address);
-                                }
-                            }
-                            NetworkAction::SendProtocolRequest { request, response_tx } => {
-                                let request_id = swarm.behaviour_mut().protocols.send_request(request);
-                                // Send back the request_id for tracking (ignore if receiver dropped)
-                                let _ = response_tx.send(request_id);
-                            }
-                            NetworkAction::SendProtocolResponse { response } => {
-                                swarm.behaviour_mut().protocols.send_response(response);
-                            }
-                        },
+                        Some(action) => self.handle_action(&mut swarm, action),
                         None => {
                             tracing::error!("Action channel closed, shutting down network loop");
                             break;
@@ -387,7 +395,166 @@ where
         }
     }
 
-    async fn enqueue_action(&self, action: NetworkAction<B>) -> Result<(), NetworkError> {
+    /// Handle a network action inside the swarm event loop.
+    fn handle_action(&self, swarm: &mut Swarm<CompositeBehaviour>, action: NetworkAction) {
+        match action {
+            NetworkAction::FindPeers(peers) => {
+                for peer in peers {
+                    swarm.behaviour_mut().kad.get_closest_peers(peer);
+                }
+            }
+            NetworkAction::DialPeer(peer) => {
+                if swarm.is_connected(&peer) {
+                    tracing::trace!(%peer, "already connected to peer, skipping dial");
+                } else if let Err(e) = swarm.dial(peer) {
+                    tracing::debug!(%peer, error = %e, "failed to dial peer");
+                }
+            }
+            NetworkAction::GetConnectedPeers(response_tx) => {
+                let peers: Vec<PeerId> = swarm.connected_peers().copied().collect();
+                let _ = response_tx.send(peers);
+            }
+            NetworkAction::GetPeerAddresses {
+                peer_id,
+                response_tx,
+            } => {
+                // Get addresses from Kademlia routing table using the specific
+                // k-bucket for this peer (more efficient than iterating all buckets)
+                let addresses = swarm
+                    .behaviour_mut()
+                    .kad
+                    .kbucket(peer_id)
+                    .and_then(|bucket| {
+                        bucket
+                            .iter()
+                            .find(|entry| *entry.node.key.preimage() == peer_id)
+                            .map(|entry| entry.node.value.iter().cloned().collect())
+                    })
+                    .unwrap_or_default();
+                let _ = response_tx.send(addresses);
+            }
+            NetworkAction::AddKadAddresses {
+                peer_id,
+                listen_addrs,
+            } => {
+                for address in listen_addrs {
+                    swarm.behaviour_mut().kad.add_address(&peer_id, address);
+                }
+            }
+            // Store protocol
+            NetworkAction::SendStoreRequest {
+                peer,
+                addresses,
+                operation_id,
+                request_data,
+                response_tx,
+            } => {
+                // Wrap request data in protocol message
+                let message = RequestMessage {
+                    header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
+                    data: request_data,
+                };
+                // Atomically register pending request BEFORE sending to avoid race condition
+                let request_id = swarm
+                    .behaviour_mut()
+                    .protocols
+                    .store
+                    .send_request_with_addresses(&peer, message, addresses);
+                let receiver = self.pending_store.insert(request_id);
+                let _ = response_tx.send(receiver);
+            }
+            NetworkAction::SendStoreResponse { channel, message } => {
+                let _ = swarm
+                    .behaviour_mut()
+                    .protocols
+                    .store
+                    .send_response(channel, message);
+            }
+            // Get protocol
+            NetworkAction::SendGetRequest {
+                peer,
+                addresses,
+                operation_id,
+                request_data,
+                response_tx,
+            } => {
+                let message = RequestMessage {
+                    header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
+                    data: request_data,
+                };
+                let request_id = swarm
+                    .behaviour_mut()
+                    .protocols
+                    .get
+                    .send_request_with_addresses(&peer, message, addresses);
+                let receiver = self.pending_get.insert(request_id);
+                let _ = response_tx.send(receiver);
+            }
+            NetworkAction::SendGetResponse { channel, message } => {
+                let _ = swarm
+                    .behaviour_mut()
+                    .protocols
+                    .get
+                    .send_response(channel, message);
+            }
+            // Finality protocol
+            NetworkAction::SendFinalityRequest {
+                peer,
+                addresses,
+                operation_id,
+                request_data,
+                response_tx,
+            } => {
+                let message = RequestMessage {
+                    header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
+                    data: request_data,
+                };
+                let request_id = swarm
+                    .behaviour_mut()
+                    .protocols
+                    .finality
+                    .send_request_with_addresses(&peer, message, addresses);
+                let receiver = self.pending_finality.insert(request_id);
+                let _ = response_tx.send(receiver);
+            }
+            NetworkAction::SendFinalityResponse { channel, message } => {
+                let _ = swarm
+                    .behaviour_mut()
+                    .protocols
+                    .finality
+                    .send_response(channel, message);
+            }
+            // BatchGet protocol
+            NetworkAction::SendBatchGetRequest {
+                peer,
+                addresses,
+                operation_id,
+                request_data,
+                response_tx,
+            } => {
+                let message = RequestMessage {
+                    header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
+                    data: request_data,
+                };
+                let request_id = swarm
+                    .behaviour_mut()
+                    .protocols
+                    .batch_get
+                    .send_request_with_addresses(&peer, message, addresses);
+                let receiver = self.pending_batch_get.insert(request_id);
+                let _ = response_tx.send(receiver);
+            }
+            NetworkAction::SendBatchGetResponse { channel, message } => {
+                let _ = swarm
+                    .behaviour_mut()
+                    .protocols
+                    .batch_get
+                    .send_response(channel, message);
+            }
+        }
+    }
+
+    async fn enqueue_action(&self, action: NetworkAction) -> Result<(), NetworkError> {
         self.action_tx
             .send(action)
             .await
@@ -409,7 +576,7 @@ where
 
     /// Get the list of currently connected peers.
     pub(crate) async fn connected_peers(&self) -> Result<Vec<PeerId>, NetworkError> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::GetConnectedPeers(tx))
             .await?;
         rx.await.map_err(|_| NetworkError::RequestIdChannelClosed)
@@ -421,7 +588,7 @@ where
         &self,
         peer_id: PeerId,
     ) -> Result<Vec<Multiaddr>, NetworkError> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::GetPeerAddresses {
             peer_id,
             response_tx: tx,
@@ -443,30 +610,152 @@ where
         .await
     }
 
-    /// Enqueue a protocol request for dispatch by the swarm.
-    /// Returns the OutboundRequestId which can be used to track the request
-    /// and correlate it with timeout/response events.
-    pub(crate) async fn send_protocol_request(
+    // Protocol-specific send methods that send a request and await the response.
+    // These methods atomically register the pending request inside the network loop
+    // BEFORE the request is sent, preventing race conditions with DialFailure/Timeout events.
+    // The message wrapping (RequestMessage with header) is handled internally.
+
+    /// Send a store request and await the response.
+    pub(crate) async fn send_store_request(
         &self,
-        request: B::Request,
-    ) -> Result<request_response::OutboundRequestId, NetworkError> {
-        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
-        self.enqueue_action(NetworkAction::SendProtocolRequest {
-            request,
-            response_tx,
+        peer: PeerId,
+        addresses: Vec<Multiaddr>,
+        operation_id: Uuid,
+        request_data: StoreRequestData,
+    ) -> Result<StoreResponseData, RequestError> {
+        let (tx, rx) = oneshot::channel();
+        self.enqueue_action(NetworkAction::SendStoreRequest {
+            peer,
+            addresses,
+            operation_id,
+            request_data,
+            response_tx: tx,
         })
-        .await?;
+        .await
+        .map_err(|e| RequestError::ConnectionFailed(e.to_string()))?;
+        let response_rx = rx
+            .await
+            .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
         response_rx
             .await
-            .map_err(|_| NetworkError::RequestIdChannelClosed)
+            .map_err(|_| RequestError::ChannelClosed)?
     }
 
-    /// Enqueue a protocol response for dispatch by the swarm.
-    pub(crate) async fn send_protocol_response(
+    /// Send a store response.
+    pub(crate) async fn send_store_response(
         &self,
-        response: B::Response,
+        channel: request_response::ResponseChannel<ResponseMessage<StoreResponseData>>,
+        message: ResponseMessage<StoreResponseData>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::SendProtocolResponse { response })
+        self.enqueue_action(NetworkAction::SendStoreResponse { channel, message })
+            .await
+    }
+
+    /// Send a get request and await the response.
+    pub(crate) async fn send_get_request(
+        &self,
+        peer: PeerId,
+        addresses: Vec<Multiaddr>,
+        operation_id: Uuid,
+        request_data: GetRequestData,
+    ) -> Result<GetResponseData, RequestError> {
+        let (tx, rx) = oneshot::channel();
+        self.enqueue_action(NetworkAction::SendGetRequest {
+            peer,
+            addresses,
+            operation_id,
+            request_data,
+            response_tx: tx,
+        })
+        .await
+        .map_err(|e| RequestError::ConnectionFailed(e.to_string()))?;
+        let response_rx = rx
+            .await
+            .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
+        response_rx
+            .await
+            .map_err(|_| RequestError::ChannelClosed)?
+    }
+
+    /// Send a get response.
+    pub(crate) async fn send_get_response(
+        &self,
+        channel: request_response::ResponseChannel<ResponseMessage<GetResponseData>>,
+        message: ResponseMessage<GetResponseData>,
+    ) -> Result<(), NetworkError> {
+        self.enqueue_action(NetworkAction::SendGetResponse { channel, message })
+            .await
+    }
+
+    /// Send a finality request and await the response.
+    pub(crate) async fn send_finality_request(
+        &self,
+        peer: PeerId,
+        addresses: Vec<Multiaddr>,
+        operation_id: Uuid,
+        request_data: FinalityRequestData,
+    ) -> Result<FinalityResponseData, RequestError> {
+        let (tx, rx) = oneshot::channel();
+        self.enqueue_action(NetworkAction::SendFinalityRequest {
+            peer,
+            addresses,
+            operation_id,
+            request_data,
+            response_tx: tx,
+        })
+        .await
+        .map_err(|e| RequestError::ConnectionFailed(e.to_string()))?;
+        let response_rx = rx
+            .await
+            .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
+        response_rx
+            .await
+            .map_err(|_| RequestError::ChannelClosed)?
+    }
+
+    /// Send a finality response.
+    pub(crate) async fn send_finality_response(
+        &self,
+        channel: request_response::ResponseChannel<ResponseMessage<FinalityResponseData>>,
+        message: ResponseMessage<FinalityResponseData>,
+    ) -> Result<(), NetworkError> {
+        self.enqueue_action(NetworkAction::SendFinalityResponse { channel, message })
+            .await
+    }
+
+    /// Send a batch get request and await the response.
+    pub(crate) async fn send_batch_get_request(
+        &self,
+        peer: PeerId,
+        addresses: Vec<Multiaddr>,
+        operation_id: Uuid,
+        request_data: BatchGetRequestData,
+    ) -> Result<BatchGetResponseData, RequestError> {
+        let (tx, rx) = oneshot::channel();
+        self.enqueue_action(NetworkAction::SendBatchGetRequest {
+            peer,
+            addresses,
+            operation_id,
+            request_data,
+            response_tx: tx,
+        })
+        .await
+        .map_err(|e| RequestError::ConnectionFailed(e.to_string()))?;
+        let response_rx = rx
+            .await
+            .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
+        response_rx
+            .await
+            .map_err(|_| RequestError::ChannelClosed)?
+    }
+
+    /// Send a batch get response.
+    pub(crate) async fn send_batch_get_response(
+        &self,
+        channel: request_response::ResponseChannel<ResponseMessage<BatchGetResponseData>>,
+        message: ResponseMessage<BatchGetResponseData>,
+    ) -> Result<(), NetworkError> {
+        self.enqueue_action(NetworkAction::SendBatchGetResponse { channel, message })
             .await
     }
 }

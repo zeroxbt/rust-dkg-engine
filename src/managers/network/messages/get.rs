@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::managers::triple_store::{Assertion, TokenIds, Visibility};
+use crate::types::{Assertion, TokenIds, Visibility};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

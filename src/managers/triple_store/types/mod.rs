@@ -1,9 +1,7 @@
-mod assertion;
 mod knowledge_asset;
-mod token_ids;
-mod visibility;
 
-pub(crate) use assertion::Assertion;
+// Re-export shared domain types from crate::types
+pub(crate) use crate::types::{Assertion, TokenIds, Visibility, MAX_TOKENS_PER_KC};
+
+// Local types specific to triple store operations
 pub(crate) use knowledge_asset::KnowledgeAsset;
-pub(crate) use token_ids::{MAX_TOKENS_PER_KC, TokenIds};
-pub(crate) use visibility::Visibility;
