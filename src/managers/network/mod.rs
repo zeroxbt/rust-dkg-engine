@@ -1,4 +1,5 @@
 pub(crate) mod error;
+mod handler;
 mod key_manager;
 pub(crate) mod message;
 pub(crate) mod messages;
@@ -7,6 +8,7 @@ pub(crate) mod protocols;
 
 use std::time::Duration;
 
+pub(crate) use handler::NetworkEventHandler;
 pub(crate) use key_manager::KeyManager;
 pub(crate) use libp2p::request_response::ProtocolSupport;
 // Re-export libp2p types and identity for application use
@@ -68,6 +70,55 @@ macro_rules! send_protocol_response {
             .$protocol
             .send_response($channel, $message);
     }};
+}
+
+/// Macro to handle a protocol event - processes responses internally and dispatches
+/// inbound requests to the handler.
+macro_rules! handle_protocol_event {
+    ($event:expr, $pending:expr, $protocol_name:literal, $handler:expr, $handler_method:ident) => {
+        match $event {
+            request_response::Event::Message { message, peer, .. } => match message {
+                request_response::Message::Response {
+                    response,
+                    request_id,
+                } => {
+                    $pending.complete_success(request_id, response.data);
+                }
+                request_response::Message::Request {
+                    request, channel, ..
+                } => {
+                    $handler.$handler_method(request, channel, peer).await;
+                }
+            },
+            request_response::Event::OutboundFailure {
+                request_id,
+                error,
+                peer,
+                ..
+            } => {
+                tracing::warn!(%peer, ?request_id, ?error, concat!($protocol_name, " request failed"));
+                $pending.complete_failure(request_id, NetworkError::from(&error));
+            }
+            request_response::Event::InboundFailure {
+                peer,
+                request_id,
+                error,
+                ..
+            } => {
+                tracing::warn!(
+                    %peer,
+                    ?request_id,
+                    ?error,
+                    concat!("Failed to respond to ", $protocol_name, " request")
+                );
+            }
+            request_response::Event::ResponseSent {
+                peer, request_id, ..
+            } => {
+                tracing::trace!(%peer, ?request_id, concat!($protocol_name, " response sent"));
+            }
+        }
+    };
 }
 
 /// Network action commands sent to the swarm event loop.
@@ -413,38 +464,16 @@ impl NetworkManager {
         &self.peer_id
     }
 
-    /// Returns a reference to pending store requests for event handling.
-    pub(crate) fn pending_store(&self) -> &PendingRequests<StoreResponseData> {
-        &self.pending_store
-    }
-
-    /// Returns a reference to pending get requests for event handling.
-    pub(crate) fn pending_get(&self) -> &PendingRequests<GetResponseData> {
-        &self.pending_get
-    }
-
-    /// Returns a reference to pending finality requests for event handling.
-    pub(crate) fn pending_finality(&self) -> &PendingRequests<FinalityResponseData> {
-        &self.pending_finality
-    }
-
-    /// Returns a reference to pending batch get requests for event handling.
-    pub(crate) fn pending_batch_get(&self) -> &PendingRequests<BatchGetResponseData> {
-        &self.pending_batch_get
-    }
-
-    /// Runs the network event loop, processing swarm events and actions
+    /// Runs the network event loop, processing swarm events and actions.
     ///
     /// This method runs the event loop using the internal swarm and action channel.
-    /// It receives actions from the internal action channel and sends events to the event_tx
-    /// channel.
+    /// Response events (success/failure for outbound requests) are handled internally
+    /// via PendingRequests. Inbound requests and infrastructure events are dispatched
+    /// to the provided handler.
     ///
     /// # Parameters
-    /// - `event_tx`: Channel sender for outgoing swarm events
-    pub(crate) async fn run(
-        &self,
-        event_tx: mpsc::Sender<SwarmEvent<<NodeBehaviour as NetworkBehaviour>::ToSwarm>>,
-    ) {
+    /// - `handler`: Handler for network events that require application-level processing
+    pub(crate) async fn run<H: NetworkEventHandler>(&self, handler: &H) {
         use libp2p::futures::StreamExt;
 
         let Some(mut action_rx) = self.action_rx.lock().await.take() else {
@@ -457,11 +486,10 @@ impl NetworkManager {
         loop {
             tokio::select! {
                 event = swarm.select_next_some() => {
-                    // Send event to application layer
-                    if event_tx.send(event).await.is_err() {
-                        tracing::error!("Event channel closed, shutting down network loop");
-                        break;
-                    }
+                    // Release swarm lock before calling handler to avoid deadlocks
+                    drop(swarm);
+                    self.handle_swarm_event(event, handler).await;
+                    swarm = self.swarm.lock().await;
                 }
                 action = action_rx.recv() => {
                     match action {
@@ -473,6 +501,111 @@ impl NetworkManager {
                     }
                 }
             }
+        }
+    }
+
+    /// Process a swarm event, handling responses internally and dispatching
+    /// inbound requests to the handler.
+    async fn handle_swarm_event<H: NetworkEventHandler>(
+        &self,
+        event: SwarmEvent<<NodeBehaviour as NetworkBehaviour>::ToSwarm>,
+        handler: &H,
+    ) {
+        match event {
+            SwarmEvent::Behaviour(behaviour_event) => match behaviour_event {
+                // ─────────────────────────────────────────────────────────────
+                // Protocol events - handle responses internally, dispatch requests
+                // ─────────────────────────────────────────────────────────────
+                NodeBehaviourEvent::Store(inner) => {
+                    handle_protocol_event!(
+                        inner,
+                        self.pending_store,
+                        "Store",
+                        handler,
+                        on_store_request
+                    );
+                }
+                NodeBehaviourEvent::Get(inner) => {
+                    handle_protocol_event!(
+                        inner,
+                        self.pending_get,
+                        "Get",
+                        handler,
+                        on_get_request
+                    );
+                }
+                NodeBehaviourEvent::Finality(inner) => {
+                    handle_protocol_event!(
+                        inner,
+                        self.pending_finality,
+                        "Finality",
+                        handler,
+                        on_finality_request
+                    );
+                }
+                NodeBehaviourEvent::BatchGet(inner) => {
+                    handle_protocol_event!(
+                        inner,
+                        self.pending_batch_get,
+                        "BatchGet",
+                        handler,
+                        on_batch_get_request
+                    );
+                }
+
+                // ─────────────────────────────────────────────────────────────
+                // Identify protocol
+                // ─────────────────────────────────────────────────────────────
+                NodeBehaviourEvent::Identify(identify::Event::Received {
+                    peer_id, info, ..
+                }) => {
+                    handler
+                        .on_identify_received(peer_id, info.listen_addrs)
+                        .await;
+                }
+
+                // ─────────────────────────────────────────────────────────────
+                // Kademlia protocol
+                // ─────────────────────────────────────────────────────────────
+                NodeBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
+                    result: kad::QueryResult::GetClosestPeers(result),
+                    ..
+                }) => {
+                    match result {
+                        Ok(kad::GetClosestPeersOk { key, peers }) => {
+                            if let Ok(target) = PeerId::from_bytes(&key) {
+                                if peers.iter().any(|p| p.peer_id == target) {
+                                    handler.on_kad_peer_found(target).await;
+                                } else {
+                                    handler.on_kad_peer_not_found(target).await;
+                                }
+                            }
+                        }
+                        Err(kad::GetClosestPeersError::Timeout { key, peers }) => {
+                            if let Ok(target) = PeerId::from_bytes(&key) {
+                                if peers.iter().any(|p| p.peer_id == target) {
+                                    handler.on_kad_peer_found(target).await;
+                                } else {
+                                    handler.on_kad_peer_not_found(target).await;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                _ => {}
+            },
+
+            SwarmEvent::NewListenAddr { address, .. } => {
+                handler.on_new_listen_addr(address);
+            }
+            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                handler.on_connection_established(peer_id).await;
+            }
+            SwarmEvent::ConnectionClosed { peer_id, .. } => {
+                handler.on_connection_closed(peer_id).await;
+            }
+            _ => {}
         }
     }
 

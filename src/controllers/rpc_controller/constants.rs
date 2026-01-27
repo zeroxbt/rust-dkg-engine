@@ -1,1 +1,0 @@
-pub(crate) const NETWORK_EVENT_QUEUE_PARALLELISM: usize = 1000;

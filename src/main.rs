@@ -75,9 +75,6 @@ async fn main() {
     // Create command scheduler channel
     let (command_scheduler, command_rx) = CommandScheduler::channel();
 
-    // Channels for network manager event loop
-    let (network_event_tx, network_event_rx) = tokio::sync::mpsc::channel(1024);
-
     let (network_manager, repository_manager, blockchain_manager, triple_store_manager) =
         initialize_managers(&config.managers, &paths, network_key).await;
     let store_response_channels = Arc::new(ResponseChannels::new());
@@ -136,22 +133,15 @@ async fn main() {
 
     let execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
 
-    // Spawn network manager event loop task
+    // Spawn network manager event loop task with RPC router as the event handler
     let network_event_loop_task = tokio::task::spawn(async move {
         if let Err(error) = network_manager.start_listening().await {
             tracing::error!("Failed to start swarm listener: {}", error);
             return;
         }
 
-        // Run the network manager event loop
-        network_manager.run(network_event_tx).await;
-    });
-
-    // Spawn RPC router task to handle network events
-    let handle_rpc_events_task = tokio::task::spawn(async move {
-        rpc_router
-            .listen_and_handle_network_events(network_event_rx)
-            .await
+        // Run the network manager event loop with the RPC router handling events
+        network_manager.run(&rpc_router).await;
     });
 
     // Spawn HTTP API task if enabled
@@ -170,9 +160,6 @@ async fn main() {
         }
         result = network_event_loop_task => {
             tracing::error!("Network task exited unexpectedly: {:?}", result);
-        }
-        result = handle_rpc_events_task => {
-            tracing::error!("RPC task exited unexpectedly: {:?}", result);
         }
         result = execute_commands_task => {
             tracing::error!("Command executor exited unexpectedly: {:?}", result);
