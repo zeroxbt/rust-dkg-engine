@@ -18,7 +18,7 @@ use crate::{
         network::{NetworkManager, PeerId, messages::BatchGetRequestData},
         repository::RepositoryManager,
         triple_store::{
-            Assertion, KnowledgeCollectionMetadata, TokenIds, Visibility,
+            Assertion, KnowledgeCollectionMetadata, MAX_TOKENS_PER_KC, TokenIds, Visibility,
             query::predicates,
             rdf::{
                 extract_datetime_as_unix, extract_quoted_integer, extract_quoted_string,
@@ -32,18 +32,12 @@ use crate::{
 };
 
 /// Interval between sync cycles (30 seconds)
-const SYNC_PERIOD: Duration = Duration::from_secs(30);
+const SYNC_PERIOD: Duration = Duration::from_secs(0);
 
-/// Maximum number of new KCs to enqueue per contract per cycle
-const MAX_NEW_KCS_PER_CONTRACT: u64 = 1000;
+const MAX_NEW_KCS_PER_CONTRACT: u64 = BATCH_GET_UAL_MAX_LIMIT as u64 / MAX_RETRY_ATTEMPTS as u64;
 
 /// Maximum retry attempts before a KC is no longer retried (stays in DB for future recovery)
 const MAX_RETRY_ATTEMPTS: u32 = 2;
-
-/// Maximum number of pending KCs to process per sync cycle.
-/// Keep this low because filter_pending_kcs makes 2 RPC calls per KC sequentially.
-/// At ~100ms per RPC call, 100 KCs = ~20 seconds of RPC calls per cycle.
-const MAX_PENDING_KCS_PER_CYCLE: u64 = 100;
 
 pub(crate) struct SyncCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
@@ -116,7 +110,7 @@ impl SyncCommandHandler {
                 blockchain_id.as_str(),
                 &contract_addr_str,
                 MAX_RETRY_ATTEMPTS,
-                MAX_PENDING_KCS_PER_CYCLE,
+                MAX_NEW_KCS_PER_CONTRACT,
             )
             .await
             .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
@@ -139,30 +133,16 @@ impl SyncCommandHandler {
             });
         }
 
-        // Step 3: Filter out expired and already-synced KCs
-        let (kcs_to_sync, expired_kc_ids, already_synced_kc_ids) = self
+        // Step 3: Filter out already-synced KCs (expiration is checked after network fetch)
+        let pending_kc_ids: Vec<u64> = pending_kcs.into_iter().map(|kc| kc.kc_id).collect();
+        let (kcs_to_sync, already_synced_kc_ids) = self
             .filter_pending_kcs(
                 blockchain_id,
                 contract_address,
                 &contract_addr_str,
-                &pending_kcs,
+                &pending_kc_ids,
             )
             .await;
-
-        // Remove expired KCs from queue (don't count as retry)
-        if !expired_kc_ids.is_empty() {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
-                count = expired_kc_ids.len(),
-                "[DKG SYNC] Removing expired KCs from queue"
-            );
-            self.repository_manager
-                .kc_sync_repository()
-                .remove_kcs(blockchain_id.as_str(), &contract_addr_str, &expired_kc_ids)
-                .await
-                .map_err(|e| format!("Failed to remove expired KCs: {}", e))?;
-        }
 
         // Remove already-synced KCs from queue
         if !already_synced_kc_ids.is_empty() {
@@ -207,9 +187,17 @@ impl SyncCommandHandler {
             "[DKG SYNC] Network fetch completed for contract"
         );
 
-        // Step 6: Store fetched KCs in triple store with chain-verified metadata
+        // Step 6: Check expiration and store fetched KCs in triple store
         let mut failed_kc_ids = failed_kc_ids;
         let mut successfully_synced_kc_ids: Vec<u64> = Vec::new();
+        let mut expired_kc_ids: Vec<u64> = Vec::new();
+
+        // Get current epoch once for expiration checks
+        let current_epoch = self
+            .blockchain_manager
+            .get_current_epoch(blockchain_id)
+            .await
+            .ok();
 
         // Build a lookup from UAL to KC info
         let ual_to_kc: HashMap<&str, &KcToSync> =
@@ -219,6 +207,43 @@ impl SyncCommandHandler {
             let Some(kc) = ual_to_kc.get(ual.as_str()) else {
                 continue;
             };
+
+            // Check if KC is expired before inserting
+            if let Some(current_epoch) = current_epoch {
+                match self
+                    .blockchain_manager
+                    .get_kc_end_epoch(blockchain_id, contract_address, kc.kc_id as u128)
+                    .await
+                {
+                    Ok(end_epoch) => {
+                        if current_epoch > end_epoch {
+                            tracing::debug!(
+                                blockchain_id = %blockchain_id,
+                                contract = %contract_addr_str,
+                                kc_id = kc.kc_id,
+                                current_epoch,
+                                end_epoch,
+                                "[DKG SYNC] KC is expired, skipping insert"
+                            );
+                            expired_kc_ids.push(kc.kc_id);
+                            continue;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            blockchain_id = %blockchain_id,
+                            contract = %contract_addr_str,
+                            kc_id = kc.kc_id,
+                            error = %e,
+                            "[DKG SYNC] Failed to get KC end epoch, will retry later"
+                        );
+                        if !failed_kc_ids.contains(&kc.kc_id) {
+                            failed_kc_ids.push(kc.kc_id);
+                        }
+                        continue;
+                    }
+                }
+            }
 
             // Parse metadata from network response (optional)
             let metadata: Option<KnowledgeCollectionMetadata> = fetch_result
@@ -272,7 +297,28 @@ impl SyncCommandHandler {
             }
         }
 
-        // Step 7: Update DB - remove successfully synced KCs, increment retry_count for failed ones
+        // Record expired KCs metric
+        if !expired_kc_ids.is_empty() {
+            counter!("sync_expired_total", "blockchain" => blockchain_id.as_str().to_string())
+                .increment(expired_kc_ids.len() as u64);
+        }
+
+        // Step 7: Update DB - remove synced/expired KCs, increment retry_count for failed ones
+        // Remove expired KCs from queue (they should not be retried)
+        if !expired_kc_ids.is_empty()
+            && let Err(e) = self
+                .repository_manager
+                .kc_sync_repository()
+                .remove_kcs(blockchain_id.as_str(), &contract_addr_str, &expired_kc_ids)
+                .await
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "[DKG SYNC] Failed to remove expired KCs from queue"
+            );
+        }
         if !successfully_synced_kc_ids.is_empty() {
             if let Err(e) = self
                 .repository_manager
@@ -317,25 +363,22 @@ impl SyncCommandHandler {
         })
     }
 
-    /// Filter pending KCs: check which are expired on chain or already exist locally.
-    /// Uses cached end_epoch from the queue when available to avoid RPC calls.
-    /// Only verifies on-chain if the cached value indicates expiration or is missing.
-    /// Returns (kcs_to_sync, expired_kc_ids, already_synced_kc_ids)
+    /// Filter pending KCs: check which already exist locally.
+    /// Expiration is checked later, after fetching from network (to avoid slow RPC calls).
+    /// Returns (kcs_to_sync, already_synced_kc_ids)
     async fn filter_pending_kcs(
         &self,
         blockchain_id: &BlockchainId,
         contract_address: Address,
         contract_addr_str: &str,
-        pending_kcs: &[crate::managers::repository::KcQueueModel],
-    ) -> (Vec<KcToSync>, Vec<u64>, Vec<u64>) {
+        pending_kc_ids: &[u64],
+    ) -> (Vec<KcToSync>, Vec<u64>) {
         let blockchain_label = blockchain_id.as_str();
         let mut kcs_to_sync = Vec::new();
-        let mut expired_kc_ids = Vec::new();
         let mut already_synced_kc_ids = Vec::new();
         let mut skipped_due_to_errors = 0u64;
-        let mut cache_hits = 0u64;
 
-        let total_kcs = pending_kcs.len();
+        let total_kcs = pending_kc_ids.len();
         tracing::debug!(
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
@@ -343,27 +386,7 @@ impl SyncCommandHandler {
             "[DKG SYNC] Starting filter step"
         );
 
-        // Get current epoch once for all KCs
-        let current_epoch = match self
-            .blockchain_manager
-            .get_current_epoch(blockchain_id)
-            .await
-        {
-            Ok(epoch) => epoch,
-            Err(e) => {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    error = %e,
-                    "[DKG SYNC] Failed to get current epoch, skipping expiration checks"
-                );
-                // Can't check expiration without current epoch, process all KCs
-                u64::MAX
-            }
-        };
-
-        for (idx, kc) in pending_kcs.iter().enumerate() {
-            let kc_id = kc.kc_id;
-
+        for (idx, &kc_id) in pending_kc_ids.iter().enumerate() {
             // Log progress every 10 KCs
             if idx > 0 && idx % 10 == 0 {
                 tracing::debug!(
@@ -371,61 +394,6 @@ impl SyncCommandHandler {
                     progress = format!("{}/{}", idx, total_kcs),
                     "[DKG SYNC] Filter progress"
                 );
-            }
-
-            // Use cached end_epoch if available, otherwise fetch from chain
-            let end_epoch = if let Some(cached_end_epoch) = kc.end_epoch {
-                // If cached value shows KC is not expired, trust it and skip RPC
-                if current_epoch <= cached_end_epoch {
-                    cache_hits += 1;
-                    cached_end_epoch
-                } else {
-                    // Cached value indicates expiration - verify on-chain to be sure
-                    match self
-                        .blockchain_manager
-                        .get_kc_end_epoch(blockchain_id, contract_address, kc_id as u128)
-                        .await
-                    {
-                        Ok(epoch) => epoch,
-                        Err(e) => {
-                            tracing::warn!(
-                                blockchain_id = %blockchain_id,
-                                contract = %contract_addr_str,
-                                kc_id = kc_id,
-                                error = %e,
-                                "[DKG SYNC] Failed to verify KC end epoch on-chain, will retry later"
-                            );
-                            skipped_due_to_errors += 1;
-                            continue;
-                        }
-                    }
-                }
-            } else {
-                // No cached value, must fetch from chain
-                match self
-                    .blockchain_manager
-                    .get_kc_end_epoch(blockchain_id, contract_address, kc_id as u128)
-                    .await
-                {
-                    Ok(epoch) => epoch,
-                    Err(e) => {
-                        tracing::warn!(
-                            blockchain_id = %blockchain_id,
-                            contract = %contract_addr_str,
-                            kc_id = kc_id,
-                            error = %e,
-                            "[DKG SYNC] Failed to get KC end epoch, will retry later"
-                        );
-                        skipped_due_to_errors += 1;
-                        continue;
-                    }
-                }
-            };
-
-            // KC is expired if current epoch > end epoch
-            if current_epoch > end_epoch {
-                expired_kc_ids.push(kc_id);
-                continue;
             }
 
             // Get token ID range for the KC
@@ -436,12 +404,12 @@ impl SyncCommandHandler {
             {
                 Ok(Some(range)) => range,
                 Ok(None) => {
-                    // KC doesn't exist on chain (shouldn't happen if we got end_epoch)
+                    // KC doesn't exist on chain
                     tracing::warn!(
                         blockchain_id = %blockchain_id,
                         contract = %contract_addr_str,
                         kc_id = kc_id,
-                        "[DKG SYNC] KC has end_epoch but no token range, skipping"
+                        "[DKG SYNC] KC has no token range on chain, skipping"
                     );
                     skipped_due_to_errors += 1;
                     continue;
@@ -459,7 +427,18 @@ impl SyncCommandHandler {
                 }
             };
 
-            let (start_token_id, end_token_id, burned) = token_range;
+            let (global_start, global_end, global_burned) = token_range;
+
+            // Convert global token IDs to local 1-based indices
+            // Global: (kc_id - 1) * 1_000_000 + local_id
+            // Local: global - (kc_id - 1) * 1_000_000
+            let offset = (kc_id - 1) * MAX_TOKENS_PER_KC;
+            let start_token_id = global_start.saturating_sub(offset);
+            let end_token_id = global_end.saturating_sub(offset);
+            let burned: Vec<u64> = global_burned
+                .into_iter()
+                .map(|b| b.saturating_sub(offset))
+                .collect();
 
             // Build UAL to check local existence
             let kc_ual = derive_ual(blockchain_id, &contract_address, kc_id as u128, None);
@@ -487,22 +466,17 @@ impl SyncCommandHandler {
         }
 
         // Record filter metrics
-        counter!("sync_filter_expired_total", "blockchain" => blockchain_label.to_string())
-            .increment(expired_kc_ids.len() as u64);
         counter!("sync_filter_already_synced_total", "blockchain" => blockchain_label.to_string())
             .increment(already_synced_kc_ids.len() as u64);
         counter!("sync_filter_needs_sync_total", "blockchain" => blockchain_label.to_string())
             .increment(kcs_to_sync.len() as u64);
         counter!("sync_filter_skipped_errors_total", "blockchain" => blockchain_label.to_string())
             .increment(skipped_due_to_errors);
-        counter!("sync_filter_cache_hits_total", "blockchain" => blockchain_label.to_string())
-            .increment(cache_hits);
 
-        (kcs_to_sync, expired_kc_ids, already_synced_kc_ids)
+        (kcs_to_sync, already_synced_kc_ids)
     }
 
     /// Check for new KCs on chain and enqueue any that need syncing.
-    /// Filters out expired KCs before enqueuing to avoid storing them in the queue.
     async fn enqueue_new_kcs(
         &self,
         blockchain_id: &BlockchainId,
@@ -566,98 +540,16 @@ impl SyncCommandHandler {
         let start_id = last_checked + 1;
         let end_id = std::cmp::min(latest_on_chain, last_checked + MAX_NEW_KCS_PER_CONTRACT);
         let new_kc_ids: Vec<u64> = (start_id..=end_id).collect();
+        let count = new_kc_ids.len() as u64;
 
-        // Get current epoch to filter out expired KCs before enqueuing
-        let current_epoch = match self
-            .blockchain_manager
-            .get_current_epoch(blockchain_id)
+        // Enqueue all new KCs (expiration is checked later, after fetching from network)
+        self.repository_manager
+            .kc_sync_repository()
+            .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, &new_kc_ids)
             .await
-        {
-            Ok(epoch) => Some(epoch),
-            Err(e) => {
-                tracing::warn!(
-                    blockchain_id = %blockchain_id,
-                    error = %e,
-                    "[DKG SYNC] Failed to get current epoch, will enqueue all KCs and filter later"
-                );
-                None
-            }
-        };
+            .map_err(|e| format!("Failed to enqueue KCs: {}", e))?;
 
-        // Filter out expired KCs if we have the current epoch, and cache end_epoch for later use
-        let (kcs_to_enqueue, expired_count): (Vec<(u64, Option<u64>)>, u64) = if let Some(
-            current_epoch,
-        ) = current_epoch
-        {
-            let mut valid_kc_entries = Vec::with_capacity(new_kc_ids.len());
-            let mut expired = 0u64;
-
-            for kc_id in &new_kc_ids {
-                match self
-                    .blockchain_manager
-                    .get_kc_end_epoch(blockchain_id, contract_address, *kc_id as u128)
-                    .await
-                {
-                    Ok(end_epoch) => {
-                        if current_epoch > end_epoch {
-                            // KC is expired, skip it
-                            expired += 1;
-                            tracing::trace!(
-                                blockchain_id = %blockchain_id,
-                                contract = %contract_addr_str,
-                                kc_id = kc_id,
-                                current_epoch,
-                                end_epoch,
-                                "[DKG SYNC] Skipping expired KC during enqueue"
-                            );
-                        } else {
-                            // Store kc_id with its end_epoch for caching
-                            valid_kc_entries.push((*kc_id, Some(end_epoch)));
-                        }
-                    }
-                    Err(e) => {
-                        // If we can't get the end epoch, enqueue it anyway and filter later
-                        tracing::trace!(
-                            blockchain_id = %blockchain_id,
-                            contract = %contract_addr_str,
-                            kc_id = kc_id,
-                            error = %e,
-                            "[DKG SYNC] Failed to get KC end epoch, will enqueue and check later"
-                        );
-                        valid_kc_entries.push((*kc_id, None));
-                    }
-                }
-            }
-
-            (valid_kc_entries, expired)
-        } else {
-            // No current epoch available, enqueue all without cached end_epoch
-            (new_kc_ids.iter().map(|&id| (id, None)).collect(), 0)
-        };
-
-        if expired_count > 0 {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
-                expired_count,
-                "[DKG SYNC] Filtered out expired KCs during enqueue"
-            );
-            counter!("sync_enqueue_expired_total", "blockchain" => blockchain_id.as_str().to_string())
-                .increment(expired_count);
-        }
-
-        let count = kcs_to_enqueue.len() as u64;
-
-        // Only enqueue if there are valid KCs
-        if !kcs_to_enqueue.is_empty() {
-            self.repository_manager
-                .kc_sync_repository()
-                .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, &kcs_to_enqueue)
-                .await
-                .map_err(|e| format!("Failed to enqueue KCs: {}", e))?;
-        }
-
-        // Update progress to the highest ID we've now checked (even if some were expired)
+        // Update progress to the highest ID we've now checked
         self.repository_manager
             .kc_sync_repository()
             .upsert_progress(blockchain_id.as_str(), contract_addr_str, end_id)
@@ -818,6 +710,7 @@ impl SyncCommandHandler {
                 .map(|peer| {
                     let peer = *peer;
                     let request_data = batch_request.clone();
+                    tracing::info!(req = ?request_data,"sending batch_get request");
                     let network_manager = Arc::clone(&self.network_manager);
                     // Generate a unique operation ID for tracking (not stored, just for the
                     // request)

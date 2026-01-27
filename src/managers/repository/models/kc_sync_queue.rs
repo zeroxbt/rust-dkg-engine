@@ -14,7 +14,6 @@ pub struct Model {
     pub contract_address: String,
     #[sea_orm(primary_key)]
     pub kc_id: u64,
-    pub end_epoch: Option<u64>,
     pub retry_count: u32,
     pub created_at: i64,
     pub last_retry_at: Option<i64>,

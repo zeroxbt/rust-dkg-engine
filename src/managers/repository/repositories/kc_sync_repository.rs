@@ -75,27 +75,26 @@ impl KcSyncRepository {
 
     // ==================== Queue Table Methods ====================
 
-    /// Add KC IDs to the sync queue with their cached end epochs.
+    /// Add KC IDs to the sync queue.
     /// Skips IDs that already exist in the queue.
     pub(crate) async fn enqueue_kcs(
         &self,
         blockchain_id: &str,
         contract_address: &str,
-        kc_entries: &[(u64, Option<u64>)], // (kc_id, end_epoch)
+        kc_ids: &[u64],
     ) -> Result<(), DbErr> {
-        if kc_entries.is_empty() {
+        if kc_ids.is_empty() {
             return Ok(());
         }
 
         let now = Utc::now().timestamp();
 
-        let models: Vec<QueueActiveModel> = kc_entries
+        let models: Vec<QueueActiveModel> = kc_ids
             .iter()
-            .map(|&(kc_id, end_epoch)| QueueActiveModel {
+            .map(|&kc_id| QueueActiveModel {
                 blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
                 contract_address: ActiveValue::Set(contract_address.to_string()),
                 kc_id: ActiveValue::Set(kc_id),
-                end_epoch: ActiveValue::Set(end_epoch),
                 retry_count: ActiveValue::Set(0),
                 created_at: ActiveValue::Set(now),
                 last_retry_at: ActiveValue::Set(None),
@@ -188,7 +187,6 @@ impl KcSyncRepository {
                     blockchain_id: ActiveValue::Unchanged(model.blockchain_id),
                     contract_address: ActiveValue::Unchanged(model.contract_address),
                     kc_id: ActiveValue::Unchanged(model.kc_id),
-                    end_epoch: ActiveValue::Unchanged(model.end_epoch),
                     retry_count: ActiveValue::Set(model.retry_count + 1),
                     created_at: ActiveValue::Unchanged(model.created_at),
                     last_retry_at: ActiveValue::Set(Some(now)),

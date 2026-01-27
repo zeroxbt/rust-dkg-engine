@@ -11,7 +11,6 @@ enum KcSyncQueue {
     BlockchainId,
     ContractAddress,
     KcId,
-    EndEpoch,
     RetryCount,
     CreatedAt,
     LastRetryAt,
@@ -31,7 +30,6 @@ impl MigrationTrait for Migration {
                     .col(string(KcSyncQueue::BlockchainId))
                     .col(string(KcSyncQueue::ContractAddress))
                     .col(big_unsigned(KcSyncQueue::KcId))
-                    .col(big_unsigned_null(KcSyncQueue::EndEpoch))
                     .col(unsigned(KcSyncQueue::RetryCount).default(0))
                     .col(big_integer(KcSyncQueue::CreatedAt))
                     .col(big_integer_null(KcSyncQueue::LastRetryAt))
