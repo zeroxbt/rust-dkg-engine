@@ -40,22 +40,6 @@ pub(crate) enum NetworkError {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
 
-    /// Error sending message to peer
-    #[error("Failed to send message to {peer_id}: {reason}")]
-    SendFailed { peer_id: String, reason: String },
-
-    /// Error sending response
-    #[error("Failed to send {protocol} response; channel closed or peer disconnected.")]
-    ResponseFailed { protocol: &'static str },
-
-    /// Dial failure
-    #[error("Failed to dial peer {peer_id}: {reason}")]
-    DialFailed { peer_id: String, reason: String },
-
-    /// Swarm already taken for event loop
-    #[error("Swarm already taken for event loop.")]
-    SwarmAlreadyTaken,
-
     /// Swarm action channel closed
     #[error("Swarm action channel closed.")]
     ActionChannelClosed,

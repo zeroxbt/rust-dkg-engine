@@ -26,12 +26,12 @@ const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100 MB max total message s
 ///
 /// This codec reads all chunks, concatenates the data chunks, then deserializes.
 #[derive(Clone, Default)]
-pub struct JsCompatCodec<Req, Resp> {
+pub(crate) struct JsCompatCodec<Req, Resp> {
     _marker: PhantomData<(Req, Resp)>,
 }
 
 impl<Req, Resp> JsCompatCodec<Req, Resp> {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             _marker: PhantomData,
         }

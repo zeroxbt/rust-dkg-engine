@@ -40,11 +40,6 @@ impl RequestMessageHeader {
     pub(crate) fn operation_id(&self) -> Uuid {
         self.operation_id
     }
-
-    /// Returns the message type.
-    pub(crate) fn message_type(&self) -> &RequestMessageType {
-        &self.message_type
-    }
 }
 
 /// Response message header containing operation tracking and message type
@@ -62,16 +57,6 @@ impl ResponseMessageHeader {
             operation_id,
             message_type,
         }
-    }
-
-    /// Returns the operation ID.
-    pub(crate) fn operation_id(&self) -> Uuid {
-        self.operation_id
-    }
-
-    /// Returns the message type.
-    pub(crate) fn message_type(&self) -> &ResponseMessageType {
-        &self.message_type
     }
 }
 

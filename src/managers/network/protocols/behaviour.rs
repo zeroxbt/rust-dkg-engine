@@ -1,5 +1,3 @@
-pub(crate) use libp2p::swarm::derive_prelude::*;
-
 use super::{
     super::messages::{
         BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
