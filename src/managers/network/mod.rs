@@ -14,6 +14,7 @@ pub(crate) use libp2p::request_response::ProtocolSupport;
 pub(crate) use libp2p::{
     Multiaddr, PeerId, StreamProtocol, Swarm, identify, identity,
     kad::{self, BucketInserts, Config as KademliaConfig, Mode, store::MemoryStore},
+    multiaddr::Protocol,
     request_response,
     swarm::{NetworkBehaviour, SwarmEvent},
 };
@@ -231,29 +232,37 @@ impl NetworkManager {
 
         // Add bootstrap nodes to kad
         for bootstrap in &config.bootstrap {
-            let parts: Vec<&str> = bootstrap.split("/p2p/").collect();
-
-            if parts.len() != 2 {
-                return Err(NetworkError::InvalidBootstrapNode {
-                    expected: "/ip4/.../p2p/...".to_string(),
-                    received: bootstrap.to_string(),
-                });
-            }
-
-            let bootstrap_peer_id = parts[1].parse().map_err(|e| NetworkError::InvalidPeerId {
-                parsed: parts[1].to_string(),
-                source: e,
-            })?;
-
-            let bootstrap_address =
-                parts[0]
+            // Parse as a full multiaddr first
+            let full_addr: Multiaddr =
+                bootstrap
                     .parse()
                     .map_err(|e| NetworkError::InvalidMultiaddr {
-                        parsed: parts[0].to_string(),
+                        parsed: bootstrap.clone(),
                         source: e,
                     })?;
 
-            kad.add_address(&bootstrap_peer_id, bootstrap_address);
+            // Extract the peer ID from the /p2p/ component
+            let peer_id = full_addr
+                .iter()
+                .find_map(|proto| {
+                    if let Protocol::P2p(peer_id) = proto {
+                        Some(peer_id)
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| NetworkError::InvalidBootstrapNode {
+                    expected: "multiaddr with /p2p/<peer_id> component".to_string(),
+                    received: bootstrap.clone(),
+                })?;
+
+            // Build the address without the /p2p/ component for kad
+            let addr_without_peer: Multiaddr = full_addr
+                .iter()
+                .filter(|proto| !matches!(proto, Protocol::P2p(_)))
+                .collect();
+
+            kad.add_address(&peer_id, addr_without_peer);
         }
 
         // 2. Identify protocol
