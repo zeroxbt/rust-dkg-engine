@@ -7,7 +7,6 @@ pub(crate) mod protocols;
 
 use std::time::Duration;
 
-use error::NetworkError;
 pub(crate) use key_manager::KeyManager;
 pub(crate) use libp2p::request_response::ProtocolSupport;
 // Re-export libp2p types and identity for application use
@@ -22,7 +21,8 @@ pub(crate) use libp2p::{
 use libp2p::{SwarmBuilder, noise, tcp};
 // Re-export message types
 pub(crate) use message::{RequestMessage, ResponseMessage};
-pub(crate) use pending_requests::{PendingRequests, RequestError};
+pub(crate) use error::NetworkError;
+pub(crate) use pending_requests::PendingRequests;
 pub(crate) use protocols::{JsCompatCodec, ProtocolTimeouts};
 use serde::Deserialize;
 use tokio::sync::{Mutex, mpsc, oneshot};
@@ -91,28 +91,28 @@ enum NetworkAction {
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: StoreRequestData,
-        response_tx: oneshot::Sender<oneshot::Receiver<Result<StoreResponseData, RequestError>>>,
+        response_tx: oneshot::Sender<oneshot::Receiver<Result<StoreResponseData, NetworkError>>>,
     },
     SendGetRequest {
         peer: PeerId,
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: GetRequestData,
-        response_tx: oneshot::Sender<oneshot::Receiver<Result<GetResponseData, RequestError>>>,
+        response_tx: oneshot::Sender<oneshot::Receiver<Result<GetResponseData, NetworkError>>>,
     },
     SendFinalityRequest {
         peer: PeerId,
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: FinalityRequestData,
-        response_tx: oneshot::Sender<oneshot::Receiver<Result<FinalityResponseData, RequestError>>>,
+        response_tx: oneshot::Sender<oneshot::Receiver<Result<FinalityResponseData, NetworkError>>>,
     },
     SendBatchGetRequest {
         peer: PeerId,
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: BatchGetRequestData,
-        response_tx: oneshot::Sender<oneshot::Receiver<Result<BatchGetResponseData, RequestError>>>,
+        response_tx: oneshot::Sender<oneshot::Receiver<Result<BatchGetResponseData, NetworkError>>>,
     },
     // Protocol-specific response actions
     SendStoreResponse {
@@ -598,7 +598,7 @@ impl NetworkManager {
         let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::GetConnectedPeers(tx))
             .await?;
-        rx.await.map_err(|_| NetworkError::RequestIdChannelClosed)
+        rx.await.map_err(|_| NetworkError::ResponseChannelClosed)
     }
 
     /// Get known addresses for a peer from the Kademlia routing table.
@@ -613,7 +613,7 @@ impl NetworkManager {
             response_tx: tx,
         })
         .await?;
-        rx.await.map_err(|_| NetworkError::RequestIdChannelClosed)
+        rx.await.map_err(|_| NetworkError::ResponseChannelClosed)
     }
 
     /// Enqueue Kademlia address updates for a peer.
@@ -641,7 +641,7 @@ impl NetworkManager {
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: StoreRequestData,
-    ) -> Result<StoreResponseData, RequestError> {
+    ) -> Result<StoreResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::SendStoreRequest {
             peer,
@@ -650,12 +650,11 @@ impl NetworkManager {
             request_data,
             response_tx: tx,
         })
-        .await
-        .map_err(|e| RequestError::ConnectionFailed(e.to_string()))?;
-        let response_rx = rx
+        .await?;
+        let response_rx = rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?;
+        response_rx
             .await
-            .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
-        response_rx.await.map_err(|_| RequestError::ChannelClosed)?
+            .map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
     /// Send a store response.
@@ -675,7 +674,7 @@ impl NetworkManager {
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: GetRequestData,
-    ) -> Result<GetResponseData, RequestError> {
+    ) -> Result<GetResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::SendGetRequest {
             peer,
@@ -684,12 +683,11 @@ impl NetworkManager {
             request_data,
             response_tx: tx,
         })
-        .await
-        .map_err(|e| RequestError::ConnectionFailed(e.to_string()))?;
-        let response_rx = rx
+        .await?;
+        let response_rx = rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?;
+        response_rx
             .await
-            .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
-        response_rx.await.map_err(|_| RequestError::ChannelClosed)?
+            .map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
     /// Send a get response.
@@ -709,7 +707,7 @@ impl NetworkManager {
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: FinalityRequestData,
-    ) -> Result<FinalityResponseData, RequestError> {
+    ) -> Result<FinalityResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::SendFinalityRequest {
             peer,
@@ -718,12 +716,11 @@ impl NetworkManager {
             request_data,
             response_tx: tx,
         })
-        .await
-        .map_err(|e| RequestError::ConnectionFailed(e.to_string()))?;
-        let response_rx = rx
+        .await?;
+        let response_rx = rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?;
+        response_rx
             .await
-            .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
-        response_rx.await.map_err(|_| RequestError::ChannelClosed)?
+            .map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
     /// Send a finality response.
@@ -743,7 +740,7 @@ impl NetworkManager {
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: BatchGetRequestData,
-    ) -> Result<BatchGetResponseData, RequestError> {
+    ) -> Result<BatchGetResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::SendBatchGetRequest {
             peer,
@@ -752,12 +749,11 @@ impl NetworkManager {
             request_data,
             response_tx: tx,
         })
-        .await
-        .map_err(|e| RequestError::ConnectionFailed(e.to_string()))?;
-        let response_rx = rx
+        .await?;
+        let response_rx = rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?;
+        response_rx
             .await
-            .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
-        response_rx.await.map_err(|_| RequestError::ChannelClosed)?
+            .map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
     /// Send a batch get response.

@@ -13,7 +13,7 @@ use crate::{
         store_rpc_controller::StoreRpcController,
     },
     managers::network::{
-        NetworkBehaviour, NetworkManager, NodeBehaviour, NodeBehaviourEvent, RequestError,
+        NetworkBehaviour, NetworkError, NetworkManager, NodeBehaviour, NodeBehaviourEvent,
         SwarmEvent, identify, kad, request_response,
     },
     services::PeerDiscoveryTracker,
@@ -54,7 +54,7 @@ macro_rules! handle_protocol_event {
                     ?error,
                     concat!($protocol_name, " request failed")
                 );
-                $pending.complete_failure(request_id, RequestError::from(&error));
+                $pending.complete_failure(request_id, NetworkError::from(&error));
             }
             request_response::Event::InboundFailure {
                 peer,

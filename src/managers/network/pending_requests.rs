@@ -1,42 +1,9 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use libp2p::request_response::OutboundFailure;
 use tokio::sync::oneshot;
 
-use super::request_response::OutboundRequestId;
-
-/// Error type for pending request operations.
-#[derive(Debug, Clone, thiserror::Error)]
-pub(crate) enum RequestError {
-    #[error("Request timed out")]
-    Timeout,
-
-    #[error("Connection failed: {0}")]
-    ConnectionFailed(String),
-
-    #[error("Peer not connected")]
-    NotConnected,
-
-    #[error("Response channel closed")]
-    ChannelClosed,
-}
-
-impl From<&OutboundFailure> for RequestError {
-    fn from(error: &OutboundFailure) -> Self {
-        match error {
-            OutboundFailure::Timeout => RequestError::Timeout,
-            OutboundFailure::ConnectionClosed => {
-                RequestError::ConnectionFailed("Connection closed".to_string())
-            }
-            OutboundFailure::DialFailure => RequestError::NotConnected,
-            OutboundFailure::UnsupportedProtocols => {
-                RequestError::ConnectionFailed("Unsupported protocols".to_string())
-            }
-            _ => RequestError::ConnectionFailed(error.to_string()),
-        }
-    }
-}
+use super::{error::NetworkError, request_response::OutboundRequestId};
 
 /// Tracks pending outbound requests and their oneshot channels for response delivery.
 ///
@@ -51,7 +18,7 @@ impl From<&OutboundFailure> for RequestError {
 /// concurrently.
 pub(crate) struct PendingRequests<T> {
     /// Maps request_id -> oneshot sender for delivering responses
-    pending: Arc<DashMap<OutboundRequestId, oneshot::Sender<Result<T, RequestError>>>>,
+    pending: Arc<DashMap<OutboundRequestId, oneshot::Sender<Result<T, NetworkError>>>>,
 }
 
 impl<T> PendingRequests<T>
@@ -71,7 +38,7 @@ where
     pub(crate) fn insert(
         &self,
         request_id: OutboundRequestId,
-    ) -> oneshot::Receiver<Result<T, RequestError>> {
+    ) -> oneshot::Receiver<Result<T, NetworkError>> {
         let (tx, rx) = oneshot::channel();
         self.pending.insert(request_id, tx);
 
@@ -107,7 +74,7 @@ where
     pub(crate) fn complete_failure(
         &self,
         request_id: OutboundRequestId,
-        error: RequestError,
+        error: NetworkError,
     ) -> bool {
         if let Some((_, sender)) = self.pending.remove(&request_id) {
             let _ = sender.send(Err(error));
