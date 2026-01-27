@@ -1,10 +1,17 @@
-use std::{collections::HashMap, sync::Arc, time::Duration, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::future::join_all;
 use metrics::{counter, gauge, histogram};
 
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    commands::{
+        command_executor::CommandExecutionResult, command_registry::CommandHandler,
+        operations::get::protocols::batch_get::BATCH_GET_UAL_MAX_LIMIT,
+    },
     context::Context,
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
@@ -20,10 +27,7 @@ use crate::{
         },
     },
     operations::BatchGetOperation,
-    services::{
-        GetValidationService, TripleStoreService,
-        operation::{Operation, OperationService as GenericOperationService},
-    },
+    services::{GetValidationService, TripleStoreService, operation::Operation},
     utils::ual::{ParsedUal, derive_ual, parse_ual},
 };
 
@@ -36,10 +40,6 @@ const MAX_NEW_KCS_PER_CONTRACT: u64 = 1000;
 /// Maximum retry attempts before a KC is no longer retried (stays in DB for future recovery)
 const MAX_RETRY_ATTEMPTS: u32 = 2;
 
-/// Maximum number of UALs per network batch GET request (dictated by receiver nodes)
-/// This must match BATCH_GET_UAL_MAX_LIMIT in the batch_get messages module
-const NETWORK_BATCH_SIZE: usize = 1000;
-
 /// Maximum number of pending KCs to process per sync cycle.
 /// Keep this low because filter_pending_kcs makes 2 RPC calls per KC sequentially.
 /// At ~100ms per RPC call, 100 KCs = ~20 seconds of RPC calls per cycle.
@@ -50,7 +50,6 @@ pub(crate) struct SyncCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     triple_store_service: Arc<TripleStoreService>,
     network_manager: Arc<NetworkManager>,
-    batch_get_operation_service: Arc<GenericOperationService<BatchGetOperation>>,
     get_validation_service: Arc<GetValidationService>,
 }
 
@@ -79,7 +78,6 @@ impl SyncCommandHandler {
             repository_manager: Arc::clone(context.repository_manager()),
             triple_store_service: Arc::clone(context.triple_store_service()),
             network_manager: Arc::clone(context.network_manager()),
-            batch_get_operation_service: Arc::clone(context.batch_get_operation_service()),
             get_validation_service: Arc::clone(context.get_validation_service()),
         }
     }
@@ -587,53 +585,55 @@ impl SyncCommandHandler {
         };
 
         // Filter out expired KCs if we have the current epoch, and cache end_epoch for later use
-        let (kcs_to_enqueue, expired_count): (Vec<(u64, Option<u64>)>, u64) =
-            if let Some(current_epoch) = current_epoch {
-                let mut valid_kc_entries = Vec::with_capacity(new_kc_ids.len());
-                let mut expired = 0u64;
+        let (kcs_to_enqueue, expired_count): (Vec<(u64, Option<u64>)>, u64) = if let Some(
+            current_epoch,
+        ) = current_epoch
+        {
+            let mut valid_kc_entries = Vec::with_capacity(new_kc_ids.len());
+            let mut expired = 0u64;
 
-                for kc_id in &new_kc_ids {
-                    match self
-                        .blockchain_manager
-                        .get_kc_end_epoch(blockchain_id, contract_address, *kc_id as u128)
-                        .await
-                    {
-                        Ok(end_epoch) => {
-                            if current_epoch > end_epoch {
-                                // KC is expired, skip it
-                                expired += 1;
-                                tracing::trace!(
-                                    blockchain_id = %blockchain_id,
-                                    contract = %contract_addr_str,
-                                    kc_id = kc_id,
-                                    current_epoch,
-                                    end_epoch,
-                                    "[DKG SYNC] Skipping expired KC during enqueue"
-                                );
-                            } else {
-                                // Store kc_id with its end_epoch for caching
-                                valid_kc_entries.push((*kc_id, Some(end_epoch)));
-                            }
-                        }
-                        Err(e) => {
-                            // If we can't get the end epoch, enqueue it anyway and filter later
+            for kc_id in &new_kc_ids {
+                match self
+                    .blockchain_manager
+                    .get_kc_end_epoch(blockchain_id, contract_address, *kc_id as u128)
+                    .await
+                {
+                    Ok(end_epoch) => {
+                        if current_epoch > end_epoch {
+                            // KC is expired, skip it
+                            expired += 1;
                             tracing::trace!(
                                 blockchain_id = %blockchain_id,
                                 contract = %contract_addr_str,
                                 kc_id = kc_id,
-                                error = %e,
-                                "[DKG SYNC] Failed to get KC end epoch, will enqueue and check later"
+                                current_epoch,
+                                end_epoch,
+                                "[DKG SYNC] Skipping expired KC during enqueue"
                             );
-                            valid_kc_entries.push((*kc_id, None));
+                        } else {
+                            // Store kc_id with its end_epoch for caching
+                            valid_kc_entries.push((*kc_id, Some(end_epoch)));
                         }
                     }
+                    Err(e) => {
+                        // If we can't get the end epoch, enqueue it anyway and filter later
+                        tracing::trace!(
+                            blockchain_id = %blockchain_id,
+                            contract = %contract_addr_str,
+                            kc_id = kc_id,
+                            error = %e,
+                            "[DKG SYNC] Failed to get KC end epoch, will enqueue and check later"
+                        );
+                        valid_kc_entries.push((*kc_id, None));
+                    }
                 }
+            }
 
-                (valid_kc_entries, expired)
-            } else {
-                // No current epoch available, enqueue all without cached end_epoch
-                (new_kc_ids.iter().map(|&id| (id, None)).collect(), 0)
-            };
+            (valid_kc_entries, expired)
+        } else {
+            // No current epoch available, enqueue all without cached end_epoch
+            (new_kc_ids.iter().map(|&id| (id, None)).collect(), 0)
+        };
 
         if expired_count > 0 {
             tracing::debug!(
@@ -670,7 +670,7 @@ impl SyncCommandHandler {
     /// Fetch KCs from the network by sending batch GET requests to peers.
     ///
     /// This function:
-    /// 1. Splits KCs into chunks of NETWORK_BATCH_SIZE
+    /// 1. Splits KCs into chunks of BATCH_GET_UAL_MAX_LIMIT
     /// 2. For each chunk, queries peers in batches of BATCH_SIZE (5 peers at a time)
     /// 3. Validates responses and aggregates successful results
     ///
@@ -727,8 +727,8 @@ impl SyncCommandHandler {
             "[DKG SYNC] Starting network fetch for KCs"
         );
 
-        // Split KCs into chunks of NETWORK_BATCH_SIZE
-        for chunk in kcs_to_sync.chunks(NETWORK_BATCH_SIZE) {
+        // Split KCs into chunks of BATCH_GET_UAL_MAX_LIMIT
+        for chunk in kcs_to_sync.chunks(BATCH_GET_UAL_MAX_LIMIT) {
             let chunk_result = self
                 .fetch_kc_chunk_from_network(blockchain_id, chunk, &peers)
                 .await;
@@ -996,7 +996,6 @@ fn parse_metadata_from_triples(triples: &[String]) -> Option<KnowledgeCollection
         _ => None,
     }
 }
-
 
 #[derive(Clone)]
 pub(crate) struct SyncCommandData {

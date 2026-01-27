@@ -5,7 +5,10 @@ use dashmap::DashMap;
 use tokio::sync::watch;
 use uuid::Uuid;
 
-use super::{result_store::{ResultStoreError, TABLE_NAME}, traits::Operation};
+use super::{
+    result_store::{ResultStoreError, TABLE_NAME},
+    traits::Operation,
+};
 use crate::{
     error::NodeError,
     managers::{

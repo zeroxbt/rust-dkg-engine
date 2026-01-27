@@ -12,5 +12,5 @@ mod visibility;
 pub(crate) use assertion::Assertion;
 pub(crate) use blockchain_id::BlockchainId;
 pub(crate) use signature::SignatureComponents;
-pub(crate) use token_ids::{TokenIds, MAX_TOKENS_PER_KC};
+pub(crate) use token_ids::{MAX_TOKENS_PER_KC, TokenIds};
 pub(crate) use visibility::Visibility;

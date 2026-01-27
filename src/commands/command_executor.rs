@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::Duration, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use chrono::Utc;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -190,7 +193,8 @@ impl CommandExecutor {
         let result = self.command_resolver.execute(request.command()).await;
         let duration = start.elapsed();
 
-        histogram!("command_executor_duration_seconds", "command" => command_name).record(duration.as_secs_f64());
+        histogram!("command_executor_duration_seconds", "command" => command_name)
+            .record(duration.as_secs_f64());
 
         match result {
             CommandExecutionResult::Repeat { delay } => {

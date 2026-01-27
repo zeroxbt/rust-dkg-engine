@@ -75,16 +75,14 @@ enum NetworkAction {
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: FinalityRequestData,
-        response_tx:
-            oneshot::Sender<oneshot::Receiver<Result<FinalityResponseData, RequestError>>>,
+        response_tx: oneshot::Sender<oneshot::Receiver<Result<FinalityResponseData, RequestError>>>,
     },
     SendBatchGetRequest {
         peer: PeerId,
         addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: BatchGetRequestData,
-        response_tx:
-            oneshot::Sender<oneshot::Receiver<Result<BatchGetResponseData, RequestError>>>,
+        response_tx: oneshot::Sender<oneshot::Receiver<Result<BatchGetResponseData, RequestError>>>,
     },
     // Protocol-specific response actions
     SendStoreResponse {
@@ -451,7 +449,10 @@ impl NetworkManager {
             } => {
                 // Wrap request data in protocol message
                 let message = RequestMessage {
-                    header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
+                    header: RequestMessageHeader::new(
+                        operation_id,
+                        RequestMessageType::ProtocolRequest,
+                    ),
                     data: request_data,
                 };
                 // Atomically register pending request BEFORE sending to avoid race condition
@@ -479,7 +480,10 @@ impl NetworkManager {
                 response_tx,
             } => {
                 let message = RequestMessage {
-                    header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
+                    header: RequestMessageHeader::new(
+                        operation_id,
+                        RequestMessageType::ProtocolRequest,
+                    ),
                     data: request_data,
                 };
                 let request_id = swarm
@@ -506,7 +510,10 @@ impl NetworkManager {
                 response_tx,
             } => {
                 let message = RequestMessage {
-                    header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
+                    header: RequestMessageHeader::new(
+                        operation_id,
+                        RequestMessageType::ProtocolRequest,
+                    ),
                     data: request_data,
                 };
                 let request_id = swarm
@@ -533,7 +540,10 @@ impl NetworkManager {
                 response_tx,
             } => {
                 let message = RequestMessage {
-                    header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
+                    header: RequestMessageHeader::new(
+                        operation_id,
+                        RequestMessageType::ProtocolRequest,
+                    ),
                     data: request_data,
                 };
                 let request_id = swarm
@@ -636,9 +646,7 @@ impl NetworkManager {
         let response_rx = rx
             .await
             .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
-        response_rx
-            .await
-            .map_err(|_| RequestError::ChannelClosed)?
+        response_rx.await.map_err(|_| RequestError::ChannelClosed)?
     }
 
     /// Send a store response.
@@ -672,9 +680,7 @@ impl NetworkManager {
         let response_rx = rx
             .await
             .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
-        response_rx
-            .await
-            .map_err(|_| RequestError::ChannelClosed)?
+        response_rx.await.map_err(|_| RequestError::ChannelClosed)?
     }
 
     /// Send a get response.
@@ -708,9 +714,7 @@ impl NetworkManager {
         let response_rx = rx
             .await
             .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
-        response_rx
-            .await
-            .map_err(|_| RequestError::ChannelClosed)?
+        response_rx.await.map_err(|_| RequestError::ChannelClosed)?
     }
 
     /// Send a finality response.
@@ -744,9 +748,7 @@ impl NetworkManager {
         let response_rx = rx
             .await
             .map_err(|_| RequestError::ConnectionFailed("Action channel closed".to_string()))?;
-        response_rx
-            .await
-            .map_err(|_| RequestError::ChannelClosed)?
+        response_rx.await.map_err(|_| RequestError::ChannelClosed)?
     }
 
     /// Send a batch get response.

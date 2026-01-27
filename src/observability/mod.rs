@@ -3,8 +3,7 @@
 //! This module provides helper functions to instrument async operations
 //! with both timing metrics and success/failure counters.
 
-use std::future::Future;
-use std::time::Instant;
+use std::{future::Future, time::Instant};
 
 use metrics::{counter, histogram};
 
@@ -27,7 +26,11 @@ use metrics::{counter, histogram};
 /// This will record:
 /// - `triple_store_operation_duration_seconds{operation="insert"}` histogram
 /// - `triple_store_operations_total{operation="insert", status="success|error"}` counter
-pub(crate) async fn observe<T, E, F>(subsystem: &'static str, operation: &'static str, fut: F) -> Result<T, E>
+pub(crate) async fn observe<T, E, F>(
+    subsystem: &'static str,
+    operation: &'static str,
+    fut: F,
+) -> Result<T, E>
 where
     F: Future<Output = Result<T, E>>,
 {
@@ -66,7 +69,11 @@ where
 ///     observe_infallible("network", "get_peers", self.inner.get_peers()).await
 /// }
 /// ```
-pub(crate) async fn observe_infallible<T, F>(subsystem: &'static str, operation: &'static str, fut: F) -> T
+pub(crate) async fn observe_infallible<T, F>(
+    subsystem: &'static str,
+    operation: &'static str,
+    fut: F,
+) -> T
 where
     F: Future<Output = T>,
 {

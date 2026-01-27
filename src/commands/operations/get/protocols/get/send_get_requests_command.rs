@@ -9,7 +9,10 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{AccessPolicy, BlockchainManager},
-        network::{NetworkManager, messages::{GetRequestData, GetResponseData}},
+        network::{
+            NetworkManager,
+            messages::{GetRequestData, GetResponseData},
+        },
         repository::RepositoryManager,
         triple_store::{Assertion, MAX_TOKENS_PER_KC, TokenIds, Visibility},
     },

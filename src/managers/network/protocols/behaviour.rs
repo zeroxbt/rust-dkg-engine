@@ -1,14 +1,16 @@
-use super::{JsCompatCodec, constants::ProtocolTimeouts};
+pub(crate) use libp2p::swarm::derive_prelude::*;
+
+use super::{
+    super::messages::{
+        BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
+        GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
+    },
+    JsCompatCodec,
+    constants::ProtocolTimeouts,
+};
 use crate::managers::network::{
     ProtocolSupport, RequestMessage, ResponseMessage, StreamProtocol, request_response,
 };
-
-use super::super::messages::{
-    BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
-    GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
-};
-
-pub(crate) use libp2p::swarm::derive_prelude::*;
 
 /// Application-specific protocols
 ///

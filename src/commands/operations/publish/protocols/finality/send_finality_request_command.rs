@@ -318,7 +318,8 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
             return CommandExecutionResult::Completed;
         }
 
-        let finality_request_data = FinalityRequestData::new(ual, data.publish_operation_id.clone());
+        let finality_request_data =
+            FinalityRequestData::new(ual, data.publish_operation_id.clone());
 
         // Get peer addresses from Kademlia for reliable request delivery
         let addresses = self
@@ -329,7 +330,12 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
 
         if let Err(e) = self
             .network_manager
-            .send_finality_request(publisher_peer_id, addresses, operation_id, finality_request_data)
+            .send_finality_request(
+                publisher_peer_id,
+                addresses,
+                operation_id,
+                finality_request_data,
+            )
             .await
         {
             tracing::error!(

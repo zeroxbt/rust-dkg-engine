@@ -121,6 +121,7 @@ pub(crate) struct Contracts {
     profile: Profile::ProfileInstance<BlockchainProvider>,
     sharding_table: ShardingTable::ShardingTableInstance<BlockchainProvider>,
     sharding_table_storage: ShardingTableStorage::ShardingTableStorageInstance<BlockchainProvider>,
+    #[cfg(feature = "dev-tools")]
     token: Token::TokenInstance<BlockchainProvider>,
     chronos: Chronos::ChronosInstance<BlockchainProvider>,
     paranets_registry: Option<ParanetsRegistry::ParanetsRegistryInstance<BlockchainProvider>>,
@@ -149,10 +150,12 @@ impl Contracts {
         &self.sharding_table_storage
     }
 
+    #[cfg(feature = "dev-tools")]
     pub(crate) fn staking(&self) -> &Staking::StakingInstance<BlockchainProvider> {
         &self.staking
     }
 
+    #[cfg(feature = "dev-tools")]
     pub(crate) fn token(&self) -> &Token::TokenInstance<BlockchainProvider> {
         &self.token
     }
@@ -170,11 +173,6 @@ impl Contracts {
     ) -> Option<&KnowledgeCollectionStorage::KnowledgeCollectionStorageInstance<BlockchainProvider>>
     {
         self.knowledge_collection_storages.get(address)
-    }
-
-    /// Get all KnowledgeCollectionStorage contract addresses.
-    pub(crate) fn knowledge_collection_storage_addresses(&self) -> Vec<Address> {
-        self.knowledge_collection_storages.keys().copied().collect()
     }
 
     pub(crate) fn chronos(&self) -> &Chronos::ChronosInstance<BlockchainProvider> {
@@ -264,14 +262,13 @@ impl Contracts {
             }
             ContractName::KnowledgeCollectionStorage => {
                 // ADD contract instead of replacing (supports multiple storage contracts)
-                if !self
-                    .knowledge_collection_storages
-                    .contains_key(&contract_address)
+                if let std::collections::hash_map::Entry::Vacant(e) =
+                    self.knowledge_collection_storages.entry(contract_address)
                 {
-                    self.knowledge_collection_storages.insert(
+                    e.insert(KnowledgeCollectionStorage::new(
                         contract_address,
-                        KnowledgeCollectionStorage::new(contract_address, provider.clone()),
-                    );
+                        provider.clone(),
+                    ));
                     tracing::info!(
                         "Added KnowledgeCollectionStorage at {:?} (total: {})",
                         contract_address,
@@ -485,6 +482,7 @@ pub(crate) async fn initialize_contracts(
             ),
             provider.clone(),
         ),
+        #[cfg(feature = "dev-tools")]
         token: Token::new(
             Address::from(hub.getContractAddress("Token".to_string()).call().await?.0),
             provider.clone(),

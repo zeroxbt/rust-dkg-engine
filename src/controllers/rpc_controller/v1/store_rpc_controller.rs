@@ -16,12 +16,10 @@ use crate::{
         },
         triple_store::Assertion,
     },
-    operations::PublishOperation,
-    services::{ResponseChannels, operation::OperationService as GenericOperationService},
+    services::ResponseChannels,
 };
 
 pub(crate) struct StoreRpcController {
-    publish_operation_service: Arc<GenericOperationService<PublishOperation>>,
     response_channels: Arc<ResponseChannels<StoreResponseData>>,
     command_scheduler: CommandScheduler,
 }
@@ -29,15 +27,9 @@ pub(crate) struct StoreRpcController {
 impl StoreRpcController {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
-            publish_operation_service: Arc::clone(context.publish_operation_service()),
             response_channels: Arc::clone(context.store_response_channels()),
             command_scheduler: context.command_scheduler().clone(),
         }
-    }
-
-    /// Returns a reference to the operation service for this controller.
-    pub(crate) fn operation_service(&self) -> &Arc<GenericOperationService<PublishOperation>> {
-        &self.publish_operation_service
     }
 
     pub(crate) async fn handle_request(

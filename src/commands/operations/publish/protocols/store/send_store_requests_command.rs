@@ -9,7 +9,10 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{BlockchainId, BlockchainManager, H256, utils::keccak256_encode_packed},
-        network::{NetworkManager, messages::{StoreRequestData, StoreResponseData}},
+        network::{
+            NetworkManager,
+            messages::{StoreRequestData, StoreResponseData},
+        },
         repository::RepositoryManager,
         triple_store::Assertion,
     },

@@ -13,12 +13,10 @@ use crate::{
         message::{RequestMessage, ResponseMessage},
         request_response,
     },
-    operations::GetOperation,
-    services::{ResponseChannels, operation::OperationService as GenericOperationService},
+    services::ResponseChannels,
 };
 
 pub(crate) struct GetRpcController {
-    get_operation_service: Arc<GenericOperationService<GetOperation>>,
     response_channels: Arc<ResponseChannels<GetResponseData>>,
     command_scheduler: CommandScheduler,
 }
@@ -26,15 +24,9 @@ pub(crate) struct GetRpcController {
 impl GetRpcController {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
-            get_operation_service: Arc::clone(context.get_operation_service()),
             response_channels: Arc::clone(context.get_response_channels()),
             command_scheduler: context.command_scheduler().clone(),
         }
-    }
-
-    /// Returns a reference to the operation service for this controller.
-    pub(crate) fn operation_service(&self) -> &Arc<GenericOperationService<GetOperation>> {
-        &self.get_operation_service
     }
 
     pub(crate) async fn handle_request(
