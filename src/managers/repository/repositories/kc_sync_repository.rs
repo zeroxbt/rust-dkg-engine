@@ -2,16 +2,15 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 
 use crate::managers::repository::{
     error::Result,
     models::{
         kc_sync_progress::{
-            ActiveModel as ProgressActiveModel, Column as ProgressColumn,
-            Entity as ProgressEntity, Model as ProgressModel,
+            ActiveModel as ProgressActiveModel, Column as ProgressColumn, Entity as ProgressEntity,
+            Model as ProgressModel,
         },
         kc_sync_queue::{
             ActiveModel as QueueActiveModel, Column as QueueColumn, Entity as QueueEntity,

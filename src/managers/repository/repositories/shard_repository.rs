@@ -28,10 +28,7 @@ impl ShardRepository {
         Self { conn }
     }
 
-    pub(crate) async fn get_all_peer_records(
-        &self,
-        blockchain_id: &str,
-    ) -> Result<Vec<Model>> {
+    pub(crate) async fn get_all_peer_records(&self, blockchain_id: &str) -> Result<Vec<Model>> {
         Ok(Entity::find()
             .filter(Column::BlockchainId.eq(blockchain_id))
             .all(self.conn.as_ref())
