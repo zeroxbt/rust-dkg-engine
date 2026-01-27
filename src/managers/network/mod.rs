@@ -22,7 +22,7 @@ use libp2p::{SwarmBuilder, noise, tcp};
 // Re-export message types
 pub(crate) use message::{RequestMessage, ResponseMessage};
 pub(crate) use pending_requests::{PendingRequests, RequestError};
-pub(crate) use protocols::{NetworkProtocols, NetworkProtocolsEvent};
+pub(crate) use protocols::{JsCompatCodec, ProtocolTimeouts};
 use serde::Deserialize;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tracing::info;
@@ -48,7 +48,6 @@ macro_rules! handle_protocol_request {
         // Atomically register pending request BEFORE sending to avoid race condition
         let request_id = $swarm
             .behaviour_mut()
-            .protocols
             .$protocol
             .send_request_with_addresses(&$peer, message, $addresses);
         let receiver = $self.$pending.insert(request_id);
@@ -61,7 +60,6 @@ macro_rules! handle_protocol_response {
     ($swarm:expr, $channel:expr, $message:expr, $protocol:ident) => {{
         let _ = $swarm
             .behaviour_mut()
-            .protocols
             .$protocol
             .send_response($channel, $message);
     }};
@@ -160,15 +158,27 @@ impl NetworkManagerConfig {
     }
 }
 
-/// Hierarchical network behaviour that combines base protocols with app-specific protocols
+/// Flattened network behaviour combining all protocols used by the node.
 ///
-/// NetworkManager provides the base protocols (kad, identify) and the application
-/// provides its custom protocols via the NetworkProtocols struct.
+/// This includes both infrastructure protocols (kad, identify) and
+/// application-specific request-response protocols (store, get, finality, batch_get).
 #[derive(NetworkBehaviour)]
-pub(crate) struct CompositeBehaviour {
+pub(crate) struct NodeBehaviour {
     pub kad: kad::Behaviour<MemoryStore>,
     pub identify: identify::Behaviour,
-    pub protocols: NetworkProtocols,
+    // Application protocols using JsCompatCodec for JS node interoperability
+    pub store: request_response::Behaviour<
+        JsCompatCodec<RequestMessage<StoreRequestData>, ResponseMessage<StoreResponseData>>,
+    >,
+    pub get: request_response::Behaviour<
+        JsCompatCodec<RequestMessage<GetRequestData>, ResponseMessage<GetResponseData>>,
+    >,
+    pub finality: request_response::Behaviour<
+        JsCompatCodec<RequestMessage<FinalityRequestData>, ResponseMessage<FinalityResponseData>>,
+    >,
+    pub batch_get: request_response::Behaviour<
+        JsCompatCodec<RequestMessage<BatchGetRequestData>, ResponseMessage<BatchGetResponseData>>,
+    >,
 }
 
 /// NetworkManager handles all network communication for the node.
@@ -177,7 +187,7 @@ pub(crate) struct CompositeBehaviour {
 /// for atomic registration of pending requests before sending to avoid race conditions.
 pub(crate) struct NetworkManager {
     config: NetworkManagerConfig,
-    swarm: Mutex<Swarm<CompositeBehaviour>>,
+    swarm: Mutex<Swarm<NodeBehaviour>>,
     action_tx: mpsc::Sender<NetworkAction>,
     action_rx: Mutex<Option<mpsc::Receiver<NetworkAction>>>,
     peer_id: PeerId,
@@ -252,13 +262,41 @@ impl NetworkManager {
             public_key.clone(),
         ));
 
-        // 3. Application protocols
-        let protocols = NetworkProtocols::new();
+        // 3. Application protocols (store, get, finality, batch_get)
+        let store = request_response::Behaviour::with_codec(
+            JsCompatCodec::new(),
+            [(StreamProtocol::new("/store/1.0.0"), ProtocolSupport::Full)],
+            request_response::Config::default().with_request_timeout(ProtocolTimeouts::STORE),
+        );
+        let get = request_response::Behaviour::with_codec(
+            JsCompatCodec::new(),
+            [(StreamProtocol::new("/get/1.0.0"), ProtocolSupport::Full)],
+            request_response::Config::default().with_request_timeout(ProtocolTimeouts::GET),
+        );
+        let finality = request_response::Behaviour::with_codec(
+            JsCompatCodec::new(),
+            [(
+                StreamProtocol::new("/finality/1.0.0"),
+                ProtocolSupport::Full,
+            )],
+            request_response::Config::default().with_request_timeout(ProtocolTimeouts::FINALITY),
+        );
+        let batch_get = request_response::Behaviour::with_codec(
+            JsCompatCodec::new(),
+            [(
+                StreamProtocol::new("/batch-get/1.0.0"),
+                ProtocolSupport::Full,
+            )],
+            request_response::Config::default().with_request_timeout(ProtocolTimeouts::BATCH_GET),
+        );
 
-        let custom_behaviour = CompositeBehaviour {
+        let behaviour = NodeBehaviour {
             kad,
             identify,
-            protocols,
+            store,
+            get,
+            finality,
+            batch_get,
         };
 
         // Build the swarm with configurable idle connection timeout.
@@ -273,7 +311,7 @@ impl NetworkManager {
                 libp2p_mplex::Config::default,
             )
             .map_err(NetworkError::TransportCreation)?
-            .with_behaviour(|_| custom_behaviour)?
+            .with_behaviour(|_| behaviour)?
             .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(idle_timeout))
             .build();
 
@@ -391,7 +429,7 @@ impl NetworkManager {
     /// - `event_tx`: Channel sender for outgoing swarm events
     pub(crate) async fn run(
         &self,
-        event_tx: mpsc::Sender<SwarmEvent<<CompositeBehaviour as NetworkBehaviour>::ToSwarm>>,
+        event_tx: mpsc::Sender<SwarmEvent<<NodeBehaviour as NetworkBehaviour>::ToSwarm>>,
     ) {
         use libp2p::futures::StreamExt;
 
@@ -425,7 +463,7 @@ impl NetworkManager {
     }
 
     /// Handle a network action inside the swarm event loop.
-    fn handle_action(&self, swarm: &mut Swarm<CompositeBehaviour>, action: NetworkAction) {
+    fn handle_action(&self, swarm: &mut Swarm<NodeBehaviour>, action: NetworkAction) {
         match action {
             NetworkAction::FindPeers(peers) => {
                 for peer in peers {

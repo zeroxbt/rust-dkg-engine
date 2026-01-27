@@ -13,8 +13,8 @@ use crate::{
         store_rpc_controller::StoreRpcController,
     },
     managers::network::{
-        CompositeBehaviour, CompositeBehaviourEvent, NetworkBehaviour, NetworkManager,
-        NetworkProtocolsEvent, RequestError, SwarmEvent, identify, kad, request_response,
+        NetworkBehaviour, NetworkManager, NodeBehaviour, NodeBehaviourEvent, RequestError,
+        SwarmEvent, identify, kad, request_response,
     },
     services::PeerDiscoveryTracker,
 };
@@ -83,7 +83,7 @@ macro_rules! handle_protocol_event {
 }
 
 // Type alias for the complete behaviour and its event type
-type BehaviourEvent = <CompositeBehaviour as NetworkBehaviour>::ToSwarm;
+type BehaviourEvent = <NodeBehaviour as NetworkBehaviour>::ToSwarm;
 
 pub(crate) struct RpcRouter {
     network_manager: Arc<NetworkManager>,
@@ -142,41 +142,41 @@ impl RpcRouter {
     ) {
         match event {
             SwarmEvent::Behaviour(behaviour_event) => match behaviour_event {
-                CompositeBehaviourEvent::Protocols(protocol_event) => match protocol_event {
-                    NetworkProtocolsEvent::Store(inner_event) => {
-                        handle_protocol_event!(
-                            inner_event,
-                            self.store_controller,
-                            self.network_manager.pending_store(),
-                            "Store"
-                        );
-                    }
-                    NetworkProtocolsEvent::Get(inner_event) => {
-                        handle_protocol_event!(
-                            inner_event,
-                            self.get_controller,
-                            self.network_manager.pending_get(),
-                            "Get"
-                        );
-                    }
-                    NetworkProtocolsEvent::Finality(inner_event) => {
-                        handle_protocol_event!(
-                            inner_event,
-                            self.finality_controller,
-                            self.network_manager.pending_finality(),
-                            "Finality"
-                        );
-                    }
-                    NetworkProtocolsEvent::BatchGet(inner_event) => {
-                        handle_protocol_event!(
-                            inner_event,
-                            self.batch_get_controller,
-                            self.network_manager.pending_batch_get(),
-                            "Batch get"
-                        );
-                    }
-                },
-                CompositeBehaviourEvent::Identify(identify::Event::Received {
+                // Application protocol events (flattened - no more nested Protocols wrapper)
+                NodeBehaviourEvent::Store(inner_event) => {
+                    handle_protocol_event!(
+                        inner_event,
+                        self.store_controller,
+                        self.network_manager.pending_store(),
+                        "Store"
+                    );
+                }
+                NodeBehaviourEvent::Get(inner_event) => {
+                    handle_protocol_event!(
+                        inner_event,
+                        self.get_controller,
+                        self.network_manager.pending_get(),
+                        "Get"
+                    );
+                }
+                NodeBehaviourEvent::Finality(inner_event) => {
+                    handle_protocol_event!(
+                        inner_event,
+                        self.finality_controller,
+                        self.network_manager.pending_finality(),
+                        "Finality"
+                    );
+                }
+                NodeBehaviourEvent::BatchGet(inner_event) => {
+                    handle_protocol_event!(
+                        inner_event,
+                        self.batch_get_controller,
+                        self.network_manager.pending_batch_get(),
+                        "Batch get"
+                    );
+                }
+                // Infrastructure protocol events
+                NodeBehaviourEvent::Identify(identify::Event::Received {
                     peer_id,
                     info,
                     ..
@@ -191,7 +191,7 @@ impl RpcRouter {
                         tracing::error!(%peer_id, %error, "failed to enqueue kad addresses");
                     }
                 }
-                CompositeBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
+                NodeBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
                     result: kad::QueryResult::GetClosestPeers(result),
                     ..
                 }) => {
