@@ -37,13 +37,13 @@ use self::{
     },
 };
 
-/// Macro to handle protocol request actions in the swarm event loop.
+/// Macro to send a protocol request to a peer.
 /// Reduces boilerplate for the identical pattern across all 4 protocols.
 ///
 /// The response_tx is stored directly in PendingRequests, eliminating the need
 /// for nested oneshot channels. When the response arrives, it's sent directly
 /// through response_tx.
-macro_rules! handle_protocol_request {
+macro_rules! send_protocol_request {
     ($swarm:expr, $self:expr, $peer:expr, $addresses:expr, $operation_id:expr,
      $request_data:expr, $response_tx:expr, $protocol:ident, $pending:ident) => {{
         let message = RequestMessage {
@@ -60,8 +60,8 @@ macro_rules! handle_protocol_request {
     }};
 }
 
-/// Macro to handle protocol response actions in the swarm event loop.
-macro_rules! handle_protocol_response {
+/// Macro to send a protocol response to a peer.
+macro_rules! send_protocol_response {
     ($swarm:expr, $channel:expr, $message:expr, $protocol:ident) => {{
         let _ = $swarm
             .behaviour_mut()
@@ -529,12 +529,12 @@ impl NetworkManager {
                 operation_id,
                 request_data,
                 response_tx,
-            } => handle_protocol_request!(
+            } => send_protocol_request!(
                 swarm, self, peer, addresses, operation_id, request_data, response_tx,
                 store, pending_store
             ),
             NetworkAction::SendStoreResponse { channel, message } => {
-                handle_protocol_response!(swarm, channel, message, store)
+                send_protocol_response!(swarm, channel, message, store)
             }
             NetworkAction::SendGetRequest {
                 peer,
@@ -542,12 +542,12 @@ impl NetworkManager {
                 operation_id,
                 request_data,
                 response_tx,
-            } => handle_protocol_request!(
+            } => send_protocol_request!(
                 swarm, self, peer, addresses, operation_id, request_data, response_tx,
                 get, pending_get
             ),
             NetworkAction::SendGetResponse { channel, message } => {
-                handle_protocol_response!(swarm, channel, message, get)
+                send_protocol_response!(swarm, channel, message, get)
             }
             NetworkAction::SendFinalityRequest {
                 peer,
@@ -555,12 +555,12 @@ impl NetworkManager {
                 operation_id,
                 request_data,
                 response_tx,
-            } => handle_protocol_request!(
+            } => send_protocol_request!(
                 swarm, self, peer, addresses, operation_id, request_data, response_tx,
                 finality, pending_finality
             ),
             NetworkAction::SendFinalityResponse { channel, message } => {
-                handle_protocol_response!(swarm, channel, message, finality)
+                send_protocol_response!(swarm, channel, message, finality)
             }
             NetworkAction::SendBatchGetRequest {
                 peer,
@@ -568,12 +568,12 @@ impl NetworkManager {
                 operation_id,
                 request_data,
                 response_tx,
-            } => handle_protocol_request!(
+            } => send_protocol_request!(
                 swarm, self, peer, addresses, operation_id, request_data, response_tx,
                 batch_get, pending_batch_get
             ),
             NetworkAction::SendBatchGetResponse { channel, message } => {
-                handle_protocol_response!(swarm, channel, message, batch_get)
+                send_protocol_response!(swarm, channel, message, batch_get)
             }
         }
     }
