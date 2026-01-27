@@ -17,28 +17,15 @@ use commands::{
     command_registry::default_command_requests,
 };
 use context::Context;
-use controllers::{
-    http_api_controller::http_api_router::{HttpApiConfig, HttpApiRouter},
-    rpc_controller::rpc_router::RpcRouter,
-};
 use dotenvy::dotenv;
-use libp2p::identity::Keypair;
+use managers::network::KeyManager;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::{select, signal::unix::SignalKind, sync::oneshot};
 
 use crate::{
-    config::{AppPaths, ManagersConfig},
-    managers::{
-        blockchain::BlockchainManager,
-        network::{KeyManager, NetworkManager},
-        repository::RepositoryManager,
-        triple_store::TripleStoreManager,
-    },
-    operations::{BatchGetOperation, GetOperation, PublishOperation},
+    config::AppPaths,
     services::{
         GetValidationService, PeerDiscoveryTracker, ResponseChannels, TripleStoreService,
-        operation::OperationService as GenericOperationService,
-        pending_storage_service::PendingStorageService,
     },
 };
 
@@ -75,52 +62,46 @@ async fn main() {
     // Create command scheduler channel
     let (command_scheduler, command_rx) = CommandScheduler::channel();
 
-    let (network_manager, repository_manager, blockchain_manager, triple_store_manager) =
-        initialize_managers(&config.managers, &paths, network_key).await;
+    // Initialize managers, services, and supporting components
+    let managers = managers::initialize(&config.managers, &paths, network_key).await;
+    let services = services::initialize(&paths, &managers.repository, &managers.network);
+
     let store_response_channels = Arc::new(ResponseChannels::new());
     let get_response_channels = Arc::new(ResponseChannels::new());
     let finality_response_channels = Arc::new(ResponseChannels::new());
     let batch_get_response_channels = Arc::new(ResponseChannels::new());
     let get_validation_service =
-        Arc::new(GetValidationService::new(Arc::clone(&blockchain_manager)));
-    let triple_store_service = Arc::new(TripleStoreService::new(Arc::clone(&triple_store_manager)));
-
-    // Initialize operation services (need result_store and request_tracker)
-    let (
-        publish_operation_service,
-        get_operation_service,
-        batch_get_operation_service,
-        pending_storage_service,
-    ) = initialize_services(&paths, &repository_manager, &network_manager);
-
+        Arc::new(GetValidationService::new(Arc::clone(&managers.blockchain)));
+    let triple_store_service = Arc::new(TripleStoreService::new(Arc::clone(&managers.triple_store)));
     let peer_discovery_tracker = Arc::new(PeerDiscoveryTracker::new());
 
     let context = Arc::new(Context::new(
         config.clone(),
         command_scheduler,
-        Arc::clone(&repository_manager),
-        Arc::clone(&network_manager),
-        Arc::clone(&blockchain_manager),
+        Arc::clone(&managers.repository),
+        Arc::clone(&managers.network),
+        Arc::clone(&managers.blockchain),
         Arc::clone(&triple_store_service),
         Arc::clone(&get_validation_service),
-        Arc::clone(&pending_storage_service),
+        Arc::clone(&services.pending_storage),
         Arc::clone(&peer_discovery_tracker),
         Arc::clone(&store_response_channels),
         Arc::clone(&get_response_channels),
         Arc::clone(&finality_response_channels),
         Arc::clone(&batch_get_response_channels),
-        Arc::clone(&get_operation_service),
-        Arc::clone(&publish_operation_service),
-        Arc::clone(&batch_get_operation_service),
+        Arc::clone(&services.get_operation),
+        Arc::clone(&services.publish_operation),
+        Arc::clone(&services.batch_get_operation),
     ));
 
     #[cfg(feature = "dev-tools")]
-    initialize_dev_environment(&blockchain_manager).await;
+    initialize_dev_environment(&managers.blockchain).await;
 
     let command_executor = Arc::new(CommandExecutor::new(Arc::clone(&context), command_rx));
 
     // Schedule default commands (including per-blockchain event listeners)
-    let blockchain_ids: Vec<_> = blockchain_manager
+    let blockchain_ids: Vec<_> = managers
+        .blockchain
         .get_blockchain_ids()
         .into_iter()
         .cloned()
@@ -129,7 +110,7 @@ async fn main() {
         .schedule_commands(default_command_requests(&blockchain_ids))
         .await;
 
-    let (http_api_router, rpc_router) = initialize_controllers(&config.http_api, &context);
+    let controllers = controllers::initialize(&config.http_api, &context);
 
     // Create HTTP shutdown channel (oneshot for single signal)
     let (http_shutdown_tx, http_shutdown_rx) = oneshot::channel::<()>();
@@ -139,6 +120,8 @@ async fn main() {
         tokio::task::spawn(async move { command_executor.run().await });
 
     // Spawn network manager event loop task with RPC router as the event handler
+    let network_manager = managers.network;
+    let rpc_router = controllers.rpc_router;
     let network_event_loop_task = tokio::task::spawn(async move {
         if let Err(error) = network_manager.start_listening().await {
             tracing::error!("Failed to start swarm listener: {}", error);
@@ -150,8 +133,9 @@ async fn main() {
     });
 
     // Spawn HTTP API task if enabled
+    let http_router = controllers.http_router;
     let handle_http_events_task = tokio::task::spawn(async move {
-        if let Some(router) = http_api_router {
+        if let Some(router) = http_router {
             router
                 .listen_and_handle_http_requests(http_shutdown_rx)
                 .await;
@@ -249,128 +233,8 @@ fn display_ot_node_ascii_art() {
     }
 }
 
-async fn initialize_managers(
-    config: &ManagersConfig,
-    paths: &AppPaths,
-    network_key: Keypair,
-) -> (
-    Arc<NetworkManager>,
-    Arc<RepositoryManager>,
-    Arc<BlockchainManager>,
-    Arc<TripleStoreManager>,
-) {
-    // NetworkManager creates base protocols (kad, identify) and app protocols (store, get, etc.)
-    let network_manager = Arc::new(
-        NetworkManager::connect(&config.network, network_key)
-            .await
-            .expect("Failed to initialize network manager"),
-    );
-
-    let repository_manager = Arc::new(
-        RepositoryManager::connect(&config.repository)
-            .await
-            .expect("Failed to initialize repository manager"),
-    );
-    let mut blockchain_manager = BlockchainManager::connect(&config.blockchain)
-        .await
-        .expect("Failed to initialize blockchain manager");
-    blockchain_manager
-        .initialize_identities(&network_manager.peer_id().to_base58())
-        .await
-        .expect("Failed to initialize blockchain identities");
-
-    let blockchain_manager = Arc::new(blockchain_manager);
-
-    // Use centralized triple store path, merging with existing config
-    let mut triple_store_config = config.triple_store.clone();
-    triple_store_config.data_path = Some(paths.triple_store.clone());
-
-    let triple_store_manager = Arc::new(
-        TripleStoreManager::connect(&triple_store_config)
-            .await
-            .expect("Failed to initialize triple store manager"),
-    );
-
-    (
-        network_manager,
-        repository_manager,
-        blockchain_manager,
-        triple_store_manager,
-    )
-}
-
-fn initialize_services(
-    paths: &AppPaths,
-    repository_manager: &Arc<RepositoryManager>,
-    network_manager: &Arc<NetworkManager>,
-) -> (
-    Arc<GenericOperationService<PublishOperation>>,
-    Arc<GenericOperationService<GetOperation>>,
-    Arc<GenericOperationService<BatchGetOperation>>,
-    Arc<PendingStorageService>,
-) {
-    // Create shared key-value store manager using centralized path
-    let kv_store_manager = crate::managers::key_value_store::KeyValueStoreManager::connect(
-        paths.key_value_store.clone(),
-    )
-    .expect("Failed to connect to key-value store manager");
-
-    let pending_storage_service = Arc::new(
-        PendingStorageService::new(&kv_store_manager)
-            .expect("Failed to create pending storage service"),
-    );
-
-    let publish_operation_service = Arc::new(
-        GenericOperationService::<PublishOperation>::new(
-            Arc::clone(repository_manager),
-            Arc::clone(network_manager),
-            &kv_store_manager,
-        )
-        .expect("Failed to create publish operation service"),
-    );
-    let get_operation_service = Arc::new(
-        GenericOperationService::<GetOperation>::new(
-            Arc::clone(repository_manager),
-            Arc::clone(network_manager),
-            &kv_store_manager,
-        )
-        .expect("Failed to create get operation service"),
-    );
-    let batch_get_operation_service = Arc::new(
-        GenericOperationService::<BatchGetOperation>::new(
-            Arc::clone(repository_manager),
-            Arc::clone(network_manager),
-            &kv_store_manager,
-        )
-        .expect("Failed to create batch get operation service"),
-    );
-
-    (
-        publish_operation_service,
-        get_operation_service,
-        batch_get_operation_service,
-        pending_storage_service,
-    )
-}
-
-fn initialize_controllers(
-    http_api_config: &HttpApiConfig,
-    context: &Arc<Context>,
-) -> (Option<HttpApiRouter>, RpcRouter) {
-    let http_api_router = if http_api_config.enabled {
-        tracing::info!("HTTP API enabled on port {}", http_api_config.port);
-        Some(HttpApiRouter::new(http_api_config, context))
-    } else {
-        tracing::info!("HTTP API disabled");
-        None
-    };
-    let rpc_router = RpcRouter::new(Arc::clone(context));
-
-    (http_api_router, rpc_router)
-}
-
 #[cfg(feature = "dev-tools")]
-async fn initialize_dev_environment(blockchain_manager: &Arc<BlockchainManager>) {
+async fn initialize_dev_environment(blockchain_manager: &Arc<managers::BlockchainManager>) {
     use alloy::primitives::utils::parse_ether;
 
     // 50,000 tokens for stake
