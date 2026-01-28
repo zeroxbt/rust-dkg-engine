@@ -12,8 +12,8 @@ app_data_path = "data"
 # Logger Configuration
 # ============================================
 [logger]
-level = "rust_ot_node=info"  # Production log level
-format = "json"              # Structured JSON for log aggregation
+level = "rust_ot_node=info" # Production log level
+format = "json"             # Structured JSON for log aggregation
 
 # ============================================
 # HTTP API Configuration
@@ -39,7 +39,6 @@ ip_whitelist = ["127.0.0.1", "::1"] # Only localhost allowed by default
 # ============================================
 [managers.network]
 port = 9000
-external_ip = "178.194.72.150"
 
 # Production bootstrap nodes (OriginTrail mainnet)
 bootstrap = [

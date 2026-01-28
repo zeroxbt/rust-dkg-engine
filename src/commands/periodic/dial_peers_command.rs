@@ -10,7 +10,7 @@ use crate::{
 };
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
-const DIAL_BATCH_SIZE: usize = 10;
+const DIAL_BATCH_SIZE: usize = 20;
 
 pub(crate) struct DialPeersCommandHandler {
     repository_manager: Arc<RepositoryManager>,
