@@ -7,6 +7,3 @@ pub(crate) const BATCH_GET_UAL_MAX_LIMIT: usize = 1000;
 pub(crate) use handle_batch_get_request_command::{
     HandleBatchGetRequestCommandData, HandleBatchGetRequestCommandHandler,
 };
-pub(crate) use send_batch_get_requests_command::{
-    SendBatchGetRequestsCommandData, SendBatchGetRequestsCommandHandler,
-};

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+/* use std::{collections::HashMap, sync::Arc};
 
 use futures::future::join_all;
 use libp2p::PeerId;
@@ -447,3 +447,4 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
         CommandExecutionResult::Completed
     }
 }
+ */

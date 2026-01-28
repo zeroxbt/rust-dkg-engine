@@ -4,10 +4,7 @@ use super::{
     command_executor::CommandExecutionRequest,
     operations::{
         get::protocols::{
-            batch_get::{
-                HandleBatchGetRequestCommandData, HandleBatchGetRequestCommandHandler,
-                SendBatchGetRequestsCommandData, SendBatchGetRequestsCommandHandler,
-            },
+            batch_get::{HandleBatchGetRequestCommandData, HandleBatchGetRequestCommandHandler},
             get::{
                 handle_get_request_command::{
                     HandleGetRequestCommandData, HandleGetRequestCommandHandler,
@@ -146,10 +143,6 @@ command_registry! {
     handle_get_request: HandleGetRequest => {
         data: HandleGetRequestCommandData,
         handler: HandleGetRequestCommandHandler
-    },
-    send_batch_get_requests: SendBatchGetRequests => {
-        data: SendBatchGetRequestsCommandData,
-        handler: SendBatchGetRequestsCommandHandler
     },
     handle_batch_get_request: HandleBatchGetRequest => {
         data: HandleBatchGetRequestCommandData,
