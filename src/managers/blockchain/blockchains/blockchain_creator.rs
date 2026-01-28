@@ -369,12 +369,12 @@ pub(crate) async fn initialize_provider_with_wallet(
 pub(crate) async fn initialize_provider(
     config: &BlockchainConfig,
 ) -> Result<BlockchainProvider, BlockchainError> {
+    let private_key = config.evm_operational_wallet_private_key();
     let signer: PrivateKeySigner =
-        config
-            .evm_operational_wallet_private_key
+        private_key
             .parse()
             .map_err(|e| BlockchainError::InvalidPrivateKey {
-                key_length: config.evm_operational_wallet_private_key.len(),
+                key_length: private_key.len(),
                 source: e,
             })?;
     let wallet = EthereumWallet::from(signer);

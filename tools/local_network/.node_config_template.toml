@@ -29,7 +29,7 @@ database = "{{DATABASE_NAME}}"
 host = "localhost"
 port = 3306
 user = "root"
-password = ""
+# password provided via DB_PASSWORD env var
 
 # ============================================
 # Blockchain Configuration - Hardhat Local
@@ -44,10 +44,9 @@ initial_stake_amount = 50_000
 initial_ask_amount = 0.2
 
 # Wallets (Hardhat test accounts - DO NOT USE IN PRODUCTION)
+# Private keys provided via EVM_OPERATIONAL_WALLET_PRIVATE_KEY and EVM_MANAGEMENT_WALLET_PRIVATE_KEY env vars
 evm_operational_wallet_address = "{{OPERATIONAL_WALLET_PUBLIC}}"
-evm_operational_wallet_private_key = "{{OPERATIONAL_WALLET_PRIVATE}}"
 evm_management_wallet_address = "{{MANAGEMENT_WALLET_PUBLIC}}"
-evm_management_wallet_private_key = "{{MANAGEMENT_WALLET_PRIVATE}}"
 
 # RPC endpoints
 rpc_endpoints = ["ws://localhost:8545", "http://localhost:8545"]

@@ -760,12 +760,12 @@ impl EvmChain {
 
         // Re-create signer from config since we can't easily access it from the provider
         let config = self.config();
+        let private_key = config.evm_operational_wallet_private_key();
         let signer: PrivateKeySigner =
-            config
-                .evm_operational_wallet_private_key
+            private_key
                 .parse()
                 .map_err(|e: LocalSignerError| BlockchainError::InvalidPrivateKey {
-                    key_length: config.evm_operational_wallet_private_key.len(),
+                    key_length: private_key.len(),
                     source: e,
                 })?;
 

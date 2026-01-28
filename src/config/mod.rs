@@ -21,8 +21,8 @@ pub(crate) enum ConfigError {
     #[error("Configuration loading failed: {0}")]
     LoadError(#[from] Box<figment::Error>),
 
-    #[error("Configuration validation failed: {0}")]
-    ValidationError(String),
+    #[error("Missing required secret: {0}")]
+    MissingSecret(String),
 }
 
 /// Centralized application paths derived from the root data directory.
@@ -161,10 +161,49 @@ fn load_configuration() -> Result<Config, ConfigError> {
         figment = figment.merge(Toml::file(config_path));
     }
 
-    // Extract and validate configuration
-    let config: Config = figment.extract().map_err(Box::new)?;
+    // Extract configuration from files
+    let mut config: Config = figment.extract().map_err(Box::new)?;
+
+    // Resolve secrets from environment variables (env vars take precedence over config files)
+    resolve_secrets(&mut config)?;
 
     tracing::info!("Configuration loaded successfully");
 
     Ok(config)
+}
+
+/// Resolves secrets from environment variables into the config.
+/// Environment variables take precedence over config file values.
+///
+/// Required secrets:
+/// - `EVM_OPERATIONAL_WALLET_PRIVATE_KEY` - operational wallet private key
+/// - `DB_PASSWORD` - database password
+///
+/// Optional secrets:
+/// - `EVM_MANAGEMENT_WALLET_PRIVATE_KEY` - management wallet private key
+fn resolve_secrets(config: &mut Config) -> Result<(), ConfigError> {
+    // Resolve database password
+    if let Ok(password) = env::var("DB_PASSWORD") {
+        config.managers.repository.set_password(password);
+    }
+    config.managers.repository.ensure_password()?;
+
+    // Resolve blockchain secrets for each configured blockchain
+    let operational_key = env::var("EVM_OPERATIONAL_WALLET_PRIVATE_KEY").ok();
+    let management_key = env::var("EVM_MANAGEMENT_WALLET_PRIVATE_KEY").ok();
+
+    for blockchain_config in config.managers.blockchain.configs_mut() {
+        // Set operational wallet private key from env if available
+        if let Some(ref key) = operational_key {
+            blockchain_config.set_operational_wallet_private_key(key.clone());
+        }
+        blockchain_config.ensure_operational_wallet_private_key()?;
+
+        // Set management wallet private key from env if available (optional)
+        if let Some(ref key) = management_key {
+            blockchain_config.set_management_wallet_private_key(key.clone());
+        }
+    }
+
+    Ok(())
 }

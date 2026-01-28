@@ -7,6 +7,8 @@ pub(crate) mod utils;
 
 use std::collections::HashMap;
 
+use crate::config::ConfigError;
+
 use blockchains::evm_chain::EvmChain;
 pub(crate) use blockchains::{
     blockchain_creator::{Hub, KnowledgeCollectionStorage, ParametersStorage},
@@ -66,6 +68,11 @@ use crate::managers::blockchain::{
 ///
 /// This struct contains all the settings needed to connect to and operate on
 /// a specific blockchain network.
+///
+/// **Secret handling**: Private keys should be provided via environment variables
+/// (resolved at config load time):
+/// - `EVM_OPERATIONAL_WALLET_PRIVATE_KEY` - operational wallet private key (required)
+/// - `EVM_MANAGEMENT_WALLET_PRIVATE_KEY` - management wallet private key (optional)
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct BlockchainConfig {
     /// Unique identifier for this blockchain instance.
@@ -75,7 +82,9 @@ pub(crate) struct BlockchainConfig {
     blockchain_id: BlockchainId,
 
     /// Private key for the operational wallet (used for transactions).
-    evm_operational_wallet_private_key: String,
+    /// Set via EVM_OPERATIONAL_WALLET_PRIVATE_KEY env var or config file.
+    #[serde(default)]
+    evm_operational_wallet_private_key: Option<String>,
 
     /// Address for the operational wallet (20-byte EVM address).
     evm_operational_wallet_address: String,
@@ -84,6 +93,8 @@ pub(crate) struct BlockchainConfig {
     evm_management_wallet_address: String,
 
     /// Private key for the management wallet (optional, only needed for staking/admin ops).
+    /// Set via EVM_MANAGEMENT_WALLET_PRIVATE_KEY env var or config file.
+    #[serde(default)]
     evm_management_wallet_private_key: Option<String>,
 
     /// Hub contract address for this network.
@@ -138,8 +149,12 @@ impl BlockchainConfig {
             .expect("blockchain_id should contain valid chain_id (format: 'type:chainid')")
     }
 
+    /// Returns the operational wallet private key.
+    /// This is guaranteed to be set after config initialization.
     pub(crate) fn evm_operational_wallet_private_key(&self) -> &str {
-        &self.evm_operational_wallet_private_key
+        self.evm_operational_wallet_private_key
+            .as_ref()
+            .expect("evm_operational_wallet_private_key should be set during config initialization")
     }
 
     pub(crate) fn evm_operational_wallet_address(&self) -> &str {
@@ -150,8 +165,29 @@ impl BlockchainConfig {
         &self.evm_management_wallet_address
     }
 
-    pub(crate) fn evm_management_wallet_private_key(&self) -> Option<&String> {
-        self.evm_management_wallet_private_key.as_ref()
+    /// Returns the management wallet private key if available.
+    pub(crate) fn evm_management_wallet_private_key(&self) -> Option<&str> {
+        self.evm_management_wallet_private_key.as_deref()
+    }
+
+    /// Sets the operational wallet private key (called during secret resolution).
+    pub(crate) fn set_operational_wallet_private_key(&mut self, key: String) {
+        self.evm_operational_wallet_private_key = Some(key);
+    }
+
+    /// Sets the management wallet private key (called during secret resolution).
+    pub(crate) fn set_management_wallet_private_key(&mut self, key: String) {
+        self.evm_management_wallet_private_key = Some(key);
+    }
+
+    /// Ensures the operational wallet private key is set.
+    pub(crate) fn ensure_operational_wallet_private_key(&self) -> Result<(), ConfigError> {
+        if self.evm_operational_wallet_private_key.is_none() {
+            return Err(ConfigError::MissingSecret(
+                "EVM_OPERATIONAL_WALLET_PRIVATE_KEY env var or evm_operational_wallet_private_key config required".to_string()
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn hub_contract_address(&self) -> &str {
@@ -214,6 +250,15 @@ impl Blockchain {
         }
     }
 
+    pub(crate) fn get_config_mut(&mut self) -> &mut BlockchainConfig {
+        match self {
+            Blockchain::Hardhat(config)
+            | Blockchain::Gnosis(config)
+            | Blockchain::NeuroWeb(config)
+            | Blockchain::Base(config) => config,
+        }
+    }
+
     /// Creates the appropriate gas configuration based on blockchain type.
     pub(crate) fn gas_config(&self) -> GasConfig {
         let oracle_url = self
@@ -262,6 +307,13 @@ impl Blockchain {
 
 #[derive(Debug, Deserialize, Clone)]
 pub(crate) struct BlockchainManagerConfig(pub Vec<Blockchain>);
+
+impl BlockchainManagerConfig {
+    /// Returns mutable references to all blockchain configs for secret resolution.
+    pub(crate) fn configs_mut(&mut self) -> impl Iterator<Item = &mut BlockchainConfig> {
+        self.0.iter_mut().map(|b| b.get_config_mut())
+    }
+}
 
 /// Manages multiple blockchain connections.
 ///

@@ -6,6 +6,8 @@ mod types;
 
 use std::sync::Arc;
 
+use crate::config::ConfigError;
+
 use error::RepositoryError;
 pub(crate) use repositories::shard_repository::ShardRecordInput;
 use repositories::{
@@ -97,10 +99,16 @@ impl RepositoryManager {
     }
 }
 
+/// Repository manager configuration for database connections.
+///
+/// **Secret handling**: Database password should be provided via environment variable
+/// (resolved at config load time):
+/// - `DB_PASSWORD` - database password (required)
 #[derive(Debug, Deserialize, Clone)]
 pub(crate) struct RepositoryManagerConfig {
     user: String,
-    password: String,
+    #[serde(default)]
+    password: Option<String>,
     database: String,
     host: String,
     port: u16,
@@ -109,17 +117,47 @@ pub(crate) struct RepositoryManagerConfig {
 }
 
 impl RepositoryManagerConfig {
+    /// Returns the database password.
+    /// This is guaranteed to be set after config initialization.
+    fn password(&self) -> &str {
+        self.password
+            .as_ref()
+            .expect("password should be set during config initialization")
+    }
+
+    /// Sets the database password (called during secret resolution).
+    pub(crate) fn set_password(&mut self, password: String) {
+        self.password = Some(password);
+    }
+
+    /// Ensures the database password is set.
+    pub(crate) fn ensure_password(&self) -> Result<(), ConfigError> {
+        if self.password.is_none() {
+            return Err(ConfigError::MissingSecret(
+                "DB_PASSWORD env var or password config required".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     fn root_connection_string(&self) -> String {
         format!(
             "mysql://{}:{}@{}:{}",
-            self.user, self.password, self.host, self.port
+            self.user,
+            self.password(),
+            self.host,
+            self.port
         )
     }
 
     fn connection_string(&self) -> String {
         format!(
             "mysql://{}:{}@{}:{}/{}",
-            self.user, self.password, self.host, self.port, self.database
+            self.user,
+            self.password(),
+            self.host,
+            self.port,
+            self.database
         )
     }
 }
