@@ -8,6 +8,13 @@ pub(crate) mod triple_store_service;
 
 use std::sync::Arc;
 
+pub(crate) use get_validation_service::GetValidationService;
+pub(crate) use operation::OperationService;
+pub(crate) use peer_discovery_tracker::PeerDiscoveryTracker;
+pub(crate) use pending_storage_service::PendingStorageService;
+pub(crate) use response_channels::ResponseChannels;
+pub(crate) use triple_store_service::TripleStoreService;
+
 use crate::{
     managers::{
         Managers,
@@ -17,13 +24,6 @@ use crate::{
     },
     operations::{BatchGetOperation, GetOperation, PublishOperation},
 };
-
-pub(crate) use get_validation_service::GetValidationService;
-pub(crate) use operation::OperationService;
-pub(crate) use peer_discovery_tracker::PeerDiscoveryTracker;
-pub(crate) use pending_storage_service::PendingStorageService;
-pub(crate) use response_channels::ResponseChannels;
-pub(crate) use triple_store_service::TripleStoreService;
 
 /// Response channels for all protocol types.
 pub(crate) struct ResponseChannelsSet {

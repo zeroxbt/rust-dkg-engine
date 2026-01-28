@@ -6,15 +6,14 @@ pub(crate) mod triple_store;
 
 use std::sync::Arc;
 
-use libp2p::identity::Keypair;
-
-use crate::config::{AppPaths, ManagersConfig};
-
 pub(crate) use blockchain::BlockchainManager;
 pub(crate) use key_value_store::KeyValueStoreManager;
+use libp2p::identity::Keypair;
 pub(crate) use network::NetworkManager;
 pub(crate) use repository::RepositoryManager;
 pub(crate) use triple_store::TripleStoreManager;
+
+use crate::config::{AppPaths, ManagersConfig};
 
 /// Container for all initialized managers.
 pub(crate) struct Managers {

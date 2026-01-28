@@ -82,8 +82,7 @@ async fn main() {
     let (http_shutdown_tx, http_shutdown_rx) = oneshot::channel::<()>();
 
     // Spawn command executor task
-    let execute_commands_task =
-        tokio::task::spawn(async move { command_executor.run().await });
+    let execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
 
     // Spawn network manager event loop task with RPC router as the event handler
     let rpc_router = controllers.rpc_router;
@@ -147,7 +146,10 @@ async fn main() {
     match tokio::time::timeout(SHUTDOWN_TIMEOUT, execute_commands_task).await {
         Ok(Ok(())) => tracing::info!("Command executor shut down cleanly"),
         Ok(Err(e)) => tracing::error!("Command executor task panicked: {:?}", e),
-        Err(_) => tracing::warn!("Command executor drain timeout after {:?}", SHUTDOWN_TIMEOUT),
+        Err(_) => tracing::warn!(
+            "Command executor drain timeout after {:?}",
+            SHUTDOWN_TIMEOUT
+        ),
     }
 
     // Step 4 & 5: Network manager shuts down when its action channel closes

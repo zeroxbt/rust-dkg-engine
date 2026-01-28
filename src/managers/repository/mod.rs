@@ -6,8 +6,6 @@ mod types;
 
 use std::sync::Arc;
 
-use crate::config::ConfigError;
-
 use error::RepositoryError;
 pub(crate) use repositories::shard_repository::ShardRecordInput;
 use repositories::{
@@ -22,6 +20,7 @@ use serde::Deserialize;
 pub(crate) use types::OperationStatus;
 
 use self::migrations::Migrator;
+use crate::config::ConfigError;
 
 pub(crate) struct RepositoryManager {
     shard_repository: ShardRepository,

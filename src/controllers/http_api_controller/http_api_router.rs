@@ -124,10 +124,7 @@ impl HttpApiRouter {
         }
     }
 
-    pub(crate) async fn listen_and_handle_http_requests(
-        &self,
-        shutdown_rx: oneshot::Receiver<()>,
-    ) {
+    pub(crate) async fn listen_and_handle_http_requests(&self, shutdown_rx: oneshot::Receiver<()>) {
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, self.config.port));
 
         let cloned_router_for_serve = self.router.lock().await.clone();

@@ -5,7 +5,7 @@
 //! - Configurable log levels via config file or RUST_LOG env var
 //! - Environment variable override (RUST_LOG takes precedence)
 
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use crate::config::{LogFormat, LoggerConfig};
 
@@ -14,8 +14,8 @@ use crate::config::{LogFormat, LoggerConfig};
 /// The `RUST_LOG` environment variable takes precedence over the config file setting.
 /// If neither is set, defaults to `rust_ot_node=info`.
 pub(crate) fn initialize(config: &LoggerConfig) {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&config.level));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.level));
 
     let subscriber = tracing_subscriber::registry().with(filter);
 

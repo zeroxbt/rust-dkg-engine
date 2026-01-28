@@ -3,10 +3,10 @@ pub(crate) mod rpc_controller;
 
 use std::sync::Arc;
 
-use crate::context::Context;
-
 pub(crate) use http_api_controller::http_api_router::{HttpApiConfig, HttpApiRouter};
 pub(crate) use rpc_controller::rpc_router::RpcRouter;
+
+use crate::context::Context;
 
 /// Container for all initialized controllers.
 pub(crate) struct Controllers {

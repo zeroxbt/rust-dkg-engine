@@ -495,10 +495,10 @@ INSERT DATA {{
     /// Execute a raw SPARQL UPDATE query
     pub(crate) async fn update_raw(&self, query: &str, timeout: Option<Duration>) -> Result<()> {
         self.backend_update(
-                query,
-                timeout.unwrap_or_else(|| self.config.timeouts.insert_timeout()),
-            )
-            .await
+            query,
+            timeout.unwrap_or_else(|| self.config.timeouts.insert_timeout()),
+        )
+        .await
     }
 
     // ========== Knowledge Asset Operations ==========
