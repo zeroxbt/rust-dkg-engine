@@ -2,12 +2,11 @@ pub(crate) mod blockchains;
 pub(crate) mod error;
 mod error_utils;
 mod gas;
+mod rpc_rate_limiter;
 mod substrate;
 pub(crate) mod utils;
 
 use std::collections::HashMap;
-
-use crate::config::ConfigError;
 
 use blockchains::evm_chain::EvmChain;
 pub(crate) use blockchains::{
@@ -15,6 +14,9 @@ pub(crate) use blockchains::{
     evm_chain::{ContractLog, ContractName},
 };
 pub(crate) use gas::GasConfig;
+pub(crate) use rpc_rate_limiter::RpcRateLimiter;
+
+use crate::config::ConfigError;
 
 // Re-export event types for use by consumers
 // In alloy's sol! macro, events are nested under the contract module
@@ -119,21 +121,17 @@ pub(crate) struct BlockchainConfig {
     #[serde(default)]
     operator_fee: Option<u8>,
 
-    /// Initial stake amount in whole tokens (e.g., 50000 for 50,000 TRAC).
-    /// Only used in development for automatic staking.
-    #[serde(default)]
-    initial_stake_amount: Option<u64>,
-
-    /// Initial ask price in tokens (e.g., 0.2 TRAC per unit).
-    /// Only used in development for automatic ask setting.
-    #[serde(default)]
-    initial_ask_amount: Option<f64>,
-
     /// Substrate RPC endpoints for parachain operations (NeuroWeb only).
     /// Used for EVM account mapping validation.
     /// Supports WebSocket (wss://) and HTTP (https://) endpoints.
     #[serde(default)]
     substrate_rpc_endpoints: Option<Vec<String>>,
+
+    /// Maximum RPC requests per second (optional rate limiting).
+    /// Set this based on your RPC provider's rate limits.
+    /// Common values: 25 (free tier), 50-100 (paid tier), None (unlimited).
+    #[serde(default)]
+    max_rpc_requests_per_second: Option<u32>,
 }
 
 impl BlockchainConfig {
@@ -210,16 +208,12 @@ impl BlockchainConfig {
         self.operator_fee
     }
 
-    pub(crate) fn initial_stake_amount(&self) -> Option<u64> {
-        self.initial_stake_amount
-    }
-
-    pub(crate) fn initial_ask_amount(&self) -> Option<f64> {
-        self.initial_ask_amount
-    }
-
     pub(crate) fn substrate_rpc_endpoints(&self) -> Option<&Vec<String>> {
         self.substrate_rpc_endpoints.as_ref()
+    }
+
+    pub(crate) fn max_rpc_requests_per_second(&self) -> Option<u32> {
+        self.max_rpc_requests_per_second
     }
 }
 
@@ -876,7 +870,7 @@ mod tests {
     fn config_for_chain(chain_type: &str, chain_id: u64) -> BlockchainConfig {
         BlockchainConfig {
             blockchain_id: BlockchainId::new(format!("{}:{}", chain_type, chain_id)),
-            evm_operational_wallet_private_key: String::new(),
+            evm_operational_wallet_private_key: None,
             evm_operational_wallet_address: String::new(),
             evm_management_wallet_address: String::new(),
             evm_management_wallet_private_key: None,
@@ -885,9 +879,8 @@ mod tests {
             node_name: String::new(),
             gas_price_oracle_url: None,
             operator_fee: None,
-            initial_stake_amount: None,
-            initial_ask_amount: None,
             substrate_rpc_endpoints: None,
+            max_rpc_requests_per_second: None,
         }
     }
 

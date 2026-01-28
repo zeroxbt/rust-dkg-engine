@@ -10,7 +10,8 @@ use alloy::{
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::managers::blockchain::{
-    AccessPolicy, BlockchainConfig, BlockchainId, GasConfig, PermissionedNode, SignatureComponents,
+    AccessPolicy, BlockchainConfig, BlockchainId, GasConfig, PermissionedNode, RpcRateLimiter,
+    SignatureComponents,
     blockchains::blockchain_creator::{
         BlockchainProvider, Contracts, Profile, Staking, Token, initialize_contracts,
         initialize_provider, initialize_provider_with_wallet,
@@ -118,6 +119,7 @@ pub(crate) struct EvmChain {
     native_token_ticker: &'static str,
     is_development_chain: bool,
     requires_evm_account_mapping: bool,
+    rpc_rate_limiter: RpcRateLimiter,
 }
 
 impl EvmChain {
@@ -179,6 +181,16 @@ impl EvmChain {
             }
         }
 
+        // Initialize RPC rate limiter
+        let rpc_rate_limiter = RpcRateLimiter::new(config.max_rpc_requests_per_second());
+        if let Some(rps) = config.max_rpc_requests_per_second() {
+            tracing::info!(
+                "{}: RPC rate limiting enabled at {} requests/second",
+                config.blockchain_id(),
+                rps
+            );
+        }
+
         Ok(Self {
             provider,
             config,
@@ -189,6 +201,7 @@ impl EvmChain {
             native_token_ticker,
             is_development_chain,
             requires_evm_account_mapping,
+            rpc_rate_limiter,
         })
     }
 
@@ -238,6 +251,24 @@ impl EvmChain {
     /// Returns true if this chain requires EVM account mapping validation.
     pub(crate) fn requires_evm_account_mapping(&self) -> bool {
         self.requires_evm_account_mapping
+    }
+
+    /// Execute an RPC call with rate limiting.
+    ///
+    /// This method waits for rate limit capacity before executing the provided
+    /// async operation. Use this for all RPC calls to respect provider rate limits.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let result = self.rpc_call(contract.method().call()).await?;
+    /// ```
+    pub(crate) async fn rpc_call<T, F>(&self, operation: F) -> T::Output
+    where
+        F: std::future::IntoFuture<IntoFuture = T>,
+        T: std::future::Future,
+    {
+        self.rpc_rate_limiter.acquire().await;
+        operation.into_future().await
     }
 
     /// Get the native token balance formatted with proper decimals.
@@ -432,17 +463,17 @@ impl EvmChain {
     pub(crate) async fn get_sharding_table_head(&self) -> Result<u128, BlockchainError> {
         use alloy::primitives::Uint;
         let contracts = self.contracts().await;
-        let head: Uint<72, 2> = contracts.sharding_table_storage().head().call().await?;
+        let head: Uint<72, 2> = self
+            .rpc_call(contracts.sharding_table_storage().head().call())
+            .await?;
         Ok(head.to::<u128>())
     }
 
     pub(crate) async fn get_minimum_required_signatures(&self) -> Result<u64, BlockchainError> {
         use alloy::primitives::U256;
         let contracts = self.contracts().await;
-        let min_signatures: U256 = contracts
-            .parameters_storage()
-            .minimumRequiredSignatures()
-            .call()
+        let min_signatures: U256 = self
+            .rpc_call(contracts.parameters_storage().minimumRequiredSignatures().call())
             .await?;
         Ok(min_signatures.to::<u64>())
     }
@@ -450,10 +481,8 @@ impl EvmChain {
     pub(crate) async fn get_sharding_table_length(&self) -> Result<u128, BlockchainError> {
         use alloy::primitives::Uint;
         let contracts = self.contracts().await;
-        let nodes_count: Uint<72, 2> = contracts
-            .sharding_table_storage()
-            .nodesCount()
-            .call()
+        let nodes_count: Uint<72, 2> = self
+            .rpc_call(contracts.sharding_table_storage().nodesCount().call())
             .await?;
         Ok(nodes_count.to::<u128>())
     }
@@ -465,13 +494,14 @@ impl EvmChain {
     ) -> Result<Vec<NodeInfo>, BlockchainError> {
         use alloy::primitives::Uint;
         let contracts = self.contracts().await;
-        let nodes = contracts
-            .sharding_table()
-            .getShardingTable_1(
-                Uint::<72, 2>::from(starting_identity_id),
-                Uint::<72, 2>::from(nodes_num),
+        let nodes = self
+            .rpc_call(
+                contracts.sharding_table().getShardingTable_1(
+                    Uint::<72, 2>::from(starting_identity_id),
+                    Uint::<72, 2>::from(nodes_num),
+                )
+                .call(),
             )
-            .call()
             .await?;
 
         Ok(nodes)
@@ -488,10 +518,13 @@ impl EvmChain {
 
         let contracts = self.contracts().await;
 
-        let result = contracts
-            .identity_storage()
-            .getIdentityId(evm_operational_address)
-            .call()
+        let result = self
+            .rpc_call(
+                contracts
+                    .identity_storage()
+                    .getIdentityId(evm_operational_address)
+                    .call(),
+            )
             .await;
 
         match result {
@@ -761,13 +794,12 @@ impl EvmChain {
         // Re-create signer from config since we can't easily access it from the provider
         let config = self.config();
         let private_key = config.evm_operational_wallet_private_key();
-        let signer: PrivateKeySigner =
-            private_key
-                .parse()
-                .map_err(|e: LocalSignerError| BlockchainError::InvalidPrivateKey {
-                    key_length: private_key.len(),
-                    source: e,
-                })?;
+        let signer: PrivateKeySigner = private_key.parse().map_err(|e: LocalSignerError| {
+            BlockchainError::InvalidPrivateKey {
+                key_length: private_key.len(),
+                source: e,
+            }
+        })?;
 
         // Sign the message
         let signature = signer.sign_message(&message_bytes).await.map_err(|e| {
@@ -818,9 +850,12 @@ impl EvmChain {
                 ))
             })?;
 
-        let publisher = kc_storage
-            .getLatestMerkleRootPublisher(U256::from(knowledge_collection_id))
-            .call()
+        let publisher = self
+            .rpc_call(
+                kc_storage
+                    .getLatestMerkleRootPublisher(U256::from(knowledge_collection_id))
+                    .call(),
+            )
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(
@@ -859,9 +894,12 @@ impl EvmChain {
                 ))
             })?;
 
-        let result = kc_storage
-            .getKnowledgeAssetsRange(U256::from(knowledge_collection_id))
-            .call()
+        let result = self
+            .rpc_call(
+                kc_storage
+                    .getKnowledgeAssetsRange(U256::from(knowledge_collection_id))
+                    .call(),
+            )
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(
@@ -914,9 +952,12 @@ impl EvmChain {
                 ))
             })?;
 
-        let merkle_root = kc_storage
-            .getLatestMerkleRoot(U256::from(knowledge_collection_id))
-            .call()
+        let merkle_root = self
+            .rpc_call(
+                kc_storage
+                    .getLatestMerkleRoot(U256::from(knowledge_collection_id))
+                    .call(),
+            )
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(
@@ -955,9 +996,8 @@ impl EvmChain {
                 ))
             })?;
 
-        let latest_id = kc_storage
-            .getLatestKnowledgeCollectionId()
-            .call()
+        let latest_id = self
+            .rpc_call(kc_storage.getLatestKnowledgeCollectionId().call())
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(
@@ -976,10 +1016,10 @@ impl EvmChain {
         let contracts = self.contracts().await;
         let chronos = contracts.chronos();
 
-        let current_epoch =
-            chronos.getCurrentEpoch().call().await.map_err(|e| {
-                BlockchainError::Custom(format!("Failed to get current epoch: {}", e))
-            })?;
+        let current_epoch = self
+            .rpc_call(chronos.getCurrentEpoch().call())
+            .await
+            .map_err(|e| BlockchainError::Custom(format!("Failed to get current epoch: {}", e)))?;
 
         current_epoch
             .try_into()
@@ -1004,9 +1044,12 @@ impl EvmChain {
                 ))
             })?;
 
-        let end_epoch = kc_storage
-            .getEndEpoch(U256::from(knowledge_collection_id))
-            .call()
+        let end_epoch = self
+            .rpc_call(
+                kc_storage
+                    .getEndEpoch(U256::from(knowledge_collection_id))
+                    .call(),
+            )
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(
@@ -1027,10 +1070,8 @@ impl EvmChain {
         let contracts = self.contracts().await;
         let registry = contracts.paranets_registry()?;
 
-        // Single return value - result IS the bool directly
-        let exists = registry
-            .paranetExists(paranet_id)
-            .call()
+        let exists = self
+            .rpc_call(registry.paranetExists(paranet_id).call())
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!("Failed to check paranet exists: {}", e))
@@ -1047,10 +1088,8 @@ impl EvmChain {
         let contracts = self.contracts().await;
         let registry = contracts.paranets_registry()?;
 
-        // Single return value - result IS the u8 directly
-        let policy = registry
-            .getNodesAccessPolicy(paranet_id)
-            .call()
+        let policy = self
+            .rpc_call(registry.getNodesAccessPolicy(paranet_id).call())
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!("Failed to get nodes access policy: {}", e))
@@ -1067,10 +1106,8 @@ impl EvmChain {
         let contracts = self.contracts().await;
         let registry = contracts.paranets_registry()?;
 
-        // Single return value - result IS the Vec directly
-        let nodes = registry
-            .getPermissionedNodes(paranet_id)
-            .call()
+        let nodes = self
+            .rpc_call(registry.getPermissionedNodes(paranet_id).call())
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!("Failed to get permissioned nodes: {}", e))
@@ -1094,10 +1131,12 @@ impl EvmChain {
         let contracts = self.contracts().await;
         let registry = contracts.paranets_registry()?;
 
-        // Single return value - result IS the bool directly
-        let registered = registry
-            .isKnowledgeCollectionRegistered(paranet_id, knowledge_collection_id)
-            .call()
+        let registered = self
+            .rpc_call(
+                registry
+                    .isKnowledgeCollectionRegistered(paranet_id, knowledge_collection_id)
+                    .call(),
+            )
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(

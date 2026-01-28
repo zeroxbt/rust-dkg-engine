@@ -85,6 +85,7 @@ password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # substrate_rpc_endpoints = [
 #     "wss://lofar-testnet.origin-trail.network"
 # ]
+# max_rpc_requests_per_second = 25  # Optional: rate limit RPC calls
 # operator_fee = 0
 # evm_operational_wallet_address = "0x..."
 # evm_operational_wallet_private_key = ""  # Use env var
@@ -100,6 +101,7 @@ password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # hub_contract_address = "0x2c08AC4B630c009F709521e56Ac385A6af70650f"
 # rpc_endpoints = ["https://rpc.chiadochain.net"]
 # gas_price_oracle_url = "https://blockscout.chiadochain.net/api/v1/gas-price-oracle"
+# max_rpc_requests_per_second = 25  # Optional: rate limit RPC calls
 # operator_fee = 0
 # evm_operational_wallet_address = "0x..."
 # evm_operational_wallet_private_key = ""  # Use env var
@@ -114,6 +116,7 @@ password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # blockchain_id = "base:84532"
 # hub_contract_address = "0xf21CE8f8b01548D97DCFb36869f1ccB0814a4e05"
 # rpc_endpoints = ["https://sepolia.base.org"]
+# max_rpc_requests_per_second = 25  # Optional: rate limit RPC calls
 # operator_fee = 0
 # evm_operational_wallet_address = "0x..."
 # evm_operational_wallet_private_key = ""  # Use env var

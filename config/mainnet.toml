@@ -94,6 +94,7 @@ ask_ms = 10000
 # hub_contract_address = "0x882D0BF07F956b1b94BBfe9E77F47c6fc7D4EC8f"
 # rpc_endpoints = ["wss://your-rpc-endpoint"]
 # gas_price_oracle_url = "https://gnosis.blockscout.com/api/v1/gas-price-oracle"
+# max_rpc_requests_per_second = 25  # Optional: rate limit RPC calls (set based on your provider's limits)
 # operator_fee = 0
 # evm_operational_wallet_address = "0x..."
 # evm_operational_wallet_private_key = "your-private-key"
