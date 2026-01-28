@@ -202,10 +202,7 @@ async fn filter_task(
                 let ual = kc.ual.clone();
                 let start = kc.start_token_id;
                 let end = kc.end_token_id;
-                async move {
-                    let exists = ts.knowledge_collection_exists(&ual, start, end).await;
-                    exists
-                }
+                async move { ts.knowledge_collection_exists(&ual, start, end).await }
             })
             .collect();
 
@@ -705,26 +702,24 @@ async fn fetch_kc_batch_from_network(
                             .validate_response(assertion, parsed_ual, Visibility::All)
                             .await;
 
-                        if is_valid {
-                            if let Some(kc) = ual_to_kc.get(ual.as_str()) {
-                                let metadata = metadata_map
-                                    .get(ual)
-                                    .and_then(|triples| parse_metadata_from_triples(triples));
+                        if is_valid && let Some(kc) = ual_to_kc.get(ual.as_str()) {
+                            let metadata = metadata_map
+                                .get(ual)
+                                .and_then(|triples| parse_metadata_from_triples(triples));
 
-                                fetched.push(FetchedKc {
-                                    kc_id: kc.kc_id,
-                                    ual: ual.clone(),
-                                    assertion: assertion.clone(),
-                                    metadata,
-                                });
-                                uals_still_needed.remove(ual);
+                            fetched.push(FetchedKc {
+                                kc_id: kc.kc_id,
+                                ual: ual.clone(),
+                                assertion: assertion.clone(),
+                                metadata,
+                            });
+                            uals_still_needed.remove(ual);
 
-                                tracing::debug!(
-                                    ual = %ual,
-                                    peer = %peer,
-                                    "[DKG SYNC] Received and validated KC from network"
-                                );
-                            }
+                            tracing::debug!(
+                                ual = %ual,
+                                peer = %peer,
+                                "[DKG SYNC] Received and validated KC from network"
+                            );
                         }
                     }
                 }
@@ -740,15 +735,15 @@ async fn fetch_kc_batch_from_network(
 
         // Add next peer if we still need KCs and have more peers available
         // Rebuild request with only remaining UALs to avoid unnecessary data transfer
-        if !uals_still_needed.is_empty() {
-            if let Some(&next_peer) = peers_iter.next() {
-                let updated_request = build_request(&uals_still_needed);
-                futures.push(make_peer_request(
-                    next_peer,
-                    updated_request,
-                    Arc::clone(network_manager),
-                ));
-            }
+        if !uals_still_needed.is_empty()
+            && let Some(&next_peer) = peers_iter.next()
+        {
+            let updated_request = build_request(&uals_still_needed);
+            futures.push(make_peer_request(
+                next_peer,
+                updated_request,
+                Arc::clone(network_manager),
+            ));
         }
     }
 
@@ -910,8 +905,8 @@ impl SyncCommandHandler {
 
         // Step 7: Update DB with results
         // Remove already-synced KCs (found locally in filter stage)
-        if !filter_stats.already_synced.is_empty() {
-            if let Err(e) = self
+        if !filter_stats.already_synced.is_empty()
+            && let Err(e) = self
                 .repository_manager
                 .kc_sync_repository()
                 .remove_kcs(
@@ -920,19 +915,18 @@ impl SyncCommandHandler {
                     &filter_stats.already_synced,
                 )
                 .await
-            {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    error = %e,
-                    "[DKG SYNC] Failed to remove already-synced KCs from queue"
-                );
-            }
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "[DKG SYNC] Failed to remove already-synced KCs from queue"
+            );
         }
 
         // Remove expired KCs (they should not be retried)
-        if !insert_stats.expired.is_empty() {
-            if let Err(e) = self
+        if !insert_stats.expired.is_empty()
+            && let Err(e) = self
                 .repository_manager
                 .kc_sync_repository()
                 .remove_kcs(
@@ -941,19 +935,18 @@ impl SyncCommandHandler {
                     &insert_stats.expired,
                 )
                 .await
-            {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    error = %e,
-                    "[DKG SYNC] Failed to remove expired KCs from queue"
-                );
-            }
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "[DKG SYNC] Failed to remove expired KCs from queue"
+            );
         }
 
         // Remove successfully synced KCs
-        if !insert_stats.synced.is_empty() {
-            if let Err(e) = self
+        if !insert_stats.synced.is_empty()
+            && let Err(e) = self
                 .repository_manager
                 .kc_sync_repository()
                 .remove_kcs(
@@ -962,14 +955,13 @@ impl SyncCommandHandler {
                     &insert_stats.synced,
                 )
                 .await
-            {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    error = %e,
-                    "[DKG SYNC] Failed to remove synced KCs from queue"
-                );
-            }
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "[DKG SYNC] Failed to remove synced KCs from queue"
+            );
         }
 
         // Capture counts before moving vectors
@@ -980,20 +972,19 @@ impl SyncCommandHandler {
         let mut all_failed: Vec<u64> = fetch_stats.failures;
         all_failed.extend(insert_stats.failed);
 
-        if !all_failed.is_empty() {
-            if let Err(e) = self
+        if !all_failed.is_empty()
+            && let Err(e) = self
                 .repository_manager
                 .kc_sync_repository()
                 .increment_retry_count(blockchain_id.as_str(), &contract_addr_str, &all_failed)
                 .await
-            {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    error = %e,
-                    "[DKG SYNC] Failed to increment retry count for failed KCs"
-                );
-            }
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "[DKG SYNC] Failed to increment retry count for failed KCs"
+            );
         }
 
         // Calculate totals
