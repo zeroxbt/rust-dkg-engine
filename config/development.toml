@@ -8,11 +8,11 @@ is_dev_env = true
 app_data_path = "data"
 
 # ============================================
-# Observability Configuration
+# Logging Configuration
 # ============================================
-[observability.metrics]
-enabled = true
-port = 9090
+[logging]
+level = "rust_ot_node=debug"  # Verbose logging for development
+format = "pretty"              # Human-readable format
 
 # ============================================
 # HTTP API Configuration

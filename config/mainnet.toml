@@ -9,11 +9,11 @@ is_dev_env = false
 app_data_path = "data"
 
 # ============================================
-# Observability Configuration
+# Logging Configuration
 # ============================================
-[observability.metrics]
-enabled = true
-port = 9090
+[logging]
+level = "rust_ot_node=info"  # Production log level
+format = "json"              # Structured JSON for log aggregation
 
 # ============================================
 # HTTP API Configuration

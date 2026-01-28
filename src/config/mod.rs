@@ -71,42 +71,47 @@ pub(crate) struct Config {
     pub managers: ManagersConfig,
     pub http_api: HttpApiConfig,
     #[serde(default)]
-    pub observability: ObservabilityConfig,
+    pub logging: LoggingConfig,
 }
 
 fn default_app_data_path() -> PathBuf {
     PathBuf::from("data".to_string())
 }
 
-#[derive(Debug, Deserialize, Clone, Default)]
-pub(crate) struct ObservabilityConfig {
-    #[serde(default)]
-    pub metrics: MetricsConfig,
-}
-
+/// Logging configuration for tracing output.
 #[derive(Debug, Deserialize, Clone)]
-pub(crate) struct MetricsConfig {
-    #[serde(default = "default_metrics_enabled")]
-    pub enabled: bool,
-    #[serde(default = "default_metrics_port")]
-    pub port: u16,
+pub(crate) struct LoggingConfig {
+    /// Log level filter (e.g., "info", "debug", "trace", or module-specific like "rust_ot_node=debug,network=trace")
+    #[serde(default = "default_log_level")]
+    pub level: String,
+    /// Output format: "pretty" for human-readable, "json" for structured JSON logs
+    #[serde(default = "default_log_format")]
+    pub format: LogFormat,
 }
 
-impl Default for MetricsConfig {
+impl Default for LoggingConfig {
     fn default() -> Self {
         Self {
-            enabled: default_metrics_enabled(),
-            port: default_metrics_port(),
+            level: default_log_level(),
+            format: default_log_format(),
         }
     }
 }
 
-fn default_metrics_enabled() -> bool {
-    true
+#[derive(Debug, Deserialize, Clone, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum LogFormat {
+    #[default]
+    Pretty,
+    Json,
 }
 
-fn default_metrics_port() -> u16 {
-    9090
+fn default_log_level() -> String {
+    "rust_ot_node=info".to_string()
+}
+
+fn default_log_format() -> LogFormat {
+    LogFormat::Pretty
 }
 
 #[derive(Debug, Deserialize, Clone)]

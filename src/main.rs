@@ -4,7 +4,6 @@ mod context;
 mod controllers;
 mod error;
 mod managers;
-mod observability;
 mod operations;
 mod services;
 mod types;
@@ -19,7 +18,6 @@ use commands::{
 use context::Context;
 use dotenvy::dotenv;
 use managers::network::KeyManager;
-use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::{select, signal::unix::SignalKind, sync::oneshot};
 
 use crate::config::AppPaths;
@@ -35,16 +33,6 @@ async fn main() {
     initialize_logger();
     display_ot_node_ascii_art();
     let config = Arc::new(config::initialize_configuration());
-
-    // Initialize Prometheus metrics exporter if enabled
-    if config.observability.metrics.enabled {
-        let metrics_port = config.observability.metrics.port;
-        PrometheusBuilder::new()
-            .with_http_listener(([0, 0, 0, 0], metrics_port))
-            .install()
-            .expect("Failed to install Prometheus metrics exporter");
-        tracing::info!("Metrics endpoint enabled on port {}", metrics_port);
-    }
 
     // Derive all filesystem paths from the root data directory
     let paths = AppPaths::from_root(config.app_data_path.clone());
@@ -182,11 +170,21 @@ async fn main() {
     tracing::info!("Shutdown complete");
 }
 
+/// Initialize the logger with sensible defaults.
+///
+/// The log level can be overridden via the `RUST_LOG` environment variable.
+/// If not set, defaults to `rust_ot_node=info`.
 fn initialize_logger() {
-    let filter = tracing_subscriber::EnvFilter::new(
-        "blockchain=trace,network=trace,rust_ot_node=trace,triple_store=trace,repository=trace",
-    );
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("rust_ot_node=info"));
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .with_thread_ids(false)
+        .with_file(false)
+        .with_line_number(false)
+        .init();
 }
 
 fn display_ot_node_ascii_art() {

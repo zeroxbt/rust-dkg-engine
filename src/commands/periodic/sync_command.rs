@@ -1,11 +1,6 @@
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures::future::join_all;
-use metrics::{counter, gauge, histogram};
 
 use crate::{
     commands::{
@@ -258,11 +253,6 @@ impl SyncCommandHandler {
                     kc_id = kc.kc_id,
                     "[DKG SYNC] No metadata from network, storing assertion without metadata"
                 );
-                counter!("sync_metadata_source", "blockchain" => blockchain_id.as_str().to_string(), "source" => "none")
-                    .increment(1);
-            } else {
-                counter!("sync_metadata_source", "blockchain" => blockchain_id.as_str().to_string(), "source" => "network")
-                    .increment(1);
             }
 
             // Insert into triple store
@@ -295,12 +285,6 @@ impl SyncCommandHandler {
                     }
                 }
             }
-        }
-
-        // Record expired KCs metric
-        if !expired_kc_ids.is_empty() {
-            counter!("sync_expired_total", "blockchain" => blockchain_id.as_str().to_string())
-                .increment(expired_kc_ids.len() as u64);
         }
 
         // Step 7: Update DB - remove synced/expired KCs, increment retry_count for failed ones
@@ -373,10 +357,8 @@ impl SyncCommandHandler {
         contract_addr_str: &str,
         pending_kc_ids: &[u64],
     ) -> (Vec<KcToSync>, Vec<u64>) {
-        let blockchain_label = blockchain_id.as_str();
         let mut kcs_to_sync = Vec::new();
         let mut already_synced_kc_ids = Vec::new();
-        let mut skipped_due_to_errors = 0u64;
 
         let total_kcs = pending_kc_ids.len();
         tracing::debug!(
@@ -411,7 +393,6 @@ impl SyncCommandHandler {
                         kc_id = kc_id,
                         "[DKG SYNC] KC has no token range on chain, skipping"
                     );
-                    skipped_due_to_errors += 1;
                     continue;
                 }
                 Err(e) => {
@@ -422,7 +403,6 @@ impl SyncCommandHandler {
                         error = %e,
                         "[DKG SYNC] Failed to get KC token range, will retry later"
                     );
-                    skipped_due_to_errors += 1;
                     continue;
                 }
             };
@@ -464,14 +444,6 @@ impl SyncCommandHandler {
                 burned,
             });
         }
-
-        // Record filter metrics
-        counter!("sync_filter_already_synced_total", "blockchain" => blockchain_label.to_string())
-            .increment(already_synced_kc_ids.len() as u64);
-        counter!("sync_filter_needs_sync_total", "blockchain" => blockchain_label.to_string())
-            .increment(kcs_to_sync.len() as u64);
-        counter!("sync_filter_skipped_errors_total", "blockchain" => blockchain_label.to_string())
-            .increment(skipped_due_to_errors);
 
         (kcs_to_sync, already_synced_kc_ids)
     }
@@ -580,8 +552,6 @@ impl SyncCommandHandler {
             return (fetched, failed_kc_ids);
         }
 
-        let blockchain_label = blockchain_id.as_str();
-
         // Get shard nodes (peers) for this blockchain
         let peers = match self.get_shard_peers(blockchain_id).await {
             Ok(peers) => peers,
@@ -591,8 +561,6 @@ impl SyncCommandHandler {
                     error = %e,
                     "[DKG SYNC] Failed to get shard peers, marking all KCs as failed"
                 );
-                counter!("sync_network_no_peers_total", "blockchain" => blockchain_label.to_string(), "reason" => "error")
-                    .increment(1);
                 failed_kc_ids = kcs_to_sync.iter().map(|kc| kc.kc_id).collect();
                 return (fetched, failed_kc_ids);
             }
@@ -603,14 +571,9 @@ impl SyncCommandHandler {
                 blockchain_id = %blockchain_id,
                 "[DKG SYNC] No peers available for network sync"
             );
-            counter!("sync_network_no_peers_total", "blockchain" => blockchain_label.to_string(), "reason" => "empty")
-                .increment(1);
             failed_kc_ids = kcs_to_sync.iter().map(|kc| kc.kc_id).collect();
             return (fetched, failed_kc_ids);
         }
-
-        gauge!("sync_network_peers_available", "blockchain" => blockchain_label.to_string())
-            .set(peers.len() as f64);
 
         tracing::info!(
             blockchain_id = %blockchain_id,
@@ -632,11 +595,6 @@ impl SyncCommandHandler {
             failed_kc_ids.extend(chunk_result.failed_kc_ids);
         }
 
-        counter!("sync_network_fetched_total", "blockchain" => blockchain_label.to_string())
-            .increment(fetched.len() as u64);
-        counter!("sync_network_fetch_failed_total", "blockchain" => blockchain_label.to_string())
-            .increment(failed_kc_ids.len() as u64);
-
         tracing::info!(
             blockchain_id = %blockchain_id,
             fetched = fetched.len(),
@@ -654,7 +612,6 @@ impl SyncCommandHandler {
         kcs: &[KcToSync],
         peers: &[PeerId],
     ) -> ChunkFetchResult {
-        let blockchain_label = blockchain_id.as_str();
         let mut fetched: HashMap<String, NetworkFetchResult> = HashMap::new();
         let mut uals_still_needed: Vec<String> = kcs.iter().map(|kc| kc.ual.clone()).collect();
 
@@ -735,8 +692,6 @@ impl SyncCommandHandler {
             for (peer, result) in results {
                 match result {
                     Ok(response) => {
-                        counter!("sync_peer_request_total", "blockchain" => blockchain_label.to_string(), "result" => "success")
-                            .increment(1);
                         let metadata_map = response.metadata();
 
                         for (ual, assertion) in response.assertions() {
@@ -747,8 +702,6 @@ impl SyncCommandHandler {
 
                             // Skip empty assertions - peer doesn't have data
                             if !assertion.has_data() {
-                                counter!("sync_validation_total", "blockchain" => blockchain_label.to_string(), "result" => "empty")
-                                    .increment(1);
                                 tracing::trace!(
                                     ual = %ual,
                                     peer = %peer,
@@ -765,8 +718,6 @@ impl SyncCommandHandler {
                                     .await;
 
                                 if is_valid {
-                                    counter!("sync_validation_total", "blockchain" => blockchain_label.to_string(), "result" => "valid")
-                                        .increment(1);
                                     let metadata = metadata_map.get(ual).cloned();
                                     fetched.insert(
                                         ual.clone(),
@@ -783,8 +734,6 @@ impl SyncCommandHandler {
                                         "[DKG SYNC] Received and validated KC from network"
                                     );
                                 } else {
-                                    counter!("sync_validation_total", "blockchain" => blockchain_label.to_string(), "result" => "invalid")
-                                        .increment(1);
                                     tracing::debug!(
                                         ual = %ual,
                                         peer = %peer,
@@ -795,8 +744,6 @@ impl SyncCommandHandler {
                         }
                     }
                     Err(e) => {
-                        counter!("sync_peer_request_total", "blockchain" => blockchain_label.to_string(), "result" => "error")
-                            .increment(1);
                         tracing::debug!(
                             peer = %peer,
                             error = %e,
@@ -903,9 +850,6 @@ impl SyncCommandData {
 
 impl CommandHandler<SyncCommandData> for SyncCommandHandler {
     async fn execute(&self, data: &SyncCommandData) -> CommandExecutionResult {
-        let sync_start = Instant::now();
-        let blockchain_label = data.blockchain_id.as_str();
-
         tracing::info!(
             blockchain_id = %data.blockchain_id,
             "[DKG SYNC] Starting sync cycle"
@@ -980,18 +924,6 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
                 }
             }
         }
-
-        // Record sync metrics
-        counter!("sync_kcs_enqueued_total", "blockchain" => blockchain_label.to_string())
-            .increment(total_enqueued);
-        gauge!("sync_kcs_pending", "blockchain" => blockchain_label.to_string())
-            .set(total_pending as f64);
-        counter!("sync_kcs_synced_total", "blockchain" => blockchain_label.to_string())
-            .increment(total_synced);
-        counter!("sync_kcs_failed_total", "blockchain" => blockchain_label.to_string())
-            .increment(total_failed);
-        histogram!("sync_cycle_duration_seconds", "blockchain" => blockchain_label.to_string())
-            .record(sync_start.elapsed().as_secs_f64());
 
         if total_enqueued > 0 || total_pending > 0 {
             tracing::info!(
