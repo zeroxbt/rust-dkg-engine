@@ -56,17 +56,13 @@ async fn main() {
     let network_manager_for_task = Arc::clone(&managers.network);
     let blockchain_manager_for_ids = Arc::clone(&managers.blockchain);
 
-    #[cfg(feature = "dev-tools")]
-    initialize_dev_environment(&managers.blockchain).await;
+    if config::is_dev_env() {
+        initialize_dev_environment(&managers.blockchain).await;
+    }
 
     let services = services::initialize(&managers);
 
-    let context = Arc::new(Context::new(
-        config.clone(),
-        command_scheduler,
-        managers,
-        services,
-    ));
+    let context = Arc::new(Context::new(command_scheduler, managers, services));
 
     let command_executor = Arc::new(CommandExecutor::new(Arc::clone(&context), command_rx));
 
@@ -195,9 +191,10 @@ fn display_ot_node_ascii_art() {
     }
 }
 
-#[cfg(feature = "dev-tools")]
 async fn initialize_dev_environment(blockchain_manager: &Arc<managers::BlockchainManager>) {
     use alloy::primitives::utils::parse_ether;
+
+    tracing::info!("Initializing dev environment: setting stake and ask...");
 
     // 50,000 tokens for stake
     let stake_wei: u128 = parse_ether("50000")

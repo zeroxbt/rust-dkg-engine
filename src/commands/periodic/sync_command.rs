@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::future::join_all;
 
@@ -72,32 +76,30 @@ impl SyncCommandHandler {
     }
 
     /// Sync a single contract: enqueue new KCs from chain, then process pending KCs.
+    #[tracing::instrument(
+        skip(self),
+        fields(
+            blockchain_id = %blockchain_id,
+            contract = %format!("{:?}", contract_address),
+        )
+    )]
     async fn sync_contract(
         &self,
         blockchain_id: &BlockchainId,
         contract_address: Address,
     ) -> Result<ContractSyncResult, String> {
         let contract_addr_str = format!("{:?}", contract_address);
-
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
-            contract = %contract_addr_str,
-            "[DKG SYNC] Starting contract sync"
-        );
+        let sync_start = Instant::now();
 
         // Step 1: Check for new KCs on chain and enqueue them
+        let enqueue_start = Instant::now();
         let enqueued = self
             .enqueue_new_kcs(blockchain_id, contract_address, &contract_addr_str)
             .await?;
-
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
-            contract = %contract_addr_str,
-            enqueued,
-            "[DKG SYNC] Enqueue step completed, fetching pending KCs from DB..."
-        );
+        let enqueue_ms = enqueue_start.elapsed().as_millis();
 
         // Step 2: Fetch pending KCs for this contract from DB (limited to avoid long cycles)
+        let db_start = Instant::now();
         let pending_kcs = self
             .repository_manager
             .kc_sync_repository()
@@ -109,17 +111,12 @@ impl SyncCommandHandler {
             )
             .await
             .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
+        let db_fetch_ms = db_start.elapsed().as_millis();
 
         let pending = pending_kcs.len();
 
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
-            contract = %contract_addr_str,
-            count = pending,
-            "[DKG SYNC] Fetched pending KCs from DB"
-        );
-
         if pending == 0 {
+            tracing::debug!(enqueue_ms, db_fetch_ms, "[DKG SYNC] No pending KCs");
             return Ok(ContractSyncResult {
                 enqueued,
                 pending: 0,
@@ -129,6 +126,7 @@ impl SyncCommandHandler {
         }
 
         // Step 3: Filter out already-synced KCs (expiration is checked after network fetch)
+        let filter_start = Instant::now();
         let pending_kc_ids: Vec<u64> = pending_kcs.into_iter().map(|kc| kc.kc_id).collect();
         let (kcs_to_sync, already_synced_kc_ids) = self
             .filter_pending_kcs(
@@ -138,15 +136,10 @@ impl SyncCommandHandler {
                 &pending_kc_ids,
             )
             .await;
+        let filter_ms = filter_start.elapsed().as_millis();
 
         // Remove already-synced KCs from queue
         if !already_synced_kc_ids.is_empty() {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
-                count = already_synced_kc_ids.len(),
-                "[DKG SYNC] Removing already-synced KCs from queue"
-            );
             self.repository_manager
                 .kc_sync_repository()
                 .remove_kcs(
@@ -170,19 +163,14 @@ impl SyncCommandHandler {
         }
 
         // Step 5: For KCs not found locally and not expired, batch GET from network
+        let fetch_start = Instant::now();
         let (fetched_kcs, failed_kc_ids) = self
             .fetch_kcs_from_network(blockchain_id, &kcs_to_sync)
             .await;
-
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
-            contract = %contract_addr_str,
-            fetched = fetched_kcs.len(),
-            failed = failed_kc_ids.len(),
-            "[DKG SYNC] Network fetch completed for contract"
-        );
+        let fetch_ms = fetch_start.elapsed().as_millis();
 
         // Step 6: Check expiration and store fetched KCs in triple store
+        let insert_start = Instant::now();
         let mut failed_kc_ids = failed_kc_ids;
         let mut successfully_synced_kc_ids: Vec<u64> = Vec::new();
         let mut expired_kc_ids: Vec<u64> = Vec::new();
@@ -338,6 +326,23 @@ impl SyncCommandHandler {
                 "[DKG SYNC] Failed to increment retry count for failed KCs"
             );
         }
+
+        let insert_ms = insert_start.elapsed().as_millis();
+        let total_ms = sync_start.elapsed().as_millis();
+
+        tracing::info!(
+            total_ms,
+            enqueue_ms,
+            db_fetch_ms,
+            filter_ms,
+            fetch_ms,
+            insert_ms,
+            kcs_pending = pending,
+            kcs_to_sync = kcs_to_sync.len(),
+            kcs_synced = synced,
+            kcs_failed = failed_kc_ids.len(),
+            "[DKG SYNC] Contract sync timing breakdown"
+        );
 
         Ok(ContractSyncResult {
             enqueued,
@@ -667,7 +672,6 @@ impl SyncCommandHandler {
                 .map(|peer| {
                     let peer = *peer;
                     let request_data = batch_request.clone();
-                    tracing::info!(req = ?request_data,"sending batch_get request");
                     let network_manager = Arc::clone(&self.network_manager);
                     // Generate a unique operation ID for tracking (not stored, just for the
                     // request)

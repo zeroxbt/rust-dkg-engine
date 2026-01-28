@@ -6,6 +6,7 @@ use crate::{
         command_registry::{Command, CommandHandler},
         operations::publish::protocols::finality::send_finality_request_command::SendFinalityRequestCommandData,
     },
+    config,
     context::Context,
     error::NodeError,
     managers::{
@@ -49,7 +50,7 @@ pub(crate) struct BlockchainEventListenerCommandHandler {
 
 impl BlockchainEventListenerCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
-        let is_dev_env = context.config().is_dev_env;
+        let is_dev_env = config::is_dev_env();
 
         let poll_interval = if is_dev_env {
             EVENT_FETCH_INTERVAL_DEV

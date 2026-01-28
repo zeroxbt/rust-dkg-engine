@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use crate::{
     commands::command_executor::CommandScheduler,
-    config::Config,
     managers::{
         Managers,
         network::messages::{
@@ -15,7 +14,6 @@ use crate::{
 };
 
 pub(crate) struct Context {
-    config: Arc<Config>,
     command_scheduler: CommandScheduler,
     managers: Managers,
     services: Services,
@@ -23,21 +21,15 @@ pub(crate) struct Context {
 
 impl Context {
     pub(crate) fn new(
-        config: Arc<Config>,
         command_scheduler: CommandScheduler,
         managers: Managers,
         services: Services,
     ) -> Self {
         Self {
-            config,
             command_scheduler,
             managers,
             services,
         }
-    }
-
-    pub(crate) fn config(&self) -> &Arc<Config> {
-        &self.config
     }
 
     pub(crate) fn command_scheduler(&self) -> &CommandScheduler {

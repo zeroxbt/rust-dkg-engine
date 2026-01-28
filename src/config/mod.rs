@@ -1,6 +1,5 @@
 use std::{env, path::PathBuf};
 
-#[cfg(feature = "dev-tools")]
 use clap::{Arg, Command};
 use figment::{
     Figment,
@@ -62,10 +61,16 @@ impl AppPaths {
     }
 }
 
+/// Returns true if running in a development environment.
+/// Derived from NODE_ENV environment variable (true if "development" or "devnet").
+pub(crate) fn is_dev_env() -> bool {
+    env::var("NODE_ENV")
+        .map(|v| matches!(v.as_str(), "development" | "devnet"))
+        .unwrap_or(true) // default to dev if NODE_ENV not set
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub(crate) struct Config {
-    #[serde(default)]
-    pub is_dev_env: bool,
     #[serde(default = "default_app_data_path")]
     pub app_data_path: PathBuf,
     pub managers: ManagersConfig,
@@ -81,7 +86,8 @@ fn default_app_data_path() -> PathBuf {
 /// Logger configuration for tracing output.
 #[derive(Debug, Deserialize, Clone)]
 pub(crate) struct LoggerConfig {
-    /// Log level filter (e.g., "info", "debug", "trace", or module-specific like "rust_ot_node=debug,network=trace")
+    /// Log level filter (e.g., "info", "debug", "trace", or module-specific like
+    /// "rust_ot_node=debug,network=trace")
     #[serde(default = "default_log_level")]
     pub level: String,
     /// Output format: "pretty" for human-readable, "json" for structured JSON logs
@@ -132,31 +138,27 @@ fn load_configuration() -> Result<Config, ConfigError> {
     tracing::info!("Loading configuration for environment: {}", node_env);
 
     // Build configuration with layered sources (priority: lowest to highest)
-    #[cfg_attr(not(feature = "dev-tools"), allow(unused_mut))]
     let mut figment = Figment::new()
         // Base configuration from TOML
         .merge(Toml::file(format!("config/{}.toml", node_env)))
         // User overrides from config.toml
         .merge(Toml::file("config.toml"));
 
-    // Parse CLI arguments for custom config file (dev-tools feature only)
-    #[cfg(feature = "dev-tools")]
-    {
-        let matches = Command::new("OriginTrail Rust Node")
-            .arg(
-                Arg::new("config")
-                    .short('c')
-                    .long("config")
-                    .value_name("FILE")
-                    .help("Sets a custom config file (.toml format)"),
-            )
-            .get_matches();
+    // Parse CLI arguments for custom config file
+    let matches = Command::new("OriginTrail Rust Node")
+        .arg(
+            Arg::new("config")
+                .short('c')
+                .long("config")
+                .value_name("FILE")
+                .help("Sets a custom config file (.toml format)"),
+        )
+        .get_matches();
 
-        // If custom config file is provided, merge it with highest priority
-        if let Some(config_path) = matches.get_one::<String>("config") {
-            tracing::info!("Loading custom config file: {}", config_path);
-            figment = figment.merge(Toml::file(config_path));
-        }
+    // If custom config file is provided, merge it with highest priority
+    if let Some(config_path) = matches.get_one::<String>("config") {
+        tracing::info!("Loading custom config file: {}", config_path);
+        figment = figment.merge(Toml::file(config_path));
     }
 
     // Extract and validate configuration

@@ -121,7 +121,6 @@ pub(crate) struct Contracts {
     profile: Profile::ProfileInstance<BlockchainProvider>,
     sharding_table: ShardingTable::ShardingTableInstance<BlockchainProvider>,
     sharding_table_storage: ShardingTableStorage::ShardingTableStorageInstance<BlockchainProvider>,
-    #[cfg(feature = "dev-tools")]
     token: Token::TokenInstance<BlockchainProvider>,
     chronos: Chronos::ChronosInstance<BlockchainProvider>,
     paranets_registry: Option<ParanetsRegistry::ParanetsRegistryInstance<BlockchainProvider>>,
@@ -150,12 +149,10 @@ impl Contracts {
         &self.sharding_table_storage
     }
 
-    #[cfg(feature = "dev-tools")]
     pub(crate) fn staking(&self) -> &Staking::StakingInstance<BlockchainProvider> {
         &self.staking
     }
 
-    #[cfg(feature = "dev-tools")]
     pub(crate) fn token(&self) -> &Token::TokenInstance<BlockchainProvider> {
         &self.token
     }
@@ -482,7 +479,6 @@ pub(crate) async fn initialize_contracts(
             ),
             provider.clone(),
         ),
-        #[cfg(feature = "dev-tools")]
         token: Token::new(
             Address::from(hub.getContractAddress("Token".to_string()).call().await?.0),
             provider.clone(),

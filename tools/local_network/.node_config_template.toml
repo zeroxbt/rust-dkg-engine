@@ -4,8 +4,6 @@
 # This template is used by scripts to generate node configs
 # Placeholders will be replaced by the setup script
 
-# Local dev behavior (auto set stake/ask on startup)
-is_dev_env = true
 app_data_path = "{{APP_DATA_PATH}}"
 
 # ============================================
