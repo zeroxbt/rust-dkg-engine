@@ -8,9 +8,9 @@ is_dev_env = false
 app_data_path = "data"
 
 # ============================================
-# Logging Configuration
+# Logger Configuration
 # ============================================
-[logging]
+[logger]
 level = "rust_ot_node=info"  # Production log level
 format = "json"              # Structured JSON for log aggregation
 

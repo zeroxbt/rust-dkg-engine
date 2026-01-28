@@ -3,6 +3,7 @@ mod config;
 mod context;
 mod controllers;
 mod error;
+mod logger;
 mod managers;
 mod operations;
 mod services;
@@ -30,9 +31,12 @@ async fn main() {
         .expect("Failed to install rustls crypto provider");
 
     dotenv().ok();
-    initialize_logger();
-    display_ot_node_ascii_art();
+
+    // Load configuration first, then initialize logger with config settings
     let config = Arc::new(config::initialize_configuration());
+    logger::initialize(&config.logger);
+
+    display_ot_node_ascii_art();
 
     // Derive all filesystem paths from the root data directory
     let paths = AppPaths::from_root(config.app_data_path.clone());
@@ -168,23 +172,6 @@ async fn main() {
     }
 
     tracing::info!("Shutdown complete");
-}
-
-/// Initialize the logger with sensible defaults.
-///
-/// The log level can be overridden via the `RUST_LOG` environment variable.
-/// If not set, defaults to `rust_ot_node=info`.
-fn initialize_logger() {
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("rust_ot_node=info"));
-
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(true)
-        .with_thread_ids(false)
-        .with_file(false)
-        .with_line_number(false)
-        .init();
 }
 
 fn display_ot_node_ascii_art() {

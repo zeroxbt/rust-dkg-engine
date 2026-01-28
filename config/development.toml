@@ -8,9 +8,9 @@ is_dev_env = true
 app_data_path = "data"
 
 # ============================================
-# Logging Configuration
+# Logger Configuration
 # ============================================
-[logging]
+[logger]
 level = "rust_ot_node=debug"  # Verbose logging for development
 format = "pretty"              # Human-readable format
 

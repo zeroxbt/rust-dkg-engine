@@ -71,16 +71,16 @@ pub(crate) struct Config {
     pub managers: ManagersConfig,
     pub http_api: HttpApiConfig,
     #[serde(default)]
-    pub logging: LoggingConfig,
+    pub logger: LoggerConfig,
 }
 
 fn default_app_data_path() -> PathBuf {
     PathBuf::from("data".to_string())
 }
 
-/// Logging configuration for tracing output.
+/// Logger configuration for tracing output.
 #[derive(Debug, Deserialize, Clone)]
-pub(crate) struct LoggingConfig {
+pub(crate) struct LoggerConfig {
     /// Log level filter (e.g., "info", "debug", "trace", or module-specific like "rust_ot_node=debug,network=trace")
     #[serde(default = "default_log_level")]
     pub level: String,
@@ -89,7 +89,7 @@ pub(crate) struct LoggingConfig {
     pub format: LogFormat,
 }
 
-impl Default for LoggingConfig {
+impl Default for LoggerConfig {
     fn default() -> Self {
         Self {
             level: default_log_level(),
