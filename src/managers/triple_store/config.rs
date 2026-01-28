@@ -51,6 +51,13 @@ pub(crate) struct TripleStoreManagerConfig {
     /// Timeout configuration for different operation types
     #[serde(default)]
     pub timeouts: TimeoutConfig,
+
+    /// Maximum concurrent operations (optional concurrency limit).
+    /// Limits how many triple store operations can run simultaneously.
+    /// Useful to prevent overwhelming Blazegraph or causing resource contention.
+    /// None means unlimited concurrency.
+    #[serde(default)]
+    pub max_concurrent_operations: Option<usize>,
 }
 
 /// Timeout configuration for different SPARQL operations

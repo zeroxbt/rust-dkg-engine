@@ -5,11 +5,12 @@ pub(crate) mod query;
 pub(crate) mod rdf;
 mod types;
 
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
+use tokio::sync::Semaphore;
 
 /// Format a unix timestamp as ISO 8601 datetime string
 fn format_unix_timestamp(timestamp: u64) -> String {
@@ -111,6 +112,8 @@ impl KnowledgeCollectionMetadata {
 pub(crate) struct TripleStoreManager {
     backend: Box<dyn TripleStoreBackend>,
     config: TripleStoreManagerConfig,
+    /// Semaphore for limiting concurrent operations (optional)
+    concurrency_limiter: Option<Arc<Semaphore>>,
 }
 
 impl TripleStoreManager {
@@ -144,9 +147,19 @@ impl TripleStoreManager {
             }
         };
 
+        // Initialize concurrency limiter if configured
+        let concurrency_limiter = config.max_concurrent_operations.map(|max| {
+            tracing::info!(
+                max_concurrent = max,
+                "Triple store concurrency limiting enabled"
+            );
+            Arc::new(Semaphore::new(max))
+        });
+
         let manager = Self {
             backend,
             config: config.clone(),
+            concurrency_limiter,
         };
 
         // For Blazegraph, attempt connection with retries
@@ -173,9 +186,14 @@ impl TripleStoreManager {
             connect_max_retries: 0,
             connect_retry_frequency_ms: 0,
             timeouts: Default::default(),
+            max_concurrent_operations: None,
         };
 
-        Ok(Self { backend, config })
+        Ok(Self {
+            backend,
+            config,
+            concurrency_limiter: None,
+        })
     }
 
     /// Connect to triple store with retry logic
@@ -234,6 +252,38 @@ impl TripleStoreManager {
             self.backend.create_repository().await?;
         }
         Ok(())
+    }
+
+    // ========== Internal Backend Wrappers (with concurrency limiting) ==========
+
+    /// Execute a SPARQL UPDATE with concurrency limiting
+    async fn backend_update(&self, query: &str, timeout: Duration) -> Result<()> {
+        if let Some(semaphore) = &self.concurrency_limiter {
+            let _permit = semaphore.acquire().await.expect("semaphore closed");
+            self.backend.update(query, timeout).await
+        } else {
+            self.backend.update(query, timeout).await
+        }
+    }
+
+    /// Execute a SPARQL CONSTRUCT with concurrency limiting
+    async fn backend_construct(&self, query: &str, timeout: Duration) -> Result<String> {
+        if let Some(semaphore) = &self.concurrency_limiter {
+            let _permit = semaphore.acquire().await.expect("semaphore closed");
+            self.backend.construct(query, timeout).await
+        } else {
+            self.backend.construct(query, timeout).await
+        }
+    }
+
+    /// Execute a SPARQL ASK with concurrency limiting
+    async fn backend_ask(&self, query: &str, timeout: Duration) -> Result<bool> {
+        if let Some(semaphore) = &self.concurrency_limiter {
+            let _permit = semaphore.acquire().await.expect("semaphore closed");
+            self.backend.ask(query, timeout).await
+        } else {
+            self.backend.ask(query, timeout).await
+        }
     }
 
     // ========== Knowledge Collection Operations ==========
@@ -430,8 +480,7 @@ INSERT DATA {{
             "Built INSERT DATA query for knowledge collection"
         );
 
-        self.backend
-            .update(&insert_query, self.config.timeouts.insert_timeout())
+        self.backend_update(&insert_query, self.config.timeouts.insert_timeout())
             .await?;
 
         tracing::debug!(
@@ -445,8 +494,7 @@ INSERT DATA {{
 
     /// Execute a raw SPARQL UPDATE query
     pub(crate) async fn update_raw(&self, query: &str, timeout: Option<Duration>) -> Result<()> {
-        self.backend
-            .update(
+        self.backend_update(
                 query,
                 timeout.unwrap_or_else(|| self.config.timeouts.insert_timeout()),
             )
@@ -483,8 +531,7 @@ WHERE {{
             ual_pred = predicates::UAL,
         );
 
-        self.backend
-            .construct(&query, self.config.timeouts.query_timeout())
+        self.backend_construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -521,8 +568,7 @@ WHERE {{
         );
 
         let nquads = self
-            .backend
-            .construct(&query, self.config.timeouts.query_timeout())
+            .backend_construct(&query, self.config.timeouts.query_timeout())
             .await?;
 
         Ok(nquads
@@ -590,8 +636,7 @@ WHERE {{
                 );
 
                 let nquads = self
-                    .backend
-                    .construct(&query, self.config.timeouts.query_timeout())
+                    .backend_construct(&query, self.config.timeouts.query_timeout())
                     .await?;
 
                 all_triples.extend(
@@ -624,8 +669,7 @@ WHERE {{
 }}"#
         );
 
-        self.backend
-            .ask(&query, self.config.timeouts.ask_timeout())
+        self.backend_ask(&query, self.config.timeouts.ask_timeout())
             .await
     }
 
@@ -643,8 +687,7 @@ WHERE {{
             metadata = named_graphs::METADATA,
         );
 
-        self.backend
-            .construct(&query, self.config.timeouts.query_timeout())
+        self.backend_construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -785,8 +828,7 @@ ORDER BY ?s"#,
             ual_pred = predicates::UAL,
         );
 
-        self.backend
-            .construct(&query, self.config.timeouts.query_timeout())
+        self.backend_construct(&query, self.config.timeouts.query_timeout())
             .await
     } */
 
@@ -817,8 +859,7 @@ WHERE {{
             graph_patterns.join(" } UNION { ")
         );
 
-        self.backend
-            .construct(&query, self.config.timeouts.query_timeout())
+        self.backend_construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -875,7 +916,7 @@ WHERE {{
             ual_pred = predicates::UAL,
         );
 
-        self.backend.ask(&query, self.config.timeouts.ask_timeout()).await
+        self.backend_ask(&query, self.config.timeouts.ask_timeout()).await
     }
 
     // ========== Knowledge Asset Operations ==========
@@ -904,8 +945,7 @@ WHERE {{
             ual_pred = predicates::UAL,
         );
 
-        self.backend
-            .construct(&query, self.config.timeouts.query_timeout())
+        self.backend_construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -941,8 +981,7 @@ WHERE {{
 }}"#
         );
 
-        self.backend
-            .construct(&query, self.config.timeouts.query_timeout())
+        self.backend_construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -994,7 +1033,7 @@ WHERE {{
             ual_pred = predicates::UAL,
         );
 
-        self.backend.ask(&query, self.config.timeouts.ask_timeout()).await
+        self.backend_ask(&query, self.config.timeouts.ask_timeout()).await
     }
 
     // ========== Metadata Operations ==========
@@ -1011,8 +1050,7 @@ WHERE {{
             metadata = named_graphs::METADATA,
         );
 
-        self.backend
-            .construct(&query, self.config.timeouts.query_timeout())
+        self.backend_construct(&query, self.config.timeouts.query_timeout())
             .await
     }
 
@@ -1047,7 +1085,7 @@ WHERE {{
             metadata = named_graphs::METADATA,
         );
 
-        self.backend.ask(&query, self.config.timeouts.ask_timeout()).await
+        self.backend_ask(&query, self.config.timeouts.ask_timeout()).await
     }
 
     // ========== Named Graph Operations ==========

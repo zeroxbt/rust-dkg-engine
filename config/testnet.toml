@@ -64,6 +64,19 @@ password = ""      # Use environment variable: OT_MANAGERS__REPOSITORY__PASSWORD
 # Validation settings here
 
 # ============================================
+# Triple Store Manager Configuration
+# ============================================
+[managers.triple_store]
+backend = "oxigraph"  # Embedded Rust-native backend, no external service needed
+# data_path is automatically set to "{app_data_path}/triple-store"
+# max_concurrent_operations = 10  # Optional: limit concurrent operations (useful for Blazegraph)
+
+[managers.triple_store.timeouts]
+query_ms = 60000
+insert_ms = 300000
+ask_ms = 10000
+
+# ============================================
 # Blockchain Configuration
 # ============================================
 # Configure your testnet blockchain networks in .origintrail_noderc.toml
