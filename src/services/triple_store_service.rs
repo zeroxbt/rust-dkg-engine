@@ -286,6 +286,17 @@ impl TripleStoreService {
         first_exists.unwrap_or(false) && last_exists.unwrap_or(false)
     }
 
+    /// Check if a knowledge collection exists by UAL only (no token range needed).
+    ///
+    /// This is a fast existence check that queries the metadata graph.
+    /// Useful when you don't have the token range but need to check if a KC is already synced.
+    pub(crate) async fn knowledge_collection_exists_by_ual(&self, kc_ual: &str) -> bool {
+        self.triple_store_manager
+            .knowledge_collection_exists_by_ual(kc_ual)
+            .await
+            .unwrap_or(false)
+    }
+
     /// Build knowledge assets from a dataset.
     ///
     /// This contains the DKG business logic:

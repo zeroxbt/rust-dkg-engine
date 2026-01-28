@@ -108,8 +108,9 @@ struct InsertStats {
 // Pipeline Task Functions
 // ============================================================================
 
-/// Filter task: processes pending KCs in batches, checking RPC for token ranges
-/// and triple store for local existence. Sends KCs that need syncing to fetch stage.
+/// Filter task: processes pending KCs in batches, checking local existence first,
+/// then RPC for token ranges only for KCs that need syncing.
+/// Sends KCs that need syncing to fetch stage.
 async fn filter_task(
     pending_kc_ids: Vec<u64>,
     blockchain_id: BlockchainId,
@@ -125,17 +126,60 @@ async fn filter_task(
     let mut processed = 0usize;
 
     for chunk in pending_kc_ids.chunks(FILTER_BATCH_SIZE) {
-        // Step 1: Fetch token ranges in parallel (rate limiter will throttle)
-        let range_futures: Vec<_> = chunk
+        // Step 1: Check local existence by UAL first (cheap, no RPC needed)
+        // Build UALs for all KCs in the chunk
+        let kc_uals: Vec<(u64, String)> = chunk
             .iter()
             .map(|&kc_id| {
+                let ual = derive_ual(&blockchain_id, &contract_address, kc_id as u128, None);
+                (kc_id, ual)
+            })
+            .collect();
+
+        // Check existence in parallel - triple store's internal semaphore provides backpressure
+        let existence_futures: Vec<_> = kc_uals
+            .iter()
+            .map(|(kc_id, ual)| {
+                let ts = Arc::clone(&triple_store_service);
+                let ual = ual.clone();
+                let kc_id = *kc_id;
+                async move {
+                    let exists = ts.knowledge_collection_exists_by_ual(&ual).await;
+                    (kc_id, ual, exists)
+                }
+            })
+            .collect();
+
+        let existence_results = join_all(existence_futures).await;
+
+        // Partition into already synced and needs syncing
+        let mut kcs_needing_sync: Vec<(u64, String)> = Vec::new();
+        for (kc_id, ual, exists) in existence_results {
+            if exists {
+                already_synced.push(kc_id);
+            } else {
+                kcs_needing_sync.push((kc_id, ual));
+            }
+        }
+
+        // Step 2: Only fetch token ranges for KCs that need syncing (RPC calls)
+        if kcs_needing_sync.is_empty() {
+            processed += chunk.len();
+            continue;
+        }
+
+        let range_futures: Vec<_> = kcs_needing_sync
+            .iter()
+            .map(|(kc_id, ual)| {
                 let bm = Arc::clone(&blockchain_manager);
                 let bid = blockchain_id.clone();
+                let kc_id = *kc_id;
+                let ual = ual.clone();
                 async move {
                     let result = bm
                         .get_knowledge_assets_range(&bid, contract_address, kc_id as u128)
                         .await;
-                    (kc_id, result)
+                    (kc_id, ual, result)
                 }
             })
             .collect();
@@ -143,17 +187,9 @@ async fn filter_task(
         let range_results = join_all(range_futures).await;
 
         // Process RPC results - collect KCs with valid token ranges
-        struct KcWithRange {
-            kc_id: u64,
-            ual: String,
-            start_token_id: u64,
-            end_token_id: u64,
-            burned: Vec<u64>,
-        }
+        let mut batch_to_sync = Vec::new();
 
-        let mut kcs_with_ranges: Vec<KcWithRange> = Vec::new();
-
-        for (kc_id, result) in range_results {
+        for (kc_id, ual, result) in range_results {
             match result {
                 Ok(Some((global_start, global_end, global_burned))) => {
                     let offset = (kc_id - 1) * MAX_TOKENS_PER_KC;
@@ -164,11 +200,9 @@ async fn filter_task(
                         .map(|b| b.saturating_sub(offset))
                         .collect();
 
-                    let kc_ual = derive_ual(&blockchain_id, &contract_address, kc_id as u128, None);
-
-                    kcs_with_ranges.push(KcWithRange {
+                    batch_to_sync.push(KcToSync {
                         kc_id,
-                        ual: kc_ual,
+                        ual,
                         start_token_id,
                         end_token_id,
                         burned,
@@ -191,36 +225,6 @@ async fn filter_task(
                         "[DKG SYNC] Failed to get KC token range, will retry later"
                     );
                 }
-            }
-        }
-
-        // Step 2: Check local existence in parallel (semaphore will limit concurrency)
-        let existence_futures: Vec<_> = kcs_with_ranges
-            .iter()
-            .map(|kc| {
-                let ts = Arc::clone(&triple_store_service);
-                let ual = kc.ual.clone();
-                let start = kc.start_token_id;
-                let end = kc.end_token_id;
-                async move { ts.knowledge_collection_exists(&ual, start, end).await }
-            })
-            .collect();
-
-        let existence_results = join_all(existence_futures).await;
-
-        // Step 3: Partition into to_sync and already_synced
-        let mut batch_to_sync = Vec::new();
-        for (kc, exists_locally) in kcs_with_ranges.into_iter().zip(existence_results) {
-            if exists_locally {
-                already_synced.push(kc.kc_id);
-            } else {
-                batch_to_sync.push(KcToSync {
-                    kc_id: kc.kc_id,
-                    ual: kc.ual,
-                    start_token_id: kc.start_token_id,
-                    end_token_id: kc.end_token_id,
-                    burned: kc.burned,
-                });
             }
         }
 
@@ -490,7 +494,7 @@ async fn insert_task(
             valid_kcs.push(kc);
         }
 
-        // Step 3: Insert all valid KCs in parallel (semaphore will limit concurrency)
+        // Step 3: Insert all valid KCs in parallel - triple store's internal semaphore provides backpressure
         let insert_futures: Vec<_> = valid_kcs
             .iter()
             .map(|kc| {
