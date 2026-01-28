@@ -496,22 +496,10 @@ async fn main() {
                         .expect("Not enough operational public keys"),
                 )
                 .replace(
-                    "{{OPERATIONAL_WALLET_PRIVATE}}",
-                    private_keys
-                        .get(key_index)
-                        .expect("Not enough operational private keys"),
-                )
-                .replace(
                     "{{MANAGEMENT_WALLET_PUBLIC}}",
                     management_public_keys
                         .get(key_index)
                         .expect("Not enough management public keys"),
-                )
-                .replace(
-                    "{{MANAGEMENT_WALLET_PRIVATE}}",
-                    management_private_keys
-                        .get(key_index)
-                        .expect("Not enough management private keys"),
                 )
                 .replace("{{NODE_NAME}}", &node_name)
                 .replace("{{NODE_SYMBOL}}", &node_symbol);
@@ -519,7 +507,17 @@ async fn main() {
             // Write config.toml to the data folder
             let config_path = Path::new(&data_folder).join("config.toml");
             fs::write(&config_path, toml_config).expect("Failed to write the TOML config file");
-            println!("Generated {} (Rust node{})", config_path.display(),
+
+            // Generate .env file with secrets for this node
+            let env_content = format!(
+                "NODE_ENV=development\nEVM_OPERATIONAL_WALLET_PRIVATE_KEY={}\nEVM_MANAGEMENT_WALLET_PRIVATE_KEY={}\nDB_PASSWORD=\n",
+                private_keys.get(key_index).expect("Not enough operational private keys"),
+                management_private_keys.get(key_index).expect("Not enough management private keys"),
+            );
+            let env_path = Path::new(&data_folder).join(".env");
+            fs::write(&env_path, env_content).expect("Failed to write the .env file");
+
+            println!("Generated {} and {} (Rust node{})", config_path.display(), env_path.display(),
                 if i == BOOTSTRAP_NODE_INDEX && !bootstrap_is_js { " - BOOTSTRAP" } else { "" });
         }
     }
@@ -575,11 +573,13 @@ async fn main() {
 
             // Config file path relative to workspace root
             let config_path = format!("{}/{}", data_folder, "config.toml");
+            let env_path = format!("{}/{}", data_folder, ".env");
 
             // Run Rust node from workspace root with --config flag
+            // Source the .env file to load secrets, then run the node
             open_terminal_with_command(&format!(
-                "cd {} && {} --config {}",
-                current_dir_str, binary_path, config_path
+                "cd {} && set -a && source {} && set +a && {} --config {}",
+                current_dir_str, env_path, binary_path, config_path
             ));
         }
 
@@ -601,11 +601,13 @@ async fn main() {
 
             // Config file path relative to workspace root
             let config_path = format!("{}/{}", data_folder, "config.toml");
+            let env_path = format!("{}/{}", data_folder, ".env");
 
             // Run Rust node from workspace root with --config flag
+            // Source the .env file to load secrets, then run the node
             open_terminal_with_command(&format!(
-                "cd {} && {} --config {}",
-                current_dir_str, binary_path, config_path
+                "cd {} && set -a && source {} && set +a && {} --config {}",
+                current_dir_str, env_path, binary_path, config_path
             ));
         }
 
