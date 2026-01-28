@@ -628,20 +628,20 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             data.visibility,
         );
 
-        // Send requests in batches and process responses directly
+        // Send requests to peers in chunks and process responses directly
         let mut success_count: u16 = 0;
         let mut failure_count: u16 = 0;
 
-        for (batch_idx, batch) in peers.chunks(GetOperation::BATCH_SIZE).enumerate() {
+        for (chunk_idx, peer_chunk) in peers.chunks(GetOperation::CONCURRENT_PEERS).enumerate() {
             tracing::debug!(
                 operation_id = %operation_id,
-                batch = batch_idx,
-                batch_size = batch.len(),
-                "Sending batch of get requests"
+                chunk = chunk_idx,
+                peer_count = peer_chunk.len(),
+                "Sending get requests to peer chunk"
             );
 
-            // Send all requests in this batch concurrently
-            let request_futures: Vec<_> = batch
+            // Send all requests in this chunk concurrently
+            let request_futures: Vec<_> = peer_chunk
                 .iter()
                 .map(|peer| {
                     let peer = *peer;
@@ -661,7 +661,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                 })
                 .collect();
 
-            // Wait for all requests in this batch to complete (success or failure)
+            // Wait for all requests in this chunk to complete (success or failure)
             let results = join_all(request_futures).await;
 
             // Process each response
@@ -688,7 +688,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                                     operation_id = %operation_id,
                                     success_count = success_count,
                                     failure_count = failure_count,
-                                    batch = batch_idx,
+                                    chunk = chunk_idx,
                                     "Get operation completed - success threshold reached"
                                 );
 
@@ -730,14 +730,14 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
 
             tracing::debug!(
                 operation_id = %operation_id,
-                batch = batch_idx,
+                chunk = chunk_idx,
                 success_count = success_count,
                 failure_count = failure_count,
-                "Batch completed"
+                "Peer chunk completed"
             );
         }
 
-        // All batches exhausted without meeting success threshold
+        // All peer chunks exhausted without meeting success threshold
         let error_message = format!(
             "Failed to get data from network. Success: {}, Failed: {}, Required: {}",
             success_count,

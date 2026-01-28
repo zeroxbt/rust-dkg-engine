@@ -11,8 +11,8 @@ pub(crate) trait Operation: Send + Sync + 'static {
     /// Minimum number of ACK responses required for operation success.
     const MIN_ACK_RESPONSES: u16;
 
-    /// Number of requests to send per batch.
-    const BATCH_SIZE: usize;
+    /// Number of peers to send requests to concurrently.
+    const CONCURRENT_PEERS: usize;
 
     /// The request message type sent to peers.
     /// Must be Clone for batching across multiple peers.

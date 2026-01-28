@@ -52,7 +52,7 @@ pub(crate) struct BatchGetOperation;
 impl Operation for BatchGetOperation {
     const NAME: &'static str = "batch-get";
     const MIN_ACK_RESPONSES: u16 = 1;
-    const BATCH_SIZE: usize = 5;
+    const CONCURRENT_PEERS: usize = 5;
 
     type Request = BatchGetRequestData;
     type Response = BatchGetResponseData;

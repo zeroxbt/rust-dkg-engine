@@ -10,7 +10,7 @@ use crate::{
 };
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
-const DIAL_BATCH_SIZE: usize = 20;
+const CONCURRENT_PEER_DIALS: usize = 20;
 
 pub(crate) struct DialPeersCommandHandler {
     repository_manager: Arc<RepositoryManager>,
@@ -79,7 +79,7 @@ impl DialPeersCommandHandler {
                     && !connected_peers.contains(peer_id)
                     && self.check_backoff(peer_id)
             })
-            .take(DIAL_BATCH_SIZE)
+            .take(CONCURRENT_PEER_DIALS)
             .collect()
     }
 

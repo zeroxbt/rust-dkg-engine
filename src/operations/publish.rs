@@ -63,7 +63,7 @@ impl Operation for PublishOperation {
     /// The effective value is max(this, blockchain_min, user_provided).
     const MIN_ACK_RESPONSES: u16 = 3;
     /// Send to all nodes at once (no batching for publish).
-    const BATCH_SIZE: usize = usize::MAX;
+    const CONCURRENT_PEERS: usize = usize::MAX;
 
     type Request = StoreRequestData;
     type Response = StoreResponseData;

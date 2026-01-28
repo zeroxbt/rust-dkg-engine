@@ -303,24 +303,24 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
             true,
         );
 
-        // 8. Send requests in batches
+        // 8. Send requests to peers in chunks
         let mut uals_still_needed: Vec<String> = uals_to_fetch;
 
-        for (batch_idx, batch) in peers.chunks(BatchGetOperation::BATCH_SIZE).enumerate() {
+        for (chunk_idx, peer_chunk) in peers.chunks(BatchGetOperation::CONCURRENT_PEERS).enumerate() {
             if uals_still_needed.is_empty() {
                 break;
             }
 
             tracing::debug!(
                 operation_id = %operation_id,
-                batch = batch_idx,
-                batch_size = batch.len(),
+                chunk = chunk_idx,
+                peer_count = peer_chunk.len(),
                 uals_needed = uals_still_needed.len(),
-                "Sending batch of requests"
+                "Sending requests to peer chunk"
             );
 
             // Send requests concurrently
-            let request_futures: Vec<_> = batch
+            let request_futures: Vec<_> = peer_chunk
                 .iter()
                 .map(|peer| {
                     let peer = *peer;
