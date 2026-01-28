@@ -56,7 +56,7 @@ macro_rules! send_protocol_request {
         let request_id = $swarm
             .behaviour_mut()
             .$protocol
-            .send_request_with_addresses(&$peer, message, $addresses);
+            .send_request(&$peer, message);
         // Store the response channel directly - it will be used when the response arrives
         $self.$pending.insert_sender(request_id, $response_tx);
     }};

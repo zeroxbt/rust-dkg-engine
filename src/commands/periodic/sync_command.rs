@@ -771,7 +771,8 @@ impl SyncCommandHandler {
         }
     }
 
-    /// Sync a single contract: enqueue new KCs from chain, then process pending KCs.
+    /// Sync a single contract: check queue for pending KCs, enqueue new ones if needed,
+    /// then process pending KCs.
     ///
     /// Uses a three-stage pipeline with spawned tasks connected by channels:
     /// 1. Filter task: checks RPC for token ranges, triple store for local existence
@@ -794,16 +795,9 @@ impl SyncCommandHandler {
         let contract_addr_str = format!("{:?}", contract_address);
         let sync_start = Instant::now();
 
-        // Step 1: Check for new KCs on chain and enqueue them
-        let enqueue_start = Instant::now();
-        let enqueued = self
-            .enqueue_new_kcs(blockchain_id, contract_address, &contract_addr_str)
-            .await?;
-        let enqueue_ms = enqueue_start.elapsed().as_millis();
-
-        // Step 2: Fetch pending KCs for this contract from DB (limited to avoid long cycles)
+        // Step 1: Check how many KCs are already pending in the queue
         let db_start = Instant::now();
-        let pending_kcs = self
+        let mut pending_kcs = self
             .repository_manager
             .kc_sync_repository()
             .get_pending_kcs_for_contract(
@@ -815,6 +809,42 @@ impl SyncCommandHandler {
             .await
             .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
         let db_fetch_ms = db_start.elapsed().as_millis();
+
+        // Step 2: If we don't have enough pending KCs, enqueue new ones from chain
+        let enqueue_start = Instant::now();
+        let existing_count = pending_kcs.len() as u64;
+        let enqueued = if existing_count < MAX_NEW_KCS_PER_CONTRACT {
+            let needed = MAX_NEW_KCS_PER_CONTRACT - existing_count;
+            let newly_enqueued = self
+                .enqueue_new_kcs(blockchain_id, contract_address, &contract_addr_str, needed)
+                .await?;
+
+            // If we enqueued new KCs, fetch them to add to our pending list
+            if newly_enqueued > 0 {
+                let additional_kcs = self
+                    .repository_manager
+                    .kc_sync_repository()
+                    .get_pending_kcs_for_contract(
+                        blockchain_id.as_str(),
+                        &contract_addr_str,
+                        MAX_RETRY_ATTEMPTS,
+                        MAX_NEW_KCS_PER_CONTRACT,
+                    )
+                    .await
+                    .map_err(|e| format!("Failed to fetch pending KCs after enqueue: {}", e))?;
+                pending_kcs = additional_kcs;
+            }
+            newly_enqueued
+        } else {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                existing_count,
+                "[DKG SYNC] Queue already has enough pending KCs, skipping enqueue"
+            );
+            0
+        };
+        let enqueue_ms = enqueue_start.elapsed().as_millis();
 
         let pending = pending_kcs.len();
 
@@ -1016,11 +1046,13 @@ impl SyncCommandHandler {
     }
 
     /// Check for new KCs on chain and enqueue any that need syncing.
+    /// The `limit` parameter controls the maximum number of KCs to enqueue in this call.
     async fn enqueue_new_kcs(
         &self,
         blockchain_id: &BlockchainId,
         contract_address: Address,
         contract_addr_str: &str,
+        limit: u64,
     ) -> Result<u64, String> {
         tracing::debug!(
             blockchain_id = %blockchain_id,
@@ -1077,7 +1109,7 @@ impl SyncCommandHandler {
 
         // Calculate range of new KC IDs to enqueue (limited to avoid huge batches)
         let start_id = last_checked + 1;
-        let end_id = std::cmp::min(latest_on_chain, last_checked + MAX_NEW_KCS_PER_CONTRACT);
+        let end_id = std::cmp::min(latest_on_chain, last_checked + limit);
         let new_kc_ids: Vec<u64> = (start_id..=end_id).collect();
         let count = new_kc_ids.len() as u64;
 
