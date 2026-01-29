@@ -104,10 +104,4 @@ impl Context {
     ) -> &Arc<crate::services::OperationService<crate::operations::PublishOperation>> {
         &self.services.publish_operation
     }
-
-    pub(crate) fn batch_get_operation_service(
-        &self,
-    ) -> &Arc<crate::services::OperationService<crate::operations::BatchGetOperation>> {
-        &self.services.batch_get_operation
-    }
 }

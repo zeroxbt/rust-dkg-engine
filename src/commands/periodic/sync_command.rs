@@ -13,7 +13,8 @@ use tracing::Instrument;
 
 use super::sync::{
     ContractSyncResult, FetchedKc, KcToSync, MAX_NEW_KCS_PER_CONTRACT, MAX_RETRY_ATTEMPTS,
-    PIPELINE_CHANNEL_BUFFER, SYNC_PERIOD, fetch_task, filter_task, insert_task,
+    PIPELINE_CHANNEL_BUFFER, SYNC_PERIOD_CATCHING_UP, SYNC_PERIOD_IDLE, fetch_task, filter_task,
+    insert_task,
 };
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
@@ -465,7 +466,9 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
                     error = %e,
                     "[DKG SYNC] Failed to get KC storage contract addresses"
                 );
-                return CommandExecutionResult::Repeat { delay: SYNC_PERIOD };
+                return CommandExecutionResult::Repeat {
+                    delay: SYNC_PERIOD_IDLE,
+                };
             }
         };
 
@@ -530,11 +533,25 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
             );
         }
 
-        tracing::info!(
-            blockchain_id = %data.blockchain_id,
-            "[DKG SYNC] Sync cycle completed"
-        );
+        // Use short delay while catching up, longer delay when idle
+        // - total_pending > 0: still have KCs in queue to process
+        // - total_enqueued > 0: just discovered new KCs on chain (might be more due to limit)
+        let delay = if total_pending > 0 || total_enqueued > 0 {
+            tracing::debug!(
+                blockchain_id = %data.blockchain_id,
+                total_pending,
+                total_enqueued,
+                "[DKG SYNC] Still catching up, scheduling immediate resync"
+            );
+            SYNC_PERIOD_CATCHING_UP
+        } else {
+            tracing::info!(
+                blockchain_id = %data.blockchain_id,
+                "[DKG SYNC] Caught up, scheduling idle poll"
+            );
+            SYNC_PERIOD_IDLE
+        };
 
-        CommandExecutionResult::Repeat { delay: SYNC_PERIOD }
+        CommandExecutionResult::Repeat { delay }
     }
 }

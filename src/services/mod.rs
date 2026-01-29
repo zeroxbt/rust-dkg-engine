@@ -51,7 +51,6 @@ pub(crate) struct Services {
     // Operation services
     pub publish_operation: Arc<OperationService<PublishOperation>>,
     pub get_operation: Arc<OperationService<GetOperation>>,
-    pub batch_get_operation: Arc<OperationService<BatchGetOperation>>,
 
     // Storage services
     pub pending_storage: Arc<PendingStorageService>,
@@ -94,15 +93,6 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
         .expect("Failed to create get operation service"),
     );
 
-    let batch_get_operation = Arc::new(
-        OperationService::<BatchGetOperation>::new(
-            Arc::clone(&managers.repository),
-            Arc::clone(&managers.network),
-            &managers.key_value_store,
-        )
-        .expect("Failed to create batch get operation service"),
-    );
-
     // Storage services
     let pending_storage = Arc::new(
         PendingStorageService::new(&managers.key_value_store)
@@ -124,7 +114,6 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
     Services {
         publish_operation,
         get_operation,
-        batch_get_operation,
         pending_storage,
         triple_store,
         get_validation,
