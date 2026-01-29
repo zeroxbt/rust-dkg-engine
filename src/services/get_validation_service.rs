@@ -121,16 +121,9 @@ impl GetValidationService {
                 return false;
             };
 
-            match self.validate_public_assertion_with_root(&assertion.public, on_chain_root) {
-                Ok(true) => {}
-                Ok(false) => {
-                    tracing::debug!("Public assertion validation failed");
-                    return false;
-                }
-                Err(e) => {
-                    tracing::debug!(error = %e, "Error validating public assertion");
-                    return false;
-                }
+            if !self.validate_public_assertion_with_root(&assertion.public, on_chain_root) {
+                tracing::debug!("Public assertion validation failed");
+                return false;
             }
         }
 
@@ -159,7 +152,7 @@ impl GetValidationService {
         &self,
         public_triples: &[String],
         on_chain_root: &str,
-    ) -> Result<bool, String> {
+    ) -> bool {
         let calculated_root = Self::calculate_public_merkle_root(public_triples);
 
         if calculated_root != on_chain_root {
@@ -168,10 +161,10 @@ impl GetValidationService {
                 on_chain = %on_chain_root,
                 "Merkle root mismatch"
             );
-            return Ok(false);
+            return false;
         }
 
-        Ok(true)
+        true
     }
 
     /// Calculate the merkle root for public triples.

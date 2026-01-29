@@ -10,7 +10,6 @@ pub(crate) struct KcToSync {
     pub start_token_id: u64,
     pub end_token_id: u64,
     pub burned: Vec<u64>,
-    /// Merkle root for validation (pre-fetched in filter stage)
     pub merkle_root: Option<String>,
 }
 

@@ -24,7 +24,7 @@ use crate::{
             BatchGetResponseData, FinalityResponseData, GetResponseData, StoreResponseData,
         },
     },
-    operations::{BatchGetOperation, GetOperation, PublishOperation},
+    operations::{GetOperation, PublishOperation},
 };
 
 /// Response channels for all protocol types.

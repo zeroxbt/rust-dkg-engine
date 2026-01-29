@@ -60,9 +60,8 @@ pub(crate) async fn filter_task(
         .await
         .ok();
 
-    for (batch_idx, chunk) in pending_kc_ids.chunks(FILTER_BATCH_SIZE).enumerate() {
+    for chunk in pending_kc_ids.chunks(FILTER_BATCH_SIZE) {
         let batch_result = process_filter_batch(
-            batch_idx,
             chunk,
             &blockchain_id,
             &contract_address,
@@ -125,7 +124,6 @@ struct FilterBatchResult {
     fields(chunk_size = chunk.len())
 )]
 async fn process_filter_batch(
-    batch_idx: usize,
     chunk: &[u64],
     blockchain_id: &BlockchainId,
     contract_address: &Address,

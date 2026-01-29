@@ -44,11 +44,6 @@ impl OxigraphBackend {
 
         Ok(Self { store })
     }
-
-    /// Get direct access to the underlying store for advanced operations
-    pub(crate) fn store(&self) -> &Store {
-        &self.store
-    }
 }
 
 #[async_trait]

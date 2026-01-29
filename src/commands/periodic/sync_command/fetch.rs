@@ -14,17 +14,14 @@ use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::{
-    CONCURRENT_PEER_REQUESTS, FetchStats, FetchedKc, KcToSync, NETWORK_FETCH_BATCH_SIZE,
-    parse_metadata_from_triples,
-};
+use super::{CONCURRENT_PEER_REQUESTS, FetchStats, FetchedKc, KcToSync, NETWORK_FETCH_BATCH_SIZE};
 use crate::{
     commands::operations::get::protocols::batch_get::BATCH_GET_UAL_MAX_LIMIT,
     managers::{
         blockchain::BlockchainId,
         network::{NetworkError, NetworkManager, PeerId, messages::BatchGetRequestData},
         repository::RepositoryManager,
-        triple_store::{TokenIds, Visibility},
+        triple_store::{TokenIds, Visibility, parse_metadata_from_triples},
     },
     services::{GetValidationService, PeerPerformanceTracker},
     utils::ual::{ParsedUal, parse_ual},

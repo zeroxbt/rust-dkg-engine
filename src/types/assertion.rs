@@ -31,34 +31,8 @@ impl Assertion {
         Self { public, private }
     }
 
-    /// Create a new assertion with only public triples.
-    pub(crate) fn public_only(public: Vec<String>) -> Self {
-        Self {
-            public,
-            private: None,
-        }
-    }
-
-    /// Create a new assertion with both public and private triples.
-    pub(crate) fn with_private(public: Vec<String>, private: Vec<String>) -> Self {
-        Self {
-            public,
-            private: Some(private),
-        }
-    }
-
     /// Check if the assertion has any data.
     pub(crate) fn has_data(&self) -> bool {
         !self.public.is_empty() || self.private.as_ref().is_some_and(|p| !p.is_empty())
-    }
-
-    /// Check if the public triples are empty.
-    pub(crate) fn is_public_empty(&self) -> bool {
-        self.public.is_empty()
-    }
-
-    /// Get the total number of triples in the assertion.
-    pub(crate) fn total_triples(&self) -> usize {
-        self.public.len() + self.private.as_ref().map_or(0, |p| p.len())
     }
 }

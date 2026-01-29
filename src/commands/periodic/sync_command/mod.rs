@@ -1,21 +1,69 @@
-//! Sync command: orchestrates the KC sync pipeline for each blockchain.
+//! DKG Sync Pipeline
 //!
-//! This command is responsible for:
-//! 1. Discovering KCs that need syncing from the blockchain
-//! 2. Coordinating the three-stage pipeline (filter → fetch → insert)
-//! 3. Updating the sync queue based on results
+//! This module implements a three-stage pipeline for syncing Knowledge Collections:
+//!
+//! ```text
+//! Filter Stage              Fetch Stage           Insert Stage
+//! ├─ Local existence        ├─ Network requests   └─ Triple store insert
+//! ├─ Single Multicall RPC   └─ Validation
+//! │  (epochs, ranges, roots)
+//! ├─ Filter expired
+//! └─ Send to fetch ───────→ Send to insert ─────→
+//! ```
+//!
+//! The pipeline allows stages to overlap, reducing total sync time.
+//! All RPC calls are batched into a single Multicall per filter batch.
 
-use std::{sync::Arc, time::Instant};
+mod fetch;
+mod filter;
+mod insert;
+mod types;
+
+use crate::commands::{
+    operations::get::protocols::batch_get::BATCH_GET_UAL_MAX_LIMIT,
+    periodic::sync_command::{
+        fetch::fetch_task,
+        filter::filter_task,
+        insert::insert_task,
+        types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
+    },
+};
+/// Interval between sync cycles when there's pending work (catching up)
+pub(crate) const SYNC_PERIOD_CATCHING_UP: Duration = Duration::from_secs(0);
+
+/// Interval between sync cycles when caught up (idle polling for new KCs)
+pub(crate) const SYNC_PERIOD_IDLE: Duration = Duration::from_secs(30);
+
+/// Maximum retry attempts before a KC is no longer retried (stays in DB for future recovery)
+pub(crate) const MAX_RETRY_ATTEMPTS: u32 = 2;
+
+/// Maximum new KCs to process per contract per sync cycle
+pub(crate) const MAX_NEW_KCS_PER_CONTRACT: u64 = BATCH_GET_UAL_MAX_LIMIT as u64;
+
+/// Batch size for filter task (KCs per batch sent through channel)
+/// Aligned with MULTICALL_CHUNK_SIZE (100) for optimal RPC batching.
+pub(crate) const FILTER_BATCH_SIZE: usize = 100;
+
+/// Batch size for network fetch (start fetching when we have this many KCs).
+/// Set to match FILTER_BATCH_SIZE to start fetching as soon as first filter batch completes.
+/// This enables true pipeline overlap: fetch starts while filter is still processing.
+pub(crate) const NETWORK_FETCH_BATCH_SIZE: usize = 100;
+
+/// Channel buffer size (number of batches that can be buffered between stages)
+pub(crate) const PIPELINE_CHANNEL_BUFFER: usize = 6;
+
+/// Number of peers to query concurrently during network fetch
+pub(crate) const CONCURRENT_PEER_REQUESTS: usize = 3;
+
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::future::join_all;
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
-use super::sync::{
-    ContractSyncResult, FetchedKc, KcToSync, MAX_NEW_KCS_PER_CONTRACT, MAX_RETRY_ATTEMPTS,
-    PIPELINE_CHANNEL_BUFFER, SYNC_PERIOD_CATCHING_UP, SYNC_PERIOD_IDLE, fetch_task, filter_task,
-    insert_task,
-};
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
@@ -69,7 +117,7 @@ impl SyncCommandHandler {
         let sync_start = Instant::now();
 
         // Step 1: Get pending KCs from queue
-        let db_start = Instant::now();
+
         let mut pending_kcs = self
             .repository_manager
             .kc_sync_repository()
@@ -81,10 +129,9 @@ impl SyncCommandHandler {
             )
             .await
             .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
-        let db_fetch_ms = db_start.elapsed().as_millis();
 
         // Step 2: Enqueue new KCs if needed
-        let enqueue_start = Instant::now();
+
         let existing_count = pending_kcs.len() as u64;
         let enqueued = if existing_count < MAX_NEW_KCS_PER_CONTRACT {
             let needed = MAX_NEW_KCS_PER_CONTRACT - existing_count;
@@ -115,12 +162,11 @@ impl SyncCommandHandler {
             );
             0
         };
-        let enqueue_ms = enqueue_start.elapsed().as_millis();
 
         let pending = pending_kcs.len();
 
         if pending == 0 {
-            tracing::debug!(enqueue_ms, db_fetch_ms, "[DKG SYNC] No pending KCs");
+            tracing::debug!("[DKG SYNC] No pending KCs");
             return Ok(ContractSyncResult {
                 enqueued,
                 pending: 0,
@@ -131,8 +177,6 @@ impl SyncCommandHandler {
 
         let pending_kc_ids: Vec<u64> = pending_kcs.into_iter().map(|kc| kc.kc_id).collect();
 
-        // Step 3: Run the pipeline
-        let pipeline_start = Instant::now();
         let (filter_stats, fetch_stats, insert_stats) = self
             .run_pipeline(
                 pending_kc_ids,
@@ -141,17 +185,14 @@ impl SyncCommandHandler {
                 contract_addr_str.clone(),
             )
             .await?;
-        let pipeline_ms = pipeline_start.elapsed().as_millis();
 
         // Step 4: Update DB with results
         self.update_sync_queue(
             blockchain_id,
             &contract_addr_str,
-            &filter_stats.already_synced,
-            &filter_stats.expired,
-            &insert_stats.synced,
-            &fetch_stats.failures,
-            &insert_stats.failed,
+            &filter_stats,
+            &fetch_stats,
+            &insert_stats,
         )
         .await;
 
@@ -165,9 +206,6 @@ impl SyncCommandHandler {
 
         tracing::info!(
             total_ms,
-            enqueue_ms,
-            db_fetch_ms,
-            pipeline_ms,
             kcs_pending = pending,
             kcs_already_synced = filter_stats.already_synced.len(),
             kcs_expired = filter_stats.expired.len(),
@@ -192,14 +230,7 @@ impl SyncCommandHandler {
         blockchain_id: BlockchainId,
         contract_address: Address,
         contract_addr_str: String,
-    ) -> Result<
-        (
-            super::sync::FilterStats,
-            super::sync::FetchStats,
-            super::sync::InsertStats,
-        ),
-        String,
-    > {
+    ) -> Result<(FilterStats, FetchStats, InsertStats), String> {
         // Create pipeline channels
         let (filter_tx, filter_rx) = mpsc::channel::<Vec<KcToSync>>(PIPELINE_CHANNEL_BUFFER);
         let (fetch_tx, fetch_rx) = mpsc::channel::<Vec<FetchedKc>>(PIPELINE_CHANNEL_BUFFER);
@@ -286,18 +317,20 @@ impl SyncCommandHandler {
         &self,
         blockchain_id: &BlockchainId,
         contract_addr_str: &str,
-        already_synced: &[u64],
-        expired: &[u64],
-        synced: &[u64],
-        fetch_failures: &[u64],
-        insert_failures: &[u64],
+        filter_stats: &FilterStats,
+        fetch_stats: &FetchStats,
+        insert_stats: &InsertStats,
     ) {
         let repo = self.repository_manager.kc_sync_repository();
 
         // Remove already-synced KCs (found locally in filter stage)
-        if !already_synced.is_empty()
+        if !filter_stats.already_synced.is_empty()
             && let Err(e) = repo
-                .remove_kcs(blockchain_id.as_str(), contract_addr_str, already_synced)
+                .remove_kcs(
+                    blockchain_id.as_str(),
+                    contract_addr_str,
+                    &filter_stats.already_synced,
+                )
                 .await
         {
             tracing::error!(
@@ -309,9 +342,13 @@ impl SyncCommandHandler {
         }
 
         // Remove expired KCs
-        if !expired.is_empty()
+        if !filter_stats.expired.is_empty()
             && let Err(e) = repo
-                .remove_kcs(blockchain_id.as_str(), contract_addr_str, expired)
+                .remove_kcs(
+                    blockchain_id.as_str(),
+                    contract_addr_str,
+                    &filter_stats.expired,
+                )
                 .await
         {
             tracing::error!(
@@ -323,9 +360,13 @@ impl SyncCommandHandler {
         }
 
         // Remove successfully synced KCs
-        if !synced.is_empty()
+        if !insert_stats.synced.is_empty()
             && let Err(e) = repo
-                .remove_kcs(blockchain_id.as_str(), contract_addr_str, synced)
+                .remove_kcs(
+                    blockchain_id.as_str(),
+                    contract_addr_str,
+                    &insert_stats.synced,
+                )
                 .await
         {
             tracing::error!(
@@ -337,8 +378,8 @@ impl SyncCommandHandler {
         }
 
         // Increment retry count for failed KCs
-        let mut all_failed: Vec<u64> = fetch_failures.to_vec();
-        all_failed.extend(insert_failures);
+        let mut all_failed: Vec<u64> = fetch_stats.failures.to_vec();
+        all_failed.extend(&insert_stats.failed);
 
         if !all_failed.is_empty()
             && let Err(e) = repo

@@ -61,7 +61,7 @@ fn days_to_ymd(days: i64) -> (i32, u32, u32) {
 
 // Re-export commonly used types for convenience
 pub(crate) use config::{DKG_REPOSITORY, TripleStoreBackendType, TripleStoreManagerConfig};
-pub(crate) use rdf::{extract_subject, group_nquads_by_subject};
+pub(crate) use rdf::{extract_subject, group_nquads_by_subject, parse_metadata_from_triples};
 pub(crate) use types::{Assertion, KnowledgeAsset, MAX_TOKENS_PER_KC, TokenIds, Visibility};
 
 /// Metadata for a knowledge collection
@@ -457,12 +457,12 @@ impl TripleStoreManager {
         // Build the final INSERT DATA query
         let insert_query = format!(
             r#"PREFIX schema: <http://schema.org/>
-INSERT DATA {{
-{}{}  GRAPH <{}> {{
-{}{}  }}
-  GRAPH <{}> {{
-{}{}{}  }}
-}}"#,
+                INSERT DATA {{
+                {}{}  GRAPH <{}> {{
+                {}{}  }}
+                GRAPH <{}> {{
+                {}{}{}  }}
+                }}"#,
             public_graphs_insert,
             private_graphs_insert,
             named_graphs::CURRENT,
@@ -521,12 +521,12 @@ INSERT DATA {{
 
         let query = format!(
             r#"CONSTRUCT {{ ?s ?p ?o . }}
-WHERE {{
-    GRAPH <{unified}> {{
-        << ?s ?p ?o >> <{ual_pred}> <{ual}> .
-        {filter}
-    }}
-}}"#,
+                WHERE {{
+                    GRAPH <{unified}> {{
+                        << ?s ?p ?o >> <{ual_pred}> <{ual}> .
+                        {filter}
+                    }}
+                }}"#,
             unified = named_graphs::UNIFIED,
             ual_pred = predicates::UAL,
         );
@@ -559,12 +559,12 @@ WHERE {{
 
         let query = format!(
             r#"PREFIX schema: <http://schema.org/>
-CONSTRUCT {{ ?s ?p ?o }}
-WHERE {{
-    GRAPH <{ual}/{suffix}> {{
-        ?s ?p ?o .
-    }}
-}}"#
+                CONSTRUCT {{ ?s ?p ?o }}
+                WHERE {{
+                    GRAPH <{ual}/{suffix}> {{
+                        ?s ?p ?o .
+                    }}
+                }}"#
         );
 
         let nquads = self
@@ -621,17 +621,17 @@ WHERE {{
                 // Use VALUES clause like JS implementation
                 let query = format!(
                     r#"PREFIX schema: <http://schema.org/>
-CONSTRUCT {{
-    ?s ?p ?o .
-}}
-WHERE {{
-    GRAPH ?g {{
-        ?s ?p ?o .
-    }}
-    VALUES ?g {{
-        {}
-    }}
-}}"#,
+                        CONSTRUCT {{
+                            ?s ?p ?o .
+                        }}
+                        WHERE {{
+                            GRAPH ?g {{
+                                ?s ?p ?o .
+                            }}
+                            VALUES ?g {{
+                                {}
+                            }}
+                        }}"#,
                     named_graphs.join("\n        ")
                 );
 
@@ -663,10 +663,10 @@ WHERE {{
     ) -> Result<bool> {
         let query = format!(
             r#"ASK {{
-    GRAPH <{ka_ual_with_visibility}> {{
-        ?s ?p ?o
-    }}
-}}"#
+                GRAPH <{ka_ual_with_visibility}> {{
+                    ?s ?p ?o
+                }}
+            }}"#
         );
 
         self.backend_ask(&query, self.config.timeouts.ask_timeout())
@@ -680,10 +680,10 @@ WHERE {{
     pub(crate) async fn knowledge_collection_exists_by_ual(&self, kc_ual: &str) -> Result<bool> {
         let query = format!(
             r#"ASK {{
-    GRAPH <{metadata}> {{
-        <{kc_ual}> ?p ?o
-    }}
-}}"#,
+                GRAPH <{metadata}> {{
+                    <{kc_ual}> ?p ?o
+                }}
+            }}"#,
             metadata = named_graphs::METADATA,
         );
 
@@ -697,11 +697,11 @@ WHERE {{
     pub(crate) async fn get_metadata(&self, kc_ual: &str) -> Result<String> {
         let query = format!(
             r#"CONSTRUCT {{ <{kc_ual}> ?p ?o . }}
-WHERE {{
-    GRAPH <{metadata}> {{
-        <{kc_ual}> ?p ?o .
-    }}
-}}"#,
+                WHERE {{
+                    GRAPH <{metadata}> {{
+                        <{kc_ual}> ?p ?o .
+                    }}
+                }}"#,
             metadata = named_graphs::METADATA,
         );
 

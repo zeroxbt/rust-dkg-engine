@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use super::{KnowledgeCollectionMetadata, query::predicates};
+
 /// Extracts the subject from an N-Quad triple.
 ///
 /// Assumes the triple starts with `<subject>` (IRI) or `_:` (blank node).
@@ -182,6 +184,42 @@ pub(crate) fn extract_uri_suffix(triple: &str, prefix: &str) -> Option<String> {
         Some(value.to_string())
     } else {
         None
+    }
+}
+
+/// Parse metadata from network RDF triples.
+///
+/// Returns KnowledgeCollectionMetadata if all required fields are found, None otherwise.
+pub(crate) fn parse_metadata_from_triples(
+    triples: &[String],
+) -> Option<KnowledgeCollectionMetadata> {
+    let mut publisher_address: Option<String> = None;
+    let mut block_number: Option<u64> = None;
+    let mut transaction_hash: Option<String> = None;
+    let mut block_timestamp: Option<u64> = None;
+
+    for triple in triples {
+        if triple.contains(predicates::PUBLISHED_BY) {
+            publisher_address = extract_uri_suffix(triple, predicates::PUBLISHER_KEY_PREFIX);
+        } else if triple.contains(predicates::PUBLISHED_AT_BLOCK) {
+            block_number = extract_quoted_integer(triple);
+        } else if triple.contains(predicates::PUBLISH_TX) {
+            transaction_hash = extract_quoted_string(triple);
+        } else if triple.contains(predicates::BLOCK_TIME) {
+            block_timestamp = extract_datetime_as_unix(triple);
+        }
+    }
+
+    match (
+        publisher_address,
+        block_number,
+        transaction_hash,
+        block_timestamp,
+    ) {
+        (Some(publisher), Some(block), Some(tx_hash), Some(timestamp)) => Some(
+            KnowledgeCollectionMetadata::new(publisher.to_lowercase(), block, tx_hash, timestamp),
+        ),
+        _ => None,
     }
 }
 

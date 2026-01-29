@@ -53,22 +53,6 @@ impl TokenIds {
     pub(crate) fn burned(&self) -> &[u64] {
         &self.burned
     }
-
-    /// Check if this represents a single token.
-    pub(crate) fn is_single(&self) -> bool {
-        self.start_token_id == self.end_token_id && self.burned.is_empty()
-    }
-
-    /// Get the count of active (non-burned) tokens in the range.
-    pub(crate) fn active_count(&self) -> u64 {
-        let total = self.end_token_id - self.start_token_id + 1;
-        total.saturating_sub(self.burned.len() as u64)
-    }
-
-    /// Iterate over active token IDs (excluding burned).
-    pub(crate) fn iter_active(&self) -> impl Iterator<Item = u64> + '_ {
-        (self.start_token_id..=self.end_token_id).filter(|id| !self.burned.contains(id))
-    }
 }
 
 impl Default for TokenIds {

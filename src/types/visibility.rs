@@ -16,25 +16,6 @@ pub(crate) enum Visibility {
     All,
 }
 
-impl Visibility {
-    /// Get the suffix used in named graph URIs.
-    ///
-    /// Returns `Some("public")` or `Some("private")` for specific visibility,
-    /// or `None` for `All` which doesn't map to a specific named graph.
-    pub(crate) fn as_suffix(&self) -> Option<&'static str> {
-        match self {
-            Self::Public => Some("public"),
-            Self::Private => Some("private"),
-            Self::All => None,
-        }
-    }
-
-    /// Check if this visibility should filter out private triples.
-    pub(crate) fn excludes_private(&self) -> bool {
-        matches!(self, Self::Public)
-    }
-}
-
 impl std::fmt::Display for Visibility {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
