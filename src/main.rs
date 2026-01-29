@@ -48,6 +48,7 @@ async fn main() {
 
     // Create command scheduler channel
     let (command_scheduler, command_rx) = CommandScheduler::channel();
+    let command_scheduler_for_shutdown = command_scheduler.clone();
 
     // Initialize managers and services
     let managers = managers::initialize(&config.managers, &paths, network_key).await;
@@ -135,7 +136,11 @@ async fn main() {
     // Step 1: Signal HTTP server to stop accepting new connections
     let _ = http_shutdown_tx.send(());
 
-    // Step 2: Drop command scheduler to close the command channel
+    // Step 2: Signal command scheduler to stop accepting new commands
+    // This prevents spawned delay tasks from scheduling new commands
+    command_scheduler_for_shutdown.shutdown();
+
+    // Step 3: Drop command scheduler to close the command channel
     // This causes the executor to stop accepting new commands
     drop(context);
 

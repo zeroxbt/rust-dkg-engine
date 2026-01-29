@@ -14,6 +14,7 @@ tokio = { version = "1.49.0", features = [
     "io-util",
     "signal",
 ] }
+tokio-util = "0.7"
 futures = "0.3.31"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json"] }

@@ -138,13 +138,8 @@ async fn process_filter_batch(
     let mut expired = Vec::new();
 
     // Step 1: Check local existence by UAL first (cheap, no RPC needed)
-    let kcs_needing_sync = check_local_existence(
-        chunk,
-        blockchain_id,
-        contract_address,
-        triple_store_service,
-    )
-    .await;
+    let kcs_needing_sync =
+        check_local_existence(chunk, blockchain_id, contract_address, triple_store_service).await;
 
     // Track already synced
     let needing_sync_ids: std::collections::HashSet<u64> =
@@ -300,19 +295,19 @@ async fn fetch_rpc_data_and_filter(
 
         // Check expiration first
         let end_epoch = epoch_result.as_u64().filter(|&e| e != 0);
-        if let (Some(current), Some(end)) = (current_epoch, end_epoch) {
-            if current > end {
-                tracing::debug!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    kc_id = kc_id,
-                    current_epoch = current,
-                    end_epoch = end,
-                    "[DKG SYNC] Filter: KC is expired, skipping"
-                );
-                expired.push(*kc_id);
-                continue;
-            }
+        if let (Some(current), Some(end)) = (current_epoch, end_epoch)
+            && current > end
+        {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                kc_id = kc_id,
+                current_epoch = current,
+                end_epoch = end,
+                "[DKG SYNC] Filter: KC is expired, skipping"
+            );
+            expired.push(*kc_id);
+            continue;
         }
 
         // Parse token range

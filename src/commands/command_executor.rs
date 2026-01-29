@@ -3,6 +3,7 @@ use std::{sync::Arc, time::Duration};
 use chrono::Utc;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::{Mutex, Semaphore, mpsc};
+use tokio_util::sync::CancellationToken;
 
 use super::{
     command_registry::{Command, CommandResolver},
@@ -67,6 +68,7 @@ impl CommandExecutionRequest {
 #[derive(Clone)]
 pub(crate) struct CommandScheduler {
     tx: mpsc::Sender<CommandExecutionRequest>,
+    shutdown: CancellationToken,
 }
 
 impl CommandScheduler {
@@ -74,21 +76,48 @@ impl CommandScheduler {
     /// Returns the scheduler (for sending commands) and a receiver (for the executor).
     pub(crate) fn channel() -> (Self, mpsc::Receiver<CommandExecutionRequest>) {
         let (tx, rx) = mpsc::channel::<CommandExecutionRequest>(COMMAND_QUEUE_PARALLELISM);
-        (Self { tx }, rx)
+        let shutdown = CancellationToken::new();
+        (Self { tx, shutdown }, rx)
+    }
+
+    /// Signal shutdown to stop accepting new commands.
+    /// Spawned delay tasks will check this before sending.
+    pub(crate) fn shutdown(&self) {
+        self.shutdown.cancel();
     }
 
     /// Schedule a command for execution. Logs an error if scheduling fails.
     pub(crate) async fn schedule(&self, request: CommandExecutionRequest) {
+        // Don't schedule new commands if shutdown has been signaled
+        if self.shutdown.is_cancelled() {
+            tracing::debug!(
+                command = %request.command().name(),
+                "Shutdown in progress, not scheduling command"
+            );
+            return;
+        }
+
         let command_name = request.command().name();
         let delay = request.delay().min(MAX_COMMAND_DELAY);
 
         let result = if delay > Duration::ZERO {
             let tx = self.tx.clone();
+            let shutdown = self.shutdown.clone();
             let mut delayed_request = request;
             delayed_request.clear_delay();
 
             tokio::spawn(async move {
                 tokio::time::sleep(delay).await;
+
+                // Check shutdown before sending - this is the key fix
+                if shutdown.is_cancelled() {
+                    tracing::debug!(
+                        command = %command_name,
+                        "Shutdown in progress, dropping delayed command"
+                    );
+                    return;
+                }
+
                 if let Err(e) = tx.send(delayed_request).await {
                     tracing::error!(
                         command = %command_name,
