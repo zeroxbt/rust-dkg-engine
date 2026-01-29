@@ -758,6 +758,23 @@ impl BlockchainManager {
             .await
     }
 
+    /// Execute a batch of heterogeneous calls using Multicall3.
+    ///
+    /// This allows combining different types of calls (e.g., getTokenRange + getEndEpoch)
+    /// into a single RPC request, reducing round-trips.
+    pub(crate) async fn execute_multicall(
+        &self,
+        blockchain: &BlockchainId,
+        batch: multicall::MulticallBatch,
+    ) -> Result<Vec<multicall::MulticallResult>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl.execute_multicall(batch).await
+    }
+
     /// Get the latest knowledge collection ID for a contract.
     ///
     /// Returns the highest KC ID that has been created on this contract.

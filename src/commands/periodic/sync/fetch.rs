@@ -261,21 +261,6 @@ async fn fetch_kc_batch_from_network(
         })
         .collect();
 
-    // Prefetch merkle roots for all KCs in a single batch RPC call
-    // This is much faster than fetching them one by one during validation
-    let merkle_roots: HashMap<u128, String> = if let Some(first_parsed) = parsed_uals.values().next()
-    {
-        let kc_ids: Vec<u128> = parsed_uals
-            .values()
-            .map(|p| p.knowledge_collection_id)
-            .collect();
-        get_validation_service
-            .prefetch_merkle_roots(blockchain_id, first_parsed.contract, &kc_ids)
-            .await
-    } else {
-        HashMap::new()
-    };
-
     // Build token IDs map for the request
     let token_ids_map: HashMap<String, TokenIds> = kcs
         .iter()
@@ -344,19 +329,18 @@ async fn fetch_kc_batch_from_network(
                         continue;
                     }
 
-                    if let Some(parsed_ual) = parsed_uals.get(ual) {
-                        // Use pre-fetched merkle root for fast validation (no RPC call needed)
-                        let merkle_root = merkle_roots
-                            .get(&parsed_ual.knowledge_collection_id)
-                            .map(|s| s.as_str());
+                    if let (Some(parsed_ual), Some(kc)) =
+                        (parsed_uals.get(ual), ual_to_kc.get(ual.as_str()))
+                    {
+                        // Use pre-fetched merkle root from filter stage (no RPC call needed)
                         let is_valid = get_validation_service.validate_response_with_root(
                             assertion,
                             parsed_ual,
                             Visibility::All,
-                            merkle_root,
+                            kc.merkle_root.as_deref(),
                         );
 
-                        if is_valid && let Some(kc) = ual_to_kc.get(ual.as_str()) {
+                        if is_valid {
                             let metadata = metadata_map
                                 .get(ual)
                                 .and_then(|triples| parse_metadata_from_triples(triples));

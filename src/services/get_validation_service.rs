@@ -1,8 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     managers::{
-        blockchain::{Address, BlockchainId, BlockchainManager},
+        blockchain::BlockchainManager,
         triple_store::{
             Assertion, Visibility, group_nquads_by_subject,
             query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
@@ -88,41 +88,6 @@ impl GetValidationService {
         }
 
         true
-    }
-
-    /// Prefetch merkle roots for a batch of knowledge collections.
-    ///
-    /// This fetches all merkle roots in a single Multicall3 RPC call, which is much
-    /// more efficient than fetching them one by one during validation.
-    ///
-    /// Returns a HashMap from KC ID to merkle root string.
-    pub(crate) async fn prefetch_merkle_roots(
-        &self,
-        blockchain: &BlockchainId,
-        contract_address: Address,
-        kc_ids: &[u128],
-    ) -> HashMap<u128, String> {
-        if kc_ids.is_empty() {
-            return HashMap::new();
-        }
-
-        match self
-            .blockchain_manager
-            .get_merkle_root_batch(blockchain, contract_address, kc_ids)
-            .await
-        {
-            Ok(results) => results
-                .into_iter()
-                .filter_map(|(kc_id, root)| root.map(|r| (kc_id, r)))
-                .collect(),
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    "Failed to batch fetch merkle roots, will fall back to individual fetches"
-                );
-                HashMap::new()
-            }
-        }
     }
 
     /// Validate a response using a pre-fetched merkle root.

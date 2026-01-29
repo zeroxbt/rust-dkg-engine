@@ -148,7 +148,7 @@ impl SyncCommandHandler {
             blockchain_id,
             &contract_addr_str,
             &filter_stats.already_synced,
-            &insert_stats.expired,
+            &filter_stats.expired,
             &insert_stats.synced,
             &fetch_stats.failures,
             &insert_stats.failed,
@@ -170,10 +170,10 @@ impl SyncCommandHandler {
             pipeline_ms,
             kcs_pending = pending,
             kcs_already_synced = filter_stats.already_synced.len(),
+            kcs_expired = filter_stats.expired.len(),
             kcs_fetch_failed = fetch_failures_count,
             kcs_synced = insert_stats.synced.len(),
             kcs_insert_failed = insert_failures_count,
-            kcs_expired = insert_stats.expired.len(),
             "[DKG SYNC] Contract sync timing breakdown (pipelined)"
         );
 
@@ -249,18 +249,9 @@ impl SyncCommandHandler {
         let insert_handle = {
             let blockchain_id = blockchain_id.clone();
             let contract_addr_str = contract_addr_str.clone();
-            let blockchain_manager = Arc::clone(&self.blockchain_manager);
             let triple_store_service = Arc::clone(&self.triple_store_service);
             tokio::spawn(async move {
-                insert_task(
-                    fetch_rx,
-                    blockchain_id,
-                    contract_address,
-                    contract_addr_str,
-                    blockchain_manager,
-                    triple_store_service,
-                )
-                .await
+                insert_task(fetch_rx, blockchain_id, contract_addr_str, triple_store_service).await
             })
         };
 

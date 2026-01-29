@@ -3,13 +3,17 @@
 //! This module implements a three-stage pipeline for syncing Knowledge Collections:
 //!
 //! ```text
-//! Filter Stage          Fetch Stage           Insert Stage
-//! ├─ Local existence    ├─ Network requests   ├─ Expiration check
-//! ├─ RPC (token ranges) ├─ Validation         ├─ RPC (end epochs)
-//! └─ Send to fetch ───→ └─ Send to insert ──→ └─ Triple store insert
+//! Filter Stage              Fetch Stage           Insert Stage
+//! ├─ Local existence        ├─ Network requests   └─ Triple store insert
+//! ├─ RPC (end epochs)       └─ Validation
+//! ├─ Filter expired
+//! ├─ RPC (token ranges)
+//! └─ Send to fetch ───────→ Send to insert ─────→
 //! ```
 //!
 //! The pipeline allows stages to overlap, reducing total sync time.
+//! Expiration filtering is done early in the filter stage to avoid
+//! fetching data for expired KCs.
 
 mod filter;
 mod fetch;
@@ -42,7 +46,8 @@ pub(crate) const MAX_NEW_KCS_PER_CONTRACT: u64 =
     BATCH_GET_UAL_MAX_LIMIT as u64 / MAX_RETRY_ATTEMPTS as u64;
 
 /// Batch size for filter task (KCs per batch sent through channel)
-pub(crate) const FILTER_BATCH_SIZE: usize = 50;
+/// Aligned with MULTICALL_CHUNK_SIZE (100) for optimal RPC batching.
+pub(crate) const FILTER_BATCH_SIZE: usize = 100;
 
 /// Batch size for network fetch (start fetching when we have this many KCs).
 /// Set to match FILTER_BATCH_SIZE to start fetching as soon as first filter batch completes.
