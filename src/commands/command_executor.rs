@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     command_registry::{Command, CommandResolver},
-    constants::{COMMAND_QUEUE_PARALLELISM, MAX_COMMAND_DELAY, MAX_COMMAND_LIFETIME},
+    constants::{COMMAND_CONCURRENT_LIMIT, COMMAND_QUEUE_SIZE, MAX_COMMAND_DELAY, MAX_COMMAND_LIFETIME},
 };
 use crate::context::Context;
 
@@ -75,7 +75,7 @@ impl CommandScheduler {
     /// Create a new command scheduler channel pair.
     /// Returns the scheduler (for sending commands) and a receiver (for the executor).
     pub(crate) fn channel() -> (Self, mpsc::Receiver<CommandExecutionRequest>) {
-        let (tx, rx) = mpsc::channel::<CommandExecutionRequest>(COMMAND_QUEUE_PARALLELISM);
+        let (tx, rx) = mpsc::channel::<CommandExecutionRequest>(COMMAND_QUEUE_SIZE);
         let shutdown = CancellationToken::new();
         (Self { tx, shutdown }, rx)
     }
@@ -160,7 +160,7 @@ impl CommandExecutor {
             command_resolver: CommandResolver::new(Arc::clone(&context)),
             scheduler: context.command_scheduler().clone(),
             rx: Arc::new(Mutex::new(rx)),
-            semaphore: Arc::new(Semaphore::new(COMMAND_QUEUE_PARALLELISM)),
+            semaphore: Arc::new(Semaphore::new(COMMAND_CONCURRENT_LIMIT)),
         }
     }
 

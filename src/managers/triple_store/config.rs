@@ -52,11 +52,10 @@ pub(crate) struct TripleStoreManagerConfig {
     #[serde(default)]
     pub timeouts: TimeoutConfig,
 
-    /// Maximum concurrent operations (optional concurrency limit).
+    /// Maximum concurrent operations.
     /// Limits how many triple store operations can run simultaneously.
     /// Useful to prevent overwhelming Blazegraph or causing resource contention.
-    /// None means unlimited concurrency.
-    #[serde(default)]
+    #[serde(default = "default_max_concurrent_operations")]
     pub max_concurrent_operations: Option<usize>,
 }
 
@@ -104,6 +103,10 @@ fn default_insert_timeout_ms() -> u64 {
 
 fn default_ask_timeout_ms() -> u64 {
     10_000
+}
+
+fn default_max_concurrent_operations() -> Option<usize> {
+    Some(16)
 }
 
 impl TimeoutConfig {

@@ -1,6 +1,12 @@
 use std::time::Duration;
 
-pub(crate) const COMMAND_QUEUE_PARALLELISM: usize = 100;
+/// Maximum number of commands that can execute concurrently.
+/// Set to ~2x CPU cores for I/O-bound command workloads.
+pub(crate) const COMMAND_CONCURRENT_LIMIT: usize = 32;
+
+/// Buffer size for the command queue channel.
+/// Allows absorbing bursts without immediately blocking callers.
+pub(crate) const COMMAND_QUEUE_SIZE: usize = 256;
 
 /// Maximum delay for a command before execution (24 hours)
 pub(crate) const MAX_COMMAND_DELAY: Duration = Duration::from_hours(24);

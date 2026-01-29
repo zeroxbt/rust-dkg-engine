@@ -421,7 +421,7 @@ impl NetworkManager {
             }
         }
 
-        let (action_tx, action_rx) = mpsc::channel(1024);
+        let (action_tx, action_rx) = mpsc::channel(128);
 
         Ok(Self {
             config: config.to_owned(),
