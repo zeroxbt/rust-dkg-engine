@@ -1,5 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
+use tracing::instrument;
+
 use crate::{
     managers::triple_store::{
         Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, TokenIds, TripleStoreManager,
@@ -248,6 +250,11 @@ impl TripleStoreService {
     /// 4. Delegates RDF serialization and SPARQL building to TripleStoreManager
     ///
     /// Returns the total number of triples inserted, or an error.
+    #[instrument(
+        name = "triple_store_insert",
+        skip(self, dataset, metadata),
+        fields(ual = %knowledge_collection_ual)
+    )]
     pub(crate) async fn insert_knowledge_collection(
         &self,
         knowledge_collection_ual: &str,
@@ -290,6 +297,11 @@ impl TripleStoreService {
     ///
     /// This is a fast existence check that queries the metadata graph.
     /// Useful when you don't have the token range but need to check if a KC is already synced.
+    #[instrument(
+        name = "triple_store_exists",
+        skip(self),
+        fields(ual = %kc_ual)
+    )]
     pub(crate) async fn knowledge_collection_exists_by_ual(&self, kc_ual: &str) -> bool {
         self.triple_store_manager
             .knowledge_collection_exists_by_ual(kc_ual)

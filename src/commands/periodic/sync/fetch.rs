@@ -12,6 +12,7 @@ use std::{
 
 use futures::{stream::FuturesUnordered, StreamExt};
 use tokio::sync::mpsc;
+use tracing::instrument;
 
 use crate::{
     commands::operations::get::protocols::batch_get::BATCH_GET_UAL_MAX_LIMIT,
@@ -31,6 +32,11 @@ use super::{
 };
 
 /// Fetch task: receives filtered KCs, fetches from network, sends to insert stage.
+#[instrument(
+    name = "sync_fetch",
+    skip(rx, network_manager, repository_manager, get_validation_service, peer_performance_tracker, tx),
+    fields(blockchain_id = %blockchain_id)
+)]
 pub(crate) async fn fetch_task(
     mut rx: mpsc::Receiver<Vec<KcToSync>>,
     blockchain_id: BlockchainId,
@@ -220,6 +226,17 @@ async fn make_peer_request(
 /// Uses FuturesUnordered to process peer responses as they arrive,
 /// avoiding being blocked by slow/unreachable peers.
 /// Peers should be pre-sorted by performance score (best first).
+#[instrument(
+    name = "sync_fetch_batch",
+    skip(kcs, peers, network_manager, get_validation_service, peer_performance_tracker),
+    fields(
+        blockchain_id = %blockchain_id,
+        kc_count = kcs.len(),
+        peer_count = peers.len(),
+        fetched = tracing::field::Empty,
+        failed = tracing::field::Empty,
+    )
+)]
 async fn fetch_kc_batch_from_network(
     blockchain_id: &BlockchainId,
     kcs: &[KcToSync],
@@ -243,6 +260,21 @@ async fn fetch_kc_batch_from_network(
                 .map(|parsed| (kc.ual.clone(), parsed))
         })
         .collect();
+
+    // Prefetch merkle roots for all KCs in a single batch RPC call
+    // This is much faster than fetching them one by one during validation
+    let merkle_roots: HashMap<u128, String> = if let Some(first_parsed) = parsed_uals.values().next()
+    {
+        let kc_ids: Vec<u128> = parsed_uals
+            .values()
+            .map(|p| p.knowledge_collection_id)
+            .collect();
+        get_validation_service
+            .prefetch_merkle_roots(blockchain_id, first_parsed.contract, &kc_ids)
+            .await
+    } else {
+        HashMap::new()
+    };
 
     // Build token IDs map for the request
     let token_ids_map: HashMap<String, TokenIds> = kcs
@@ -288,14 +320,20 @@ async fn fetch_kc_batch_from_network(
 
     // Process responses as they complete, adding new peers as slots free up
     while let Some((peer, result, elapsed)) = futures.next().await {
-        if uals_still_needed.is_empty() {
-            break;
-        }
+        // Create a span for this peer's response
+        let peer_span = tracing::info_span!(
+            "peer_response",
+            peer_id = %peer,
+            latency_ms = elapsed.as_millis() as u64,
+            valid_kcs = tracing::field::Empty,
+            status = tracing::field::Empty,
+        );
+        let _guard = peer_span.enter();
 
         match result {
             Ok(response) => {
                 let metadata_map = response.metadata();
-                let mut got_valid_data = false;
+                let mut valid_count = 0usize;
 
                 for (ual, assertion) in response.assertions() {
                     if !uals_still_needed.contains(ual) {
@@ -307,9 +345,16 @@ async fn fetch_kc_batch_from_network(
                     }
 
                     if let Some(parsed_ual) = parsed_uals.get(ual) {
-                        let is_valid = get_validation_service
-                            .validate_response(assertion, parsed_ual, Visibility::All)
-                            .await;
+                        // Use pre-fetched merkle root for fast validation (no RPC call needed)
+                        let merkle_root = merkle_roots
+                            .get(&parsed_ual.knowledge_collection_id)
+                            .map(|s| s.as_str());
+                        let is_valid = get_validation_service.validate_response_with_root(
+                            assertion,
+                            parsed_ual,
+                            Visibility::All,
+                            merkle_root,
+                        );
 
                         if is_valid && let Some(kc) = ual_to_kc.get(ual.as_str()) {
                             let metadata = metadata_map
@@ -323,29 +368,28 @@ async fn fetch_kc_batch_from_network(
                                 metadata,
                             });
                             uals_still_needed.remove(ual);
-                            got_valid_data = true;
-
-                            tracing::debug!(
-                                ual = %ual,
-                                peer = %peer,
-                                "[DKG SYNC] Received and validated KC from network"
-                            );
+                            valid_count += 1;
                         }
                     }
                 }
 
+                peer_span.record("valid_kcs", valid_count);
+                peer_span.record("status", "ok");
+
                 // Record peer latency for successful responses with valid data
-                if got_valid_data {
+                if valid_count > 0 {
                     peer_performance_tracker.record_latency(&peer, elapsed);
+                }
+
+                // Break early if we got everything - don't wait for remaining in-flight requests
+                if uals_still_needed.is_empty() {
+                    break;
                 }
             }
             Err(e) => {
+                peer_span.record("valid_kcs", 0usize);
+                peer_span.record("status", e.to_string().as_str());
                 peer_performance_tracker.record_failure(&peer);
-                tracing::debug!(
-                    peer = %peer,
-                    error = %e,
-                    "[DKG SYNC] Request to peer failed"
-                );
             }
         }
 
@@ -367,6 +411,10 @@ async fn fetch_kc_batch_from_network(
         .iter()
         .filter_map(|ual| ual_to_kc.get(ual.as_str()).map(|kc| kc.kc_id))
         .collect();
+
+    // Record results in span
+    tracing::Span::current().record("fetched", fetched.len());
+    tracing::Span::current().record("failed", failed_kc_ids.len());
 
     (fetched, failed_kc_ids)
 }

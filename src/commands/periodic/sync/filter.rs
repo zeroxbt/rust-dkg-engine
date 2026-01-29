@@ -7,6 +7,7 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use futures::future::join_all;
 use tokio::sync::mpsc;
+use tracing::instrument;
 
 use crate::{
     managers::{
@@ -22,6 +23,15 @@ use super::{FilterStats, KcToSync, FILTER_BATCH_SIZE};
 /// Filter task: processes pending KCs in batches, checking local existence first,
 /// then RPC for token ranges only for KCs that need syncing.
 /// Sends KCs that need syncing to fetch stage.
+#[instrument(
+    name = "sync_filter",
+    skip(pending_kc_ids, blockchain_manager, triple_store_service, tx),
+    fields(
+        blockchain_id = %blockchain_id,
+        contract = %contract_addr_str,
+        pending_count = pending_kc_ids.len(),
+    )
+)]
 pub(crate) async fn filter_task(
     pending_kc_ids: Vec<u64>,
     blockchain_id: BlockchainId,

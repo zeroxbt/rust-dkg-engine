@@ -34,7 +34,7 @@ async fn main() {
 
     // Load configuration first, then initialize logger with config settings
     let config = Arc::new(config::initialize_configuration());
-    logger::initialize(&config.logger);
+    logger::initialize(&config.logger, &config.telemetry);
 
     display_ot_node_ascii_art();
 
@@ -168,6 +168,9 @@ async fn main() {
         Ok(Err(e)) => tracing::error!("HTTP task panicked: {:?}", e),
         Err(_) => tracing::warn!("HTTP server shutdown timeout"),
     }
+
+    // Step 7: Flush OpenTelemetry traces
+    logger::shutdown_telemetry();
 
     tracing::info!("Shutdown complete");
 }

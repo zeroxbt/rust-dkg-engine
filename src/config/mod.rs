@@ -77,6 +77,8 @@ pub(crate) struct Config {
     pub http_api: HttpApiConfig,
     #[serde(default)]
     pub logger: LoggerConfig,
+    #[serde(default)]
+    pub telemetry: TelemetryConfig,
 }
 
 fn default_app_data_path() -> PathBuf {
@@ -118,6 +120,38 @@ fn default_log_level() -> String {
 
 fn default_log_format() -> LogFormat {
     LogFormat::Pretty
+}
+
+/// OpenTelemetry configuration for distributed tracing.
+#[derive(Debug, Deserialize, Clone)]
+pub(crate) struct TelemetryConfig {
+    /// Whether to enable OpenTelemetry tracing export
+    #[serde(default)]
+    pub enabled: bool,
+    /// OTLP endpoint for trace export (e.g., "http://tempo:4317")
+    #[serde(default = "default_otlp_endpoint")]
+    pub otlp_endpoint: String,
+    /// Service name reported in traces
+    #[serde(default = "default_service_name")]
+    pub service_name: String,
+}
+
+impl Default for TelemetryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            otlp_endpoint: default_otlp_endpoint(),
+            service_name: default_service_name(),
+        }
+    }
+}
+
+fn default_otlp_endpoint() -> String {
+    "http://localhost:4317".to_string()
+}
+
+fn default_service_name() -> String {
+    "rust-ot-node".to_string()
 }
 
 #[derive(Debug, Deserialize, Clone)]

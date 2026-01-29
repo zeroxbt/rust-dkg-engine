@@ -7,6 +7,7 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use futures::future::join_all;
 use tokio::sync::mpsc;
+use tracing::instrument;
 
 use crate::{
     managers::blockchain::{Address, BlockchainId, BlockchainManager},
@@ -16,6 +17,14 @@ use crate::{
 use super::{FetchedKc, InsertStats};
 
 /// Insert task: receives fetched KCs, checks expiration, inserts into triple store.
+#[instrument(
+    name = "sync_insert",
+    skip(rx, blockchain_manager, triple_store_service),
+    fields(
+        blockchain_id = %blockchain_id,
+        contract = %contract_addr_str,
+    )
+)]
 pub(crate) async fn insert_task(
     mut rx: mpsc::Receiver<Vec<FetchedKc>>,
     blockchain_id: BlockchainId,

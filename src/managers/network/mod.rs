@@ -28,6 +28,7 @@ pub(crate) use pending_requests::PendingRequests;
 pub(crate) use protocols::{JsCompatCodec, ProtocolTimeouts};
 use serde::Deserialize;
 use tokio::sync::{Mutex, mpsc, oneshot};
+use tracing::instrument;
 use tracing::info;
 use uuid::Uuid;
 
@@ -799,6 +800,11 @@ impl NetworkManager {
     // The message wrapping (RequestMessage with header) is handled internally.
 
     /// Send a store request and await the response.
+    #[instrument(
+        name = "network_store",
+        skip(self, addresses, request_data),
+        fields(peer_id = %peer, operation_id = %operation_id)
+    )]
     pub(crate) async fn send_store_request(
         &self,
         peer: PeerId,
@@ -889,6 +895,11 @@ impl NetworkManager {
     }
 
     /// Send a batch get request and await the response.
+    #[instrument(
+        name = "network_batch_get",
+        skip(self, addresses, request_data),
+        fields(peer_id = %peer, operation_id = %operation_id)
+    )]
     pub(crate) async fn send_batch_get_request(
         &self,
         peer: PeerId,

@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     managers::{
-        blockchain::BlockchainManager,
+        blockchain::{Address, BlockchainId, BlockchainManager},
         triple_store::{
             Assertion, Visibility, group_nquads_by_subject,
             query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
@@ -88,6 +88,159 @@ impl GetValidationService {
         }
 
         true
+    }
+
+    /// Prefetch merkle roots for a batch of knowledge collections.
+    ///
+    /// This fetches all merkle roots in a single Multicall3 RPC call, which is much
+    /// more efficient than fetching them one by one during validation.
+    ///
+    /// Returns a HashMap from KC ID to merkle root string.
+    pub(crate) async fn prefetch_merkle_roots(
+        &self,
+        blockchain: &BlockchainId,
+        contract_address: Address,
+        kc_ids: &[u128],
+    ) -> HashMap<u128, String> {
+        if kc_ids.is_empty() {
+            return HashMap::new();
+        }
+
+        match self
+            .blockchain_manager
+            .get_merkle_root_batch(blockchain, contract_address, kc_ids)
+            .await
+        {
+            Ok(results) => results
+                .into_iter()
+                .filter_map(|(kc_id, root)| root.map(|r| (kc_id, r)))
+                .collect(),
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Failed to batch fetch merkle roots, will fall back to individual fetches"
+                );
+                HashMap::new()
+            }
+        }
+    }
+
+    /// Validate a response using a pre-fetched merkle root.
+    ///
+    /// This is more efficient than `validate_response` when validating multiple KCs
+    /// because it doesn't need to make individual RPC calls for each merkle root.
+    pub(crate) fn validate_response_with_root(
+        &self,
+        assertion: &Assertion,
+        parsed_ual: &ParsedUal,
+        visibility: Visibility,
+        merkle_root: Option<&str>,
+    ) -> bool {
+        // For single KA, skip validation (like JS)
+        if parsed_ual.knowledge_asset_id.is_some() {
+            return true;
+        }
+
+        // If only private content is requested and there's no public, skip validation
+        if assertion.public.is_empty()
+            && assertion.private.is_some()
+            && visibility == Visibility::Private
+        {
+            return true;
+        }
+
+        // Validate public assertion if present
+        if !assertion.public.is_empty() {
+            let Some(on_chain_root) = merkle_root else {
+                tracing::debug!("No merkle root provided for validation");
+                return false;
+            };
+
+            match self.validate_public_assertion_with_root(&assertion.public, on_chain_root) {
+                Ok(true) => {}
+                Ok(false) => {
+                    tracing::debug!("Public assertion validation failed");
+                    return false;
+                }
+                Err(e) => {
+                    tracing::debug!(error = %e, "Error validating public assertion");
+                    return false;
+                }
+            }
+        }
+
+        // Validate private assertion if present
+        if let Some(private) = &assertion.private
+            && !private.is_empty()
+        {
+            match self.validate_private_assertion(&assertion.public, private) {
+                Ok(true) => {}
+                Ok(false) => {
+                    tracing::debug!("Private assertion validation failed");
+                    return false;
+                }
+                Err(e) => {
+                    tracing::debug!(error = %e, "Error validating private assertion");
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    /// Validate public assertion against a pre-fetched on-chain merkle root.
+    fn validate_public_assertion_with_root(
+        &self,
+        public_triples: &[String],
+        on_chain_root: &str,
+    ) -> Result<bool, String> {
+        let calculated_root = Self::calculate_public_merkle_root(public_triples);
+
+        if calculated_root != on_chain_root {
+            tracing::debug!(
+                calculated = %calculated_root,
+                on_chain = %on_chain_root,
+                "Merkle root mismatch"
+            );
+            return Ok(false);
+        }
+
+        Ok(true)
+    }
+
+    /// Calculate the merkle root for public triples.
+    fn calculate_public_merkle_root(public_triples: &[String]) -> String {
+        // Separate private-hash triples from regular public triples
+        let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
+
+        let mut filtered_public: Vec<&str> = Vec::new();
+        let mut private_hash_triples: Vec<&str> = Vec::new();
+
+        for triple in public_triples {
+            if triple.starts_with(&private_hash_prefix) {
+                private_hash_triples.push(triple);
+            } else {
+                filtered_public.push(triple);
+            }
+        }
+
+        // Group by subject, then append private-hash groups
+        let mut grouped = group_nquads_by_subject(&filtered_public);
+        grouped.extend(group_nquads_by_subject(&private_hash_triples));
+
+        // Sort each group and flatten
+        let sorted_flat: Vec<String> = grouped
+            .iter()
+            .flat_map(|group| {
+                let mut sorted_group: Vec<&str> = group.to_vec();
+                sorted_group.sort();
+                sorted_group.into_iter().map(String::from)
+            })
+            .collect();
+
+        // Calculate merkle root
+        validation::calculate_merkle_root(&sorted_flat)
     }
 
     /// Validate public assertion against on-chain merkle root.

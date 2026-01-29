@@ -2,6 +2,7 @@ pub(crate) mod blockchains;
 pub(crate) mod error;
 mod error_utils;
 mod gas;
+pub(crate) mod multicall;
 mod rpc_rate_limiter;
 mod substrate;
 pub(crate) mod utils;
@@ -9,6 +10,7 @@ pub(crate) mod utils;
 use std::collections::HashMap;
 
 use blockchains::evm_chain::EvmChain;
+use tracing::instrument;
 pub(crate) use blockchains::{
     blockchain_creator::{Hub, KnowledgeCollectionStorage, ParametersStorage},
     evm_chain::{ContractLog, ContractName},
@@ -692,6 +694,14 @@ impl BlockchainManager {
     ///
     /// Uses Multicall3 to batch multiple `getKnowledgeAssetsRange` calls into one RPC request.
     /// Returns a Vec of (kc_id, Option<(start_token_id, end_token_id, burned_token_ids)>).
+    #[instrument(
+        name = "rpc_get_assets_range_batch",
+        skip(self, knowledge_collection_ids),
+        fields(
+            blockchain_id = %blockchain,
+            kc_count = knowledge_collection_ids.len(),
+        )
+    )]
     pub(crate) async fn get_knowledge_assets_range_batch(
         &self,
         blockchain: &BlockchainId,
@@ -725,6 +735,26 @@ impl BlockchainManager {
         })?;
         blockchain_impl
             .get_knowledge_collection_merkle_root(contract_address, knowledge_collection_id)
+            .await
+    }
+
+    /// Batch fetch merkle roots for multiple knowledge collections using Multicall3.
+    ///
+    /// Returns a Vec of (kc_id, Option<String>) pairs. If a KC doesn't exist or the call
+    /// fails, the result will be None for that KC.
+    pub(crate) async fn get_merkle_root_batch(
+        &self,
+        blockchain: &BlockchainId,
+        contract_address: Address,
+        knowledge_collection_ids: &[u128],
+    ) -> Result<Vec<(u128, Option<String>)>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
+            .get_merkle_root_batch(contract_address, knowledge_collection_ids)
             .await
     }
 
@@ -778,6 +808,14 @@ impl BlockchainManager {
     }
 
     /// Batch fetch end epochs for multiple knowledge collections using Multicall3.
+    #[instrument(
+        name = "rpc_get_end_epoch_batch",
+        skip(self, knowledge_collection_ids),
+        fields(
+            blockchain_id = %blockchain,
+            kc_count = knowledge_collection_ids.len(),
+        )
+    )]
     pub(crate) async fn get_kc_end_epoch_batch(
         &self,
         blockchain: &BlockchainId,
