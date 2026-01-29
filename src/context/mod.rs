@@ -9,7 +9,8 @@ use crate::{
         },
     },
     services::{
-        GetValidationService, PeerDiscoveryTracker, ResponseChannels, Services, TripleStoreService,
+        GetValidationService, PeerDiscoveryTracker, PeerPerformanceTracker, ResponseChannels,
+        Services, TripleStoreService,
     },
 };
 
@@ -64,6 +65,10 @@ impl Context {
 
     pub(crate) fn peer_discovery_tracker(&self) -> &Arc<PeerDiscoveryTracker> {
         &self.services.peer_discovery_tracker
+    }
+
+    pub(crate) fn peer_performance_tracker(&self) -> &Arc<PeerPerformanceTracker> {
+        &self.services.peer_performance_tracker
     }
 
     // Response channel accessors

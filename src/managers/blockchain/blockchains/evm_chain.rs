@@ -937,6 +937,119 @@ impl EvmChain {
         }
     }
 
+    /// Get the range of knowledge assets for multiple knowledge collections in a single RPC call.
+    ///
+    /// Uses Multicall3 to batch multiple `getKnowledgeAssetsRange` calls into one RPC request.
+    /// Returns a Vec of (kc_id, Option<(start_token_id, end_token_id, burned_token_ids)>).
+    /// Each result corresponds to the input kc_id at the same index.
+    ///
+    /// Returns an error if the contract address is not a registered KnowledgeCollectionStorage.
+    pub(crate) async fn get_knowledge_assets_range_batch(
+        &self,
+        contract_address: Address,
+        knowledge_collection_ids: &[u128],
+    ) -> Result<Vec<(u128, Option<(u64, u64, Vec<u64>)>)>, BlockchainError> {
+        if knowledge_collection_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Verify the contract is registered
+        let contracts = self.contracts().await;
+        let _kc_storage = contracts
+            .knowledge_collection_storage_by_address(&contract_address)
+            .ok_or_else(|| {
+                BlockchainError::Custom(format!(
+                    "KnowledgeCollectionStorage at {:?} is not registered.",
+                    contract_address
+                ))
+            })?;
+
+        // Build the calldata for each getKnowledgeAssetsRange call
+        // Function selector for getKnowledgeAssetsRange(uint256) is keccak256("getKnowledgeAssetsRange(uint256)")[0:4]
+        // Computed via: cast sig "getKnowledgeAssetsRange(uint256)" = 0xbfed2578
+        use crate::managers::blockchain::blockchains::blockchain_creator::Multicall3;
+
+        let selector: [u8; 4] = [0xbf, 0xed, 0x25, 0x78];
+
+        let calls: Vec<Multicall3::Call3> = knowledge_collection_ids
+            .iter()
+            .map(|&kc_id| {
+                // Encode the call: selector + abi.encode(uint256)
+                let mut call_data = selector.to_vec();
+                call_data.extend_from_slice(&U256::from(kc_id).to_be_bytes::<32>());
+
+                Multicall3::Call3 {
+                    target: contract_address,
+                    allowFailure: true,
+                    callData: Bytes::from(call_data),
+                }
+            })
+            .collect();
+
+        // Execute the multicall (single RPC request)
+        let results = self
+            .rpc_call(contracts.multicall3().aggregate3(calls).call())
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!("Multicall3 aggregate3 failed: {}", e))
+            })?;
+
+        // Parse results
+        let mut parsed_results = Vec::with_capacity(knowledge_collection_ids.len());
+
+        for (i, result) in results.iter().enumerate() {
+            let kc_id = knowledge_collection_ids[i];
+            let data: &[u8] = result.returnData.as_ref();
+
+            if !result.success || data.len() < 64 {
+                // Call failed or returned insufficient data
+                parsed_results.push((kc_id, None));
+                continue;
+            }
+
+            // Decode the return data: (uint256, uint256, uint256[])
+            // The ABI encoding is:
+            // - bytes 0-31: start_token_id
+            // - bytes 32-63: end_token_id
+            // - bytes 64-95: offset to dynamic array
+            // - bytes at offset: length of array, then elements
+
+            // Parse start and end token IDs
+            let start_token_id = U256::from_be_slice(&data[0..32]);
+            let end_token_id = U256::from_be_slice(&data[32..64]);
+
+            // Parse burned array
+            let mut burned: Vec<u64> = Vec::new();
+            if data.len() >= 96 {
+                let array_offset = U256::from_be_slice(&data[64..96]).to::<usize>();
+                if data.len() >= array_offset + 32 {
+                    let array_len = U256::from_be_slice(&data[array_offset..array_offset + 32]).to::<usize>();
+                    for j in 0..array_len {
+                        let elem_start = array_offset + 32 + j * 32;
+                        if data.len() >= elem_start + 32 {
+                            let elem = U256::from_be_slice(&data[elem_start..elem_start + 32]);
+                            if let Ok(v) = elem.try_into() {
+                                burned.push(v);
+                            }
+                        }
+                    }
+                }
+            }
+
+            let start: u64 = start_token_id.try_into().unwrap_or(0);
+            let end: u64 = end_token_id.try_into().unwrap_or(0);
+
+            // If both start and end are 0, the collection doesn't exist
+            if start == 0 && end == 0 {
+                parsed_results.push((kc_id, None));
+            } else {
+                parsed_results.push((kc_id, Some((start, end, burned))));
+            }
+        }
+
+        Ok(parsed_results)
+    }
+
     /// Get the latest merkle root for a knowledge collection.
     ///
     /// Returns the merkle root as a hex string (with 0x prefix), or None if the collection
@@ -1068,6 +1181,79 @@ impl EvmChain {
         // end_epoch is Uint<40, 1> - get the inner value and convert
         // The Uint type has a limbs() method or we can use to_limbs()
         Ok(end_epoch.to::<u64>())
+    }
+
+    /// Batch fetch end epochs for multiple knowledge collections using Multicall3.
+    ///
+    /// Returns a Vec of (kc_id, Option<u64>) pairs. If a KC doesn't exist or the call
+    /// fails, the result will be None for that KC.
+    ///
+    /// This batches up to 50 calls per Multicall3 request to avoid RPC rate limiting.
+    pub(crate) async fn get_kc_end_epoch_batch(
+        &self,
+        contract_address: Address,
+        knowledge_collection_ids: &[u128],
+    ) -> Result<Vec<(u128, Option<u64>)>, BlockchainError> {
+        use crate::managers::blockchain::blockchains::blockchain_creator::Multicall3;
+
+        if knowledge_collection_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Function selector for getEndEpoch(uint256)
+        let selector: [u8; 4] = [0x22, 0xdf, 0xf8, 0x0c];
+
+        // Build the calls array for Multicall3
+        let calls: Vec<Multicall3::Call3> = knowledge_collection_ids
+            .iter()
+            .map(|&kc_id| {
+                // Encode the call: selector + abi.encode(uint256)
+                let mut call_data = selector.to_vec();
+                call_data.extend_from_slice(&U256::from(kc_id).to_be_bytes::<32>());
+
+                Multicall3::Call3 {
+                    target: contract_address,
+                    allowFailure: true,
+                    callData: Bytes::from(call_data),
+                }
+            })
+            .collect();
+
+        // Execute the multicall (single RPC request)
+        let contracts = self.contracts().await;
+        let results = self
+            .rpc_call(contracts.multicall3().aggregate3(calls).call())
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!("Multicall3 aggregate3 failed: {}", e))
+            })?;
+
+        // Parse results
+        let mut parsed_results = Vec::with_capacity(knowledge_collection_ids.len());
+
+        for (i, result) in results.iter().enumerate() {
+            let kc_id = knowledge_collection_ids[i];
+            let data: &[u8] = result.returnData.as_ref();
+
+            if !result.success || data.len() < 32 {
+                // Call failed or returned insufficient data
+                parsed_results.push((kc_id, None));
+                continue;
+            }
+
+            // Decode the return data: uint40 (returned as 32 bytes, right-padded in ABI)
+            let end_epoch = U256::from_be_slice(&data[0..32]);
+            let epoch_u64: u64 = end_epoch.try_into().unwrap_or(0);
+
+            // If epoch is 0, the KC might not exist
+            if epoch_u64 == 0 {
+                parsed_results.push((kc_id, None));
+            } else {
+                parsed_results.push((kc_id, Some(epoch_u64)));
+            }
+        }
+
+        Ok(parsed_results)
     }
 
     // ==================== Paranet Methods ====================

@@ -83,6 +83,26 @@ pub(crate) mod paranets_registry {
     );
 }
 
+sol! {
+    /// Multicall3 contract for batching multiple calls into a single RPC request.
+    /// See: https://www.multicall3.com/
+    #[sol(rpc)]
+    contract Multicall3 {
+        struct Call3 {
+            address target;
+            bool allowFailure;
+            bytes callData;
+        }
+
+        struct Result {
+            bool success;
+            bytes returnData;
+        }
+
+        function aggregate3(Call3[] calldata calls) public payable returns (Result[] memory returnData);
+    }
+}
+
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 
 use alloy::{
@@ -109,6 +129,10 @@ use crate::managers::blockchain::{BlockchainConfig, ContractName, error::Blockch
 // Use Arc<DynProvider> for thread-safe sharing
 pub(crate) type BlockchainProvider = Arc<DynProvider<Ethereum>>;
 
+/// Multicall3 contract address - same on all EVM chains
+/// See: https://www.multicall3.com/
+const MULTICALL3_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
+
 pub(crate) struct Contracts {
     hub: Hub::HubInstance<BlockchainProvider>,
     knowledge_collection_storages: HashMap<
@@ -124,6 +148,7 @@ pub(crate) struct Contracts {
     token: Token::TokenInstance<BlockchainProvider>,
     chronos: Chronos::ChronosInstance<BlockchainProvider>,
     paranets_registry: Option<ParanetsRegistry::ParanetsRegistryInstance<BlockchainProvider>>,
+    multicall3: Multicall3::Multicall3Instance<BlockchainProvider>,
 }
 
 impl Contracts {
@@ -183,6 +208,10 @@ impl Contracts {
         self.paranets_registry.as_ref().ok_or_else(|| {
             BlockchainError::Custom("ParanetsRegistry contract is not initialized".to_string())
         })
+    }
+
+    pub(crate) fn multicall3(&self) -> &Multicall3::Multicall3Instance<BlockchainProvider> {
+        &self.multicall3
     }
 
     pub(crate) fn get_address(
@@ -501,5 +530,13 @@ pub(crate) async fn initialize_contracts(
             ),
             provider.clone(),
         )),
+        multicall3: Multicall3::new(
+            MULTICALL3_ADDRESS
+                .parse()
+                .map_err(|_| BlockchainError::InvalidAddress {
+                    address: MULTICALL3_ADDRESS.to_string(),
+                })?,
+            provider.clone(),
+        ),
     })
 }

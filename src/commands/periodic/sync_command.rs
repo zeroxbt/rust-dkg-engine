@@ -26,7 +26,7 @@ use crate::{
             },
         },
     },
-    services::{GetValidationService, TripleStoreService},
+    services::{GetValidationService, PeerPerformanceTracker, TripleStoreService},
     utils::ual::{ParsedUal, derive_ual, parse_ual},
 };
 
@@ -58,6 +58,7 @@ pub(crate) struct SyncCommandHandler {
     triple_store_service: Arc<TripleStoreService>,
     network_manager: Arc<NetworkManager>,
     get_validation_service: Arc<GetValidationService>,
+    peer_performance_tracker: Arc<PeerPerformanceTracker>,
 }
 
 /// Result of syncing a single contract
@@ -162,69 +163,75 @@ async fn filter_task(
             }
         }
 
-        // Step 2: Only fetch token ranges for KCs that need syncing (RPC calls)
+        // Step 2: Only fetch token ranges for KCs that need syncing (RPC calls via multicall)
         if kcs_needing_sync.is_empty() {
             processed += chunk.len();
             continue;
         }
 
-        let range_futures: Vec<_> = kcs_needing_sync
+        // Build a map from kc_id to ual for later lookup
+        let kc_id_to_ual: std::collections::HashMap<u64, String> = kcs_needing_sync
             .iter()
-            .map(|(kc_id, ual)| {
-                let bm = Arc::clone(&blockchain_manager);
-                let bid = blockchain_id.clone();
-                let kc_id = *kc_id;
-                let ual = ual.clone();
-                async move {
-                    let result = bm
-                        .get_knowledge_assets_range(&bid, contract_address, kc_id as u128)
-                        .await;
-                    (kc_id, ual, result)
-                }
-            })
+            .map(|(kc_id, ual)| (*kc_id, ual.clone()))
             .collect();
 
-        let range_results = join_all(range_futures).await;
+        // Get all KC IDs for the batch call
+        let kc_ids: Vec<u128> = kcs_needing_sync.iter().map(|(kc_id, _)| *kc_id as u128).collect();
+
+        // Use multicall to fetch all token ranges in a single RPC request
+        let range_results = blockchain_manager
+            .get_knowledge_assets_range_batch(&blockchain_id, contract_address, &kc_ids)
+            .await;
 
         // Process RPC results - collect KCs with valid token ranges
         let mut batch_to_sync = Vec::new();
 
-        for (kc_id, ual, result) in range_results {
-            match result {
-                Ok(Some((global_start, global_end, global_burned))) => {
-                    let offset = (kc_id - 1) * MAX_TOKENS_PER_KC;
-                    let start_token_id = global_start.saturating_sub(offset);
-                    let end_token_id = global_end.saturating_sub(offset);
-                    let burned: Vec<u64> = global_burned
-                        .into_iter()
-                        .map(|b| b.saturating_sub(offset))
-                        .collect();
+        match range_results {
+            Ok(results) => {
+                for (kc_id_u128, result) in results {
+                    let kc_id = kc_id_u128 as u64;
+                    let ual = match kc_id_to_ual.get(&kc_id) {
+                        Some(u) => u.clone(),
+                        None => continue,
+                    };
 
-                    batch_to_sync.push(KcToSync {
-                        kc_id,
-                        ual,
-                        start_token_id,
-                        end_token_id,
-                        burned,
-                    });
+                    match result {
+                        Some((global_start, global_end, global_burned)) => {
+                            let offset = (kc_id - 1) * MAX_TOKENS_PER_KC;
+                            let start_token_id = global_start.saturating_sub(offset);
+                            let end_token_id = global_end.saturating_sub(offset);
+                            let burned: Vec<u64> = global_burned
+                                .into_iter()
+                                .map(|b| b.saturating_sub(offset))
+                                .collect();
+
+                            batch_to_sync.push(KcToSync {
+                                kc_id,
+                                ual,
+                                start_token_id,
+                                end_token_id,
+                                burned,
+                            });
+                        }
+                        None => {
+                            tracing::warn!(
+                                blockchain_id = %blockchain_id,
+                                contract = %contract_addr_str,
+                                kc_id = kc_id,
+                                "[DKG SYNC] KC has no token range on chain, skipping"
+                            );
+                        }
+                    }
                 }
-                Ok(None) => {
-                    tracing::warn!(
-                        blockchain_id = %blockchain_id,
-                        contract = %contract_addr_str,
-                        kc_id = kc_id,
-                        "[DKG SYNC] KC has no token range on chain, skipping"
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        blockchain_id = %blockchain_id,
-                        contract = %contract_addr_str,
-                        kc_id = kc_id,
-                        error = %e,
-                        "[DKG SYNC] Failed to get KC token range, will retry later"
-                    );
-                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract_addr_str,
+                    error = %e,
+                    kc_count = kc_ids.len(),
+                    "[DKG SYNC] Multicall to get KC token ranges failed, will retry later"
+                );
             }
         }
 
@@ -265,6 +272,7 @@ async fn fetch_task(
     network_manager: Arc<NetworkManager>,
     repository_manager: Arc<RepositoryManager>,
     get_validation_service: Arc<GetValidationService>,
+    peer_performance_tracker: Arc<PeerPerformanceTracker>,
     tx: mpsc::Sender<Vec<FetchedKc>>,
 ) -> FetchStats {
     let task_start = Instant::now();
@@ -272,8 +280,8 @@ async fn fetch_task(
     let mut total_fetched = 0usize;
     let mut total_received = 0usize;
 
-    // Get shard peers once at the start
-    let peers = match get_shard_peers(&blockchain_id, &network_manager, &repository_manager).await {
+    // Get shard peers once at the start, sorted by performance score
+    let mut peers = match get_shard_peers(&blockchain_id, &network_manager, &repository_manager).await {
         Ok(peers) => peers,
         Err(e) => {
             tracing::error!(
@@ -300,6 +308,9 @@ async fn fetch_task(
         return FetchStats { failures };
     }
 
+    // Sort peers by latency (fastest first)
+    peer_performance_tracker.sort_by_latency(&mut peers);
+
     // Accumulate KCs until we have enough for a network batch
     let mut accumulated: Vec<KcToSync> = Vec::new();
 
@@ -323,6 +334,7 @@ async fn fetch_task(
                 &peers,
                 &network_manager,
                 &get_validation_service,
+                &peer_performance_tracker,
             )
             .await;
 
@@ -368,6 +380,7 @@ async fn fetch_task(
             &peers,
             &network_manager,
             get_validation_service.as_ref(),
+            peer_performance_tracker.as_ref(),
         )
         .await;
 
@@ -431,31 +444,40 @@ async fn insert_task(
             "[DKG SYNC] Insert: received batch"
         );
 
-        // Step 1: Fetch all end epochs in parallel (rate limiter will throttle)
-        let epoch_futures: Vec<_> = batch
-            .iter()
-            .map(|kc| {
-                let bm = Arc::clone(&blockchain_manager);
-                let bid = blockchain_id.clone();
-                let kc_id = kc.kc_id;
-                async move {
-                    let result = bm
-                        .get_kc_end_epoch(&bid, contract_address, kc_id as u128)
-                        .await;
-                    (kc_id, result)
-                }
-            })
-            .collect();
+        // Step 1: Fetch all end epochs using multicall (single RPC request)
+        let kc_ids: Vec<u128> = batch.iter().map(|kc| kc.kc_id as u128).collect();
+        let epoch_results = blockchain_manager
+            .get_kc_end_epoch_batch(&blockchain_id, contract_address, &kc_ids)
+            .await;
 
-        let epoch_results = join_all(epoch_futures).await;
-        let epoch_map: HashMap<u64, Result<u64, _>> = epoch_results.into_iter().collect();
+        // Build epoch map from batch results
+        let epoch_map: HashMap<u64, Option<u64>> = match epoch_results {
+            Ok(results) => results
+                .into_iter()
+                .map(|(kc_id, epoch)| (kc_id as u64, epoch))
+                .collect(),
+            Err(e) => {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract_addr_str,
+                    error = %e,
+                    kc_count = kc_ids.len(),
+                    "[DKG SYNC] Multicall to get end epochs failed, will retry later"
+                );
+                // Mark all as failed for retry
+                for kc in batch {
+                    failed.push(kc.kc_id);
+                }
+                continue;
+            }
+        };
 
         // Step 2: Filter by expiration
         let mut valid_kcs = Vec::new();
         for kc in batch {
             if let Some(current) = current_epoch {
                 match epoch_map.get(&kc.kc_id) {
-                    Some(Ok(end_epoch)) if current > *end_epoch => {
+                    Some(Some(end_epoch)) if current > *end_epoch => {
                         tracing::debug!(
                             blockchain_id = %blockchain_id,
                             contract = %contract_addr_str,
@@ -467,12 +489,11 @@ async fn insert_task(
                         expired.push(kc.kc_id);
                         continue;
                     }
-                    Some(Err(e)) => {
+                    Some(None) => {
                         tracing::warn!(
                             blockchain_id = %blockchain_id,
                             contract = %contract_addr_str,
                             kc_id = kc.kc_id,
-                            error = %e,
                             "[DKG SYNC] Failed to get KC end epoch, will retry later"
                         );
                         failed.push(kc.kc_id);
@@ -592,6 +613,7 @@ async fn get_shard_peers(
 /// Helper function for making peer requests.
 /// Using a named async fn instead of async blocks allows FuturesUnordered
 /// to work without boxing, since all calls return the same concrete future type.
+/// Returns (peer_id, result, elapsed_time).
 async fn make_peer_request(
     peer: PeerId,
     request_data: BatchGetRequestData,
@@ -602,12 +624,14 @@ async fn make_peer_request(
         crate::managers::network::messages::BatchGetResponseData,
         crate::managers::network::NetworkError,
     >,
+    Duration,
 ) {
+    let start = Instant::now();
     let addresses = nm.get_peer_addresses(peer).await.unwrap_or_default();
     let result = nm
         .send_batch_get_request(peer, addresses, uuid::Uuid::new_v4(), request_data)
         .await;
-    (peer, result)
+    (peer, result, start.elapsed())
 }
 
 /// Fetch a batch of KCs from the network.
@@ -615,12 +639,14 @@ async fn make_peer_request(
 ///
 /// Uses FuturesUnordered to process peer responses as they arrive,
 /// avoiding being blocked by slow/unreachable peers.
+/// Peers should be pre-sorted by performance score (best first).
 async fn fetch_kc_batch_from_network(
     blockchain_id: &BlockchainId,
     kcs: &[KcToSync],
     peers: &[PeerId],
     network_manager: &Arc<NetworkManager>,
     get_validation_service: &GetValidationService,
+    peer_performance_tracker: &PeerPerformanceTracker,
 ) -> (Vec<FetchedKc>, Vec<u64>) {
     let mut fetched: Vec<FetchedKc> = Vec::new();
     let mut uals_still_needed: HashSet<String> = kcs.iter().map(|kc| kc.ual.clone()).collect();
@@ -682,7 +708,7 @@ async fn fetch_kc_batch_from_network(
     }
 
     // Process responses as they complete, adding new peers as slots free up
-    while let Some((peer, result)) = futures.next().await {
+    while let Some((peer, result, elapsed)) = futures.next().await {
         // Check if we're done (have all KCs we need)
         if uals_still_needed.is_empty() {
             break;
@@ -691,6 +717,7 @@ async fn fetch_kc_batch_from_network(
         match result {
             Ok(response) => {
                 let metadata_map = response.metadata();
+                let mut got_valid_data = false;
 
                 for (ual, assertion) in response.assertions() {
                     if !uals_still_needed.contains(ual) {
@@ -718,6 +745,7 @@ async fn fetch_kc_batch_from_network(
                                 metadata,
                             });
                             uals_still_needed.remove(ual);
+                            got_valid_data = true;
 
                             tracing::debug!(
                                 ual = %ual,
@@ -727,8 +755,14 @@ async fn fetch_kc_batch_from_network(
                         }
                     }
                 }
+
+                // Record peer latency for successful responses with valid data
+                if got_valid_data {
+                    peer_performance_tracker.record_latency(&peer, elapsed);
+                }
             }
             Err(e) => {
+                peer_performance_tracker.record_failure(&peer);
                 tracing::debug!(
                     peer = %peer,
                     error = %e,
@@ -772,6 +806,7 @@ impl SyncCommandHandler {
             triple_store_service: Arc::clone(context.triple_store_service()),
             network_manager: Arc::clone(context.network_manager()),
             get_validation_service: Arc::clone(context.get_validation_service()),
+            peer_performance_tracker: Arc::clone(context.peer_performance_tracker()),
         }
     }
 
@@ -895,6 +930,7 @@ impl SyncCommandHandler {
             let network_manager = Arc::clone(&self.network_manager);
             let repository_manager = Arc::clone(&self.repository_manager);
             let get_validation_service = Arc::clone(&self.get_validation_service);
+            let peer_performance_tracker = Arc::clone(&self.peer_performance_tracker);
             tokio::spawn(async move {
                 fetch_task(
                     filter_rx,
@@ -902,6 +938,7 @@ impl SyncCommandHandler {
                     network_manager,
                     repository_manager,
                     get_validation_service,
+                    peer_performance_tracker,
                     fetch_tx,
                 )
                 .await

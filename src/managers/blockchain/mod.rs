@@ -688,6 +688,26 @@ impl BlockchainManager {
             .await
     }
 
+    /// Get the range of knowledge assets for multiple knowledge collections in a single RPC call.
+    ///
+    /// Uses Multicall3 to batch multiple `getKnowledgeAssetsRange` calls into one RPC request.
+    /// Returns a Vec of (kc_id, Option<(start_token_id, end_token_id, burned_token_ids)>).
+    pub(crate) async fn get_knowledge_assets_range_batch(
+        &self,
+        blockchain: &BlockchainId,
+        contract_address: Address,
+        knowledge_collection_ids: &[u128],
+    ) -> Result<Vec<(u128, Option<(u64, u64, Vec<u64>)>)>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
+            .get_knowledge_assets_range_batch(contract_address, knowledge_collection_ids)
+            .await
+    }
+
     /// Get the latest merkle root for a knowledge collection.
     ///
     /// Returns the merkle root as a hex string (with 0x prefix), or None if the collection
@@ -754,6 +774,23 @@ impl BlockchainManager {
         })?;
         blockchain_impl
             .get_kc_end_epoch(contract_address, knowledge_collection_id)
+            .await
+    }
+
+    /// Batch fetch end epochs for multiple knowledge collections using Multicall3.
+    pub(crate) async fn get_kc_end_epoch_batch(
+        &self,
+        blockchain: &BlockchainId,
+        contract_address: Address,
+        knowledge_collection_ids: &[u128],
+    ) -> Result<Vec<(u128, Option<u64>)>, BlockchainError> {
+        let blockchain_impl = self.blockchains.get(blockchain).ok_or_else(|| {
+            BlockchainError::BlockchainNotFound {
+                blockchain_id: blockchain.as_str().to_string(),
+            }
+        })?;
+        blockchain_impl
+            .get_kc_end_epoch_batch(contract_address, knowledge_collection_ids)
             .await
     }
 
