@@ -189,6 +189,8 @@ enum NetworkAction {
     },
 }
 
+use crate::services::PeerRateLimiterConfig;
+
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct NetworkManagerConfig {
     pub port: u32,
@@ -202,6 +204,9 @@ pub(crate) struct NetworkManagerConfig {
     /// Default is 300 (5 minutes).
     #[serde(default = "default_idle_connection_timeout")]
     pub idle_connection_timeout_secs: u64,
+    /// Per-peer rate limiting configuration for inbound requests.
+    #[serde(default)]
+    pub rate_limiter: PeerRateLimiterConfig,
 }
 
 fn default_idle_connection_timeout() -> u64 {

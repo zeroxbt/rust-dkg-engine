@@ -9,8 +9,8 @@ use crate::{
         },
     },
     services::{
-        GetValidationService, PeerDiscoveryTracker, PeerPerformanceTracker, ResponseChannels,
-        Services, TripleStoreService,
+        GetValidationService, PeerDiscoveryTracker, PeerPerformanceTracker, PeerRateLimiter,
+        ResponseChannels, Services, TripleStoreService,
     },
 };
 
@@ -69,6 +69,10 @@ impl Context {
 
     pub(crate) fn peer_performance_tracker(&self) -> &Arc<PeerPerformanceTracker> {
         &self.services.peer_performance_tracker
+    }
+
+    pub(crate) fn peer_rate_limiter(&self) -> &Arc<PeerRateLimiter> {
+        &self.services.peer_rate_limiter
     }
 
     // Response channel accessors

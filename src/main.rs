@@ -61,7 +61,7 @@ async fn main() {
         initialize_dev_environment(&managers.blockchain).await;
     }
 
-    let services = services::initialize(&managers);
+    let services = services::initialize(&managers, config.managers.network.rate_limiter.clone());
 
     let context = Arc::new(Context::new(command_scheduler, managers, services));
 
