@@ -1,0 +1,47 @@
+//! Shared types for the sync pipeline stages.
+
+use crate::managers::triple_store::{Assertion, KnowledgeCollectionMetadata};
+
+/// KC that needs to be fetched from the network (output of filter stage)
+#[derive(Clone)]
+pub(crate) struct KcToSync {
+    pub kc_id: u64,
+    pub ual: String,
+    pub start_token_id: u64,
+    pub end_token_id: u64,
+    pub burned: Vec<u64>,
+}
+
+/// KC fetched from network (output of fetch stage, input to insert stage)
+#[derive(Clone)]
+pub(crate) struct FetchedKc {
+    pub kc_id: u64,
+    pub ual: String,
+    pub assertion: Assertion,
+    pub metadata: Option<KnowledgeCollectionMetadata>,
+}
+
+/// Stats collected by filter task
+pub(crate) struct FilterStats {
+    pub already_synced: Vec<u64>,
+}
+
+/// Stats collected by fetch task
+pub(crate) struct FetchStats {
+    pub failures: Vec<u64>,
+}
+
+/// Stats collected by insert task
+pub(crate) struct InsertStats {
+    pub synced: Vec<u64>,
+    pub failed: Vec<u64>,
+    pub expired: Vec<u64>,
+}
+
+/// Result of syncing a single contract
+pub(crate) struct ContractSyncResult {
+    pub enqueued: u64,
+    pub pending: usize,
+    pub synced: u64,
+    pub failed: u64,
+}
