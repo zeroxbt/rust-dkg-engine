@@ -37,8 +37,8 @@ impl StoreRequestData {
 }
 
 /// Store response data - uses untagged enum since JS sends flat JSON
-/// Error: {"errorMessage": "..."}
-/// Data: {"identityId": ..., "v": ..., "r": ..., "s": ..., "vs": ...}
+/// Nack: {"errorMessage": "..."}
+/// Ack: {"identityId": ..., "v": ..., "r": ..., "s": ..., "vs": ...}
 ///
 /// Note: identity_id uses u64 instead of u128 because serde_json has issues
 /// with u128 in untagged enums. This is safe since identity IDs won't exceed u64::MAX.
@@ -46,11 +46,19 @@ impl StoreRequestData {
 #[serde(untagged)]
 pub(crate) enum StoreResponseData {
     #[serde(rename_all = "camelCase")]
-    Error { error_message: String },
+    Nack { error_message: String },
     #[serde(rename_all = "camelCase")]
-    Data {
+    Ack {
         identity_id: u64,
         #[serde(flatten)]
         signature: SignatureComponents,
     },
+}
+
+impl StoreResponseData {
+    pub(crate) fn nack(message: impl Into<String>) -> Self {
+        Self::Nack {
+            error_message: message.into(),
+        }
+    }
 }

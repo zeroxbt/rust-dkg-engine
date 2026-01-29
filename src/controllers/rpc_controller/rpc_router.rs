@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use uuid::Uuid;
 
@@ -51,11 +51,12 @@ impl RpcRouter {
     ) {
         let response = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: StoreResponseData::Error {
-                error_message: "Rate limited".to_string(),
-            },
+            data: StoreResponseData::nack("Rate limited"),
         };
-        let _ = self.network_manager.send_store_response(channel, response).await;
+        let _ = self
+            .network_manager
+            .send_store_response(channel, response)
+            .await;
     }
 
     async fn send_get_busy(
@@ -65,9 +66,12 @@ impl RpcRouter {
     ) {
         let response = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: GetResponseData::error("Rate limited"),
+            data: GetResponseData::nack("Rate limited"),
         };
-        let _ = self.network_manager.send_get_response(channel, response).await;
+        let _ = self
+            .network_manager
+            .send_get_response(channel, response)
+            .await;
     }
 
     async fn send_finality_busy(
@@ -77,11 +81,12 @@ impl RpcRouter {
     ) {
         let response = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: FinalityResponseData::Nack {
-                error_message: "Rate limited".to_string(),
-            },
+            data: FinalityResponseData::nack("Rate limited"),
         };
-        let _ = self.network_manager.send_finality_response(channel, response).await;
+        let _ = self
+            .network_manager
+            .send_finality_response(channel, response)
+            .await;
     }
 
     async fn send_batch_get_busy(
@@ -91,9 +96,12 @@ impl RpcRouter {
     ) {
         let response = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: BatchGetResponseData::new(HashMap::new(), HashMap::new()),
+            data: BatchGetResponseData::nack("Rate limited"),
         };
-        let _ = self.network_manager.send_batch_get_response(channel, response).await;
+        let _ = self
+            .network_manager
+            .send_batch_get_response(channel, response)
+            .await;
     }
 }
 
@@ -109,7 +117,8 @@ impl NetworkEventHandler for RpcRouter {
         peer: PeerId,
     ) {
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_store_busy(channel, request.header.operation_id()).await;
+            self.send_store_busy(channel, request.header.operation_id())
+                .await;
             return;
         }
         self.store_controller
@@ -124,7 +133,8 @@ impl NetworkEventHandler for RpcRouter {
         peer: PeerId,
     ) {
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_get_busy(channel, request.header.operation_id()).await;
+            self.send_get_busy(channel, request.header.operation_id())
+                .await;
             return;
         }
         self.get_controller
@@ -139,7 +149,8 @@ impl NetworkEventHandler for RpcRouter {
         peer: PeerId,
     ) {
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_finality_busy(channel, request.header.operation_id()).await;
+            self.send_finality_busy(channel, request.header.operation_id())
+                .await;
             return;
         }
         self.finality_controller
@@ -154,7 +165,8 @@ impl NetworkEventHandler for RpcRouter {
         peer: PeerId,
     ) {
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_batch_get_busy(channel, request.header.operation_id()).await;
+            self.send_batch_get_busy(channel, request.header.operation_id())
+                .await;
             return;
         }
         self.batch_get_controller

@@ -19,7 +19,10 @@ use crate::{
     commands::operations::get::protocols::batch_get::BATCH_GET_UAL_MAX_LIMIT,
     managers::{
         blockchain::BlockchainId,
-        network::{NetworkError, NetworkManager, PeerId, messages::BatchGetRequestData},
+        network::{
+            NetworkError, NetworkManager, PeerId,
+            messages::{BatchGetRequestData, BatchGetResponseData},
+        },
         repository::RepositoryManager,
         triple_store::{TokenIds, Visibility, parse_metadata_from_triples},
     },
@@ -203,11 +206,7 @@ async fn make_peer_request(
     peer: PeerId,
     request_data: BatchGetRequestData,
     nm: Arc<NetworkManager>,
-) -> (
-    PeerId,
-    Result<crate::managers::network::messages::BatchGetResponseData, NetworkError>,
-    Duration,
-) {
+) -> (PeerId, Result<BatchGetResponseData, NetworkError>, Duration) {
     let start = Instant::now();
     let addresses = nm.get_peer_addresses(peer).await.unwrap_or_default();
     let result = nm
@@ -312,11 +311,13 @@ async fn fetch_kc_batch_from_network(
         let _guard = peer_span.enter();
 
         match result {
-            Ok(response) => {
-                let metadata_map = response.metadata();
+            Ok(BatchGetResponseData::Ack {
+                assertions,
+                metadata: metadata_map,
+            }) => {
                 let mut valid_count = 0usize;
 
-                for (ual, assertion) in response.assertions() {
+                for (ual, assertion) in &assertions {
                     if !uals_still_needed.contains(ual) {
                         continue;
                     }
@@ -365,6 +366,10 @@ async fn fetch_kc_batch_from_network(
                 if uals_still_needed.is_empty() {
                     break;
                 }
+            }
+            Ok(BatchGetResponseData::Nack { .. }) => {
+                peer_span.record("valid_kcs", 0usize);
+                peer_span.record("status", "nack");
             }
             Err(e) => {
                 peer_span.record("valid_kcs", 0usize);

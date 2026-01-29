@@ -96,7 +96,7 @@ impl HandleStoreRequestCommandHandler {
     ) {
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: StoreResponseData::Error {
+            data: StoreResponseData::Nack {
                 error_message: error_message.to_string(),
             },
         };
@@ -344,7 +344,7 @@ impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommand
 
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: StoreResponseData::Data {
+            data: StoreResponseData::Ack {
                 identity_id: identity_id as u64,
                 signature,
             },

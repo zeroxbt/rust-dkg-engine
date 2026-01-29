@@ -101,7 +101,7 @@ impl HandleGetRequestCommandHandler {
     ) {
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: GetResponseData::error(error_message),
+            data: GetResponseData::nack(error_message),
         };
         self.send_response(channel, operation_id, message).await;
     }
@@ -115,7 +115,7 @@ impl HandleGetRequestCommandHandler {
     ) {
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: GetResponseData::data(assertion, metadata),
+            data: GetResponseData::ack(assertion, metadata),
         };
         self.send_response(channel, operation_id, message).await;
     }

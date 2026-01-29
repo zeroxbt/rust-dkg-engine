@@ -158,7 +158,7 @@ impl SendStoreRequestsCommandHandler {
         response: &StoreResponseData,
     ) -> bool {
         match response {
-            StoreResponseData::Data {
+            StoreResponseData::Ack {
                 identity_id,
                 signature,
             } => {
@@ -195,7 +195,7 @@ impl SendStoreRequestsCommandHandler {
                 );
                 true
             }
-            StoreResponseData::Error { error_message } => {
+            StoreResponseData::Nack { error_message } => {
                 tracing::debug!(
                     operation_id = %operation_id,
                     peer = %peer,

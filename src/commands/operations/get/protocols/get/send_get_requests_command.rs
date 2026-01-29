@@ -258,7 +258,7 @@ impl SendGetRequestsCommandHandler {
         visibility: Visibility,
     ) -> bool {
         match response {
-            GetResponseData::Data {
+            GetResponseData::Ack {
                 assertion,
                 metadata,
             } => {
@@ -308,7 +308,7 @@ impl SendGetRequestsCommandHandler {
                     }
                 }
             }
-            GetResponseData::Error { error_message } => {
+            GetResponseData::Nack { error_message } => {
                 tracing::debug!(
                     operation_id = %operation_id,
                     peer = %peer,

@@ -55,12 +55,15 @@ impl GetRequestData {
     }
 }
 
+/// Get response data - uses untagged enum since JS sends flat JSON
+/// Nack: {"errorMessage": "..."}
+/// Ack: {"assertion": {...}, "metadata": [...]}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub(crate) enum GetResponseData {
     #[serde(rename_all = "camelCase")]
-    Error { error_message: String },
-    Data {
+    Nack { error_message: String },
+    Ack {
         assertion: Assertion,
         #[serde(skip_serializing_if = "Option::is_none")]
         metadata: Option<Vec<String>>,
@@ -68,15 +71,15 @@ pub(crate) enum GetResponseData {
 }
 
 impl GetResponseData {
-    pub(crate) fn data(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
-        Self::Data {
+    pub(crate) fn ack(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
+        Self::Ack {
             assertion,
             metadata,
         }
     }
 
-    pub(crate) fn error(message: impl Into<String>) -> Self {
-        Self::Error {
+    pub(crate) fn nack(message: impl Into<String>) -> Self {
+        Self::Nack {
             error_message: message.into(),
         }
     }

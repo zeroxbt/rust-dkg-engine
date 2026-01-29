@@ -91,7 +91,7 @@ impl HandleBatchGetRequestCommandHandler {
     ) {
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: BatchGetResponseData::new(assertions, metadata),
+            data: BatchGetResponseData::ack(assertions, metadata),
         };
         self.send_response(channel, operation_id, message).await;
     }

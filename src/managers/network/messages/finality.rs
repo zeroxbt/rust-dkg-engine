@@ -37,3 +37,11 @@ pub(crate) enum FinalityResponseData {
     #[serde(rename_all = "camelCase")]
     Nack { error_message: String },
 }
+
+impl FinalityResponseData {
+    pub(crate) fn nack(message: impl Into<String>) -> Self {
+        Self::Nack {
+            error_message: message.into(),
+        }
+    }
+}

@@ -52,37 +52,38 @@ impl BatchGetRequestData {
     }
 }
 
-/// Response data for batch get protocol.
-///
-/// Contains assertions and metadata for each successfully retrieved UAL.
+/// Batch get response data - uses untagged enum since JS sends flat JSON
+/// Nack: {"errorMessage": "..."}
+/// Ack: {"assertions": {...}, "metadata": {...}}
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct BatchGetResponseData {
-    /// Map of UAL -> Assertion for successfully retrieved assets.
-    assertions: HashMap<String, Assertion>,
-    /// Map of UAL -> metadata triples (if requested).
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    metadata: HashMap<String, Vec<String>>,
+#[serde(untagged)]
+pub(crate) enum BatchGetResponseData {
+    #[serde(rename_all = "camelCase")]
+    Nack { error_message: String },
+    #[serde(rename_all = "camelCase")]
+    Ack {
+        /// Map of UAL -> Assertion for successfully retrieved assets.
+        assertions: HashMap<String, Assertion>,
+        /// Map of UAL -> metadata triples (if requested).
+        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+        metadata: HashMap<String, Vec<String>>,
+    },
 }
 
 impl BatchGetResponseData {
-    pub(crate) fn new(
+    pub(crate) fn ack(
         assertions: HashMap<String, Assertion>,
         metadata: HashMap<String, Vec<String>>,
     ) -> Self {
-        Self {
+        Self::Ack {
             assertions,
             metadata,
         }
     }
 
-    /// Returns the assertions map.
-    pub(crate) fn assertions(&self) -> &HashMap<String, Assertion> {
-        &self.assertions
-    }
-
-    /// Returns the metadata map.
-    pub(crate) fn metadata(&self) -> &HashMap<String, Vec<String>> {
-        &self.metadata
+    pub(crate) fn nack(message: impl Into<String>) -> Self {
+        Self::Nack {
+            error_message: message.into(),
+        }
     }
 }
