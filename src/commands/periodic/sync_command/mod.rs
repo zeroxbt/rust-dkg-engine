@@ -485,10 +485,41 @@ impl SyncCommandData {
     }
 }
 
+/// Delay before retrying sync when not enough peers are connected
+const SYNC_NO_PEERS_RETRY_DELAY: Duration = Duration::from_secs(5);
+
 impl CommandHandler<SyncCommandData> for SyncCommandHandler {
     async fn execute(&self, data: &SyncCommandData) -> CommandExecutionResult {
+        // Check if we have enough connected peers before attempting sync
+        let connected_peers = match self.network_manager.connected_peers().await {
+            Ok(peers) => peers,
+            Err(e) => {
+                tracing::warn!(
+                    blockchain_id = %data.blockchain_id,
+                    error = %e,
+                    "[DKG SYNC] Failed to get connected peers, retrying later"
+                );
+                return CommandExecutionResult::Repeat {
+                    delay: SYNC_NO_PEERS_RETRY_DELAY,
+                };
+            }
+        };
+
+        if connected_peers.len() < CONCURRENT_PEER_REQUESTS {
+            tracing::info!(
+                blockchain_id = %data.blockchain_id,
+                connected = connected_peers.len(),
+                required = CONCURRENT_PEER_REQUESTS,
+                "[DKG SYNC] Not enough peers connected yet, retrying later"
+            );
+            return CommandExecutionResult::Repeat {
+                delay: SYNC_NO_PEERS_RETRY_DELAY,
+            };
+        }
+
         tracing::info!(
             blockchain_id = %data.blockchain_id,
+            connected_peers = connected_peers.len(),
             "[DKG SYNC] Starting sync cycle"
         );
 
