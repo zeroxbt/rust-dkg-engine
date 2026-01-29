@@ -14,6 +14,7 @@ use futures::future::join_all;
 use tokio::sync::mpsc;
 use tracing::instrument;
 
+use super::{FILTER_BATCH_SIZE, FilterStats, KcToSync};
 use crate::{
     managers::{
         blockchain::{
@@ -25,8 +26,6 @@ use crate::{
     services::TripleStoreService,
     utils::ual::derive_ual,
 };
-
-use super::{FilterStats, KcToSync, FILTER_BATCH_SIZE};
 
 /// Filter task: processes pending KCs in batches, checking local existence first,
 /// fetching token ranges and end epochs, then filtering expired KCs.
@@ -63,9 +62,13 @@ pub(crate) async fn filter_task(
 
     for chunk in pending_kc_ids.chunks(FILTER_BATCH_SIZE) {
         // Step 1: Check local existence by UAL first (cheap, no RPC needed)
-        let kcs_needing_sync =
-            check_local_existence(chunk, &blockchain_id, &contract_address, &triple_store_service)
-                .await;
+        let kcs_needing_sync = check_local_existence(
+            chunk,
+            &blockchain_id,
+            &contract_address,
+            &triple_store_service,
+        )
+        .await;
 
         // Track already synced
         let needing_sync_ids: std::collections::HashSet<u64> =
@@ -99,7 +102,8 @@ pub(crate) async fn filter_task(
             continue;
         }
 
-        // Step 3: Fetch token ranges and merkle roots for non-expired KCs (single Multicall3 RPC call)
+        // Step 3: Fetch token ranges and merkle roots for non-expired KCs (single Multicall3 RPC
+        // call)
         let batch_to_sync = fetch_token_ranges_and_merkle_roots(
             &non_expired_kcs,
             &blockchain_id,
@@ -137,7 +141,10 @@ pub(crate) async fn filter_task(
         "[DKG SYNC] Filter task completed"
     );
 
-    FilterStats { already_synced, expired }
+    FilterStats {
+        already_synced,
+        expired,
+    }
 }
 
 /// Check which KCs already exist locally in the triple store.
@@ -252,7 +259,8 @@ async fn fetch_end_epochs_and_filter(
 
 /// Fetch token ranges and merkle roots for non-expired KCs via Multicall3.
 ///
-/// Batches both calls together: for each KC we fetch getKnowledgeAssetsRange and getLatestMerkleRoot.
+/// Batches both calls together: for each KC we fetch getKnowledgeAssetsRange and
+/// getLatestMerkleRoot.
 async fn fetch_token_ranges_and_merkle_roots(
     kcs_needing_sync: &[(u64, String)],
     blockchain_id: &BlockchainId,

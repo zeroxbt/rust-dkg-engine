@@ -10,13 +10,13 @@ pub(crate) mod utils;
 use std::collections::HashMap;
 
 use blockchains::evm_chain::EvmChain;
-use tracing::instrument;
 pub(crate) use blockchains::{
     blockchain_creator::{Hub, KnowledgeCollectionStorage, ParametersStorage},
     evm_chain::{ContractLog, ContractName},
 };
 pub(crate) use gas::GasConfig;
 pub(crate) use rpc_rate_limiter::RpcRateLimiter;
+use tracing::instrument;
 
 use crate::config::ConfigError;
 

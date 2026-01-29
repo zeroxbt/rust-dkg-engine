@@ -9,9 +9,8 @@ use futures::future::join_all;
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use crate::{managers::blockchain::BlockchainId, services::TripleStoreService};
-
 use super::{FetchedKc, InsertStats};
+use crate::{managers::blockchain::BlockchainId, services::TripleStoreService};
 
 /// Insert task: receives fetched KCs and inserts into triple store.
 ///
@@ -49,9 +48,13 @@ pub(crate) async fn insert_task(
         );
 
         // Insert all KCs in parallel
-        let (batch_synced, batch_failed) =
-            insert_kcs_to_store(&batch, &triple_store_service, &blockchain_id, &contract_addr_str)
-                .await;
+        let (batch_synced, batch_failed) = insert_kcs_to_store(
+            &batch,
+            &triple_store_service,
+            &blockchain_id,
+            &contract_addr_str,
+        )
+        .await;
 
         synced.extend(batch_synced);
         failed.extend(batch_failed);

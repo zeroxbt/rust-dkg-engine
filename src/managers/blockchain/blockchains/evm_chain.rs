@@ -996,9 +996,7 @@ impl EvmChain {
         contract_address: Address,
         knowledge_collection_ids: &[u128],
     ) -> Result<Vec<(u128, Option<(u64, u64, Vec<u64>)>)>, BlockchainError> {
-        use crate::managers::blockchain::multicall::{
-            MulticallBatch, MulticallRequest, encoders,
-        };
+        use crate::managers::blockchain::multicall::{MulticallBatch, MulticallRequest, encoders};
 
         if knowledge_collection_ids.is_empty() {
             return Ok(Vec::new());
@@ -1094,9 +1092,7 @@ impl EvmChain {
         contract_address: Address,
         knowledge_collection_ids: &[u128],
     ) -> Result<Vec<(u128, Option<String>)>, BlockchainError> {
-        use crate::managers::blockchain::multicall::{
-            MulticallBatch, MulticallRequest, encoders,
-        };
+        use crate::managers::blockchain::multicall::{MulticallBatch, MulticallRequest, encoders};
 
         if knowledge_collection_ids.is_empty() {
             return Ok(Vec::new());
@@ -1219,9 +1215,7 @@ impl EvmChain {
         contract_address: Address,
         knowledge_collection_ids: &[u128],
     ) -> Result<Vec<(u128, Option<u64>)>, BlockchainError> {
-        use crate::managers::blockchain::multicall::{
-            MulticallBatch, MulticallRequest, encoders,
-        };
+        use crate::managers::blockchain::multicall::{MulticallBatch, MulticallRequest, encoders};
 
         if knowledge_collection_ids.is_empty() {
             return Ok(Vec::new());

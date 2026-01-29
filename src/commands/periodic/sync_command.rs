@@ -10,6 +10,10 @@ use std::{sync::Arc, time::Instant};
 use futures::future::join_all;
 use tokio::sync::mpsc;
 
+use super::sync::{
+    ContractSyncResult, FetchedKc, KcToSync, MAX_NEW_KCS_PER_CONTRACT, MAX_RETRY_ATTEMPTS,
+    PIPELINE_CHANNEL_BUFFER, SYNC_PERIOD, fetch_task, filter_task, insert_task,
+};
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
@@ -18,12 +22,6 @@ use crate::{
         repository::RepositoryManager,
     },
     services::{GetValidationService, PeerPerformanceTracker, TripleStoreService},
-};
-
-use super::sync::{
-    filter_task, fetch_task, insert_task,
-    ContractSyncResult, FetchedKc, KcToSync,
-    MAX_NEW_KCS_PER_CONTRACT, MAX_RETRY_ATTEMPTS, PIPELINE_CHANNEL_BUFFER, SYNC_PERIOD,
 };
 
 pub(crate) struct SyncCommandHandler {
@@ -251,7 +249,13 @@ impl SyncCommandHandler {
             let contract_addr_str = contract_addr_str.clone();
             let triple_store_service = Arc::clone(&self.triple_store_service);
             tokio::spawn(async move {
-                insert_task(fetch_rx, blockchain_id, contract_addr_str, triple_store_service).await
+                insert_task(
+                    fetch_rx,
+                    blockchain_id,
+                    contract_addr_str,
+                    triple_store_service,
+                )
+                .await
             })
         };
 

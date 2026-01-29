@@ -15,25 +15,29 @@
 //! Expiration filtering is done early in the filter stage to avoid
 //! fetching data for expired KCs.
 
-mod filter;
 mod fetch;
+mod filter;
 mod insert;
 mod types;
 
-pub(crate) use filter::filter_task;
+use std::time::Duration;
+
 pub(crate) use fetch::fetch_task;
+pub(crate) use filter::filter_task;
 pub(crate) use insert::insert_task;
 pub(crate) use types::*;
 
-use std::time::Duration;
-
-use crate::managers::triple_store::{
-    query::predicates,
-    rdf::{extract_datetime_as_unix, extract_quoted_integer, extract_quoted_string, extract_uri_suffix},
-    KnowledgeCollectionMetadata,
+use crate::{
+    commands::operations::get::protocols::batch_get::BATCH_GET_UAL_MAX_LIMIT,
+    managers::triple_store::{
+        KnowledgeCollectionMetadata,
+        query::predicates,
+        rdf::{
+            extract_datetime_as_unix, extract_quoted_integer, extract_quoted_string,
+            extract_uri_suffix,
+        },
+    },
 };
-
-use crate::commands::operations::get::protocols::batch_get::BATCH_GET_UAL_MAX_LIMIT;
 
 /// Interval between sync cycles
 pub(crate) const SYNC_PERIOD: Duration = Duration::from_secs(0);
@@ -63,7 +67,9 @@ pub(crate) const CONCURRENT_PEER_REQUESTS: usize = 3;
 /// Parse metadata from network RDF triples.
 ///
 /// Returns KnowledgeCollectionMetadata if all required fields are found, None otherwise.
-pub(crate) fn parse_metadata_from_triples(triples: &[String]) -> Option<KnowledgeCollectionMetadata> {
+pub(crate) fn parse_metadata_from_triples(
+    triples: &[String],
+) -> Option<KnowledgeCollectionMetadata> {
     let mut publisher_address: Option<String> = None;
     let mut block_number: Option<u64> = None;
     let mut transaction_hash: Option<String> = None;
@@ -81,7 +87,12 @@ pub(crate) fn parse_metadata_from_triples(triples: &[String]) -> Option<Knowledg
         }
     }
 
-    match (publisher_address, block_number, transaction_hash, block_timestamp) {
+    match (
+        publisher_address,
+        block_number,
+        transaction_hash,
+        block_timestamp,
+    ) {
         (Some(publisher), Some(block), Some(tx_hash), Some(timestamp)) => Some(
             KnowledgeCollectionMetadata::new(publisher.to_lowercase(), block, tx_hash, timestamp),
         ),

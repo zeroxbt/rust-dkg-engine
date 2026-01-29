@@ -103,7 +103,8 @@ impl MulticallResult {
         Some(format!("0x{}", hex::encode(bytes)))
     }
 
-    /// Parse return data as a knowledge assets range tuple: (start_token_id, end_token_id, burned[]).
+    /// Parse return data as a knowledge assets range tuple: (start_token_id, end_token_id,
+    /// burned[]).
     ///
     /// ABI encoding:
     /// - bytes 0-31: start_token_id (uint256)
@@ -122,9 +123,7 @@ impl MulticallResult {
         // Parse burned array
         let mut burned: Vec<u64> = Vec::new();
         if data.len() >= 96 {
-            let array_offset: usize = U256::from_be_slice(&data[64..96])
-                .try_into()
-                .unwrap_or(0);
+            let array_offset: usize = U256::from_be_slice(&data[64..96]).try_into().unwrap_or(0);
             if data.len() >= array_offset + 32 {
                 let array_len: usize = U256::from_be_slice(&data[array_offset..array_offset + 32])
                     .try_into()

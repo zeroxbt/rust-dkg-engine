@@ -10,25 +10,24 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
+use super::{
+    CONCURRENT_PEER_REQUESTS, FetchStats, FetchedKc, KcToSync, NETWORK_FETCH_BATCH_SIZE,
+    parse_metadata_from_triples,
+};
 use crate::{
     commands::operations::get::protocols::batch_get::BATCH_GET_UAL_MAX_LIMIT,
     managers::{
         blockchain::BlockchainId,
-        network::{messages::BatchGetRequestData, NetworkError, NetworkManager, PeerId},
+        network::{NetworkError, NetworkManager, PeerId, messages::BatchGetRequestData},
         repository::RepositoryManager,
         triple_store::{TokenIds, Visibility},
     },
     services::{GetValidationService, PeerPerformanceTracker},
-    utils::ual::{parse_ual, ParsedUal},
-};
-
-use super::{
-    parse_metadata_from_triples, FetchStats, FetchedKc, KcToSync, CONCURRENT_PEER_REQUESTS,
-    NETWORK_FETCH_BATCH_SIZE,
+    utils::ual::{ParsedUal, parse_ual},
 };
 
 /// Fetch task: receives filtered KCs, fetches from network, sends to insert stage.

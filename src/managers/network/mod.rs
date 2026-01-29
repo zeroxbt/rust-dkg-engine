@@ -28,8 +28,7 @@ pub(crate) use pending_requests::PendingRequests;
 pub(crate) use protocols::{JsCompatCodec, ProtocolTimeouts};
 use serde::Deserialize;
 use tokio::sync::{Mutex, mpsc, oneshot};
-use tracing::instrument;
-use tracing::info;
+use tracing::{info, instrument};
 use uuid::Uuid;
 
 use self::{
