@@ -57,7 +57,6 @@ impl GetRpcController {
             data.token_ids().clone(),
             data.include_metadata(),
             data.paranet_ual().map(|s| s.to_string()),
-            data.content_type(),
             remote_peer_id,
         ));
 

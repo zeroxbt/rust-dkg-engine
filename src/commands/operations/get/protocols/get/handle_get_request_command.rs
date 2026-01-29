@@ -31,7 +31,6 @@ pub(crate) struct HandleGetRequestCommandData {
     pub token_ids: TokenIds,
     pub include_metadata: bool,
     pub paranet_ual: Option<String>,
-    pub visibility: Visibility,
     pub remote_peer_id: PeerId,
 }
 
@@ -42,7 +41,6 @@ impl HandleGetRequestCommandData {
         token_ids: TokenIds,
         include_metadata: bool,
         paranet_ual: Option<String>,
-        visibility: Visibility,
         remote_peer_id: PeerId,
     ) -> Self {
         Self {
@@ -51,7 +49,6 @@ impl HandleGetRequestCommandData {
             token_ids,
             include_metadata,
             paranet_ual,
-            visibility,
             remote_peer_id,
         }
     }
@@ -270,7 +267,6 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             operation_id = %operation_id,
             ual = %ual,
             remote_peer_id = %remote_peer_id,
-            requested_visibility = ?data.visibility,
             include_metadata = data.include_metadata,
             has_paranet = data.paranet_ual.is_some(),
             "Starting HandleGetRequest command"

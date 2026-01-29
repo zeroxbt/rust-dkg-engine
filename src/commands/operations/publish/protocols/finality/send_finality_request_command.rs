@@ -318,8 +318,11 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
             return CommandExecutionResult::Completed;
         }
 
-        let finality_request_data =
-            FinalityRequestData::new(ual, data.publish_operation_id.clone());
+        let finality_request_data = FinalityRequestData::new(
+            ual,
+            data.publish_operation_id.clone(),
+            data.blockchain.clone(),
+        );
 
         // Get peer addresses from Kademlia for reliable request delivery
         let addresses = self

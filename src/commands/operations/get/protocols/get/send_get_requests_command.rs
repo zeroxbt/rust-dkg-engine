@@ -621,11 +621,14 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
 
         // Build the get request data (reusing token_ids from local query)
         let get_request_data = GetRequestData::new(
+            parsed_ual.blockchain.clone(),
+            format!("{:?}", &parsed_ual.contract),
+            parsed_ual.knowledge_collection_id,
+            parsed_ual.knowledge_asset_id,
             ual.clone(),
             token_ids,
             data.include_metadata,
             data.paranet_ual.clone(),
-            data.visibility,
         );
 
         // Send requests to peers in chunks and process responses directly

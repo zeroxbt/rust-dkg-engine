@@ -65,7 +65,7 @@ pub(crate) enum BatchGetResponseData {
         /// Map of UAL -> Assertion for successfully retrieved assets.
         assertions: HashMap<String, Assertion>,
         /// Map of UAL -> metadata triples (if requested).
-        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+        #[serde(default)]
         metadata: HashMap<String, Vec<String>>,
     },
 }

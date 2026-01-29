@@ -1,17 +1,21 @@
 use serde::{Deserialize, Serialize};
 
+use crate::types::BlockchainId;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FinalityRequestData {
     ual: String,
     publish_operation_id: String,
+    blockchain: BlockchainId,
 }
 
 impl FinalityRequestData {
-    pub(crate) fn new(ual: String, publish_operation_id: String) -> Self {
+    pub(crate) fn new(ual: String, publish_operation_id: String, blockchain: BlockchainId) -> Self {
         Self {
             ual,
             publish_operation_id,
+            blockchain,
         }
     }
 
@@ -23,6 +27,11 @@ impl FinalityRequestData {
     /// Returns the publish operation ID.
     pub(crate) fn publish_operation_id(&self) -> &str {
         &self.publish_operation_id
+    }
+
+    /// Returns the blockchain identifier.
+    pub(crate) fn blockchain(&self) -> &BlockchainId {
+        &self.blockchain
     }
 }
 
