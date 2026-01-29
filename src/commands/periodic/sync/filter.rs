@@ -2,11 +2,11 @@
 //!
 //! Processes pending KCs in batches:
 //! 1. Filters out those already synced locally
-//! 2. Fetches end epochs and filters out expired KCs
-//! 3. Fetches token ranges and merkle roots for non-expired KCs
+//! 2. Fetches all RPC data in a single Multicall (end epochs, token ranges, merkle roots)
+//! 3. Filters out expired KCs from results
 //! 4. Sends remaining KCs to fetch stage
 //!
-//! All RPC calls are consolidated in this stage to minimize latency.
+//! All RPC calls are consolidated into a single Multicall per batch to minimize latency.
 
 use std::{sync::Arc, time::Instant};
 
@@ -60,72 +60,36 @@ pub(crate) async fn filter_task(
         .await
         .ok();
 
-    for chunk in pending_kc_ids.chunks(FILTER_BATCH_SIZE) {
-        // Step 1: Check local existence by UAL first (cheap, no RPC needed)
-        let kcs_needing_sync = check_local_existence(
+    for (batch_idx, chunk) in pending_kc_ids.chunks(FILTER_BATCH_SIZE).enumerate() {
+        let batch_result = process_filter_batch(
+            batch_idx,
             chunk,
             &blockchain_id,
             &contract_address,
             &triple_store_service,
+            current_epoch,
+            &contract_addr_str,
+            &blockchain_manager,
         )
         .await;
 
         // Track already synced
-        let needing_sync_ids: std::collections::HashSet<u64> =
-            kcs_needing_sync.iter().map(|(id, _)| *id).collect();
-        for &kc_id in chunk {
-            if !needing_sync_ids.contains(&kc_id) {
-                already_synced.push(kc_id);
-            }
-        }
-
-        if kcs_needing_sync.is_empty() {
-            processed += chunk.len();
-            continue;
-        }
-
-        // Step 2: Fetch end epochs FIRST and filter expired (single Multicall3 RPC call)
-        // This avoids fetching token ranges for expired KCs, saving bandwidth
-        let non_expired_kcs = fetch_end_epochs_and_filter(
-            &kcs_needing_sync,
-            current_epoch,
-            &blockchain_id,
-            &contract_address,
-            &contract_addr_str,
-            &blockchain_manager,
-            &mut expired,
-        )
-        .await;
-
-        if non_expired_kcs.is_empty() {
-            processed += chunk.len();
-            continue;
-        }
-
-        // Step 3: Fetch token ranges and merkle roots for non-expired KCs (single Multicall3 RPC
-        // call)
-        let batch_to_sync = fetch_token_ranges_and_merkle_roots(
-            &non_expired_kcs,
-            &blockchain_id,
-            &contract_address,
-            &contract_addr_str,
-            &blockchain_manager,
-        )
-        .await;
+        already_synced.extend(batch_result.already_synced);
+        expired.extend(batch_result.expired);
+        processed += chunk.len();
 
         // Send to fetch stage (blocks if channel full - backpressure)
-        processed += chunk.len();
-        if !batch_to_sync.is_empty() {
+        if !batch_result.to_sync.is_empty() {
             tracing::info!(
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,
-                batch_size = batch_to_sync.len(),
+                batch_size = batch_result.to_sync.len(),
                 processed,
                 total_kcs,
                 elapsed_ms = task_start.elapsed().as_millis() as u64,
                 "[DKG SYNC] Filter: sending batch to fetch stage"
             );
-            if tx.send(batch_to_sync).await.is_err() {
+            if tx.send(batch_result.to_sync).await.is_err() {
                 tracing::debug!("[DKG SYNC] Filter: fetch stage receiver dropped, stopping");
                 break;
             }
@@ -147,8 +111,84 @@ pub(crate) async fn filter_task(
     }
 }
 
+/// Result of processing a single filter batch.
+struct FilterBatchResult {
+    already_synced: Vec<u64>,
+    expired: Vec<u64>,
+    to_sync: Vec<KcToSync>,
+}
+
+/// Process a single batch in the filter stage.
+#[instrument(
+    name = "filter_batch",
+    skip(chunk, blockchain_id, contract_address, triple_store_service, blockchain_manager),
+    fields(chunk_size = chunk.len())
+)]
+async fn process_filter_batch(
+    batch_idx: usize,
+    chunk: &[u64],
+    blockchain_id: &BlockchainId,
+    contract_address: &Address,
+    triple_store_service: &TripleStoreService,
+    current_epoch: Option<u64>,
+    contract_addr_str: &str,
+    blockchain_manager: &BlockchainManager,
+) -> FilterBatchResult {
+    let mut already_synced = Vec::new();
+    let mut expired = Vec::new();
+
+    // Step 1: Check local existence by UAL first (cheap, no RPC needed)
+    let kcs_needing_sync = check_local_existence(
+        chunk,
+        blockchain_id,
+        contract_address,
+        triple_store_service,
+    )
+    .await;
+
+    // Track already synced
+    let needing_sync_ids: std::collections::HashSet<u64> =
+        kcs_needing_sync.iter().map(|(id, _)| *id).collect();
+    for &kc_id in chunk {
+        if !needing_sync_ids.contains(&kc_id) {
+            already_synced.push(kc_id);
+        }
+    }
+
+    if kcs_needing_sync.is_empty() {
+        return FilterBatchResult {
+            already_synced,
+            expired,
+            to_sync: Vec::new(),
+        };
+    }
+
+    // Step 2: Fetch all RPC data in a single Multicall and filter expired
+    let to_sync = fetch_rpc_data_and_filter(
+        &kcs_needing_sync,
+        current_epoch,
+        blockchain_id,
+        contract_address,
+        contract_addr_str,
+        blockchain_manager,
+        &mut expired,
+    )
+    .await;
+
+    FilterBatchResult {
+        already_synced,
+        expired,
+        to_sync,
+    }
+}
+
 /// Check which KCs already exist locally in the triple store.
 /// Returns only those that need syncing (don't exist locally).
+#[instrument(
+    name = "filter_check_local",
+    skip(chunk, blockchain_id, contract_address, triple_store_service),
+    fields(chunk_size = chunk.len())
+)]
 async fn check_local_existence(
     chunk: &[u64],
     blockchain_id: &BlockchainId,
@@ -187,10 +227,18 @@ async fn check_local_existence(
         .collect()
 }
 
-/// Fetch end epochs for KCs to filter expired ones early.
+/// Fetch all RPC data for KCs in a single Multicall and filter expired ones.
 ///
-/// Returns (kc_id, ual) for non-expired KCs. Expired KCs are added to the expired list.
-async fn fetch_end_epochs_and_filter(
+/// Batches end epochs, token ranges, and merkle roots together:
+/// Layout: [end_epoch_0, range_0, merkle_0, end_epoch_1, range_1, merkle_1, ...]
+///
+/// Returns KcToSync for non-expired KCs. Expired KCs are added to the expired list.
+#[instrument(
+    name = "filter_fetch_rpc",
+    skip(kcs_needing_sync, blockchain_manager, expired),
+    fields(kc_count = kcs_needing_sync.len())
+)]
+async fn fetch_rpc_data_and_filter(
     kcs_needing_sync: &[(u64, String)],
     current_epoch: Option<u64>,
     blockchain_id: &BlockchainId,
@@ -198,86 +246,24 @@ async fn fetch_end_epochs_and_filter(
     contract_addr_str: &str,
     blockchain_manager: &BlockchainManager,
     expired: &mut Vec<u64>,
-) -> Vec<(u64, String)> {
-    let kc_ids: Vec<u128> = kcs_needing_sync
-        .iter()
-        .map(|(kc_id, _)| *kc_id as u128)
-        .collect();
-
-    // Fetch end epochs via Multicall3
-    let mut batch = MulticallBatch::with_capacity(kc_ids.len());
-    for &kc_id in &kc_ids {
-        batch.add(MulticallRequest::new(
-            *contract_address,
-            encoders::encode_get_end_epoch(kc_id),
-        ));
-    }
-
-    let results = match blockchain_manager
-        .execute_multicall(blockchain_id, batch)
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
-                error = %e,
-                kc_count = kc_ids.len(),
-                "[DKG SYNC] Multicall to get end epochs failed, will retry later"
-            );
-            return Vec::new();
-        }
-    };
-
-    // Filter expired KCs immediately
-    let mut non_expired = Vec::new();
-    for (i, (kc_id, ual)) in kcs_needing_sync.iter().enumerate() {
-        let end_epoch = results[i].as_u64().filter(|&e| e != 0);
-
-        // Check if expired
-        if let (Some(current), Some(end)) = (current_epoch, end_epoch) {
-            if current > end {
-                tracing::debug!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    kc_id = kc_id,
-                    current_epoch = current,
-                    end_epoch = end,
-                    "[DKG SYNC] Filter: KC is expired, skipping"
-                );
-                expired.push(*kc_id);
-                continue;
-            }
-        }
-
-        non_expired.push((*kc_id, ual.clone()));
-    }
-
-    non_expired
-}
-
-/// Fetch token ranges and merkle roots for non-expired KCs via Multicall3.
-///
-/// Batches both calls together: for each KC we fetch getKnowledgeAssetsRange and
-/// getLatestMerkleRoot.
-async fn fetch_token_ranges_and_merkle_roots(
-    kcs_needing_sync: &[(u64, String)],
-    blockchain_id: &BlockchainId,
-    contract_address: &Address,
-    contract_addr_str: &str,
-    blockchain_manager: &BlockchainManager,
 ) -> Vec<KcToSync> {
     if kcs_needing_sync.is_empty() {
         return Vec::new();
     }
 
-    let kc_ids: Vec<u128> = kcs_needing_sync.iter().map(|(id, _)| *id as u128).collect();
+    let kc_ids: Vec<u128> = kcs_needing_sync
+        .iter()
+        .map(|(kc_id, _)| *kc_id as u128)
+        .collect();
 
-    // Batch both token ranges AND merkle roots in a single Multicall3
-    // Layout: [range_0, merkle_0, range_1, merkle_1, ...]
-    let mut batch = MulticallBatch::with_capacity(kc_ids.len() * 2);
+    // Batch all calls in a single Multicall3
+    // Layout: [end_epoch_0, range_0, merkle_0, end_epoch_1, range_1, merkle_1, ...]
+    let mut batch = MulticallBatch::with_capacity(kc_ids.len() * 3);
     for &kc_id in &kc_ids {
+        batch.add(MulticallRequest::new(
+            *contract_address,
+            encoders::encode_get_end_epoch(kc_id),
+        ));
         batch.add(MulticallRequest::new(
             *contract_address,
             encoders::encode_get_knowledge_assets_range(kc_id),
@@ -299,20 +285,40 @@ async fn fetch_token_ranges_and_merkle_roots(
                 contract = %contract_addr_str,
                 error = %e,
                 kc_count = kc_ids.len(),
-                "[DKG SYNC] Multicall to get token ranges and merkle roots failed, will retry later"
+                "[DKG SYNC] Multicall failed, will retry later"
             );
             return Vec::new();
         }
     };
 
-    // Process results (2 results per KC: range, merkle_root)
+    // Process results (3 results per KC: end_epoch, range, merkle_root)
     let mut batch_to_sync = Vec::new();
-    for (i, (kc_id, ual)) in kcs_needing_sync.iter().enumerate() {
-        let range_idx = i * 2;
-        let merkle_idx = i * 2 + 1;
+    for ((kc_id, ual), chunk) in kcs_needing_sync.iter().zip(results.chunks(3)) {
+        let [epoch_result, range_result, merkle_result] = chunk else {
+            continue;
+        };
 
-        let range = results[range_idx].as_knowledge_assets_range();
-        let Some((global_start, global_end, global_burned)) = range else {
+        // Check expiration first
+        let end_epoch = epoch_result.as_u64().filter(|&e| e != 0);
+        if let (Some(current), Some(end)) = (current_epoch, end_epoch) {
+            if current > end {
+                tracing::debug!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract_addr_str,
+                    kc_id = kc_id,
+                    current_epoch = current,
+                    end_epoch = end,
+                    "[DKG SYNC] Filter: KC is expired, skipping"
+                );
+                expired.push(*kc_id);
+                continue;
+            }
+        }
+
+        // Parse token range
+        let Some((global_start, global_end, global_burned)) =
+            range_result.as_knowledge_assets_range()
+        else {
             tracing::warn!(
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,
@@ -322,7 +328,7 @@ async fn fetch_token_ranges_and_merkle_roots(
             continue;
         };
 
-        let merkle_root = results[merkle_idx].as_bytes32_hex();
+        let merkle_root = merkle_result.as_bytes32_hex();
 
         let offset = (*kc_id - 1) * MAX_TOKENS_PER_KC;
         let start_token_id = global_start.saturating_sub(offset);

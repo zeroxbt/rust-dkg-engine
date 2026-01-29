@@ -300,18 +300,30 @@ impl EvmChain {
         }
 
         let contracts = self.contracts().await;
-        let mut all_results = Vec::with_capacity(batch.len());
+        let chunks: Vec<_> = batch.into_chunks().collect();
 
-        for chunk in batch.into_chunks() {
-            let results = self
-                .rpc_call(contracts.multicall3().aggregate3(chunk).call())
-                .await
-                .map_err(|e| {
-                    BlockchainError::Custom(format!("Multicall3 aggregate3 failed: {}", e))
-                })?;
+        // Execute all chunks in parallel
+        let futures: Vec<_> = chunks
+            .into_iter()
+            .map(|chunk| {
+                let multicall3 = contracts.multicall3();
+                async move {
+                    self.rpc_call(multicall3.aggregate3(chunk).call())
+                        .await
+                        .map_err(|e| {
+                            BlockchainError::Custom(format!("Multicall3 aggregate3 failed: {}", e))
+                        })
+                }
+            })
+            .collect();
 
-            all_results.extend(results.iter().map(MulticallResult::from_result));
-        }
+        let results = futures::future::try_join_all(futures).await?;
+
+        // Flatten results preserving order
+        let all_results: Vec<MulticallResult> = results
+            .iter()
+            .flat_map(|chunk_results| chunk_results.iter().map(MulticallResult::from_result))
+            .collect();
 
         Ok(all_results)
     }

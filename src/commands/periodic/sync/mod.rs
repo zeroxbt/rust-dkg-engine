@@ -5,15 +5,14 @@
 //! ```text
 //! Filter Stage              Fetch Stage           Insert Stage
 //! ├─ Local existence        ├─ Network requests   └─ Triple store insert
-//! ├─ RPC (end epochs)       └─ Validation
+//! ├─ Single Multicall RPC   └─ Validation
+//! │  (epochs, ranges, roots)
 //! ├─ Filter expired
-//! ├─ RPC (token ranges)
 //! └─ Send to fetch ───────→ Send to insert ─────→
 //! ```
 //!
 //! The pipeline allows stages to overlap, reducing total sync time.
-//! Expiration filtering is done early in the filter stage to avoid
-//! fetching data for expired KCs.
+//! All RPC calls are batched into a single Multicall per filter batch.
 
 mod fetch;
 mod filter;

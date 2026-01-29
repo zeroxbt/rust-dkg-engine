@@ -9,6 +9,7 @@ use std::{sync::Arc, time::Instant};
 
 use futures::future::join_all;
 use tokio::sync::mpsc;
+use tracing::Instrument;
 
 use super::sync::{
     ContractSyncResult, FetchedKc, KcToSync, MAX_NEW_KCS_PER_CONTRACT, MAX_RETRY_ATTEMPTS,
@@ -202,61 +203,70 @@ impl SyncCommandHandler {
         let (filter_tx, filter_rx) = mpsc::channel::<Vec<KcToSync>>(PIPELINE_CHANNEL_BUFFER);
         let (fetch_tx, fetch_rx) = mpsc::channel::<Vec<FetchedKc>>(PIPELINE_CHANNEL_BUFFER);
 
-        // Spawn filter task
+        // Spawn filter task (with current span as parent for trace propagation)
         let filter_handle = {
             let blockchain_id = blockchain_id.clone();
             let contract_addr_str = contract_addr_str.clone();
             let blockchain_manager = Arc::clone(&self.blockchain_manager);
             let triple_store_service = Arc::clone(&self.triple_store_service);
-            tokio::spawn(async move {
-                filter_task(
-                    pending_kc_ids,
-                    blockchain_id,
-                    contract_address,
-                    contract_addr_str,
-                    blockchain_manager,
-                    triple_store_service,
-                    filter_tx,
-                )
-                .await
-            })
+            tokio::spawn(
+                async move {
+                    filter_task(
+                        pending_kc_ids,
+                        blockchain_id,
+                        contract_address,
+                        contract_addr_str,
+                        blockchain_manager,
+                        triple_store_service,
+                        filter_tx,
+                    )
+                    .await
+                }
+                .in_current_span(),
+            )
         };
 
-        // Spawn fetch task
+        // Spawn fetch task (with current span as parent for trace propagation)
         let fetch_handle = {
             let blockchain_id = blockchain_id.clone();
             let network_manager = Arc::clone(&self.network_manager);
             let repository_manager = Arc::clone(&self.repository_manager);
             let get_validation_service = Arc::clone(&self.get_validation_service);
             let peer_performance_tracker = Arc::clone(&self.peer_performance_tracker);
-            tokio::spawn(async move {
-                fetch_task(
-                    filter_rx,
-                    blockchain_id,
-                    network_manager,
-                    repository_manager,
-                    get_validation_service,
-                    peer_performance_tracker,
-                    fetch_tx,
-                )
-                .await
-            })
+            tokio::spawn(
+                async move {
+                    fetch_task(
+                        filter_rx,
+                        blockchain_id,
+                        network_manager,
+                        repository_manager,
+                        get_validation_service,
+                        peer_performance_tracker,
+                        fetch_tx,
+                    )
+                    .await
+                }
+                .in_current_span(),
+            )
         };
 
-        // Spawn insert task
+        // Spawn insert task (with current span as parent for trace propagation)
         let insert_handle = {
             let blockchain_id = blockchain_id.clone();
             let contract_addr_str = contract_addr_str.clone();
             let triple_store_service = Arc::clone(&self.triple_store_service);
-            tokio::spawn(async move {
-                insert_task(
-                    fetch_rx,
-                    blockchain_id,
-                    contract_addr_str,
-                    triple_store_service,
-                )
-                .await
-            })
+            tokio::spawn(
+                async move {
+                    insert_task(
+                        fetch_rx,
+                        blockchain_id,
+                        contract_addr_str,
+                        triple_store_service,
+                    )
+                    .await
+                }
+                .in_current_span(),
+            )
         };
 
         // Wait for all tasks
@@ -284,66 +294,62 @@ impl SyncCommandHandler {
         let repo = self.repository_manager.kc_sync_repository();
 
         // Remove already-synced KCs (found locally in filter stage)
-        if !already_synced.is_empty() {
-            if let Err(e) = repo
+        if !already_synced.is_empty()
+            && let Err(e) = repo
                 .remove_kcs(blockchain_id.as_str(), contract_addr_str, already_synced)
                 .await
-            {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    error = %e,
-                    "[DKG SYNC] Failed to remove already-synced KCs from queue"
-                );
-            }
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "[DKG SYNC] Failed to remove already-synced KCs from queue"
+            );
         }
 
         // Remove expired KCs
-        if !expired.is_empty() {
-            if let Err(e) = repo
+        if !expired.is_empty()
+            && let Err(e) = repo
                 .remove_kcs(blockchain_id.as_str(), contract_addr_str, expired)
                 .await
-            {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    error = %e,
-                    "[DKG SYNC] Failed to remove expired KCs from queue"
-                );
-            }
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "[DKG SYNC] Failed to remove expired KCs from queue"
+            );
         }
 
         // Remove successfully synced KCs
-        if !synced.is_empty() {
-            if let Err(e) = repo
+        if !synced.is_empty()
+            && let Err(e) = repo
                 .remove_kcs(blockchain_id.as_str(), contract_addr_str, synced)
                 .await
-            {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    error = %e,
-                    "[DKG SYNC] Failed to remove synced KCs from queue"
-                );
-            }
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "[DKG SYNC] Failed to remove synced KCs from queue"
+            );
         }
 
         // Increment retry count for failed KCs
         let mut all_failed: Vec<u64> = fetch_failures.to_vec();
         all_failed.extend(insert_failures);
 
-        if !all_failed.is_empty() {
-            if let Err(e) = repo
+        if !all_failed.is_empty()
+            && let Err(e) = repo
                 .increment_retry_count(blockchain_id.as_str(), contract_addr_str, &all_failed)
                 .await
-            {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    error = %e,
-                    "[DKG SYNC] Failed to increment retry count for failed KCs"
-                );
-            }
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "[DKG SYNC] Failed to increment retry count for failed KCs"
+            );
         }
     }
 
