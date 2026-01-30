@@ -9,8 +9,7 @@ use crate::{
         TripleStoreManager, error::TripleStoreError, extract_subject, group_nquads_by_subject,
         query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
     },
-    types::Visibility,
-    types::ParsedUal,
+    types::{ParsedUal, Visibility},
 };
 
 /// Result of querying assertion data from the triple store.

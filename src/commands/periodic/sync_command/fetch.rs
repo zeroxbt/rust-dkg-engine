@@ -28,8 +28,7 @@ use crate::{
         triple_store::{TokenIds, parse_metadata_from_triples},
     },
     services::{GetValidationService, PeerPerformanceTracker},
-    types::Visibility,
-    types::{ParsedUal, parse_ual},
+    types::{ParsedUal, Visibility, parse_ual},
 };
 
 /// Fetch task: receives filtered KCs, fetches from network, sends to insert stage.

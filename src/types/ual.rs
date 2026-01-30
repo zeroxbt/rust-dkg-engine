@@ -1,6 +1,5 @@
-use thiserror::Error;
-
 use alloy::primitives::Address;
+use thiserror::Error;
 
 use crate::types::BlockchainId;
 

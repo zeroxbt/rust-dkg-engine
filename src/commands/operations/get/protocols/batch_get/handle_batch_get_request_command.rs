@@ -17,8 +17,7 @@ use crate::{
         triple_store::{Assertion, TokenIds},
     },
     services::{ResponseChannels, TripleStoreService},
-    types::Visibility,
-    types::{ParsedUal, parse_ual},
+    types::{ParsedUal, Visibility, parse_ual},
 };
 
 /// Command data for handling incoming batch get requests.
