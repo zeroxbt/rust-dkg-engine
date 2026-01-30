@@ -82,7 +82,6 @@ pub(crate) fn initialize(
     let publish_operation = Arc::new(
         OperationService::<PublishOperation>::new(
             Arc::clone(&managers.repository),
-            Arc::clone(&managers.network),
             &managers.key_value_store,
         )
         .expect("Failed to create publish operation service"),
@@ -91,7 +90,6 @@ pub(crate) fn initialize(
     let get_operation = Arc::new(
         OperationService::<GetOperation>::new(
             Arc::clone(&managers.repository),
-            Arc::clone(&managers.network),
             &managers.key_value_store,
         )
         .expect("Failed to create get operation service"),

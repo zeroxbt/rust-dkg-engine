@@ -14,9 +14,10 @@ use crate::{
             messages::BatchGetAck,
             request_response::ResponseChannel,
         },
-        triple_store::{Assertion, TokenIds, Visibility},
+        triple_store::{Assertion, TokenIds},
     },
     services::{ResponseChannels, TripleStoreService},
+    types::Visibility,
     utils::ual::parse_ual,
 };
 

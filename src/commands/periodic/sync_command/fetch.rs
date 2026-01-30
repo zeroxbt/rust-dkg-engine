@@ -25,9 +25,10 @@ use crate::{
             messages::{BatchGetRequestData, BatchGetResponseData},
         },
         repository::RepositoryManager,
-        triple_store::{TokenIds, Visibility, parse_metadata_from_triples},
+        triple_store::{TokenIds, parse_metadata_from_triples},
     },
     services::{GetValidationService, PeerPerformanceTracker},
+    types::Visibility,
     utils::ual::{ParsedUal, parse_ual},
 };
 

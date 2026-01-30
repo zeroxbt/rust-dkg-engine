@@ -52,12 +52,8 @@ pub(crate) async fn initialize(
         .expect("Failed to initialize blockchain identities");
     let blockchain = Arc::new(blockchain_manager);
 
-    // Use centralized triple store path, merging with existing config
-    let mut triple_store_config = config.triple_store.clone();
-    triple_store_config.data_path = Some(paths.triple_store.clone());
-
     let triple_store = Arc::new(
-        TripleStoreManager::connect(&triple_store_config)
+        TripleStoreManager::connect(&config.triple_store, &paths.triple_store)
             .await
             .expect("Failed to initialize triple store manager"),
     );

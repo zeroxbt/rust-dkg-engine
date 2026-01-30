@@ -15,13 +15,14 @@ use crate::{
             messages::{GetRequestData, GetResponseData},
         },
         repository::RepositoryManager,
-        triple_store::{Assertion, MAX_TOKENS_PER_KC, TokenIds, Visibility},
+        triple_store::{Assertion, MAX_TOKENS_PER_KC, TokenIds},
     },
     operations::{GetOperation, GetOperationResult},
     services::{
         GetValidationService, TripleStoreService,
         operation::{Operation, OperationService as GenericOperationService},
     },
+    types::Visibility,
     utils::{
         paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
         ual::{ParsedUal, parse_ual},

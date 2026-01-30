@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use dashmap::DashMap;
-use tokio::sync::watch;
 use uuid::Uuid;
 
 use super::{
@@ -13,7 +11,6 @@ use crate::{
     error::NodeError,
     managers::{
         key_value_store::{KeyValueStoreManager, Table},
-        network::NetworkManager,
         repository::{OperationStatus, RepositoryManager},
     },
 };
@@ -29,24 +26,19 @@ use crate::{
 /// - `NetworkManager` - shared reference for sending requests (with per-protocol pending requests)
 pub(crate) struct OperationService<Op: Operation> {
     repository: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager>,
     result_table: Table<Op::Result>,
-    completion_signals: DashMap<Uuid, watch::Sender<OperationStatus>>,
 }
 
 impl<Op: Operation> OperationService<Op> {
     /// Create a new operation service.
     pub(crate) fn new(
         repository: Arc<RepositoryManager>,
-        network_manager: Arc<NetworkManager>,
         kv_store_manager: &KeyValueStoreManager,
     ) -> Result<Self, ResultStoreError> {
         let result_table = kv_store_manager.table(TABLE_NAME)?;
         Ok(Self {
             repository,
-            network_manager,
             result_table,
-            completion_signals: DashMap::new(),
         })
     }
 
@@ -58,10 +50,7 @@ impl<Op: Operation> OperationService<Op> {
     ///
     /// For callers that just want to trigger an operation without awaiting, the receiver
     /// can be dropped immediately.
-    pub(crate) async fn create_operation(
-        &self,
-        operation_id: Uuid,
-    ) -> Result<watch::Receiver<OperationStatus>, NodeError> {
+    pub(crate) async fn create_operation(&self, operation_id: Uuid) -> Result<(), NodeError> {
         self.repository
             .operation_repository()
             .create(
@@ -72,17 +61,13 @@ impl<Op: Operation> OperationService<Op> {
             )
             .await?;
 
-        // Create completion signal for external observers
-        let (tx, rx) = watch::channel(OperationStatus::InProgress);
-        self.completion_signals.insert(operation_id, tx);
-
         tracing::debug!(
             operation_id = %operation_id,
-            "[{}] Operation record created with completion signal",
+            "[{}] Operation record created ",
             Op::NAME
         );
 
-        Ok(rx)
+        Ok(())
     }
 
     /// Store a result in the key-value store.
@@ -154,10 +139,6 @@ impl<Op: Operation> OperationService<Op> {
             .update_status(operation_id, OperationStatus::Completed)
             .await?;
 
-        // Signal completion and clean up
-        self.signal_completion(operation_id, OperationStatus::Completed);
-        self.completion_signals.remove(&operation_id);
-
         tracing::info!(
             operation_id = %operation_id,
             success_count = success_count,
@@ -182,9 +163,6 @@ impl<Op: Operation> OperationService<Op> {
             )
             .await;
 
-        // Signal failure and clean up
-        self.signal_completion(operation_id, OperationStatus::Failed);
-        self.completion_signals.remove(&operation_id);
         let _ = self.result_table.remove(operation_id);
 
         match result {
@@ -202,19 +180,6 @@ impl<Op: Operation> OperationService<Op> {
                     "Unable to mark operation as failed"
                 );
             }
-        }
-    }
-
-    /// Signal completion status to external observers.
-    fn signal_completion(&self, operation_id: Uuid, status: OperationStatus) {
-        if let Some(entry) = self.completion_signals.get(&operation_id) {
-            let _ = entry.send(status);
-            tracing::debug!(
-                operation_id = %operation_id,
-                status = ?status,
-                "[{}] Signaled completion",
-                Op::NAME
-            );
         }
     }
 }

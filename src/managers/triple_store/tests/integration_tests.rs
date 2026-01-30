@@ -18,7 +18,6 @@ fn blazegraph_config() -> TripleStoreManagerConfig {
         backend: TripleStoreBackendType::Blazegraph,
         url: std::env::var("BLAZEGRAPH_URL")
             .unwrap_or_else(|_| "http://localhost:9999".to_string()),
-        data_path: None,
         username: None,
         password: None,
         connect_max_retries: 3,
@@ -28,6 +27,7 @@ fn blazegraph_config() -> TripleStoreManagerConfig {
             insert_ms: 60000,
             ask_ms: 10000,
         },
+        max_concurrent_operations: 16,
     }
 }
 

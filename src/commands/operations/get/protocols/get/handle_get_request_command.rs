@@ -14,9 +14,10 @@ use crate::{
             messages::GetAck,
             request_response::ResponseChannel,
         },
-        triple_store::{Assertion, TokenIds, Visibility},
+        triple_store::{Assertion, TokenIds},
     },
     services::{ResponseChannels, TripleStoreService},
+    types::Visibility,
     utils::{
         paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
         ual::{ParsedUal, parse_ual},

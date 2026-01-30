@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use serde::Deserialize;
 
 /// The fixed repository/namespace name used by the DKG.
@@ -30,10 +28,6 @@ pub(crate) struct TripleStoreManagerConfig {
     #[serde(default)]
     pub url: String,
 
-    /// Path for Oxigraph persistent storage (default: "{app_data_path}/triple-store")
-    /// Only used when backend = "oxigraph"
-    pub data_path: Option<PathBuf>,
-
     /// Optional username for authentication (Blazegraph only)
     pub username: Option<String>,
 
@@ -52,11 +46,11 @@ pub(crate) struct TripleStoreManagerConfig {
     #[serde(default)]
     pub timeouts: TimeoutConfig,
 
-    /// Maximum concurrent operations.
+    /// Maximum concurrent operations (default: 16).
     /// Limits how many triple store operations can run simultaneously.
     /// Useful to prevent overwhelming Blazegraph or causing resource contention.
     #[serde(default = "default_max_concurrent_operations")]
-    pub max_concurrent_operations: Option<usize>,
+    pub max_concurrent_operations: usize,
 }
 
 /// Timeout configuration for different SPARQL operations
@@ -105,8 +99,8 @@ fn default_ask_timeout_ms() -> u64 {
     10_000
 }
 
-fn default_max_concurrent_operations() -> Option<usize> {
-    Some(16)
+fn default_max_concurrent_operations() -> usize {
+    16
 }
 
 impl TimeoutConfig {
