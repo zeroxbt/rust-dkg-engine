@@ -1,4 +1,7 @@
-use crate::managers::blockchain::*;
+use crate::{
+    managers::blockchain::*,
+    types::{AccessPolicy, PermissionedNode},
+};
 
 impl BlockchainManager {
     /// Check if a paranet exists on-chain.

@@ -40,13 +40,10 @@ impl StoreRequestData {
 }
 
 /// Store ACK payload.
-///
-/// Note: identity_id uses u64 instead of u128 because serde_json has issues
-/// with u128 in untagged enums. This is safe since identity IDs won't exceed u64::MAX.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StoreAck {
-    pub identity_id: u64,
+    pub identity_id: u128,
     #[serde(flatten)]
     pub signature: SignatureComponents,
 }

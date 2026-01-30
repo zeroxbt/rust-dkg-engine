@@ -343,7 +343,7 @@ impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommand
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
             data: ResponseBody::ack(StoreAck {
-                identity_id: identity_id as u64,
+                identity_id,
                 signature,
             }),
         };

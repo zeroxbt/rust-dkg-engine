@@ -8,8 +8,7 @@ use alloy::{
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::managers::blockchain::{
-    AccessPolicy, BlockchainConfig, BlockchainId, GasConfig, PermissionedNode, RpcRateLimiter,
-    SignatureComponents,
+    BlockchainConfig, BlockchainId, GasConfig, RpcRateLimiter, SignatureComponents,
     chains::evm::{
         contracts::{Contracts, Profile, Staking, Token, initialize_contracts},
         provider::{BlockchainProvider, initialize_provider, initialize_provider_with_wallet},

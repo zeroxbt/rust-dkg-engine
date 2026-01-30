@@ -35,9 +35,6 @@ pub(crate) enum BlockchainError {
     #[error("Blockchain '{blockchain_id}' not found")]
     BlockchainNotFound { blockchain_id: String },
 
-    #[error("Event '{event_name}' not found in contract")]
-    EventNotFound { event_name: String },
-
     #[error("Failed to get logs: {reason}")]
     GetLogs {
         reason: String,

@@ -16,7 +16,6 @@ pub(crate) use chains::evm::{
 };
 pub(crate) use gas::GasConfig;
 pub(crate) use rpc_rate_limiter::RpcRateLimiter;
-use tracing::instrument;
 
 use crate::config::ConfigError;
 
@@ -32,40 +31,11 @@ pub(crate) type KnowledgeCollectionCreatedFilter =
 pub(crate) use alloy::primitives::{Address, B256, B256 as H256, U256};
 use serde::Deserialize;
 
-// Re-export shared domain types from crate::types
-pub(crate) use crate::types::{BlockchainId, SignatureComponents};
-
-/// Access policy for paranet nodes (matches on-chain enum).
-/// OPEN = 0: Any node can participate
-/// PERMISSIONED = 1: Only approved nodes can participate
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub(crate) enum AccessPolicy {
-    Open = 0,
-    Permissioned = 1,
-}
-
-impl From<u8> for AccessPolicy {
-    fn from(value: u8) -> Self {
-        match value {
-            1 => AccessPolicy::Permissioned,
-            _ => AccessPolicy::Open,
-        }
-    }
-}
-
-/// A node permitted to participate in a permissioned paranet.
-#[derive(Debug, Clone)]
-pub(crate) struct PermissionedNode {
-    /// The node's identity ID on-chain
-    pub identity_id: u128,
-    /// The node's peer ID as bytes
-    pub node_id: Vec<u8>,
-}
-
 use crate::managers::blockchain::{
     chains::evm::ShardingTableLib::NodeInfo, error::BlockchainError,
 };
+// Re-export shared domain types from crate::types
+pub(crate) use crate::types::{BlockchainId, SignatureComponents};
 
 /// Configuration for a blockchain network.
 ///
@@ -140,14 +110,6 @@ impl BlockchainConfig {
         &self.blockchain_id
     }
 
-    /// Returns the chain ID parsed from the blockchain_id.
-    /// Panics if the blockchain_id is malformed (should be validated at config load time).
-    pub(crate) fn chain_id(&self) -> u64 {
-        self.blockchain_id
-            .chain_id()
-            .expect("blockchain_id should contain valid chain_id (format: 'type:chainid')")
-    }
-
     /// Returns the operational wallet private key.
     /// This is guaranteed to be set after config initialization.
     pub(crate) fn evm_operational_wallet_private_key(&self) -> &str {
@@ -187,10 +149,6 @@ impl BlockchainConfig {
             ));
         }
         Ok(())
-    }
-
-    pub(crate) fn hub_contract_address(&self) -> &str {
-        &self.hub_contract_address
     }
 
     pub(crate) fn rpc_endpoints(&self) -> &Vec<String> {
@@ -370,13 +328,6 @@ impl BlockchainManager {
 
     pub(crate) fn get_blockchain_ids(&self) -> Vec<&BlockchainId> {
         self.blockchains.keys().collect()
-    }
-
-    pub(crate) fn get_blockchain_config(
-        &self,
-        blockchain: &BlockchainId,
-    ) -> Result<&BlockchainConfig, BlockchainError> {
-        self.chain(blockchain).map(|b| b.config())
     }
 }
 

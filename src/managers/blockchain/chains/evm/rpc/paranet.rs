@@ -1,4 +1,5 @@
 use super::super::*;
+use crate::types::{AccessPolicy, PermissionedNode};
 
 impl EvmChain {
     /// Check if a paranet exists on-chain.

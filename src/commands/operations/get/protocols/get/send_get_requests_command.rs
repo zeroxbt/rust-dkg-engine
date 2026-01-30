@@ -8,7 +8,7 @@ use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     managers::{
-        blockchain::{AccessPolicy, BlockchainManager},
+        blockchain::BlockchainManager,
         network::{
             NetworkManager,
             message::ResponseBody,
@@ -22,7 +22,7 @@ use crate::{
         GetValidationService, TripleStoreService,
         operation::{Operation, OperationService as GenericOperationService},
     },
-    types::Visibility,
+    types::{AccessPolicy, Visibility},
     utils::{
         paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
         ual::{ParsedUal, parse_ual},
