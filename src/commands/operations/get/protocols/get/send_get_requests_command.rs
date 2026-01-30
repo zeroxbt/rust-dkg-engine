@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, sync::Arc, time::Instant};
 
 use futures::future::join_all;
 use libp2p::PeerId;
@@ -19,7 +19,7 @@ use crate::{
     },
     operations::{GetOperation, GetOperationResult},
     services::{
-        GetValidationService, TripleStoreService,
+        GetValidationService, PeerPerformanceTracker, TripleStoreService,
         operation::{Operation, OperationService as GenericOperationService},
     },
     types::{AccessPolicy, ParsedUal, Visibility, parse_ual},
@@ -61,6 +61,7 @@ pub(crate) struct SendGetRequestsCommandHandler {
     network_manager: Arc<NetworkManager>,
     get_operation_service: Arc<GenericOperationService<GetOperation>>,
     get_validation_service: Arc<GetValidationService>,
+    peer_performance_tracker: Arc<PeerPerformanceTracker>,
 }
 
 impl SendGetRequestsCommandHandler {
@@ -72,6 +73,7 @@ impl SendGetRequestsCommandHandler {
             network_manager: Arc::clone(context.network_manager()),
             get_operation_service: Arc::clone(context.get_operation_service()),
             get_validation_service: Arc::clone(context.get_validation_service()),
+            peer_performance_tracker: Arc::clone(context.peer_performance_tracker()),
         }
     }
 
@@ -577,7 +579,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             .collect();
 
         // Apply paranet filtering if paranet_ual is provided
-        let peers: Vec<PeerId> = if let Some(ref paranet_ual) = data.paranet_ual {
+        let mut peers: Vec<PeerId> = if let Some(ref paranet_ual) = data.paranet_ual {
             tracing::info!(
                 operation_id = %operation_id,
                 paranet_ual = %paranet_ual,
@@ -601,6 +603,9 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
         } else {
             all_shard_peers
         };
+
+        // Prefer peers with better historical response times.
+        self.peer_performance_tracker.sort_by_latency(&mut peers);
 
         let total_peers = peers.len() as u16;
 
@@ -657,6 +662,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     let request_data = get_request_data.clone();
                     let network_manager = Arc::clone(&self.network_manager);
                     async move {
+                        let start = Instant::now();
                         // Get peer addresses from Kademlia for reliable request delivery
                         let addresses = network_manager
                             .get_peer_addresses(peer)
@@ -665,7 +671,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                         let result = network_manager
                             .send_get_request(peer, addresses, operation_id, request_data)
                             .await;
-                        (peer, result)
+                        (peer, result, start.elapsed())
                     }
                 })
                 .collect();
@@ -674,7 +680,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             let results = join_all(request_futures).await;
 
             // Process each response
-            for (peer, result) in results {
+            for (peer, result, elapsed) in results {
                 match result {
                     Ok(response) => {
                         // Validate the response
@@ -690,6 +696,8 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
 
                         if is_valid {
                             success_count += 1;
+                            self.peer_performance_tracker
+                                .record_latency(&peer, elapsed);
 
                             // Check if we've met the success threshold
                             if success_count >= GetOperation::MIN_ACK_RESPONSES {
@@ -727,6 +735,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     }
                     Err(e) => {
                         failure_count += 1;
+                        self.peer_performance_tracker.record_failure(&peer);
                         tracing::debug!(
                             operation_id = %operation_id,
                             peer = %peer,
