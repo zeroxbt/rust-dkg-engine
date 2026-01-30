@@ -70,7 +70,7 @@ impl EvmChain {
             )
             .gas_price(gas_price.to::<u128>());
 
-        let result = create_profile_call.send().await;
+        let result = self.tx_call(create_profile_call.send()).await;
 
         match result {
             Ok(pending_tx) => {

@@ -86,7 +86,7 @@ impl EvmChain {
         let approve_call = token
             .increaseAllowance(staking_address, U256::from(stake_wei))
             .gas_price(gas_price.to::<u128>());
-        match approve_call.send().await {
+        match self.tx_call(approve_call.send()).await {
             Ok(pending_tx) => {
                 handle_contract_call(Ok(pending_tx)).await?;
             }
@@ -108,7 +108,7 @@ impl EvmChain {
             )
             .gas_price(gas_price.to::<u128>());
 
-        match stake_call.send().await {
+        match self.tx_call(stake_call.send()).await {
             Ok(pending_tx) => {
                 handle_contract_call(Ok(pending_tx)).await?;
                 tracing::info!("Set stake completed for identity {}", identity_id);
@@ -149,7 +149,7 @@ impl EvmChain {
             )
             .gas_price(gas_price.to::<u128>());
 
-        match update_ask_call.send().await {
+        match self.tx_call(update_ask_call.send()).await {
             Ok(pending_tx) => {
                 handle_contract_call(Ok(pending_tx)).await?;
                 tracing::info!("Set ask completed for identity {}", identity_id);

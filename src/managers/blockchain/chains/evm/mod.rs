@@ -5,7 +5,7 @@ use alloy::{
     providers::Provider,
     rpc::types::Filter,
 };
-use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::managers::blockchain::{
     BlockchainConfig, BlockchainId, GasConfig, RpcRateLimiter, SignatureComponents,
@@ -109,6 +109,7 @@ pub(crate) struct EvmChain {
     is_development_chain: bool,
     requires_evm_account_mapping: bool,
     rpc_rate_limiter: RpcRateLimiter,
+    tx_mutex: Mutex<()>,
 }
 
 impl EvmChain {
@@ -191,6 +192,7 @@ impl EvmChain {
             is_development_chain,
             requires_evm_account_mapping,
             rpc_rate_limiter,
+            tx_mutex: Mutex::new(()),
         })
     }
 
@@ -256,6 +258,17 @@ impl EvmChain {
         F: std::future::IntoFuture<IntoFuture = T>,
         T: std::future::Future,
     {
+        self.rpc_rate_limiter.acquire().await;
+        operation.into_future().await
+    }
+
+    /// Execute a transaction with rate limiting and nonce-safe serialization.
+    pub(crate) async fn tx_call<T, F>(&self, operation: F) -> T::Output
+    where
+        F: std::future::IntoFuture<IntoFuture = T>,
+        T: std::future::Future,
+    {
+        let _guard = self.tx_mutex.lock().await;
         self.rpc_rate_limiter.acquire().await;
         operation.into_future().await
     }
