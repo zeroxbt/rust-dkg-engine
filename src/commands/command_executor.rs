@@ -7,7 +7,9 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     command_registry::{Command, CommandResolver},
-    constants::{COMMAND_CONCURRENT_LIMIT, COMMAND_QUEUE_SIZE, MAX_COMMAND_DELAY, MAX_COMMAND_LIFETIME},
+    constants::{
+        COMMAND_CONCURRENT_LIMIT, COMMAND_QUEUE_SIZE, MAX_COMMAND_DELAY, MAX_COMMAND_LIFETIME,
+    },
 };
 use crate::context::Context;
 

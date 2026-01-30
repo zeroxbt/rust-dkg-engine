@@ -1,5 +1,4 @@
-use serde::{Deserialize, Serialize};
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -133,8 +132,8 @@ where
 
         let data = match header.message_type {
             ResponseMessageType::Ack => {
-                let ack = serde_json::from_value::<T>(data_value)
-                    .map_err(serde::de::Error::custom)?;
+                let ack =
+                    serde_json::from_value::<T>(data_value).map_err(serde::de::Error::custom)?;
                 ResponseBody::Ack(ack)
             }
             ResponseMessageType::Nack | ResponseMessageType::Busy => {

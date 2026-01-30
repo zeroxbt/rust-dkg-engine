@@ -8,7 +8,7 @@ use alloy::{
     primitives::{Address, Bytes, U256},
 };
 
-use super::blockchains::blockchain_creator::Multicall3;
+use super::chains::evm::Multicall3;
 
 /// Maximum calls per Multicall3 request to avoid RPC limits.
 pub(crate) const MULTICALL_CHUNK_SIZE: usize = 100;

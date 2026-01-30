@@ -468,75 +468,75 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
 
         match local_result {
             Ok(Some(result)) if result.assertion.has_data() => {
-            tracing::debug!(
-                operation_id = %operation_id,
-                public_count = result.assertion.public.len(),
-                has_private = result.assertion.private.is_some(),
-                has_metadata = result.metadata.is_some(),
-                "Found data locally, validating..."
-            );
-
-            // Validate local result
-            let is_valid = self
-                .get_validation_service
-                .validate_response(&result.assertion, &parsed_ual, data.visibility)
-                .await;
-
-            if is_valid {
-                tracing::info!(
+                tracing::debug!(
                     operation_id = %operation_id,
                     public_count = result.assertion.public.len(),
                     has_private = result.assertion.private.is_some(),
                     has_metadata = result.metadata.is_some(),
-                    "Local data validated, completing operation"
+                    "Found data locally, validating..."
                 );
 
-                // Build the assertion from local data and store result
-                let assertion = Assertion {
-                    public: result.assertion.public.clone(),
-                    private: result.assertion.private.clone(),
-                };
-                let get_result = GetOperationResult::new(assertion, result.metadata.clone());
+                // Validate local result
+                let is_valid = self
+                    .get_validation_service
+                    .validate_response(&result.assertion, &parsed_ual, data.visibility)
+                    .await;
 
-                if let Err(e) = self
-                    .get_operation_service
-                    .store_result(operation_id, &get_result)
-                {
-                    let error_message = format!("Failed to store local result: {}", e);
-                    tracing::error!(operation_id = %operation_id, error = %e, "Failed to store local result");
-                    self.get_operation_service
-                        .mark_failed(operation_id, error_message)
-                        .await;
-                    return CommandExecutionResult::Completed;
-                }
-
-                // Mark operation as completed (local-first success: 1 success, 0 failures)
-                if let Err(e) = self
-                    .get_operation_service
-                    .mark_completed(operation_id, 1, 0)
-                    .await
-                {
-                    tracing::error!(
+                if is_valid {
+                    tracing::info!(
                         operation_id = %operation_id,
-                        error = %e,
-                        "Failed to mark operation as completed"
+                        public_count = result.assertion.public.len(),
+                        has_private = result.assertion.private.is_some(),
+                        has_metadata = result.metadata.is_some(),
+                        "Local data validated, completing operation"
+                    );
+
+                    // Build the assertion from local data and store result
+                    let assertion = Assertion {
+                        public: result.assertion.public.clone(),
+                        private: result.assertion.private.clone(),
+                    };
+                    let get_result = GetOperationResult::new(assertion, result.metadata.clone());
+
+                    if let Err(e) = self
+                        .get_operation_service
+                        .store_result(operation_id, &get_result)
+                    {
+                        let error_message = format!("Failed to store local result: {}", e);
+                        tracing::error!(operation_id = %operation_id, error = %e, "Failed to store local result");
+                        self.get_operation_service
+                            .mark_failed(operation_id, error_message)
+                            .await;
+                        return CommandExecutionResult::Completed;
+                    }
+
+                    // Mark operation as completed (local-first success: 1 success, 0 failures)
+                    if let Err(e) = self
+                        .get_operation_service
+                        .mark_completed(operation_id, 1, 0)
+                        .await
+                    {
+                        tracing::error!(
+                            operation_id = %operation_id,
+                            error = %e,
+                            "Failed to mark operation as completed"
+                        );
+                    }
+
+                    return CommandExecutionResult::Completed;
+                } else {
+                    tracing::debug!(
+                        operation_id = %operation_id,
+                        "Local data validation failed, querying network"
                     );
                 }
-
-                return CommandExecutionResult::Completed;
-            } else {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    "Local data validation failed, querying network"
-                );
-            }
             }
             Err(e) => {
-            tracing::warn!(
-                operation_id = %operation_id,
-                error = %e,
-                "Local triple store query failed; falling back to network"
-            );
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Local triple store query failed; falling back to network"
+                );
             }
             Ok(_) => {}
         }

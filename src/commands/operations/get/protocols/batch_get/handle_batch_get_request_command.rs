@@ -92,7 +92,10 @@ impl HandleBatchGetRequestCommandHandler {
     ) {
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: ResponseBody::ack(BatchGetAck { assertions, metadata }),
+            data: ResponseBody::ack(BatchGetAck {
+                assertions,
+                metadata,
+            }),
         };
         self.send_response(channel, operation_id, message).await;
     }
@@ -191,8 +194,12 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
                     error = %e,
                     "Batch get query failed"
                 );
-                self.send_nack(channel, operation_id, format!("Triple store query failed: {}", e))
-                    .await;
+                self.send_nack(
+                    channel,
+                    operation_id,
+                    format!("Triple store query failed: {}", e),
+                )
+                .await;
                 return CommandExecutionResult::Completed;
             }
         };

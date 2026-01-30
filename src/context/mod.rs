@@ -82,15 +82,11 @@ impl Context {
         &self.services.response_channels.get
     }
 
-    pub(crate) fn finality_response_channels(
-        &self,
-    ) -> &Arc<ResponseChannels<FinalityAck>> {
+    pub(crate) fn finality_response_channels(&self) -> &Arc<ResponseChannels<FinalityAck>> {
         &self.services.response_channels.finality
     }
 
-    pub(crate) fn batch_get_response_channels(
-        &self,
-    ) -> &Arc<ResponseChannels<BatchGetAck>> {
+    pub(crate) fn batch_get_response_channels(&self) -> &Arc<ResponseChannels<BatchGetAck>> {
         &self.services.response_channels.batch_get
     }
 

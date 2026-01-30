@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    managers::network::message::ResponseBody,
-    types::BlockchainId,
-};
+use crate::{managers::network::message::ResponseBody, types::BlockchainId};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]

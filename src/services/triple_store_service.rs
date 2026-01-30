@@ -55,13 +55,18 @@ impl TripleStoreService {
 
         // Query assertion and metadata in parallel when metadata is requested
         let (assertion, metadata) = if include_metadata {
-            let assertion_future = async { self.query_assertion_data(parsed_ual, token_ids, visibility).await };
+            let assertion_future = async {
+                self.query_assertion_data(parsed_ual, token_ids, visibility)
+                    .await
+            };
 
             let metadata_future = self.query_metadata(&kc_ual);
 
             tokio::join!(assertion_future, metadata_future)
         } else {
-            let assertion = self.query_assertion_data(parsed_ual, token_ids, visibility).await;
+            let assertion = self
+                .query_assertion_data(parsed_ual, token_ids, visibility)
+                .await;
             (assertion, Ok(None))
         };
 

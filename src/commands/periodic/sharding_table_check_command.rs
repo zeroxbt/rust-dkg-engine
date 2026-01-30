@@ -9,7 +9,7 @@ use crate::{
     managers::{
         blockchain::{
             BlockchainId, BlockchainManager,
-            blockchains::blockchain_creator::sharding_table::ShardingTableLib::NodeInfo,
+            chains::evm::ShardingTableLib::NodeInfo,
             utils::{from_wei, sha256_hex},
         },
         network::PeerId,

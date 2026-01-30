@@ -259,7 +259,10 @@ fn batch_get_response_ack_matches_js_shape() {
 
     let response = ResponseMessage {
         header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Ack),
-        data: ResponseBody::ack(BatchGetAck { assertions, metadata }),
+        data: ResponseBody::ack(BatchGetAck {
+            assertions,
+            metadata,
+        }),
     };
 
     let actual = to_json(&response);

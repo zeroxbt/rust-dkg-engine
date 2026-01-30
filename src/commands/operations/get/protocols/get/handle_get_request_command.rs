@@ -113,7 +113,10 @@ impl HandleGetRequestCommandHandler {
     ) {
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: ResponseBody::ack(GetAck { assertion, metadata }),
+            data: ResponseBody::ack(GetAck {
+                assertion,
+                metadata,
+            }),
         };
         self.send_response(channel, operation_id, message).await;
     }

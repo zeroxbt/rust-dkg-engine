@@ -1,133 +1,32 @@
-// Generated bindings include methods with many parameters; allow for this module.
-#[allow(clippy::too_many_arguments)]
-pub(crate) mod knowledge_collection_storage {
-    use alloy::sol;
+pub(crate) mod chronos;
+pub(crate) mod hub;
+pub(crate) mod identity_storage;
+pub(crate) mod kc_storage;
+pub(crate) mod multicall;
+pub(crate) mod params;
+pub(crate) mod paranet;
+pub(crate) mod profile;
+pub(crate) mod sharding;
+pub(crate) mod staking;
+pub(crate) mod token;
 
-    sol!(
-        #[sol(rpc)]
-        KnowledgeCollectionStorage,
-        "abi/KnowledgeCollectionStorage.json"
-    );
-}
+use std::collections::HashMap;
 
-// Wrap each ABI in its own module to avoid duplicate ShardingTableLib definitions.
-pub(crate) mod sharding_table {
-    use alloy::sol;
+use alloy::primitives::Address;
+pub(crate) use chronos::Chronos;
+pub(crate) use hub::Hub;
+pub(crate) use identity_storage::IdentityStorage;
+pub(crate) use kc_storage::KnowledgeCollectionStorage;
+pub(crate) use multicall::Multicall3;
+pub(crate) use params::ParametersStorage;
+pub(crate) use paranet::ParanetsRegistry;
+pub(crate) use profile::Profile;
+pub(crate) use sharding::{ShardingTable, ShardingTableLib, ShardingTableStorage};
+pub(crate) use staking::Staking;
+pub(crate) use token::Token;
 
-    sol!(
-        #[sol(rpc)]
-        ShardingTable,
-        "abi/ShardingTable.json"
-    );
-}
-
-pub(crate) mod sharding_table_storage {
-    use alloy::sol;
-
-    sol!(
-        #[sol(rpc)]
-        ShardingTableStorage,
-        "abi/ShardingTableStorage.json"
-    );
-}
-sol!(
-    #[sol(rpc)]
-    Hub,
-    "abi/Hub.json"
-);
-
-sol!(
-    #[sol(rpc)]
-    Staking,
-    "abi/Staking.json"
-);
-
-sol!(
-    #[sol(rpc)]
-    IdentityStorage,
-    "abi/IdentityStorage.json"
-);
-
-sol!(
-    #[sol(rpc)]
-    ParametersStorage,
-    "abi/ParametersStorage.json"
-);
-
-sol!(
-    #[sol(rpc)]
-    Profile,
-    "abi/Profile.json"
-);
-
-sol!(
-    #[sol(rpc)]
-    Token,
-    "abi/Token.json"
-);
-
-sol!(
-    #[sol(rpc)]
-    Chronos,
-    "abi/Chronos.json"
-);
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) mod paranets_registry {
-    use alloy::sol;
-
-    sol!(
-        #[sol(rpc)]
-        ParanetsRegistry,
-        "abi/ParanetsRegistry.json"
-    );
-}
-
-sol! {
-    /// Multicall3 contract for batching multiple calls into a single RPC request.
-    /// See: https://www.multicall3.com/
-    #[sol(rpc)]
-    contract Multicall3 {
-        struct Call3 {
-            address target;
-            bool allowFailure;
-            bytes callData;
-        }
-
-        struct Result {
-            bool success;
-            bytes returnData;
-        }
-
-        function aggregate3(Call3[] calldata calls) public payable returns (Result[] memory returnData);
-    }
-}
-
-use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
-
-use alloy::{
-    network::{Ethereum, EthereumWallet},
-    primitives::Address,
-    providers::{DynProvider, Provider, ProviderBuilder, WsConnect},
-    rpc::client::RpcClient,
-    signers::local::PrivateKeySigner,
-    sol,
-    transports::{
-        BoxTransport, IntoBoxTransport,
-        http::{Http, reqwest::Url},
-        layers::FallbackLayer,
-    },
-};
-pub(crate) use knowledge_collection_storage::KnowledgeCollectionStorage;
-pub(crate) use paranets_registry::ParanetsRegistry;
-pub(crate) use sharding_table::ShardingTable;
-pub(crate) use sharding_table_storage::ShardingTableStorage;
-use tower::ServiceBuilder;
-
+use super::provider::BlockchainProvider;
 use crate::managers::blockchain::{BlockchainConfig, ContractName, error::BlockchainError};
-
-// Use Arc<DynProvider> for thread-safe sharing
-pub(crate) type BlockchainProvider = Arc<DynProvider<Ethereum>>;
 
 /// Multicall3 contract address - same on all EVM chains
 /// See: https://www.multicall3.com/
@@ -310,105 +209,6 @@ impl Contracts {
 
         Ok(())
     }
-}
-
-/// Creates a provider with the given wallet and RPC endpoints.
-/// Supports both HTTP and WebSocket endpoints with automatic failover.
-pub(crate) async fn initialize_provider_with_wallet(
-    rpc_endpoints: &[String],
-    wallet: EthereumWallet,
-) -> Result<BlockchainProvider, BlockchainError> {
-    // Collect all valid transports (HTTP and WebSocket)
-    let mut transports: Vec<BoxTransport> = Vec::new();
-    let mut valid_endpoints = Vec::new();
-
-    for endpoint in rpc_endpoints {
-        if endpoint.starts_with("ws://") || endpoint.starts_with("wss://") {
-            // WebSocket endpoint - connect and box the transport
-            let ws_connect = WsConnect::new(endpoint);
-            match RpcClient::connect_pubsub(ws_connect).await {
-                Ok(client) => {
-                    transports.push(client.transport().clone().into_box_transport());
-                    valid_endpoints.push(endpoint.clone());
-                    tracing::debug!("WebSocket RPC endpoint added: {}", endpoint);
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to connect to WebSocket RPC '{}': {}", endpoint, e);
-                }
-            }
-        } else {
-            // HTTP endpoint
-            match endpoint.parse::<Url>() {
-                Ok(url) => {
-                    transports.push(Http::new(url).into_box_transport());
-                    valid_endpoints.push(endpoint.clone());
-                    tracing::debug!("HTTP RPC endpoint added: {}", endpoint);
-                }
-                Err(e) => {
-                    tracing::warn!("Invalid RPC URL '{}': {}", endpoint, e);
-                }
-            }
-        }
-    }
-
-    if transports.is_empty() {
-        return Err(BlockchainError::RpcConnectionFailed {
-            attempts: rpc_endpoints.len(),
-        });
-    }
-
-    // Configure fallback layer:
-    // - Queries 1 transport at a time (pure failover, no parallel requests)
-    // - Automatically ranks by latency + success rate
-    // - Falls back to next transport only on failure
-    let fallback_layer = FallbackLayer::default().with_active_transport_count(NonZeroUsize::MIN);
-
-    // Build the fallback transport
-    let transport = ServiceBuilder::new()
-        .layer(fallback_layer)
-        .service(transports);
-
-    // Create RPC client with fallback transport
-    let client = RpcClient::builder().transport(transport, false);
-
-    // Build provider with wallet
-    let provider = ProviderBuilder::new().wallet(wallet).connect_client(client);
-
-    // Verify connectivity
-    match provider.get_block_number().await {
-        Ok(block) => {
-            tracing::info!(
-                "Blockchain provider initialized with {} RPC endpoints (block: {}): {:?}",
-                valid_endpoints.len(),
-                block,
-                valid_endpoints
-            );
-            Ok(Arc::new(provider.erased()))
-        }
-        Err(e) => {
-            tracing::error!("All RPC endpoints failed connectivity check: {}", e);
-            Err(BlockchainError::RpcConnectionFailed {
-                attempts: valid_endpoints.len(),
-            })
-        }
-    }
-}
-
-/// Creates a provider using the operational wallet from config.
-pub(crate) async fn initialize_provider(
-    config: &BlockchainConfig,
-) -> Result<BlockchainProvider, BlockchainError> {
-    let private_key = config.evm_operational_wallet_private_key();
-    let signer: PrivateKeySigner =
-        private_key
-            .parse()
-            .map_err(|e| BlockchainError::InvalidPrivateKey {
-                key_length: private_key.len(),
-                source: e,
-            })?;
-    let wallet = EthereumWallet::from(signer);
-
-    initialize_provider_with_wallet(&config.rpc_endpoints, wallet).await
 }
 
 pub(crate) async fn initialize_contracts(
