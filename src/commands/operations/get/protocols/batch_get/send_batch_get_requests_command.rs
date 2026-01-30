@@ -159,6 +159,18 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
             .query_assertions_batch(&uals_with_token_ids, Visibility::All, true)
             .await;
 
+        let local_results = match local_results {
+            Ok(results) => results,
+            Err(e) => {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Local batch query failed; falling back to network"
+                );
+                HashMap::new()
+            }
+        };
+
         tracing::debug!(
             operation_id = %operation_id,
             local_found = local_results.len(),

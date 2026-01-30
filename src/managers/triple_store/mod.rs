@@ -8,7 +8,7 @@ mod types;
 use std::{path::Path, sync::Arc, time::Duration};
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
-use chrono::DateTime;
+use chrono::{DateTime, SecondsFormat, Utc};
 use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
 use tokio::sync::Semaphore;
@@ -387,12 +387,7 @@ impl TripleStoreManager {
             ));
 
             // Publish time (current time)
-            let publish_time_iso = format_unix_timestamp(
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0),
-            );
+            let publish_time_iso = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
             metadata_triples.push_str(&format!(
                 "    <{}> <{}> \"{}\"^^<http://www.w3.org/2001/XMLSchema#dateTime> .\n",
                 kc_ual,
@@ -509,6 +504,7 @@ impl TripleStoreManager {
         const MAX_TOKEN_ID_PER_PAGE: u64 = 50;
 
         let suffix = visibility.as_suffix();
+        let burned_set: std::collections::HashSet<u64> = burned.iter().copied().collect();
 
         let mut all_triples = Vec::new();
         let mut page_start = start_token_id;
@@ -519,7 +515,7 @@ impl TripleStoreManager {
 
             // Build list of named graphs for this page, excluding burned tokens
             let named_graphs: Vec<String> = (page_start..=page_end)
-                .filter(|id| !burned.contains(id))
+                .filter(|id| !burned_set.contains(id))
                 .map(|id| format!("<{}/{}/{}>", kc_ual, id, suffix))
                 .collect();
 

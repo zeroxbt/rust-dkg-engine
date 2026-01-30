@@ -466,9 +466,8 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             )
             .await;
 
-        if let Some(result) = local_result
-            && result.assertion.has_data()
-        {
+        match local_result {
+            Ok(Some(result)) if result.assertion.has_data() => {
             tracing::debug!(
                 operation_id = %operation_id,
                 public_count = result.assertion.public.len(),
@@ -531,6 +530,15 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     "Local data validation failed, querying network"
                 );
             }
+            }
+            Err(e) => {
+            tracing::warn!(
+                operation_id = %operation_id,
+                error = %e,
+                "Local triple store query failed; falling back to network"
+            );
+            }
+            Ok(_) => {}
         }
 
         tracing::debug!(

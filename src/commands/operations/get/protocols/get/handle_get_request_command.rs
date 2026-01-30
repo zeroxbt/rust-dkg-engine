@@ -331,7 +331,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             .await;
 
         match query_result {
-            Some(result) if result.assertion.has_data() => {
+            Ok(Some(result)) if result.assertion.has_data() => {
                 tracing::info!(
                     operation_id = %operation_id,
                     ual = %ual,
@@ -344,7 +344,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
                 self.send_ack(channel, operation_id, result.assertion, result.metadata)
                     .await;
             }
-            _ => {
+            Ok(_) => {
                 tracing::debug!(
                     operation_id = %operation_id,
                     ual = %ual,
@@ -354,6 +354,20 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
                     channel,
                     operation_id,
                     &format!("Unable to find assertion {}", ual),
+                )
+                .await;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    ual = %ual,
+                    error = %e,
+                    "Triple store query failed"
+                );
+                self.send_nack(
+                    channel,
+                    operation_id,
+                    &format!("Triple store query failed: {}", e),
                 )
                 .await;
             }

@@ -96,6 +96,19 @@ impl HandleBatchGetRequestCommandHandler {
         };
         self.send_response(channel, operation_id, message).await;
     }
+
+    async fn send_nack(
+        &self,
+        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
+        operation_id: Uuid,
+        message: impl Into<String>,
+    ) {
+        let message = ResponseMessage {
+            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
+            data: ResponseBody::error(message),
+        };
+        self.send_response(channel, operation_id, message).await;
+    }
 }
 
 impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestCommandHandler {
@@ -169,6 +182,20 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
                 data.include_metadata,
             )
             .await;
+
+        let query_results = match query_results {
+            Ok(results) => results,
+            Err(e) => {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Batch get query failed"
+                );
+                self.send_nack(channel, operation_id, format!("Triple store query failed: {}", e))
+                    .await;
+                return CommandExecutionResult::Completed;
+            }
+        };
 
         // Build response maps
         let mut assertions: HashMap<String, Assertion> = HashMap::new();

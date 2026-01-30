@@ -43,54 +43,69 @@ impl TripleStoreService {
     /// - For collection: check if first/last KA exists, then query all named graphs
     ///
     /// Returns the query result with public, private, and metadata triples,
-    /// or None if not found or an error occurred.
+    /// or None if not found. Errors are propagated to the caller.
     pub(crate) async fn query_assertion(
         &self,
         parsed_ual: &ParsedUal,
         token_ids: &TokenIds,
         visibility: Visibility,
         include_metadata: bool,
-    ) -> Option<AssertionQueryResult> {
+    ) -> Result<Option<AssertionQueryResult>, TripleStoreError> {
         let kc_ual = parsed_ual.knowledge_collection_ual();
 
         // Query assertion and metadata in parallel when metadata is requested
         let (assertion, metadata) = if include_metadata {
-            let assertion_future = async {
-                if parsed_ual.knowledge_asset_id.is_some() {
-                    self.query_single_asset(&parsed_ual.to_ual_string(), visibility)
-                        .await
-                } else {
-                    self.query_collection(&kc_ual, token_ids, visibility).await
-                }
-            };
+            let assertion_future = async { self.query_assertion_data(parsed_ual, token_ids, visibility).await };
 
             let metadata_future = self.query_metadata(&kc_ual);
 
             tokio::join!(assertion_future, metadata_future)
         } else {
-            let assertion = if parsed_ual.knowledge_asset_id.is_some() {
-                self.query_single_asset(&parsed_ual.to_ual_string(), visibility)
-                    .await
-            } else {
-                self.query_collection(&kc_ual, token_ids, visibility).await
-            };
-            (assertion, None)
+            let assertion = self.query_assertion_data(parsed_ual, token_ids, visibility).await;
+            (assertion, Ok(None))
         };
 
-        // Check if we found any data
         let assertion = assertion?;
+        let metadata = metadata?;
+
+        // Check if we found any data
+        let assertion = match assertion {
+            Some(a) => a,
+            None => return Ok(None),
+        };
         if !assertion.has_data() {
-            return None;
+            return Ok(None);
         }
 
-        Some(AssertionQueryResult {
+        Ok(Some(AssertionQueryResult {
             assertion,
             metadata,
-        })
+        }))
+    }
+
+    async fn query_assertion_data(
+        &self,
+        parsed_ual: &ParsedUal,
+        token_ids: &TokenIds,
+        visibility: Visibility,
+    ) -> Result<Option<Assertion>, TripleStoreError> {
+        if parsed_ual.knowledge_asset_id.is_some() {
+            let assertion = self
+                .query_single_asset(&parsed_ual.to_ual_string(), visibility)
+                .await?;
+            Ok(Some(assertion))
+        } else {
+            let kc_ual = parsed_ual.knowledge_collection_ual();
+            self.query_collection(&kc_ual, token_ids, visibility).await
+        }
     }
 
     /// Query a single knowledge asset.
-    async fn query_single_asset(&self, ka_ual: &str, visibility: Visibility) -> Option<Assertion> {
+    async fn query_single_asset(
+        &self,
+        ka_ual: &str,
+        visibility: Visibility,
+    ) -> Result<Assertion, TripleStoreError> {
         let need_public = visibility == Visibility::Public || visibility == Visibility::All;
         let need_private = visibility == Visibility::Private || visibility == Visibility::All;
 
@@ -98,16 +113,12 @@ impl TripleStoreService {
         let (public, private) = tokio::join!(
             async {
                 if need_public {
-                    match self
-                        .triple_store_manager
+                    self.triple_store_manager
                         .get_knowledge_asset_named_graph(ka_ual, GraphVisibility::Public)
                         .await
-                    {
-                        Ok(triples) => Some(Ok(triples)),
-                        Err(e) => Some(Err(e)),
-                    }
+                        .map(Some)
                 } else {
-                    None
+                    Ok(None)
                 }
             },
             async {
@@ -115,25 +126,23 @@ impl TripleStoreService {
                     self.triple_store_manager
                         .get_knowledge_asset_named_graph(ka_ual, GraphVisibility::Private)
                         .await
-                        .ok()
-                        .filter(|triples| !triples.is_empty())
+                        .map(|triples| {
+                            if triples.is_empty() {
+                                None
+                            } else {
+                                Some(triples)
+                            }
+                        })
                 } else {
-                    None
+                    Ok(None)
                 }
             }
         );
 
-        // Handle public result
-        let public = match public {
-            Some(Ok(triples)) => triples,
-            Some(Err(e)) => {
-                tracing::debug!(error = %e, "Failed to query public triples");
-                return None;
-            }
-            None => Vec::new(),
-        };
+        let public = public?.unwrap_or_default();
+        let private = private?;
 
-        Some(Assertion::new(public, private))
+        Ok(Assertion::new(public, private))
     }
 
     /// Query a knowledge collection.
@@ -142,21 +151,22 @@ impl TripleStoreService {
         kc_ual: &str,
         token_ids: &TokenIds,
         visibility: Visibility,
-    ) -> Option<Assertion> {
+    ) -> Result<Option<Assertion>, TripleStoreError> {
         let exists = self
             .knowledge_collection_exists(
                 kc_ual,
                 token_ids.start_token_id(),
                 token_ids.end_token_id(),
+                token_ids.burned(),
             )
-            .await;
+            .await?;
 
         if !exists {
             tracing::debug!(
                 kc_ual = %kc_ual,
                 "Knowledge collection does not exist locally"
             );
-            return None;
+            return Ok(None);
         }
 
         let need_public = visibility == Visibility::Public || visibility == Visibility::All;
@@ -166,8 +176,7 @@ impl TripleStoreService {
         let (public, private) = tokio::join!(
             async {
                 if need_public {
-                    match self
-                        .triple_store_manager
+                    self.triple_store_manager
                         .get_knowledge_collection_named_graphs(
                             kc_ual,
                             token_ids.start_token_id(),
@@ -176,12 +185,9 @@ impl TripleStoreService {
                             GraphVisibility::Public,
                         )
                         .await
-                    {
-                        Ok(triples) => Some(Ok(triples)),
-                        Err(e) => Some(Err(e)),
-                    }
+                        .map(Some)
                 } else {
-                    None
+                    Ok(None)
                 }
             },
             async {
@@ -195,46 +201,37 @@ impl TripleStoreService {
                             GraphVisibility::Private,
                         )
                         .await
-                        .ok()
-                        .filter(|triples| !triples.is_empty())
+                        .map(|triples| {
+                            if triples.is_empty() {
+                                None
+                            } else {
+                                Some(triples)
+                            }
+                        })
                 } else {
-                    None
+                    Ok(None)
                 }
             }
         );
 
-        // Handle public result
-        let public = match public {
-            Some(Ok(triples)) => triples,
-            Some(Err(e)) => {
-                tracing::debug!(error = %e, "Failed to query public collection triples");
-                return None;
-            }
-            None => Vec::new(),
-        };
+        let public = public?.unwrap_or_default();
+        let private = private?;
 
-        Some(Assertion::new(public, private))
+        Ok(Some(Assertion::new(public, private)))
     }
 
     /// Query metadata for a knowledge collection.
-    async fn query_metadata(&self, kc_ual: &str) -> Option<Vec<String>> {
-        match self.triple_store_manager.get_metadata(kc_ual).await {
-            Ok(metadata_nquads) => {
-                let metadata: Vec<String> = metadata_nquads
-                    .lines()
-                    .filter(|line| !line.trim().is_empty())
-                    .map(String::from)
-                    .collect();
-                if metadata.is_empty() {
-                    None
-                } else {
-                    Some(metadata)
-                }
-            }
-            Err(e) => {
-                tracing::debug!(error = %e, "Failed to query metadata from triple store");
-                None
-            }
+    async fn query_metadata(&self, kc_ual: &str) -> Result<Option<Vec<String>>, TripleStoreError> {
+        let metadata_nquads = self.triple_store_manager.get_metadata(kc_ual).await?;
+        let metadata: Vec<String> = metadata_nquads
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(String::from)
+            .collect();
+        if metadata.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(metadata))
         }
     }
 
@@ -251,7 +248,7 @@ impl TripleStoreService {
         uals_with_token_ids: &[(ParsedUal, TokenIds)],
         visibility: Visibility,
         include_metadata: bool,
-    ) -> HashMap<String, AssertionQueryResult> {
+    ) -> Result<HashMap<String, AssertionQueryResult>, TripleStoreError> {
         // Create futures for all queries
         let futures: Vec<_> = uals_with_token_ids
             .iter()
@@ -270,14 +267,28 @@ impl TripleStoreService {
         let query_results = join_all(futures).await;
 
         // Collect successful results with data
-        query_results
-            .into_iter()
-            .filter_map(|(ual_string, result)| {
-                result
-                    .filter(|r| r.assertion.has_data())
-                    .map(|r| (ual_string, r))
-            })
-            .collect()
+        let mut results_map = HashMap::new();
+        let mut first_error: Option<TripleStoreError> = None;
+
+        for (ual_string, result) in query_results {
+            match result {
+                Ok(Some(r)) if r.assertion.has_data() => {
+                    results_map.insert(ual_string, r);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    if first_error.is_none() {
+                        first_error = Some(e);
+                    }
+                }
+            }
+        }
+
+        if let Some(err) = first_error {
+            return Err(err);
+        }
+
+        Ok(results_map)
     }
 
     /// Insert a knowledge collection into the triple store.
@@ -318,9 +329,31 @@ impl TripleStoreService {
         kc_ual: &str,
         start_token_id: u64,
         end_token_id: u64,
-    ) -> bool {
-        let first_ka_ual = format!("{}/{}/public", kc_ual, start_token_id);
-        let last_ka_ual = format!("{}/{}/public", kc_ual, end_token_id);
+        burned: &[u64],
+    ) -> Result<bool, TripleStoreError> {
+        let burned_set: std::collections::HashSet<u64> = burned.iter().copied().collect();
+
+        let mut first = start_token_id;
+        while first <= end_token_id && burned_set.contains(&first) {
+            first += 1;
+        }
+        if first > end_token_id {
+            return Ok(false);
+        }
+
+        let mut last = end_token_id;
+        loop {
+            if !burned_set.contains(&last) {
+                break;
+            }
+            if last == 0 || last <= first {
+                return Ok(false);
+            }
+            last -= 1;
+        }
+
+        let first_ka_ual = format!("{}/{}/public", kc_ual, first);
+        let last_ka_ual = format!("{}/{}/public", kc_ual, last);
 
         let (first_exists, last_exists) = tokio::join!(
             self.triple_store_manager
@@ -329,7 +362,7 @@ impl TripleStoreService {
                 .knowledge_asset_exists(&last_ka_ual)
         );
 
-        first_exists.unwrap_or(false) && last_exists.unwrap_or(false)
+        Ok(first_exists? && last_exists?)
     }
 
     /// Check if a knowledge collection exists by UAL only (no token range needed).
@@ -432,11 +465,14 @@ impl TripleStoreService {
                         public_subject_map.get(hashed_subject.as_str()).copied()
                     };
 
-                    // Attach private triples to the matched knowledge asset
+                    // Attach private triples to the matched knowledge asset (append if already set)
                     if let Some(idx) = matched_idx {
                         let private_strings: Vec<String> =
                             private_group.iter().map(|s| s.to_string()).collect();
-                        knowledge_assets[idx].set_private_triples(private_strings);
+                        match knowledge_assets[idx].private_triples.as_mut() {
+                            Some(existing) => existing.extend(private_strings),
+                            None => knowledge_assets[idx].set_private_triples(private_strings),
+                        }
                     }
                 }
             }
