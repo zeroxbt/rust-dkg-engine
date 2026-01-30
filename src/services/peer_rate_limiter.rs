@@ -35,11 +35,11 @@ fn default_enabled() -> bool {
 }
 
 fn default_requests_per_second() -> u32 {
-    10
+    2
 }
 
 fn default_burst_size() -> u32 {
-    20
+    5
 }
 
 impl Default for PeerRateLimiterConfig {
