@@ -79,16 +79,6 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         Ok(removed)
     }
 
-    /// Check if a key exists.
-    fn exists(&self, key: Uuid) -> Result<bool, KeyValueStoreError> {
-        let key_bytes = key.as_bytes();
-
-        let read_txn = self.db.begin_read()?;
-        let table = read_txn.open_table(self.table_def)?;
-
-        Ok(table.get(key_bytes.as_slice())?.is_some())
-    }
-
     /// Update a value using a closure, performing read-modify-write atomically.
     /// If the key doesn't exist, creates a new entry using the default value.
     pub(crate) fn update<F>(
@@ -191,6 +181,16 @@ mod tests {
 
     use super::*;
 
+    /// Check if a key exists.
+    fn exists(table: &Table<TestData>, key: Uuid) -> Result<bool, KeyValueStoreError> {
+        let key_bytes = key.as_bytes();
+
+        let read_txn = table.db.begin_read()?;
+        let table = read_txn.open_table(table.table_def)?;
+
+        Ok(table.get(key_bytes.as_slice())?.is_some())
+    }
+
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
     struct TestData {
         name: String,
@@ -245,11 +245,11 @@ mod tests {
         };
 
         table.store(key, &data).unwrap();
-        assert!(table.exists(key).unwrap());
+        assert!(exists(&table, key).unwrap());
 
         let removed = table.remove(key).unwrap();
         assert!(removed);
-        assert!(!table.exists(key).unwrap());
+        assert!(!exists(&table, key).unwrap());
 
         // Removing again should return false
         let removed_again = table.remove(key).unwrap();

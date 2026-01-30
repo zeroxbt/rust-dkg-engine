@@ -20,6 +20,7 @@ pub(crate) struct GetRequestData {
     paranet_ual: Option<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 impl GetRequestData {
     pub(crate) fn new(
         blockchain: BlockchainId,
