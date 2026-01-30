@@ -5,7 +5,7 @@ pub(crate) mod query;
 pub(crate) mod rdf;
 mod types;
 
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 use chrono::DateTime;
@@ -89,7 +89,7 @@ impl TripleStoreManager {
     /// * `data_path` - Path for Oxigraph persistent storage (ignored for Blazegraph)
     pub(crate) async fn connect(
         config: &TripleStoreManagerConfig,
-        data_path: &PathBuf,
+        data_path: &Path,
     ) -> Result<Self> {
         let backend: Box<dyn TripleStoreBackend> = match config.backend {
             TripleStoreBackendType::Blazegraph => Box::new(BlazegraphBackend::new(config.clone())?),
@@ -196,11 +196,6 @@ impl TripleStoreManager {
 
             tokio::time::sleep(self.config.connect_retry_frequency()).await;
         }
-    }
-
-    /// Health check for the triple store
-    pub(crate) async fn health_check(&self) -> Result<bool> {
-        self.backend.health_check().await
     }
 
     /// Ensure the repository exists, creating it if necessary
