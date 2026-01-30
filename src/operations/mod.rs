@@ -1,5 +1,7 @@
 mod get;
 mod publish;
 
-pub(crate) use get::{GetOperation, GetOperationResult};
-pub(crate) use publish::{PublishOperation, PublishOperationResult, SignatureData};
+pub(crate) mod protocols;
+
+pub(crate) use get::GetOperationResult;
+pub(crate) use publish::{PublishOperationResult, SignatureData};

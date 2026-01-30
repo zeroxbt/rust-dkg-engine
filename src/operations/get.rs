@@ -1,12 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    managers::{
-        network::messages::{GetRequestData, GetResponseData},
-        triple_store::Assertion,
-    },
-    services::operation::Operation,
-};
+use crate::managers::triple_store::Assertion;
 
 /// Result stored after successful Get operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,17 +20,4 @@ impl GetOperationResult {
             metadata,
         }
     }
-}
-
-/// Get operation type implementation.
-pub(crate) struct GetOperation;
-
-impl Operation for GetOperation {
-    const NAME: &'static str = "get";
-    const MIN_ACK_RESPONSES: u16 = 1;
-    const CONCURRENT_PEERS: usize = 5;
-
-    type Request = GetRequestData;
-    type Response = GetResponseData;
-    type Result = GetOperationResult;
 }

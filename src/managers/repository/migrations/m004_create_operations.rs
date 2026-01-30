@@ -6,17 +6,12 @@ use sea_orm_migration::{
 };
 
 #[derive(Iden)]
-enum Operations {
+enum OperationStatus {
     Table,
     OperationId,
     OperationName,
     Status,
     ErrorMessage,
-    Timestamp,
-    TotalPeers,
-    MinAckResponses,
-    CompletedCount,
-    FailedCount,
 }
 
 #[derive(DeriveMigrationName)]
@@ -28,18 +23,13 @@ impl MigrationTrait for Migration {
         manager
             .create_table(timestamps(
                 Table::create()
-                    .table(Operations::Table)
+                    .table(OperationStatus::Table)
                     .if_not_exists()
-                    .col(string_len(Operations::OperationId, 36))
-                    .col(string(Operations::OperationName))
-                    .col(string(Operations::Status))
-                    .col(text_null(Operations::ErrorMessage))
-                    .col(big_integer(Operations::Timestamp))
-                    .col(small_unsigned_null(Operations::TotalPeers))
-                    .col(small_unsigned_null(Operations::MinAckResponses))
-                    .col(small_unsigned(Operations::CompletedCount).default(0))
-                    .col(small_unsigned(Operations::FailedCount).default(0))
-                    .primary_key(Index::create().col(Operations::OperationId))
+                    .col(string_len(OperationStatus::OperationId, 36))
+                    .col(string(OperationStatus::OperationName))
+                    .col(string(OperationStatus::Status))
+                    .col(text_null(OperationStatus::ErrorMessage))
+                    .primary_key(Index::create().col(OperationStatus::OperationId))
                     .to_owned(),
             ))
             .await?;
@@ -48,9 +38,9 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_operations_status")
-                    .table(Operations::Table)
-                    .col(Operations::Status)
+                    .name("idx_operation_status_status")
+                    .table(OperationStatus::Table)
+                    .col(OperationStatus::Status)
                     .to_owned(),
             )
             .await?;
@@ -59,10 +49,10 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_operations_name_status")
-                    .table(Operations::Table)
-                    .col(Operations::OperationName)
-                    .col(Operations::Status)
+                    .name("idx_operation_status_name_status")
+                    .table(OperationStatus::Table)
+                    .col(OperationStatus::OperationName)
+                    .col(OperationStatus::Status)
                     .to_owned(),
             )
             .await?;
@@ -74,7 +64,7 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(
                 Table::drop()
-                    .table(Operations::Table)
+                    .table(OperationStatus::Table)
                     .if_exists()
                     .to_owned(),
             )

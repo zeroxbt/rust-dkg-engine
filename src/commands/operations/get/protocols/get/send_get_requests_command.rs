@@ -1,6 +1,5 @@
-use std::{collections::HashSet, sync::Arc, time::Instant};
+use std::{collections::HashSet, ops::ControlFlow, sync::Arc, time::Instant};
 
-use futures::future::join_all;
 use libp2p::PeerId;
 use uuid::Uuid;
 
@@ -17,12 +16,13 @@ use crate::{
         repository::RepositoryManager,
         triple_store::{Assertion, MAX_TOKENS_PER_KC, TokenIds},
     },
-    operations::{GetOperation, GetOperationResult},
+    operations::{GetOperationResult, protocols},
     services::{
         GetValidationService, PeerPerformanceTracker, TripleStoreService,
-        operation::{Operation, OperationService as GenericOperationService},
+        operation::OperationStatusService as GenericOperationService,
     },
     types::{AccessPolicy, ParsedUal, Visibility, parse_ual},
+    utils::peer_fanout::{for_each_peer_concurrently, limit_peers},
     utils::paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
 };
 
@@ -59,7 +59,7 @@ pub(crate) struct SendGetRequestsCommandHandler {
     triple_store_service: Arc<TripleStoreService>,
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
-    get_operation_service: Arc<GenericOperationService<GetOperation>>,
+    get_operation_service: Arc<GenericOperationService<GetOperationResult>>,
     get_validation_service: Arc<GetValidationService>,
     peer_performance_tracker: Arc<PeerPerformanceTracker>,
 }
@@ -512,7 +512,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     // Mark operation as completed (local-first success: 1 success, 0 failures)
                     if let Err(e) = self
                         .get_operation_service
-                        .mark_completed(operation_id, 1, 0)
+                        .mark_completed(operation_id)
                         .await
                     {
                         tracing::error!(
@@ -607,7 +607,10 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
         // Prefer peers with better historical response times.
         self.peer_performance_tracker.sort_by_latency(&mut peers);
 
-        let total_peers = peers.len() as u16;
+        peers = limit_peers(peers, protocols::get::MAX_PEERS);
+        let min_required_peers =
+            protocols::get::MIN_PEERS.max(protocols::get::MIN_ACK_RESPONSES as usize);
+        let total_peers = peers.len();
 
         tracing::info!(
             operation_id = %operation_id,
@@ -617,12 +620,12 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
         );
 
         // Check if we have enough peers
-        if peers.len() < GetOperation::MIN_ACK_RESPONSES as usize {
+        if peers.len() < min_required_peers {
             let error_message = format!(
                 "Unable to find enough nodes for operation: {}. Found {} nodes, need at least {}",
                 operation_id,
                 peers.len(),
-                GetOperation::MIN_ACK_RESPONSES
+                min_required_peers
             );
             self.get_operation_service
                 .mark_failed(operation_id, error_message)
@@ -642,96 +645,61 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             data.paranet_ual.clone(),
         );
 
-        // Send requests to peers in chunks and process responses directly
+        // Send requests to peers with bounded concurrency and process responses as they arrive.
         let mut success_count: u16 = 0;
         let mut failure_count: u16 = 0;
+        let min_ack_required = protocols::get::MIN_ACK_RESPONSES;
+        let mut reached_threshold = false;
 
-        for (chunk_idx, peer_chunk) in peers.chunks(GetOperation::CONCURRENT_PEERS).enumerate() {
-            tracing::debug!(
-                operation_id = %operation_id,
-                chunk = chunk_idx,
-                peer_count = peer_chunk.len(),
-                "Sending get requests to peer chunk"
-            );
-
-            // Send all requests in this chunk concurrently
-            let request_futures: Vec<_> = peer_chunk
-                .iter()
-                .map(|peer| {
-                    let peer = *peer;
-                    let request_data = get_request_data.clone();
-                    let network_manager = Arc::clone(&self.network_manager);
-                    async move {
-                        let start = Instant::now();
-                        // Get peer addresses from Kademlia for reliable request delivery
-                        let addresses = network_manager
-                            .get_peer_addresses(peer)
-                            .await
-                            .unwrap_or_default();
-                        let result = network_manager
-                            .send_get_request(peer, addresses, operation_id, request_data)
-                            .await;
-                        (peer, result, start.elapsed())
-                    }
-                })
-                .collect();
-
-            // Wait for all requests in this chunk to complete (success or failure)
-            let results = join_all(request_futures).await;
-
-            // Process each response
-            for (peer, result, elapsed) in results {
-                match result {
-                    Ok(response) => {
-                        // Validate the response
-                        let is_valid = self
-                            .validate_and_store_response(
-                                operation_id,
-                                &peer,
-                                &response,
-                                &parsed_ual,
-                                data.visibility,
-                            )
-                            .await;
-
-                        if is_valid {
-                            success_count += 1;
-                            self.peer_performance_tracker
-                                .record_latency(&peer, elapsed);
-
-                            // Check if we've met the success threshold
-                            if success_count >= GetOperation::MIN_ACK_RESPONSES {
-                                tracing::info!(
-                                    operation_id = %operation_id,
-                                    success_count = success_count,
-                                    failure_count = failure_count,
-                                    chunk = chunk_idx,
-                                    "Get operation completed - success threshold reached"
-                                );
-
-                                // Mark operation as completed with final counts
-                                if let Err(e) = self
-                                    .get_operation_service
-                                    .mark_completed(operation_id, success_count, failure_count)
-                                    .await
-                                {
-                                    tracing::error!(
-                                        operation_id = %operation_id,
-                                        error = %e,
-                                        "Failed to mark operation as completed"
-                                    );
-                                }
-
-                                return CommandExecutionResult::Completed;
-                            }
-                        } else {
-                            failure_count += 1;
-                            tracing::debug!(
-                                operation_id = %operation_id,
-                                peer = %peer,
-                                "Response validation failed, treating as NACK"
-                            );
+        for_each_peer_concurrently(
+            &peers,
+            protocols::get::CONCURRENT_PEERS,
+            |peer| {
+                let request_data = get_request_data.clone();
+                let network_manager = Arc::clone(&self.network_manager);
+                let parsed_ual = parsed_ual.clone();
+                let visibility = data.visibility;
+                async move {
+                    let start = Instant::now();
+                    let addresses = network_manager
+                        .get_peer_addresses(peer)
+                        .await
+                        .unwrap_or_default();
+                    let result = network_manager
+                        .send_get_request(peer, addresses, operation_id, request_data)
+                        .await;
+                    let elapsed = start.elapsed();
+                    let outcome = match result {
+                        Ok(response) => {
+                            let is_valid = self
+                                .validate_and_store_response(
+                                    operation_id,
+                                    &peer,
+                                    &response,
+                                    &parsed_ual,
+                                    visibility,
+                                )
+                                .await;
+                            Ok(is_valid)
                         }
+                        Err(e) => Err(e),
+                    };
+                    (peer, outcome, elapsed)
+                }
+            },
+            |(peer, outcome, elapsed)| {
+                match outcome {
+                    Ok(true) => {
+                        success_count += 1;
+                        self.peer_performance_tracker.record_latency(&peer, elapsed);
+                    }
+                    Ok(false) => {
+                        failure_count += 1;
+                        tracing::debug!(
+                            operation_id = %operation_id,
+                            peer = %peer,
+                            "Response validation failed, treating as NACK"
+                        );
                     }
                     Err(e) => {
                         failure_count += 1;
@@ -744,15 +712,34 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                         );
                     }
                 }
-            }
 
-            tracing::debug!(
+                if success_count >= min_ack_required {
+                    reached_threshold = true;
+                    return ControlFlow::Break(());
+                }
+
+                ControlFlow::Continue(())
+            },
+        )
+        .await;
+
+        if reached_threshold {
+            tracing::info!(
                 operation_id = %operation_id,
-                chunk = chunk_idx,
                 success_count = success_count,
                 failure_count = failure_count,
-                "Peer chunk completed"
+                "Get operation completed - success threshold reached"
             );
+
+            if let Err(e) = self.get_operation_service.mark_completed(operation_id).await {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Failed to mark operation as completed"
+                );
+            }
+
+            return CommandExecutionResult::Completed;
         }
 
         // All peer chunks exhausted without meeting success threshold
@@ -760,7 +747,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             "Failed to get data from network. Success: {}, Failed: {}, Required: {}",
             success_count,
             failure_count,
-            GetOperation::MIN_ACK_RESPONSES
+            protocols::get::MIN_ACK_RESPONSES
         );
         tracing::warn!(operation_id = %operation_id, %error_message);
         self.get_operation_service

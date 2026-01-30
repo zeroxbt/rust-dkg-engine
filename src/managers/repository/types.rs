@@ -1,9 +1,8 @@
 use std::str::FromStr;
 
-/// Operation status for tracking the state of DKG operations.
+/// Operation status for tracking publish/get operation polling.
 ///
-/// Used by the operation repository to track publish, get, and other
-/// operation lifecycles.
+/// Used by the operation repository to track publish/get polling lifecycles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OperationStatus {
     /// Operation is currently in progress

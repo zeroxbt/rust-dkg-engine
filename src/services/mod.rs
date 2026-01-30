@@ -11,7 +11,7 @@ pub(crate) mod triple_store_service;
 use std::sync::Arc;
 
 pub(crate) use get_validation_service::GetValidationService;
-pub(crate) use operation::OperationService;
+pub(crate) use operation::OperationStatusService;
 pub(crate) use peer_discovery_tracker::PeerDiscoveryTracker;
 pub(crate) use peer_performance_tracker::PeerPerformanceTracker;
 pub(crate) use peer_rate_limiter::{PeerRateLimiter, PeerRateLimiterConfig};
@@ -24,7 +24,7 @@ use crate::{
         Managers,
         network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
-    operations::{GetOperation, PublishOperation},
+    operations::{GetOperationResult, PublishOperationResult, protocols},
 };
 
 /// Response channels for all protocol types.
@@ -48,9 +48,9 @@ impl ResponseChannelsSet {
 
 /// Container for all initialized services.
 pub(crate) struct Services {
-    // Operation services
-    pub publish_operation: Arc<OperationService<PublishOperation>>,
-    pub get_operation: Arc<OperationService<GetOperation>>,
+    // Operation status services
+    pub publish_operation: Arc<OperationStatusService<PublishOperationResult>>,
+    pub get_operation: Arc<OperationStatusService<GetOperationResult>>,
 
     // Storage services
     pub pending_storage: Arc<PendingStorageService>,
@@ -78,19 +78,21 @@ pub(crate) fn initialize(
     managers: &Managers,
     rate_limiter_config: PeerRateLimiterConfig,
 ) -> Services {
-    // Operation services
+    // Operation status services
     let publish_operation = Arc::new(
-        OperationService::<PublishOperation>::new(
+        OperationStatusService::<PublishOperationResult>::new(
             Arc::clone(&managers.repository),
             &managers.key_value_store,
+            protocols::store::NAME,
         )
         .expect("Failed to create publish operation service"),
     );
 
     let get_operation = Arc::new(
-        OperationService::<GetOperation>::new(
+        OperationStatusService::<GetOperationResult>::new(
             Arc::clone(&managers.repository),
             &managers.key_value_store,
+            protocols::get::NAME,
         )
         .expect("Failed to create get operation service"),
     );

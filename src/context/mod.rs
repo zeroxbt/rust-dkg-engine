@@ -90,16 +90,16 @@ impl Context {
         &self.services.response_channels.batch_get
     }
 
-    // Operation service accessors
+    // Operation status service accessors
     pub(crate) fn get_operation_service(
         &self,
-    ) -> &Arc<crate::services::OperationService<crate::operations::GetOperation>> {
+    ) -> &Arc<crate::services::OperationStatusService<crate::operations::GetOperationResult>> {
         &self.services.get_operation
     }
 
     pub(crate) fn publish_operation_service(
         &self,
-    ) -> &Arc<crate::services::OperationService<crate::operations::PublishOperation>> {
+    ) -> &Arc<crate::services::OperationStatusService<crate::operations::PublishOperationResult>> {
         &self.services.publish_operation
     }
 }

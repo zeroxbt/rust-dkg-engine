@@ -1,10 +1,4 @@
 use serde::{Deserialize, Serialize};
-
-use crate::{
-    managers::network::messages::{StoreRequestData, StoreResponseData},
-    services::operation::Operation,
-};
-
 /// Signature data stored after Publish operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SignatureData {
@@ -48,24 +42,4 @@ impl PublishOperationResult {
             network_signatures,
         }
     }
-}
-
-/// Publish operation type implementation.
-///
-/// For publish operations, `min_ack_responses` is typically configurable
-/// based on network requirements. The default config uses a placeholder
-/// value that should be overridden when creating the operation.
-pub(crate) struct PublishOperation;
-
-impl Operation for PublishOperation {
-    const NAME: &'static str = "publish";
-    /// Default minimum ACK responses for publish operations.
-    /// The effective value is max(this, blockchain_min, user_provided).
-    const MIN_ACK_RESPONSES: u16 = 3;
-    /// Send to all nodes at once (no batching for publish).
-    const CONCURRENT_PEERS: usize = usize::MAX;
-
-    type Request = StoreRequestData;
-    type Response = StoreResponseData;
-    type Result = PublishOperationResult;
 }

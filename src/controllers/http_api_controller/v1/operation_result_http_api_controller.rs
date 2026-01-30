@@ -15,7 +15,7 @@ use crate::{
         operation_result::{OperationResultErrorResponse, OperationResultResponse, SignatureData},
     },
     managers::repository::OperationStatus,
-    operations::PublishOperationResult,
+    operations::{PublishOperationResult, protocols},
 };
 
 pub(crate) struct OperationResultHttpApiController;
@@ -41,7 +41,7 @@ impl OperationResultHttpApiController {
         let operation_record = match context
             .repository_manager()
             .operation_repository()
-            .get(operation_uuid)
+            .get_by_id_and_name(operation_uuid, protocols::store::NAME)
             .await
         {
             Ok(Some(record)) => record,
@@ -50,7 +50,10 @@ impl OperationResultHttpApiController {
                     StatusCode::BAD_REQUEST,
                     Json(OperationResultErrorResponse::new(
                         400,
-                        format!("Handler with id: {} does not exist.", operation_id),
+                        format!(
+                            "Handler with id: {} does not exist or is not a publish operation.",
+                            operation_id
+                        ),
                     )),
                 )
                     .into_response();
@@ -186,7 +189,7 @@ impl OperationResultHttpApiController {
         let operation_record = match context
             .repository_manager()
             .operation_repository()
-            .get(operation_uuid)
+            .get_by_id_and_name(operation_uuid, protocols::get::NAME)
             .await
         {
             Ok(Some(record)) => record,
@@ -195,7 +198,10 @@ impl OperationResultHttpApiController {
                     StatusCode::BAD_REQUEST,
                     Json(OperationResultErrorResponse::new(
                         400,
-                        format!("Handler with id: {} does not exist.", operation_id),
+                        format!(
+                            "Handler with id: {} does not exist or is not a get operation.",
+                            operation_id
+                        ),
                     )),
                 )
                     .into_response();

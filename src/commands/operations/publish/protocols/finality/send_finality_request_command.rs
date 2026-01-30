@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::ControlFlow, sync::Arc};
 
 use uuid::Uuid;
 
@@ -13,7 +13,7 @@ use crate::{
     },
     services::{TripleStoreService, pending_storage_service::PendingStorageService},
     types::derive_ual,
-    utils::validation,
+    utils::{peer_fanout::for_each_peer_concurrently, validation},
 };
 
 /// Raw event data from KnowledgeCollectionCreated event.
@@ -325,38 +325,49 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
             data.blockchain.clone(),
         );
 
-        // Get peer addresses from Kademlia for reliable request delivery
-        let addresses = self
-            .network_manager
-            .get_peer_addresses(publisher_peer_id)
-            .await
-            .unwrap_or_default();
+        let peers = vec![publisher_peer_id];
+        for_each_peer_concurrently(
+            &peers,
+            crate::operations::protocols::finality::CONCURRENT_PEERS,
+            |peer| {
+                let request_data = finality_request_data.clone();
+                let network_manager = Arc::clone(&self.network_manager);
+                async move {
+                    let addresses = network_manager
+                        .get_peer_addresses(peer)
+                        .await
+                        .unwrap_or_default();
+                    let result = network_manager
+                        .send_finality_request(peer, addresses, operation_id, request_data)
+                        .await;
+                    (peer, result)
+                }
+            },
+            |(peer, result)| {
+                match result {
+                    Ok(_) => {
+                        tracing::info!(
+                            operation_id = %operation_id,
+                            publish_operation_id = %publish_operation_id,
+                            peer = %peer,
+                            "Sent finality request to publisher"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            operation_id = %operation_id,
+                            publish_operation_id = %publish_operation_id,
+                            peer = %peer,
+                            error = %e,
+                            "Failed to send finality request to publisher"
+                        );
+                    }
+                }
 
-        if let Err(e) = self
-            .network_manager
-            .send_finality_request(
-                publisher_peer_id,
-                addresses,
-                operation_id,
-                finality_request_data,
-            )
-            .await
-        {
-            tracing::error!(
-                operation_id = %operation_id,
-                publish_operation_id = %publish_operation_id,
-                peer = %publisher_peer_id,
-                error = %e,
-                "Failed to send finality request to publisher"
-            );
-        } else {
-            tracing::info!(
-                operation_id = %operation_id,
-                publish_operation_id = %publish_operation_id,
-                peer = %publisher_peer_id,
-                "Sent finality request to publisher"
-            );
-        }
+                ControlFlow::Break(())
+            },
+        )
+        .await;
 
         CommandExecutionResult::Completed
     }

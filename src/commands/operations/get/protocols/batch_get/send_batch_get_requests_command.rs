@@ -16,7 +16,7 @@ use crate::{
     operations::{BatchGetOperation, BatchGetOperationResult},
     services::{
         GetValidationService, TripleStoreService,
-        operation::{Operation, OperationService as GenericOperationService},
+        operation::{Operation, OperationStatusService as GenericOperationService},
     },
     types::{ParsedUal, parse_ual},
 };
@@ -234,7 +234,7 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
 
             if let Err(e) = self
                 .batch_get_operation_service
-                .mark_completed(operation_id, 1, 0)
+                .mark_completed(operation_id)
                 .await
             {
                 tracing::error!(
@@ -437,7 +437,7 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
         if total_found > 0 {
             if let Err(e) = self
                 .batch_get_operation_service
-                .mark_completed(operation_id, 1, total_missing as u16)
+                .mark_completed(operation_id)
                 .await
             {
                 tracing::error!(

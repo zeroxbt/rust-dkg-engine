@@ -1,12 +1,9 @@
 use std::sync::Arc;
 
-use chrono::Utc;
+use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
-use super::{
-    result_store::{ResultStoreError, TABLE_NAME},
-    traits::Operation,
-};
+use super::result_store::{ResultStoreError, TABLE_NAME};
 use crate::{
     error::NodeError,
     managers::{
@@ -15,56 +12,48 @@ use crate::{
     },
 };
 
-/// Generic operation service that handles all shared operation logic.
+/// Operation status service used for HTTP polling.
 ///
-/// This service is parameterized by an `Operation` type that defines
-/// the specific request/response/state/result types for each operation.
-///
-/// # Ownership
-/// - `Table<Op::Result>` - typed table for this operation's results
-/// - Completion signals - owned here
-/// - `NetworkManager` - shared reference for sending requests (with per-protocol pending requests)
-pub(crate) struct OperationService<Op: Operation> {
+/// Stores a lightweight status record in SQL and the typed result in redb.
+pub(crate) struct OperationStatusService<R> {
     repository: Arc<RepositoryManager>,
-    result_table: Table<Op::Result>,
+    result_table: Table<R>,
+    operation_name: &'static str,
 }
 
-impl<Op: Operation> OperationService<Op> {
-    /// Create a new operation service.
+impl<R> OperationStatusService<R>
+where
+    R: Serialize + DeserializeOwned + Send + Sync + 'static,
+{
+    /// Create a new operation status service.
     pub(crate) fn new(
         repository: Arc<RepositoryManager>,
         kv_store_manager: &KeyValueStoreManager,
+        operation_name: &'static str,
     ) -> Result<Self, ResultStoreError> {
         let result_table = kv_store_manager.table(TABLE_NAME)?;
         Ok(Self {
             repository,
             result_table,
+            operation_name,
         })
     }
 
-    /// Create a new operation record in the database and return a completion receiver.
-    ///
-    /// The returned watch receiver can be used by external callers to await operation
-    /// completion. The receiver will be updated when `mark_completed` or `mark_failed`
-    /// is called.
-    ///
-    /// For callers that just want to trigger an operation without awaiting, the receiver
-    /// can be dropped immediately.
+    /// Create a new operation status record in the database.
     pub(crate) async fn create_operation(&self, operation_id: Uuid) -> Result<(), NodeError> {
         self.repository
             .operation_repository()
             .create(
                 operation_id,
-                Op::NAME,
+                self.operation_name,
                 OperationStatus::InProgress,
-                Utc::now().timestamp_millis(),
             )
             .await?;
 
         tracing::debug!(
             operation_id = %operation_id,
             "[{}] Operation record created ",
-            Op::NAME
+            self.operation_name
         );
 
         Ok(())
@@ -74,13 +63,13 @@ impl<Op: Operation> OperationService<Op> {
     pub(crate) fn store_result(
         &self,
         operation_id: Uuid,
-        result: &Op::Result,
+        result: &R,
     ) -> Result<(), ResultStoreError> {
         self.result_table.store(operation_id, result)?;
         tracing::debug!(
             operation_id = %operation_id,
             "[{}] Result stored",
-            Op::NAME
+            self.operation_name
         );
         Ok(())
     }
@@ -89,7 +78,7 @@ impl<Op: Operation> OperationService<Op> {
     pub(crate) fn get_result(
         &self,
         operation_id: Uuid,
-    ) -> Result<Option<Op::Result>, ResultStoreError> {
+    ) -> Result<Option<R>, ResultStoreError> {
         Ok(self.result_table.get(operation_id)?)
     }
 
@@ -99,41 +88,24 @@ impl<Op: Operation> OperationService<Op> {
     pub(crate) fn update_result<F>(
         &self,
         operation_id: Uuid,
-        default: Op::Result,
+        default: R,
         update_fn: F,
     ) -> Result<(), ResultStoreError>
     where
-        F: FnOnce(&mut Op::Result),
+        F: FnOnce(&mut R),
     {
         self.result_table.update(operation_id, default, update_fn)?;
         tracing::trace!(
             operation_id = %operation_id,
             "[{}] Result updated",
-            Op::NAME
+            self.operation_name
         );
         Ok(())
     }
 
-    /// Manually complete an operation with the final response counts.
+    /// Mark an operation as completed.
     /// Caller should store the result first via `store_result` before calling this.
-    ///
-    /// # Arguments
-    /// * `operation_id` - The operation identifier
-    /// * `success_count` - Number of successful responses received
-    /// * `failure_count` - Number of failed responses received
-    pub(crate) async fn mark_completed(
-        &self,
-        operation_id: Uuid,
-        success_count: u16,
-        failure_count: u16,
-    ) -> Result<(), NodeError> {
-        // Update progress counts first
-        self.repository
-            .operation_repository()
-            .update_progress(operation_id, success_count, failure_count)
-            .await?;
-
-        // Update status in database
+    pub(crate) async fn mark_completed(&self, operation_id: Uuid) -> Result<(), NodeError> {
         self.repository
             .operation_repository()
             .update_status(operation_id, OperationStatus::Completed)
@@ -141,10 +113,8 @@ impl<Op: Operation> OperationService<Op> {
 
         tracing::info!(
             operation_id = %operation_id,
-            success_count = success_count,
-            failure_count = failure_count,
             "[{}] Operation marked as completed",
-            Op::NAME
+            self.operation_name
         );
 
         Ok(())
@@ -159,7 +129,6 @@ impl<Op: Operation> OperationService<Op> {
                 operation_id,
                 Some(OperationStatus::Failed),
                 Some(reason),
-                None,
             )
             .await;
 
@@ -170,7 +139,7 @@ impl<Op: Operation> OperationService<Op> {
                 tracing::warn!(
                     operation_id = %operation_id,
                     "[{}] Operation failed",
-                    Op::NAME
+                    self.operation_name
                 );
             }
             Err(e) => {

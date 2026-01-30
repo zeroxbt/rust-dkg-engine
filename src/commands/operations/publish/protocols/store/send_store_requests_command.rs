@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use futures::future::join_all;
+use std::{ops::ControlFlow, sync::Arc};
 use libp2p::PeerId;
 use uuid::Uuid;
 
@@ -18,11 +16,12 @@ use crate::{
         repository::RepositoryManager,
         triple_store::Assertion,
     },
-    operations::{PublishOperation, PublishOperationResult, SignatureData},
+    operations::{PublishOperationResult, SignatureData, protocols},
     services::{
-        operation::{Operation, OperationService as GenericOperationService},
+        operation::OperationStatusService as GenericOperationService,
         pending_storage_service::PendingStorageService,
     },
+    utils::peer_fanout::{for_each_peer_concurrently, limit_peers},
 };
 
 /// Command data for sending publish requests to network nodes.
@@ -58,7 +57,7 @@ pub(crate) struct SendStoreRequestsCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
-    publish_operation_service: Arc<GenericOperationService<PublishOperation>>,
+    publish_operation_service: Arc<GenericOperationService<PublishOperationResult>>,
     pending_storage_service: Arc<PendingStorageService>,
 }
 
@@ -216,7 +215,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
         let dataset = &data.dataset;
 
         // Determine effective min_ack_responses using max(default, chain_min, user_provided)
-        let default_min = PublishOperation::MIN_ACK_RESPONSES as u8;
+        let default_min = protocols::store::MIN_ACK_RESPONSES as u8;
         let user_min = data.min_ack_responses;
         let chain_min = match self
             .blockchain_manager
@@ -293,6 +292,8 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
             .filter(|peer_id| *peer_id != my_peer_id)
             .collect();
 
+        let remote_peers = limit_peers(remote_peers, protocols::store::MAX_PEERS);
+
         // Total peers includes self if we're in the shard
         let total_peers = if self_in_shard {
             remote_peers.len() as u16 + 1
@@ -309,9 +310,11 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
             "Parsed peer IDs from shard nodes"
         );
 
-        if (total_peers as usize) < min_ack_responses as usize {
+        let min_ack_required = min_ack_responses as u16;
+        let min_required_peers = protocols::store::MIN_PEERS.max(min_ack_required as usize);
+        if (total_peers as usize) < min_required_peers {
             let error_message = format!(
-                "Unable to find enough nodes for operation: {operation_id}. Minimum number of nodes required: {min_ack_responses}"
+                "Unable to find enough nodes for operation: {operation_id}. Minimum number of nodes required: {min_required_peers}"
             );
 
             self.publish_operation_service
@@ -425,41 +428,19 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
             blockchain.to_owned(),
         );
 
-        // Send requests to peers in chunks and process responses directly
+        // Send requests to peers with bounded concurrency and process responses as they arrive.
         let mut success_count: u16 = if self_in_shard { 1 } else { 0 }; // Include self-node if in shard
         let mut failure_count: u16 = 0;
+        let mut reached_threshold = success_count >= min_ack_required;
 
-        for (chunk_idx, peer_chunk) in remote_peers
-            .chunks(PublishOperation::CONCURRENT_PEERS)
-            .enumerate()
-        {
-            // Check if we've already met the threshold (e.g., from self-node)
-            if success_count >= min_ack_responses as u16 {
-                tracing::info!(
-                    operation_id = %operation_id,
-                    success_count = success_count,
-                    min_required = min_ack_responses,
-                    "Success threshold already reached, skipping remaining peer chunks"
-                );
-                break;
-            }
-
-            tracing::debug!(
-                operation_id = %operation_id,
-                chunk = chunk_idx,
-                peer_count = peer_chunk.len(),
-                "Sending store requests to peer chunk"
-            );
-
-            // Send all requests in this chunk concurrently
-            let request_futures: Vec<_> = peer_chunk
-                .iter()
-                .map(|peer| {
-                    let peer = *peer;
+        if !reached_threshold {
+            for_each_peer_concurrently(
+                &remote_peers,
+                protocols::store::CONCURRENT_PEERS,
+                |peer| {
                     let request_data = store_request_data.clone();
                     let network_manager = Arc::clone(&self.network_manager);
                     async move {
-                        // Get peer addresses from Kademlia for reliable request delivery
                         let addresses = network_manager
                             .get_peer_addresses(peer)
                             .await
@@ -469,70 +450,59 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
                             .await;
                         (peer, result)
                     }
-                })
-                .collect();
+                },
+                |(peer, result)| {
+                    match result {
+                        Ok(response) => {
+                            let is_valid =
+                                self.process_store_response(operation_id, &peer, &response);
 
-            // Wait for all requests in this chunk to complete (success or failure)
-            let results = join_all(request_futures).await;
-
-            // Process each response
-            for (peer, result) in results {
-                match result {
-                    Ok(response) => {
-                        let is_valid = self.process_store_response(operation_id, &peer, &response);
-
-                        if !is_valid {
-                            failure_count += 1;
-                            continue;
-                        }
-
-                        success_count += 1;
-
-                        // Check if we've met the success threshold
-                        if success_count >= min_ack_responses as u16 {
-                            tracing::info!(
-                                operation_id = %operation_id,
-                                success_count = success_count,
-                                failure_count = failure_count,
-                                chunk = chunk_idx,
-                                "Publish operation completed - success threshold reached"
-                            );
-
-                            // Mark operation as completed with final counts
-                            if let Err(e) = self
-                                .publish_operation_service
-                                .mark_completed(operation_id, success_count, failure_count)
-                                .await
-                            {
-                                tracing::error!(
-                                    operation_id = %operation_id,
-                                    error = %e,
-                                    "Failed to mark operation as completed"
-                                );
+                            if !is_valid {
+                                failure_count += 1;
+                                return ControlFlow::Continue(());
                             }
 
-                            return CommandExecutionResult::Completed;
+                            success_count += 1;
+                        }
+                        Err(e) => {
+                            failure_count += 1;
+                            tracing::debug!(
+                                operation_id = %operation_id,
+                                peer = %peer,
+                                error = %e,
+                                "Store request failed"
+                            );
                         }
                     }
-                    Err(e) => {
-                        failure_count += 1;
-                        tracing::debug!(
-                            operation_id = %operation_id,
-                            peer = %peer,
-                            error = %e,
-                            "Store request failed"
-                        );
-                    }
-                }
-            }
 
-            tracing::debug!(
+                    if success_count >= min_ack_required {
+                        reached_threshold = true;
+                        return ControlFlow::Break(());
+                    }
+
+                    ControlFlow::Continue(())
+                },
+            )
+            .await;
+        }
+
+        if reached_threshold {
+            tracing::info!(
                 operation_id = %operation_id,
-                chunk = chunk_idx,
                 success_count = success_count,
                 failure_count = failure_count,
-                "Peer chunk completed"
+                "Publish operation completed - success threshold reached"
             );
+
+            if let Err(e) = self.publish_operation_service.mark_completed(operation_id).await {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Failed to mark operation as completed"
+                );
+            }
+
+            return CommandExecutionResult::Completed;
         }
 
         // All peer chunks exhausted without meeting success threshold
