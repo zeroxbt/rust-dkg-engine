@@ -44,26 +44,6 @@ impl GetRequestData {
         }
     }
 
-    /// Returns the blockchain identifier.
-    pub(crate) fn blockchain(&self) -> &BlockchainId {
-        &self.blockchain
-    }
-
-    /// Returns the contract address.
-    pub(crate) fn contract(&self) -> &str {
-        &self.contract
-    }
-
-    /// Returns the knowledge collection ID.
-    pub(crate) fn knowledge_collection_id(&self) -> u128 {
-        self.knowledge_collection_id
-    }
-
-    /// Returns the knowledge asset ID, if any.
-    pub(crate) fn knowledge_asset_id(&self) -> Option<u128> {
-        self.knowledge_asset_id
-    }
-
     /// Returns the UAL.
     pub(crate) fn ual(&self) -> &str {
         &self.ual

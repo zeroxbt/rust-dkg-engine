@@ -29,8 +29,8 @@ mod rpc;
 mod wallets;
 
 pub(crate) use contracts::{
-    Hub, KnowledgeCollectionStorage, Multicall3, ParametersStorage, ShardingTableLib,
-    ShardingTableLib::NodeInfo,
+    Hub, KnowledgeCollectionStorage, Multicall3, ParametersStorage, PermissionedNode,
+    ShardingTableLib, ShardingTableLib::NodeInfo,
 };
 pub(crate) use gas::format_balance;
 
@@ -106,8 +106,6 @@ pub(crate) struct EvmChain {
     gas_config: GasConfig,
     native_token_decimals: u8,
     native_token_ticker: &'static str,
-    is_development_chain: bool,
-    requires_evm_account_mapping: bool,
     rpc_rate_limiter: RpcRateLimiter,
     tx_mutex: Mutex<()>,
 }
@@ -118,7 +116,6 @@ impl EvmChain {
         gas_config: GasConfig,
         native_token_decimals: u8,
         native_token_ticker: &'static str,
-        is_development_chain: bool,
         requires_evm_account_mapping: bool,
     ) -> Result<Self, BlockchainError> {
         let provider =
@@ -189,8 +186,6 @@ impl EvmChain {
             gas_config,
             native_token_decimals,
             native_token_ticker,
-            is_development_chain,
-            requires_evm_account_mapping,
             rpc_rate_limiter,
             tx_mutex: Mutex::new(()),
         })
@@ -232,16 +227,6 @@ impl EvmChain {
     /// Returns the native token ticker symbol.
     pub(crate) fn native_token_ticker(&self) -> &'static str {
         self.native_token_ticker
-    }
-
-    /// Returns true if this is a development/test chain.
-    pub(crate) fn is_development_chain(&self) -> bool {
-        self.is_development_chain
-    }
-
-    /// Returns true if this chain requires EVM account mapping validation.
-    pub(crate) fn requires_evm_account_mapping(&self) -> bool {
-        self.requires_evm_account_mapping
     }
 
     /// Execute an RPC call with rate limiting.

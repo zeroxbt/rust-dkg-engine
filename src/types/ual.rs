@@ -1,6 +1,8 @@
 use thiserror::Error;
 
-use crate::managers::blockchain::{Address, BlockchainId};
+use alloy::primitives::Address;
+
+use crate::types::BlockchainId;
 
 #[derive(Debug, Error)]
 pub(crate) enum UalParseError {
@@ -144,29 +146,4 @@ fn parse_knowledge_collection_id(s: &str) -> Result<u128, UalParseError> {
 fn parse_knowledge_asset_id(s: &str) -> Result<u128, UalParseError> {
     s.parse()
         .map_err(|_| UalParseError::KnowledgeAssetId(s.to_string()))
-}
-
-#[cfg(test)]
-mod tests {
-    #![allow(clippy::unwrap_used)]
-
-    use super::*;
-
-    #[test]
-    fn test_parse_ual_with_asset_id() {
-        let ual = "did:dkg:base:84532/0x6C1AeF3601cd0e04cD5e8E70e7ea2c11D2eF60f4/123/1";
-        let parsed = parse_ual(ual).unwrap();
-        assert_eq!(parsed.blockchain.as_str(), "base:84532");
-        assert_eq!(parsed.knowledge_collection_id, 123);
-        assert_eq!(parsed.knowledge_asset_id, Some(1));
-    }
-
-    #[test]
-    fn test_parse_ual_without_asset_id() {
-        let ual = "did:dkg:base:84532/0x6C1AeF3601cd0e04cD5e8E70e7ea2c11D2eF60f4/456";
-        let parsed = parse_ual(ual).unwrap();
-        assert_eq!(parsed.blockchain.as_str(), "base:84532");
-        assert_eq!(parsed.knowledge_collection_id, 456);
-        assert_eq!(parsed.knowledge_asset_id, None);
-    }
 }

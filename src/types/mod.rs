@@ -5,14 +5,18 @@
 
 mod assertion;
 mod blockchain_id;
+mod kc;
 mod paranet;
 mod signature;
 mod token_ids;
+mod ual;
 mod visibility;
 
 pub(crate) use assertion::Assertion;
 pub(crate) use blockchain_id::BlockchainId;
-pub(crate) use paranet::{AccessPolicy, PermissionedNode};
+pub(crate) use kc::{KnowledgeAsset, KnowledgeCollectionMetadata};
+pub(crate) use paranet::AccessPolicy;
 pub(crate) use signature::SignatureComponents;
 pub(crate) use token_ids::{MAX_TOKENS_PER_KC, TokenIds};
+pub(crate) use ual::{ParsedUal, derive_ual, parse_ual};
 pub(crate) use visibility::Visibility;

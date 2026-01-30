@@ -17,11 +17,8 @@ use crate::{
         triple_store::{Assertion, TokenIds},
     },
     services::{ResponseChannels, TripleStoreService},
-    types::{AccessPolicy, Visibility},
-    utils::{
-        paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
-        ual::{ParsedUal, parse_ual},
-    },
+    types::{AccessPolicy, ParsedUal, Visibility, parse_ual},
+    utils::paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
 };
 
 /// Command data for handling incoming get requests.
@@ -225,7 +222,7 @@ impl HandleGetRequestCommandHandler {
         let permissioned_peer_ids: HashSet<PeerId> = permissioned_nodes
             .iter()
             .filter_map(|node| {
-                String::from_utf8(node.node_id.clone())
+                String::from_utf8(node.nodeId.to_vec())
                     .ok()
                     .and_then(|s| s.parse::<PeerId>().ok())
             })

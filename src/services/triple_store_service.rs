@@ -10,7 +10,7 @@ use crate::{
         query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
     },
     types::Visibility,
-    utils::ual::ParsedUal,
+    types::ParsedUal,
 };
 
 /// Result of querying assertion data from the triple store.
@@ -74,9 +74,8 @@ impl TripleStoreService {
         let metadata = metadata?;
 
         // Check if we found any data
-        let assertion = match assertion {
-            Some(a) => a,
-            None => return Ok(None),
+        let Some(assertion) = assertion else {
+            return Ok(None);
         };
         if !assertion.has_data() {
             return Ok(None);

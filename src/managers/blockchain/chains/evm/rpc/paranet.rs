@@ -1,5 +1,5 @@
 use super::super::*;
-use crate::types::{AccessPolicy, PermissionedNode};
+use crate::{managers::blockchain::chains::evm::contracts::PermissionedNode, types::AccessPolicy};
 
 impl EvmChain {
     /// Check if a paranet exists on-chain.
@@ -50,13 +50,7 @@ impl EvmChain {
                 BlockchainError::Custom(format!("Failed to get permissioned nodes: {}", e))
             })?;
 
-        Ok(nodes
-            .into_iter()
-            .map(|node| PermissionedNode {
-                identity_id: node.identityId.to::<u128>(),
-                node_id: node.nodeId.to_vec(),
-            })
-            .collect())
+        Ok(nodes)
     }
 
     /// Check if a knowledge collection is registered in a paranet.

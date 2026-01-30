@@ -4,7 +4,7 @@
 
 use validator::ValidationError;
 
-use crate::utils::ual::parse_ual;
+use crate::types::parse_ual;
 
 /// Validates that a string is a valid UAL format.
 ///

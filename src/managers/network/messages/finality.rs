@@ -28,11 +28,6 @@ impl FinalityRequestData {
     pub(crate) fn publish_operation_id(&self) -> &str {
         &self.publish_operation_id
     }
-
-    /// Returns the blockchain identifier.
-    pub(crate) fn blockchain(&self) -> &BlockchainId {
-        &self.blockchain
-    }
 }
 
 /// Finality ACK payload.

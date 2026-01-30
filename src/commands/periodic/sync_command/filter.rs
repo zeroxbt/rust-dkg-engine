@@ -24,7 +24,7 @@ use crate::{
         triple_store::MAX_TOKENS_PER_KC,
     },
     services::TripleStoreService,
-    utils::ual::derive_ual,
+    types::derive_ual,
 };
 
 /// Filter task: processes pending KCs in batches, checking local existence first,

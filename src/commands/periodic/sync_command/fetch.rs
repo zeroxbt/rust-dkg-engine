@@ -29,7 +29,7 @@ use crate::{
     },
     services::{GetValidationService, PeerPerformanceTracker},
     types::Visibility,
-    utils::ual::{ParsedUal, parse_ual},
+    types::{ParsedUal, parse_ual},
 };
 
 /// Fetch task: receives filtered KCs, fetches from network, sends to insert stage.

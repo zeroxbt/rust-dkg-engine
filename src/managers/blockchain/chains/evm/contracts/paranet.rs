@@ -9,4 +9,4 @@ pub(crate) mod paranets_registry {
     );
 }
 
-pub(crate) use paranets_registry::ParanetsRegistry;
+pub(crate) use paranets_registry::{ParanetLib::Node as PermissionedNode, ParanetsRegistry};

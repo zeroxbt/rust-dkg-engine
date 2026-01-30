@@ -196,16 +196,6 @@ impl MulticallBatch {
         self.requests.push(request);
     }
 
-    /// Add multiple requests to the batch.
-    pub(crate) fn extend(&mut self, requests: impl IntoIterator<Item = MulticallRequest>) {
-        self.requests.extend(requests);
-    }
-
-    /// Get the number of requests in the batch.
-    pub(crate) fn len(&self) -> usize {
-        self.requests.len()
-    }
-
     /// Check if the batch is empty.
     pub(crate) fn is_empty(&self) -> bool {
         self.requests.is_empty()
@@ -223,16 +213,6 @@ impl MulticallBatch {
             .map(|chunk| chunk.to_vec())
             .collect::<Vec<_>>()
             .into_iter()
-    }
-
-    /// Consume the batch and return all Call3 structs (without chunking).
-    ///
-    /// Use this only when you know the batch is small enough.
-    pub(crate) fn into_calls(self) -> Vec<Multicall3::Call3> {
-        self.requests
-            .into_iter()
-            .map(MulticallRequest::into_call3)
-            .collect()
     }
 }
 

@@ -31,19 +31,6 @@ impl OxigraphBackend {
 
         Ok(Self { store })
     }
-
-    /// Create a new in-memory Oxigraph backend (for testing)
-    ///
-    /// Data is not persisted between restarts.
-    pub(crate) fn in_memory() -> Result<Self> {
-        let store = Store::new().map_err(|e| {
-            TripleStoreError::Other(format!("Failed to create in-memory Oxigraph store: {}", e))
-        })?;
-
-        tracing::info!("Created in-memory Oxigraph store");
-
-        Ok(Self { store })
-    }
 }
 
 #[async_trait]
@@ -188,9 +175,22 @@ mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
 
+    /// Create a new in-memory Oxigraph backend (for testing)
+    ///
+    /// Data is not persisted between restarts.
+    fn in_memory_triple_store() -> Result<OxigraphBackend> {
+        let store = Store::new().map_err(|e| {
+            TripleStoreError::Other(format!("Failed to create in-memory Oxigraph store: {}", e))
+        })?;
+
+        tracing::info!("Created in-memory Oxigraph store");
+
+        Ok(OxigraphBackend { store })
+    }
+
     #[tokio::test]
     async fn test_in_memory_store() {
-        let backend = OxigraphBackend::in_memory().unwrap();
+        let backend = in_memory_triple_store().unwrap();
 
         // Health check should pass
         assert!(backend.health_check().await.unwrap());
@@ -201,7 +201,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_insert_and_query() {
-        let backend = OxigraphBackend::in_memory().unwrap();
+        let backend = in_memory_triple_store().unwrap();
 
         // Insert some data
         let insert_query = r#"
@@ -239,7 +239,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_named_graphs() {
-        let backend = OxigraphBackend::in_memory().unwrap();
+        let backend = in_memory_triple_store().unwrap();
 
         // Insert into multiple named graphs (like KC public/private)
         let insert_query = r#"
@@ -284,7 +284,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_clear_store() {
-        let backend = OxigraphBackend::in_memory().unwrap();
+        let backend = in_memory_triple_store().unwrap();
 
         // Insert data
         backend

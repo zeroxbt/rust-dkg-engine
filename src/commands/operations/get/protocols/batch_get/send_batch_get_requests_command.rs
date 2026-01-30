@@ -18,7 +18,7 @@ use crate::{
         GetValidationService, TripleStoreService,
         operation::{Operation, OperationService as GenericOperationService},
     },
-    utils::ual::{ParsedUal, parse_ual},
+    types::{ParsedUal, parse_ual},
 };
 
 /// Command data for sending batch get requests to network nodes.

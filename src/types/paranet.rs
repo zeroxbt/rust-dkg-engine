@@ -16,12 +16,3 @@ impl From<u8> for AccessPolicy {
         }
     }
 }
-
-/// A node permitted to participate in a permissioned paranet.
-#[derive(Debug, Clone)]
-pub(crate) struct PermissionedNode {
-    /// The node's identity ID on-chain
-    pub identity_id: u128,
-    /// The node's peer ID as bytes
-    pub node_id: Vec<u8>,
-}

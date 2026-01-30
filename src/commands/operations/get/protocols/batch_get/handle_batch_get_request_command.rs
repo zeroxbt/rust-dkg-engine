@@ -18,7 +18,7 @@ use crate::{
     },
     services::{ResponseChannels, TripleStoreService},
     types::Visibility,
-    utils::ual::parse_ual,
+    types::{ParsedUal, parse_ual},
 };
 
 /// Command data for handling incoming batch get requests.
@@ -149,7 +149,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             .collect();
 
         // Parse UALs and pair with token IDs
-        let mut uals_with_token_ids: Vec<(crate::utils::ual::ParsedUal, TokenIds)> = Vec::new();
+        let mut uals_with_token_ids: Vec<(ParsedUal, TokenIds)> = Vec::new();
 
         for ual in &uals {
             let parsed_ual = match parse_ual(ual) {

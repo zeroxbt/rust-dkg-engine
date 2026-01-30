@@ -1,6 +1,6 @@
 use crate::{
-    managers::blockchain::*,
-    types::{AccessPolicy, PermissionedNode},
+    managers::blockchain::{chains::evm::PermissionedNode, *},
+    types::AccessPolicy,
 };
 
 impl BlockchainManager {

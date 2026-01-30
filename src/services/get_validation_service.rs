@@ -8,8 +8,8 @@ use crate::{
             query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
         },
     },
-    types::Visibility,
-    utils::{ual::ParsedUal, validation},
+    types::{ParsedUal, Visibility},
+    utils::validation,
 };
 
 /// Service for validating get operation responses.

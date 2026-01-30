@@ -19,7 +19,7 @@ pub(crate) use identity_storage::IdentityStorage;
 pub(crate) use kc_storage::KnowledgeCollectionStorage;
 pub(crate) use multicall::Multicall3;
 pub(crate) use params::ParametersStorage;
-pub(crate) use paranet::ParanetsRegistry;
+pub(crate) use paranet::{ParanetsRegistry, PermissionedNode};
 pub(crate) use profile::Profile;
 pub(crate) use sharding::{ShardingTable, ShardingTableLib, ShardingTableStorage};
 pub(crate) use staking::Staking;

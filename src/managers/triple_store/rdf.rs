@@ -83,18 +83,6 @@ pub(crate) fn group_nquads_by_subject<'a>(triples: &[&'a str]) -> Vec<Vec<&'a st
     groups
 }
 
-/// Groups owned N-Quads by their subject.
-///
-/// Similar to `group_nquads_by_subject` but works with owned strings.
-/// Returns groups of cloned strings.
-pub(crate) fn group_nquads_by_subject_owned(triples: &[String]) -> Vec<Vec<String>> {
-    let refs: Vec<&str> = triples.iter().map(|s| s.as_str()).collect();
-    group_nquads_by_subject(&refs)
-        .into_iter()
-        .map(|group| group.into_iter().map(String::from).collect())
-        .collect()
-}
-
 /// Extract a quoted string value from an RDF triple.
 ///
 /// Handles format: `<subject> <predicate> "value" .`

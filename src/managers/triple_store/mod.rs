@@ -4,68 +4,18 @@ pub(crate) mod error;
 pub(crate) mod query;
 pub(crate) mod rdf;
 mod types;
-
 use std::{path::Path, sync::Arc, time::Duration};
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 use chrono::{DateTime, SecondsFormat, Utc};
+pub(crate) use config::{DKG_REPOSITORY, TripleStoreBackendType, TripleStoreManagerConfig};
 use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
-use tokio::sync::Semaphore;
-
-/// Format a unix timestamp as ISO 8601 datetime string
-fn format_unix_timestamp(timestamp: u64) -> String {
-    DateTime::from_timestamp(timestamp as i64, 0)
-        .unwrap_or(DateTime::UNIX_EPOCH)
-        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-        .to_string()
-}
-
-// Re-export commonly used types for convenience
-pub(crate) use config::{DKG_REPOSITORY, TripleStoreBackendType, TripleStoreManagerConfig};
 pub(crate) use rdf::{extract_subject, group_nquads_by_subject, parse_metadata_from_triples};
+use tokio::sync::Semaphore;
 pub(crate) use types::{Assertion, GraphVisibility, KnowledgeAsset, MAX_TOKENS_PER_KC, TokenIds};
 
-/// Metadata for a knowledge collection
-#[derive(Debug, Clone)]
-pub(crate) struct KnowledgeCollectionMetadata {
-    publisher_address: String,
-    block_number: u64,
-    transaction_hash: String,
-    block_timestamp: u64,
-}
-
-impl KnowledgeCollectionMetadata {
-    pub(crate) fn new(
-        publisher_address: String,
-        block_number: u64,
-        transaction_hash: String,
-        block_timestamp: u64,
-    ) -> Self {
-        Self {
-            publisher_address,
-            block_number,
-            transaction_hash,
-            block_timestamp,
-        }
-    }
-
-    pub(crate) fn publisher_address(&self) -> &str {
-        &self.publisher_address
-    }
-
-    pub(crate) fn block_number(&self) -> u64 {
-        self.block_number
-    }
-
-    pub(crate) fn transaction_hash(&self) -> &str {
-        &self.transaction_hash
-    }
-
-    pub(crate) fn block_timestamp(&self) -> u64 {
-        self.block_timestamp
-    }
-}
+pub(crate) use crate::types::KnowledgeCollectionMetadata;
 
 /// Triple Store Manager
 ///
@@ -134,27 +84,6 @@ impl TripleStoreManager {
         manager.ensure_repository().await?;
 
         Ok(manager)
-    }
-
-    /// Create an in-memory Triple Store Manager (for testing)
-    pub(crate) fn in_memory() -> Result<Self> {
-        let backend = Box::new(OxigraphBackend::in_memory()?);
-        let config = TripleStoreManagerConfig {
-            backend: TripleStoreBackendType::Oxigraph,
-            url: String::new(),
-            username: None,
-            password: None,
-            connect_max_retries: 0,
-            connect_retry_frequency_ms: 0,
-            timeouts: Default::default(),
-            max_concurrent_operations: 1000, // High value to effectively disable limiting in tests
-        };
-
-        Ok(Self {
-            backend,
-            config: config.clone(),
-            concurrency_limiter: Arc::new(Semaphore::new(config.max_concurrent_operations)),
-        })
     }
 
     /// Connect to triple store with retry logic
@@ -396,7 +325,7 @@ impl TripleStoreManager {
             ));
 
             // Block time
-            let block_time_iso = format_unix_timestamp(meta.block_timestamp());
+            let block_time_iso = Self::format_unix_timestamp(meta.block_timestamp());
             metadata_triples.push_str(&format!(
                 "    <{}> <{}> \"{}\"^^<http://www.w3.org/2001/XMLSchema#dateTime> .\n",
                 kc_ual,
@@ -441,15 +370,6 @@ impl TripleStoreManager {
         );
 
         Ok(total_triples)
-    }
-
-    /// Execute a raw SPARQL UPDATE query
-    pub(crate) async fn update_raw(&self, query: &str, timeout: Option<Duration>) -> Result<()> {
-        self.backend_update(
-            query,
-            timeout.unwrap_or_else(|| self.config.timeouts.insert_timeout()),
-        )
-        .await
     }
 
     // ========== Knowledge Asset Operations ==========
@@ -609,5 +529,13 @@ impl TripleStoreManager {
 
         self.backend_construct(&query, self.config.timeouts.query_timeout())
             .await
+    }
+
+    /// Format a unix timestamp as ISO 8601 datetime string
+    fn format_unix_timestamp(timestamp: u64) -> String {
+        DateTime::from_timestamp(timestamp as i64, 0)
+            .unwrap_or(DateTime::UNIX_EPOCH)
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string()
     }
 }

@@ -94,10 +94,6 @@ fn get_request_accepts_js_payload() {
         serde_json::from_str(raw).expect("failed to parse GET request");
 
     assert_eq!(request.header.operation_id(), sample_operation_id());
-    assert_eq!(request.data.blockchain().as_str(), "otp:2043");
-    assert_eq!(request.data.contract(), "0xabc");
-    assert_eq!(request.data.knowledge_collection_id(), 42);
-    assert_eq!(request.data.knowledge_asset_id(), Some(7));
     assert_eq!(request.data.ual(), sample_ual());
     assert_eq!(request.data.token_ids().start_token_id(), 1);
     assert_eq!(request.data.token_ids().end_token_id(), 1);
@@ -333,7 +329,6 @@ fn finality_request_accepts_js_payload() {
         request.data.publish_operation_id(),
         "22222222-2222-2222-2222-222222222222"
     );
-    assert_eq!(request.data.blockchain().as_str(), "otp:2043");
 }
 
 #[test]

@@ -245,11 +245,6 @@ impl Blockchain {
         }
     }
 
-    /// Whether this is a development/test chain.
-    pub(crate) fn is_development_chain(&self) -> bool {
-        matches!(self, Blockchain::Hardhat(_))
-    }
-
     /// Whether this chain requires EVM account mapping validation.
     ///
     /// On NeuroWeb, EVM addresses must be mapped to Substrate accounts.
@@ -308,7 +303,6 @@ impl BlockchainManager {
                 blockchain.gas_config(),
                 blockchain.native_token_decimals(),
                 blockchain.native_token_ticker(),
-                blockchain.is_development_chain(),
                 blockchain.requires_evm_account_mapping(),
             )
             .await?;
@@ -339,7 +333,7 @@ mod tests {
 
     fn config_for_chain(chain_type: &str, chain_id: u64) -> BlockchainConfig {
         BlockchainConfig {
-            blockchain_id: BlockchainId::new(format!("{}:{}", chain_type, chain_id)),
+            blockchain_id: BlockchainId::from(format!("{}:{}", chain_type, chain_id)),
             evm_operational_wallet_private_key: None,
             evm_operational_wallet_address: String::new(),
             evm_management_wallet_address: String::new(),
@@ -356,17 +350,14 @@ mod tests {
 
     #[test]
     fn test_blockchain_id_parsing() {
-        let id = BlockchainId::new("otp:2043");
-        assert_eq!(id.prefix(), "otp");
+        let id = BlockchainId::from("otp:2043");
         assert_eq!(id.chain_id(), Some(2043));
 
-        let id = BlockchainId::new("hardhat1:31337");
-        assert_eq!(id.prefix(), "hardhat1");
+        let id = BlockchainId::from("hardhat1:31337");
         assert_eq!(id.chain_id(), Some(31337));
 
         // Missing chain_id
-        let id = BlockchainId::new("hardhat1");
-        assert_eq!(id.prefix(), "hardhat1");
+        let id = BlockchainId::from("hardhat1");
         assert_eq!(id.chain_id(), None);
     }
 
@@ -409,15 +400,6 @@ mod tests {
             Blockchain::Base(config_for_chain("base", 8453)).native_token_ticker(),
             "ETH"
         );
-    }
-
-    #[test]
-    fn test_blockchain_is_development_chain() {
-        assert!(Blockchain::Hardhat(config_for_chain("hardhat1", 31337)).is_development_chain());
-        assert!(Blockchain::Hardhat(config_for_chain("hardhat2", 31337)).is_development_chain());
-        assert!(!Blockchain::Gnosis(config_for_chain("gnosis", 100)).is_development_chain());
-        assert!(!Blockchain::NeuroWeb(config_for_chain("otp", 2043)).is_development_chain());
-        assert!(!Blockchain::Base(config_for_chain("base", 8453)).is_development_chain());
     }
 
     #[test]

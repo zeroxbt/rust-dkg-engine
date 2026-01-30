@@ -12,7 +12,8 @@ use crate::{
         triple_store::KnowledgeCollectionMetadata,
     },
     services::{TripleStoreService, pending_storage_service::PendingStorageService},
-    utils::{ual::derive_ual, validation},
+    types::derive_ual,
+    utils::validation,
 };
 
 /// Raw event data from KnowledgeCollectionCreated event.

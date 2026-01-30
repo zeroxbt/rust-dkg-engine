@@ -8,18 +8,8 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct BlockchainId(String);
 
 impl BlockchainId {
-    pub(crate) fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
-
     pub(crate) fn as_str(&self) -> &str {
         &self.0
-    }
-
-    /// Parse the prefix from the blockchain ID.
-    /// E.g., "hardhat1:31337" -> "hardhat1", "otp:2043" -> "otp"
-    pub(crate) fn prefix(&self) -> &str {
-        self.0.split(':').next().unwrap_or(&self.0)
     }
 
     /// Parse the chain ID from the blockchain ID.

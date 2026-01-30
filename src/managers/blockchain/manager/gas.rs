@@ -37,15 +37,6 @@ impl BlockchainManager {
         Ok(blockchain_impl.native_token_ticker())
     }
 
-    /// Check if a blockchain is a development chain.
-    pub(crate) fn is_development_chain(
-        &self,
-        blockchain: &BlockchainId,
-    ) -> Result<bool, BlockchainError> {
-        let blockchain_impl = self.chain(blockchain)?;
-        Ok(blockchain_impl.is_development_chain())
-    }
-
     /// Get the native token balance for an address, formatted with correct decimals.
     pub(crate) async fn get_native_token_balance(
         &self,
