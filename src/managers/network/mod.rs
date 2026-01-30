@@ -34,8 +34,9 @@ use uuid::Uuid;
 use self::{
     message::{RequestMessageHeader, RequestMessageType},
     messages::{
-        BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
-        GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
+        BatchGetAck, BatchGetRequestData, BatchGetResponseData, FinalityAck, FinalityRequestData,
+        FinalityResponseData, GetAck, GetRequestData, GetResponseData, StoreAck, StoreRequestData,
+        StoreResponseData,
     },
 };
 
@@ -172,20 +173,20 @@ enum NetworkAction {
     },
     // Protocol-specific response actions
     SendStoreResponse {
-        channel: request_response::ResponseChannel<ResponseMessage<StoreResponseData>>,
-        message: ResponseMessage<StoreResponseData>,
+        channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
+        message: ResponseMessage<StoreAck>,
     },
     SendGetResponse {
-        channel: request_response::ResponseChannel<ResponseMessage<GetResponseData>>,
-        message: ResponseMessage<GetResponseData>,
+        channel: request_response::ResponseChannel<ResponseMessage<GetAck>>,
+        message: ResponseMessage<GetAck>,
     },
     SendFinalityResponse {
-        channel: request_response::ResponseChannel<ResponseMessage<FinalityResponseData>>,
-        message: ResponseMessage<FinalityResponseData>,
+        channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
+        message: ResponseMessage<FinalityAck>,
     },
     SendBatchGetResponse {
-        channel: request_response::ResponseChannel<ResponseMessage<BatchGetResponseData>>,
-        message: ResponseMessage<BatchGetResponseData>,
+        channel: request_response::ResponseChannel<ResponseMessage<BatchGetAck>>,
+        message: ResponseMessage<BatchGetAck>,
     },
 }
 
@@ -230,16 +231,16 @@ pub(crate) struct NodeBehaviour {
     pub identify: identify::Behaviour,
     // Application protocols using JsCompatCodec for JS node interoperability
     pub store: request_response::Behaviour<
-        JsCompatCodec<RequestMessage<StoreRequestData>, ResponseMessage<StoreResponseData>>,
+        JsCompatCodec<RequestMessage<StoreRequestData>, ResponseMessage<StoreAck>>,
     >,
     pub get: request_response::Behaviour<
-        JsCompatCodec<RequestMessage<GetRequestData>, ResponseMessage<GetResponseData>>,
+        JsCompatCodec<RequestMessage<GetRequestData>, ResponseMessage<GetAck>>,
     >,
     pub finality: request_response::Behaviour<
-        JsCompatCodec<RequestMessage<FinalityRequestData>, ResponseMessage<FinalityResponseData>>,
+        JsCompatCodec<RequestMessage<FinalityRequestData>, ResponseMessage<FinalityAck>>,
     >,
     pub batch_get: request_response::Behaviour<
-        JsCompatCodec<RequestMessage<BatchGetRequestData>, ResponseMessage<BatchGetResponseData>>,
+        JsCompatCodec<RequestMessage<BatchGetRequestData>, ResponseMessage<BatchGetAck>>,
     >,
 }
 
@@ -831,8 +832,8 @@ impl NetworkManager {
     /// Send a store response.
     pub(crate) async fn send_store_response(
         &self,
-        channel: request_response::ResponseChannel<ResponseMessage<StoreResponseData>>,
-        message: ResponseMessage<StoreResponseData>,
+        channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
+        message: ResponseMessage<StoreAck>,
     ) -> Result<(), NetworkError> {
         self.enqueue_action(NetworkAction::SendStoreResponse { channel, message })
             .await
@@ -861,8 +862,8 @@ impl NetworkManager {
     /// Send a get response.
     pub(crate) async fn send_get_response(
         &self,
-        channel: request_response::ResponseChannel<ResponseMessage<GetResponseData>>,
-        message: ResponseMessage<GetResponseData>,
+        channel: request_response::ResponseChannel<ResponseMessage<GetAck>>,
+        message: ResponseMessage<GetAck>,
     ) -> Result<(), NetworkError> {
         self.enqueue_action(NetworkAction::SendGetResponse { channel, message })
             .await
@@ -891,8 +892,8 @@ impl NetworkManager {
     /// Send a finality response.
     pub(crate) async fn send_finality_response(
         &self,
-        channel: request_response::ResponseChannel<ResponseMessage<FinalityResponseData>>,
-        message: ResponseMessage<FinalityResponseData>,
+        channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
+        message: ResponseMessage<FinalityAck>,
     ) -> Result<(), NetworkError> {
         self.enqueue_action(NetworkAction::SendFinalityResponse { channel, message })
             .await
@@ -926,8 +927,8 @@ impl NetworkManager {
     /// Send a batch get response.
     pub(crate) async fn send_batch_get_response(
         &self,
-        channel: request_response::ResponseChannel<ResponseMessage<BatchGetResponseData>>,
-        message: ResponseMessage<BatchGetResponseData>,
+        channel: request_response::ResponseChannel<ResponseMessage<BatchGetAck>>,
+        message: ResponseMessage<BatchGetAck>,
     ) -> Result<(), NetworkError> {
         self.enqueue_action(NetworkAction::SendBatchGetResponse { channel, message })
             .await

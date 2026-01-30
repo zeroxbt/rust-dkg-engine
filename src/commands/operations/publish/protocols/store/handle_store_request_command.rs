@@ -10,8 +10,8 @@ use crate::{
         blockchain::{BlockchainId, BlockchainManager},
         network::{
             NetworkManager, ResponseMessage,
-            message::{ResponseMessageHeader, ResponseMessageType},
-            messages::StoreResponseData,
+            message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
+            messages::StoreAck,
             request_response::ResponseChannel,
         },
         repository::RepositoryManager,
@@ -54,7 +54,7 @@ pub(crate) struct HandleStoreRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
-    response_channels: Arc<ResponseChannels<StoreResponseData>>,
+    response_channels: Arc<ResponseChannels<StoreAck>>,
     pending_storage_service: Arc<PendingStorageService>,
 }
 
@@ -71,9 +71,9 @@ impl HandleStoreRequestCommandHandler {
 
     async fn send_response(
         &self,
-        channel: ResponseChannel<ResponseMessage<StoreResponseData>>,
+        channel: ResponseChannel<ResponseMessage<StoreAck>>,
         operation_id: Uuid,
-        message: ResponseMessage<StoreResponseData>,
+        message: ResponseMessage<StoreAck>,
     ) {
         if let Err(e) = self
             .network_manager
@@ -90,15 +90,13 @@ impl HandleStoreRequestCommandHandler {
 
     async fn send_nack(
         &self,
-        channel: ResponseChannel<ResponseMessage<StoreResponseData>>,
+        channel: ResponseChannel<ResponseMessage<StoreAck>>,
         operation_id: Uuid,
         error_message: &str,
     ) {
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: StoreResponseData::Nack {
-                error_message: error_message.to_string(),
-            },
+            data: ResponseBody::error(error_message),
         };
         self.send_response(channel, operation_id, message).await;
     }
@@ -344,10 +342,10 @@ impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommand
 
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: StoreResponseData::Ack {
+            data: ResponseBody::ack(StoreAck {
                 identity_id: identity_id as u64,
                 signature,
-            },
+            }),
         };
 
         tracing::info!(

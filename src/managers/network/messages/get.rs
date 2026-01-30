@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Assertion, BlockchainId, TokenIds};
+use crate::{
+    managers::network::message::ResponseBody,
+    types::{Assertion, BlockchainId, TokenIds},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -81,32 +84,14 @@ impl GetRequestData {
     }
 }
 
-/// Get response data - uses untagged enum since JS sends flat JSON
-/// Nack: {"errorMessage": "..."}
-/// Ack: {"assertion": {...}, "metadata": [...]}
+/// Get ACK payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum GetResponseData {
-    #[serde(rename_all = "camelCase")]
-    Nack { error_message: String },
-    Ack {
-        assertion: Assertion,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        metadata: Option<Vec<String>>,
-    },
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GetAck {
+    pub assertion: Assertion,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Vec<String>>,
 }
 
-impl GetResponseData {
-    pub(crate) fn ack(assertion: Assertion, metadata: Option<Vec<String>>) -> Self {
-        Self::Ack {
-            assertion,
-            metadata,
-        }
-    }
-
-    pub(crate) fn nack(message: impl Into<String>) -> Self {
-        Self::Nack {
-            error_message: message.into(),
-        }
-    }
-}
+/// Get response data (ACK payload or error payload).
+pub(crate) type GetResponseData = ResponseBody<GetAck>;

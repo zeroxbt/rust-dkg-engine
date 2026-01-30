@@ -12,6 +12,7 @@ use crate::{
         blockchain::{BlockchainId, BlockchainManager, H256, utils::keccak256_encode_packed},
         network::{
             NetworkManager,
+            message::ResponseBody,
             messages::{StoreRequestData, StoreResponseData},
         },
         repository::RepositoryManager,
@@ -158,10 +159,9 @@ impl SendStoreRequestsCommandHandler {
         response: &StoreResponseData,
     ) -> bool {
         match response {
-            StoreResponseData::Ack {
-                identity_id,
-                signature,
-            } => {
+            ResponseBody::Ack(ack) => {
+                let identity_id = ack.identity_id;
+                let signature = &ack.signature;
                 let sig_data = SignatureData::new(
                     identity_id.to_string(),
                     signature.v,
@@ -195,11 +195,11 @@ impl SendStoreRequestsCommandHandler {
                 );
                 true
             }
-            StoreResponseData::Nack { error_message } => {
+            ResponseBody::Error(err) => {
                 tracing::debug!(
                     operation_id = %operation_id,
                     peer = %peer,
-                    error = %error_message,
+                    error = %err.error_message,
                     "Peer returned error response"
                 );
                 false

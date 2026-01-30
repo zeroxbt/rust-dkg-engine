@@ -7,7 +7,7 @@ use crate::{
         operations::get::protocols::batch_get::HandleBatchGetRequestCommandData,
     },
     context::Context,
-    controllers::rpc_controller::messages::{BatchGetRequestData, BatchGetResponseData},
+    controllers::rpc_controller::messages::{BatchGetAck, BatchGetRequestData},
     managers::network::{
         PeerId,
         message::{RequestMessage, ResponseMessage},
@@ -17,7 +17,7 @@ use crate::{
 };
 
 pub(crate) struct BatchGetRpcController {
-    response_channels: Arc<ResponseChannels<BatchGetResponseData>>,
+    response_channels: Arc<ResponseChannels<BatchGetAck>>,
     command_scheduler: CommandScheduler,
 }
 
@@ -32,7 +32,7 @@ impl BatchGetRpcController {
     pub(crate) async fn handle_request(
         &self,
         request: RequestMessage<BatchGetRequestData>,
-        channel: request_response::ResponseChannel<ResponseMessage<BatchGetResponseData>>,
+        channel: request_response::ResponseChannel<ResponseMessage<BatchGetAck>>,
         remote_peer_id: PeerId,
     ) {
         let RequestMessage { header, data } = request;

@@ -7,7 +7,7 @@ use crate::{
         operations::get::protocols::get::handle_get_request_command::HandleGetRequestCommandData,
     },
     context::Context,
-    controllers::rpc_controller::messages::{GetRequestData, GetResponseData},
+    controllers::rpc_controller::messages::{GetAck, GetRequestData},
     managers::network::{
         PeerId,
         message::{RequestMessage, ResponseMessage},
@@ -17,7 +17,7 @@ use crate::{
 };
 
 pub(crate) struct GetRpcController {
-    response_channels: Arc<ResponseChannels<GetResponseData>>,
+    response_channels: Arc<ResponseChannels<GetAck>>,
     command_scheduler: CommandScheduler,
 }
 
@@ -32,7 +32,7 @@ impl GetRpcController {
     pub(crate) async fn handle_request(
         &self,
         request: RequestMessage<GetRequestData>,
-        channel: request_response::ResponseChannel<ResponseMessage<GetResponseData>>,
+        channel: request_response::ResponseChannel<ResponseMessage<GetAck>>,
         remote_peer_id: PeerId,
     ) {
         let RequestMessage { header, data } = request;

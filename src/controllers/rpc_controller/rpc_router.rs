@@ -11,10 +11,13 @@ use crate::{
     },
     managers::network::{
         Multiaddr, NetworkEventHandler, NetworkManager, PeerId,
-        message::{RequestMessage, ResponseMessage, ResponseMessageHeader, ResponseMessageType},
+        message::{
+            RequestMessage, ResponseBody, ResponseMessage, ResponseMessageHeader,
+            ResponseMessageType,
+        },
         messages::{
-            BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
-            GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
+            BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck,
+            GetRequestData, StoreAck, StoreRequestData,
         },
         request_response::ResponseChannel,
     },
@@ -46,12 +49,12 @@ impl RpcRouter {
 
     async fn send_store_busy(
         &self,
-        channel: ResponseChannel<ResponseMessage<StoreResponseData>>,
+        channel: ResponseChannel<ResponseMessage<StoreAck>>,
         operation_id: Uuid,
     ) {
         let response = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: StoreResponseData::nack("Rate limited"),
+            data: ResponseBody::error("Rate limited"),
         };
         let _ = self
             .network_manager
@@ -61,12 +64,12 @@ impl RpcRouter {
 
     async fn send_get_busy(
         &self,
-        channel: ResponseChannel<ResponseMessage<GetResponseData>>,
+        channel: ResponseChannel<ResponseMessage<GetAck>>,
         operation_id: Uuid,
     ) {
         let response = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: GetResponseData::nack("Rate limited"),
+            data: ResponseBody::error("Rate limited"),
         };
         let _ = self
             .network_manager
@@ -76,12 +79,12 @@ impl RpcRouter {
 
     async fn send_finality_busy(
         &self,
-        channel: ResponseChannel<ResponseMessage<FinalityResponseData>>,
+        channel: ResponseChannel<ResponseMessage<FinalityAck>>,
         operation_id: Uuid,
     ) {
         let response = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: FinalityResponseData::nack("Rate limited"),
+            data: ResponseBody::error("Rate limited"),
         };
         let _ = self
             .network_manager
@@ -91,12 +94,12 @@ impl RpcRouter {
 
     async fn send_batch_get_busy(
         &self,
-        channel: ResponseChannel<ResponseMessage<BatchGetResponseData>>,
+        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
         operation_id: Uuid,
     ) {
         let response = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: BatchGetResponseData::nack("Rate limited"),
+            data: ResponseBody::error("Rate limited"),
         };
         let _ = self
             .network_manager
@@ -113,7 +116,7 @@ impl NetworkEventHandler for RpcRouter {
     async fn on_store_request(
         &self,
         request: RequestMessage<StoreRequestData>,
-        channel: ResponseChannel<ResponseMessage<StoreResponseData>>,
+        channel: ResponseChannel<ResponseMessage<StoreAck>>,
         peer: PeerId,
     ) {
         if !self.peer_rate_limiter.check(&peer) {
@@ -129,7 +132,7 @@ impl NetworkEventHandler for RpcRouter {
     async fn on_get_request(
         &self,
         request: RequestMessage<GetRequestData>,
-        channel: ResponseChannel<ResponseMessage<GetResponseData>>,
+        channel: ResponseChannel<ResponseMessage<GetAck>>,
         peer: PeerId,
     ) {
         if !self.peer_rate_limiter.check(&peer) {
@@ -145,7 +148,7 @@ impl NetworkEventHandler for RpcRouter {
     async fn on_finality_request(
         &self,
         request: RequestMessage<FinalityRequestData>,
-        channel: ResponseChannel<ResponseMessage<FinalityResponseData>>,
+        channel: ResponseChannel<ResponseMessage<FinalityAck>>,
         peer: PeerId,
     ) {
         if !self.peer_rate_limiter.check(&peer) {
@@ -161,7 +164,7 @@ impl NetworkEventHandler for RpcRouter {
     async fn on_batch_get_request(
         &self,
         request: RequestMessage<BatchGetRequestData>,
-        channel: ResponseChannel<ResponseMessage<BatchGetResponseData>>,
+        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
         peer: PeerId,
     ) {
         if !self.peer_rate_limiter.check(&peer) {

@@ -21,6 +21,7 @@ use crate::{
         blockchain::BlockchainId,
         network::{
             NetworkError, NetworkManager, PeerId,
+            message::ResponseBody,
             messages::{BatchGetRequestData, BatchGetResponseData},
         },
         repository::RepositoryManager,
@@ -311,13 +312,12 @@ async fn fetch_kc_batch_from_network(
         let _guard = peer_span.enter();
 
         match result {
-            Ok(BatchGetResponseData::Ack {
-                assertions,
-                metadata: metadata_map,
-            }) => {
+            Ok(ResponseBody::Ack(ack)) => {
+                let assertions = &ack.assertions;
+                let metadata_map = &ack.metadata;
                 let mut valid_count = 0usize;
 
-                for (ual, assertion) in &assertions {
+                for (ual, assertion) in assertions {
                     if !uals_still_needed.contains(ual) {
                         continue;
                     }
@@ -367,7 +367,7 @@ async fn fetch_kc_batch_from_network(
                     break;
                 }
             }
-            Ok(BatchGetResponseData::Nack { .. }) => {
+            Ok(ResponseBody::Error(_)) => {
                 peer_span.record("valid_kcs", 0usize);
                 peer_span.record("status", "nack");
             }

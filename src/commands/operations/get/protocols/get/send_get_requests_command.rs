@@ -11,6 +11,7 @@ use crate::{
         blockchain::{AccessPolicy, BlockchainManager},
         network::{
             NetworkManager,
+            message::ResponseBody,
             messages::{GetRequestData, GetResponseData},
         },
         repository::RepositoryManager,
@@ -258,10 +259,9 @@ impl SendGetRequestsCommandHandler {
         visibility: Visibility,
     ) -> bool {
         match response {
-            GetResponseData::Ack {
-                assertion,
-                metadata,
-            } => {
+            ResponseBody::Ack(ack) => {
+                let assertion = &ack.assertion;
+                let metadata = &ack.metadata;
                 // Validate the assertion
                 let is_valid = self
                     .get_validation_service
@@ -308,11 +308,11 @@ impl SendGetRequestsCommandHandler {
                     }
                 }
             }
-            GetResponseData::Nack { error_message } => {
+            ResponseBody::Error(err) => {
                 tracing::debug!(
                     operation_id = %operation_id,
                     peer = %peer,
-                    error = %error_message,
+                    error = %err.error_message,
                     "Peer returned error response"
                 );
                 false

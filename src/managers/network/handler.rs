@@ -2,8 +2,8 @@ use super::{
     Multiaddr, PeerId,
     message::{RequestMessage, ResponseMessage},
     messages::{
-        BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
-        GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
+        BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
+        StoreAck, StoreRequestData,
     },
     request_response::ResponseChannel,
 };
@@ -22,7 +22,7 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
     async fn on_store_request(
         &self,
         request: RequestMessage<StoreRequestData>,
-        channel: ResponseChannel<ResponseMessage<StoreResponseData>>,
+        channel: ResponseChannel<ResponseMessage<StoreAck>>,
         peer: PeerId,
     );
 
@@ -30,7 +30,7 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
     async fn on_get_request(
         &self,
         request: RequestMessage<GetRequestData>,
-        channel: ResponseChannel<ResponseMessage<GetResponseData>>,
+        channel: ResponseChannel<ResponseMessage<GetAck>>,
         peer: PeerId,
     );
 
@@ -38,7 +38,7 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
     async fn on_finality_request(
         &self,
         request: RequestMessage<FinalityRequestData>,
-        channel: ResponseChannel<ResponseMessage<FinalityResponseData>>,
+        channel: ResponseChannel<ResponseMessage<FinalityAck>>,
         peer: PeerId,
     );
 
@@ -46,7 +46,7 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
     async fn on_batch_get_request(
         &self,
         request: RequestMessage<BatchGetRequestData>,
-        channel: ResponseChannel<ResponseMessage<BatchGetResponseData>>,
+        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
         peer: PeerId,
     );
 

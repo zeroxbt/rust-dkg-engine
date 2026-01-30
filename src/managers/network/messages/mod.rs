@@ -8,10 +8,10 @@ mod finality;
 mod get;
 mod store;
 
-pub(crate) use batch_get::{BatchGetRequestData, BatchGetResponseData};
-pub(crate) use finality::{FinalityRequestData, FinalityResponseData};
-pub(crate) use get::{GetRequestData, GetResponseData};
-pub(crate) use store::{StoreRequestData, StoreResponseData};
+pub(crate) use batch_get::{BatchGetAck, BatchGetRequestData, BatchGetResponseData};
+pub(crate) use finality::{FinalityAck, FinalityRequestData, FinalityResponseData};
+pub(crate) use get::{GetAck, GetRequestData, GetResponseData};
+pub(crate) use store::{StoreAck, StoreRequestData, StoreResponseData};
 
 #[cfg(test)]
 mod tests;

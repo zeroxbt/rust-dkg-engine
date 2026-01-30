@@ -22,19 +22,17 @@ pub(crate) use triple_store_service::TripleStoreService;
 use crate::{
     managers::{
         Managers,
-        network::messages::{
-            BatchGetResponseData, FinalityResponseData, GetResponseData, StoreResponseData,
-        },
+        network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
     operations::{GetOperation, PublishOperation},
 };
 
 /// Response channels for all protocol types.
 pub(crate) struct ResponseChannelsSet {
-    pub store: Arc<ResponseChannels<StoreResponseData>>,
-    pub get: Arc<ResponseChannels<GetResponseData>>,
-    pub finality: Arc<ResponseChannels<FinalityResponseData>>,
-    pub batch_get: Arc<ResponseChannels<BatchGetResponseData>>,
+    pub store: Arc<ResponseChannels<StoreAck>>,
+    pub get: Arc<ResponseChannels<GetAck>>,
+    pub finality: Arc<ResponseChannels<FinalityAck>>,
+    pub batch_get: Arc<ResponseChannels<BatchGetAck>>,
 }
 
 impl ResponseChannelsSet {

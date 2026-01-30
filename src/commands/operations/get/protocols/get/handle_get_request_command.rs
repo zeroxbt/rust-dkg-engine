@@ -10,8 +10,8 @@ use crate::{
         blockchain::{AccessPolicy, BlockchainManager},
         network::{
             NetworkManager, ResponseMessage,
-            message::{ResponseMessageHeader, ResponseMessageType},
-            messages::GetResponseData,
+            message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
+            messages::GetAck,
             request_response::ResponseChannel,
         },
         triple_store::{Assertion, TokenIds, Visibility},
@@ -57,7 +57,7 @@ impl HandleGetRequestCommandData {
 pub(crate) struct HandleGetRequestCommandHandler {
     network_manager: Arc<NetworkManager>,
     triple_store_service: Arc<TripleStoreService>,
-    response_channels: Arc<ResponseChannels<GetResponseData>>,
+    response_channels: Arc<ResponseChannels<GetAck>>,
     blockchain_manager: Arc<BlockchainManager>,
 }
 
@@ -73,9 +73,9 @@ impl HandleGetRequestCommandHandler {
 
     async fn send_response(
         &self,
-        channel: ResponseChannel<ResponseMessage<GetResponseData>>,
+        channel: ResponseChannel<ResponseMessage<GetAck>>,
         operation_id: Uuid,
-        message: ResponseMessage<GetResponseData>,
+        message: ResponseMessage<GetAck>,
     ) {
         if let Err(e) = self
             .network_manager
@@ -92,27 +92,27 @@ impl HandleGetRequestCommandHandler {
 
     async fn send_nack(
         &self,
-        channel: ResponseChannel<ResponseMessage<GetResponseData>>,
+        channel: ResponseChannel<ResponseMessage<GetAck>>,
         operation_id: Uuid,
         error_message: &str,
     ) {
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: GetResponseData::nack(error_message),
+            data: ResponseBody::error(error_message),
         };
         self.send_response(channel, operation_id, message).await;
     }
 
     async fn send_ack(
         &self,
-        channel: ResponseChannel<ResponseMessage<GetResponseData>>,
+        channel: ResponseChannel<ResponseMessage<GetAck>>,
         operation_id: Uuid,
         assertion: Assertion,
         metadata: Option<Vec<String>>,
     ) {
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: GetResponseData::ack(assertion, metadata),
+            data: ResponseBody::ack(GetAck { assertion, metadata }),
         };
         self.send_response(channel, operation_id, message).await;
     }

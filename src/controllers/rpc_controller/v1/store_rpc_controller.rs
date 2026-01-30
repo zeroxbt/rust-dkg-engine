@@ -7,7 +7,7 @@ use crate::{
         operations::publish::protocols::store::handle_store_request_command::HandleStoreRequestCommandData,
     },
     context::Context,
-    controllers::rpc_controller::messages::{StoreRequestData, StoreResponseData},
+    controllers::rpc_controller::messages::{StoreAck, StoreRequestData},
     managers::{
         network::{
             PeerId,
@@ -20,7 +20,7 @@ use crate::{
 };
 
 pub(crate) struct StoreRpcController {
-    response_channels: Arc<ResponseChannels<StoreResponseData>>,
+    response_channels: Arc<ResponseChannels<StoreAck>>,
     command_scheduler: CommandScheduler,
 }
 
@@ -35,7 +35,7 @@ impl StoreRpcController {
     pub(crate) async fn handle_request(
         &self,
         request: RequestMessage<StoreRequestData>,
-        channel: request_response::ResponseChannel<ResponseMessage<StoreResponseData>>,
+        channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
         remote_peer_id: PeerId,
     ) {
         let RequestMessage { header, data } = request;

@@ -10,8 +10,8 @@ use crate::{
     managers::{
         network::{
             NetworkManager, ResponseMessage,
-            message::{ResponseMessageHeader, ResponseMessageType},
-            messages::BatchGetResponseData,
+            message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
+            messages::BatchGetAck,
             request_response::ResponseChannel,
         },
         triple_store::{Assertion, TokenIds, Visibility},
@@ -51,7 +51,7 @@ impl HandleBatchGetRequestCommandData {
 pub(crate) struct HandleBatchGetRequestCommandHandler {
     network_manager: Arc<NetworkManager>,
     triple_store_service: Arc<TripleStoreService>,
-    response_channels: Arc<ResponseChannels<BatchGetResponseData>>,
+    response_channels: Arc<ResponseChannels<BatchGetAck>>,
 }
 
 impl HandleBatchGetRequestCommandHandler {
@@ -65,9 +65,9 @@ impl HandleBatchGetRequestCommandHandler {
 
     async fn send_response(
         &self,
-        channel: ResponseChannel<ResponseMessage<BatchGetResponseData>>,
+        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
         operation_id: Uuid,
-        message: ResponseMessage<BatchGetResponseData>,
+        message: ResponseMessage<BatchGetAck>,
     ) {
         if let Err(e) = self
             .network_manager
@@ -84,14 +84,14 @@ impl HandleBatchGetRequestCommandHandler {
 
     async fn send_ack(
         &self,
-        channel: ResponseChannel<ResponseMessage<BatchGetResponseData>>,
+        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
         operation_id: Uuid,
         assertions: HashMap<String, Assertion>,
         metadata: HashMap<String, Vec<String>>,
     ) {
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: BatchGetResponseData::ack(assertions, metadata),
+            data: ResponseBody::ack(BatchGetAck { assertions, metadata }),
         };
         self.send_response(channel, operation_id, message).await;
     }

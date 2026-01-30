@@ -21,8 +21,8 @@ struct ChannelEntry<T> {
 ///
 /// Each protocol should have its own ResponseChannels instance with its specific response type.
 /// For example:
-/// - `ResponseChannels<StoreResponseData>` for Store protocol
-/// - `ResponseChannels<GetResponseData>` for Get protocol
+/// - `ResponseChannels<StoreAck>` for Store protocol
+/// - `ResponseChannels<GetAck>` for Get protocol
 ///
 /// Expired channels are cleaned up opportunistically when new channels are stored.
 pub(crate) struct ResponseChannels<T>

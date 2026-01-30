@@ -7,7 +7,7 @@ use crate::{
         operations::publish::protocols::finality::handle_finality_request_command::HandleFinalityRequestCommandData,
     },
     context::Context,
-    controllers::rpc_controller::messages::{FinalityRequestData, FinalityResponseData},
+    controllers::rpc_controller::messages::{FinalityAck, FinalityRequestData},
     managers::network::{
         PeerId,
         message::{RequestMessage, ResponseMessage},
@@ -17,7 +17,7 @@ use crate::{
 };
 
 pub(crate) struct FinalityRpcController {
-    response_channels: Arc<ResponseChannels<FinalityResponseData>>,
+    response_channels: Arc<ResponseChannels<FinalityAck>>,
     command_scheduler: CommandScheduler,
 }
 
@@ -32,7 +32,7 @@ impl FinalityRpcController {
     pub(crate) async fn handle_request(
         &self,
         request: RequestMessage<FinalityRequestData>,
-        channel: request_response::ResponseChannel<ResponseMessage<FinalityResponseData>>,
+        channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
         remote_peer_id: PeerId,
     ) {
         let RequestMessage { header, data } = request;

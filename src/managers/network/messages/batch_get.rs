@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Assertion, TokenIds};
+use crate::{
+    managers::network::message::ResponseBody,
+    types::{Assertion, TokenIds},
+};
 
 /// Request data for batch get protocol.
 ///
@@ -52,38 +55,16 @@ impl BatchGetRequestData {
     }
 }
 
-/// Batch get response data - uses untagged enum since JS sends flat JSON
-/// Nack: {"errorMessage": "..."}
-/// Ack: {"assertions": {...}, "metadata": {...}}
+/// Batch get ACK payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum BatchGetResponseData {
-    #[serde(rename_all = "camelCase")]
-    Nack { error_message: String },
-    #[serde(rename_all = "camelCase")]
-    Ack {
-        /// Map of UAL -> Assertion for successfully retrieved assets.
-        assertions: HashMap<String, Assertion>,
-        /// Map of UAL -> metadata triples (if requested).
-        #[serde(default)]
-        metadata: HashMap<String, Vec<String>>,
-    },
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BatchGetAck {
+    /// Map of UAL -> Assertion for successfully retrieved assets.
+    pub assertions: HashMap<String, Assertion>,
+    /// Map of UAL -> metadata triples (if requested).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: HashMap<String, Vec<String>>,
 }
 
-impl BatchGetResponseData {
-    pub(crate) fn ack(
-        assertions: HashMap<String, Assertion>,
-        metadata: HashMap<String, Vec<String>>,
-    ) -> Self {
-        Self::Ack {
-            assertions,
-            metadata,
-        }
-    }
-
-    pub(crate) fn nack(message: impl Into<String>) -> Self {
-        Self::Nack {
-            error_message: message.into(),
-        }
-    }
-}
+/// Batch get response data (ACK payload or error payload).
+pub(crate) type BatchGetResponseData = ResponseBody<BatchGetAck>;

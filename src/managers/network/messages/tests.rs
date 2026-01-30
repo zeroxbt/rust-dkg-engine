@@ -4,12 +4,12 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::{
-    BatchGetRequestData, BatchGetResponseData, FinalityRequestData, FinalityResponseData,
-    GetRequestData, GetResponseData, StoreRequestData, StoreResponseData,
+    BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
+    StoreAck, StoreRequestData,
 };
 use crate::{
     managers::network::message::{
-        RequestMessage, RequestMessageHeader, RequestMessageType, ResponseMessage,
+        RequestMessage, RequestMessageHeader, RequestMessageType, ResponseBody, ResponseMessage,
         ResponseMessageHeader, ResponseMessageType,
     },
     types::{Assertion, BlockchainId, SignatureComponents, TokenIds},
@@ -86,9 +86,7 @@ fn get_request_accepts_js_payload() {
                 },
                 "includeMetadata": true,
                 "ual": "did:dkg:otp:2043/0xabc/42/7",
-                "paranetUAL": "did:dkg:otp:2043/0xdef/1/1",
-                "migrationFlag": "0",
-                "repository": "dkg"
+                "paranetUAL": "did:dkg:otp:2043/0xdef/1/1"
             }
         }"#;
 
@@ -161,13 +159,13 @@ fn get_request_serializes_required_fields() {
 fn get_response_ack_matches_js_shape() {
     let response = ResponseMessage {
         header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Ack),
-        data: GetResponseData::ack(
-            Assertion::new(
+        data: ResponseBody::ack(GetAck {
+            assertion: Assertion::new(
                 vec!["<s> <p> <o> .".to_string()],
                 Some(vec!["<s> <p> \"x\" .".to_string()]),
             ),
-            Some(vec!["<m> <p> <o> .".to_string()]),
-        ),
+            metadata: Some(vec!["<m> <p> <o> .".to_string()]),
+        }),
     };
 
     let actual = to_json(&response);
@@ -192,9 +190,9 @@ fn get_response_ack_matches_js_shape() {
 
 #[test]
 fn get_response_nack_matches_js_shape() {
-    let response = ResponseMessage {
+    let response: ResponseMessage<GetAck> = ResponseMessage {
         header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Nack),
-        data: GetResponseData::nack("boom"),
+        data: ResponseBody::error("boom"),
     };
 
     let actual = to_json(&response);
@@ -228,8 +226,7 @@ fn batch_get_request_accepts_js_payload() {
                     }
                 },
                 "includeMetadata": true,
-                "uals": ["did:dkg:otp:2043/0xabc/42/7"],
-                "repository": "dkg"
+                "uals": ["did:dkg:otp:2043/0xabc/42/7"]
             }
         }"#;
 
@@ -262,7 +259,7 @@ fn batch_get_response_ack_matches_js_shape() {
 
     let response = ResponseMessage {
         header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Ack),
-        data: BatchGetResponseData::ack(assertions, metadata),
+        data: ResponseBody::ack(BatchGetAck { assertions, metadata }),
     };
 
     let actual = to_json(&response);
@@ -291,9 +288,9 @@ fn batch_get_response_ack_matches_js_shape() {
 
 #[test]
 fn batch_get_response_nack_matches_js_shape() {
-    let response = ResponseMessage {
+    let response: ResponseMessage<BatchGetAck> = ResponseMessage {
         header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Nack),
-        data: BatchGetResponseData::nack("boom"),
+        data: ResponseBody::error("boom"),
     };
 
     let actual = to_json(&response);
@@ -372,9 +369,9 @@ fn finality_request_serializes_required_fields() {
 fn finality_response_ack_matches_js_shape() {
     let response = ResponseMessage {
         header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Ack),
-        data: FinalityResponseData::Ack {
+        data: ResponseBody::ack(FinalityAck {
             message: "ok".to_string(),
-        },
+        }),
     };
 
     let actual = to_json(&response);
@@ -393,9 +390,9 @@ fn finality_response_ack_matches_js_shape() {
 
 #[test]
 fn finality_response_nack_matches_js_shape() {
-    let response = ResponseMessage {
+    let response: ResponseMessage<FinalityAck> = ResponseMessage {
         header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Nack),
-        data: FinalityResponseData::nack("boom"),
+        data: ResponseBody::error("boom"),
     };
 
     let actual = to_json(&response);
@@ -439,7 +436,7 @@ fn store_request_accepts_js_payload() {
 fn store_response_ack_matches_js_shape() {
     let response = ResponseMessage {
         header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Ack),
-        data: StoreResponseData::Ack {
+        data: ResponseBody::ack(StoreAck {
             identity_id: 123,
             signature: SignatureComponents {
                 v: 27,
@@ -447,7 +444,7 @@ fn store_response_ack_matches_js_shape() {
                 s: "0x02".to_string(),
                 vs: "0x03".to_string(),
             },
-        },
+        }),
     };
 
     let actual = to_json(&response);
@@ -472,9 +469,9 @@ fn store_response_ack_matches_js_shape() {
 
 #[test]
 fn store_response_nack_matches_js_shape() {
-    let response = ResponseMessage {
+    let response: ResponseMessage<StoreAck> = ResponseMessage {
         header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Nack),
-        data: StoreResponseData::nack("boom"),
+        data: ResponseBody::error("boom"),
     };
 
     let actual = to_json(&response);

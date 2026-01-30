@@ -4,9 +4,7 @@ use crate::{
     commands::command_executor::CommandScheduler,
     managers::{
         Managers,
-        network::messages::{
-            BatchGetResponseData, FinalityResponseData, GetResponseData, StoreResponseData,
-        },
+        network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
     services::{
         GetValidationService, PeerDiscoveryTracker, PeerPerformanceTracker, PeerRateLimiter,
@@ -76,23 +74,23 @@ impl Context {
     }
 
     // Response channel accessors
-    pub(crate) fn store_response_channels(&self) -> &Arc<ResponseChannels<StoreResponseData>> {
+    pub(crate) fn store_response_channels(&self) -> &Arc<ResponseChannels<StoreAck>> {
         &self.services.response_channels.store
     }
 
-    pub(crate) fn get_response_channels(&self) -> &Arc<ResponseChannels<GetResponseData>> {
+    pub(crate) fn get_response_channels(&self) -> &Arc<ResponseChannels<GetAck>> {
         &self.services.response_channels.get
     }
 
     pub(crate) fn finality_response_channels(
         &self,
-    ) -> &Arc<ResponseChannels<FinalityResponseData>> {
+    ) -> &Arc<ResponseChannels<FinalityAck>> {
         &self.services.response_channels.finality
     }
 
     pub(crate) fn batch_get_response_channels(
         &self,
-    ) -> &Arc<ResponseChannels<BatchGetResponseData>> {
+    ) -> &Arc<ResponseChannels<BatchGetAck>> {
         &self.services.response_channels.batch_get
     }
 

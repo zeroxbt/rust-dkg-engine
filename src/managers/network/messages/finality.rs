@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::types::BlockchainId;
+use crate::{
+    managers::network::message::ResponseBody,
+    types::BlockchainId,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -35,22 +38,12 @@ impl FinalityRequestData {
     }
 }
 
-/// Finality response data - uses untagged enum since JS sends flat JSON
-/// ACK: {"message": "..."}
-/// NACK: {"errorMessage": "..."}
+/// Finality ACK payload.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(untagged)]
-pub(crate) enum FinalityResponseData {
-    #[serde(rename_all = "camelCase")]
-    Ack { message: String },
-    #[serde(rename_all = "camelCase")]
-    Nack { error_message: String },
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FinalityAck {
+    pub message: String,
 }
 
-impl FinalityResponseData {
-    pub(crate) fn nack(message: impl Into<String>) -> Self {
-        Self::Nack {
-            error_message: message.into(),
-        }
-    }
-}
+/// Finality response data (ACK payload or error payload).
+pub(crate) type FinalityResponseData = ResponseBody<FinalityAck>;
