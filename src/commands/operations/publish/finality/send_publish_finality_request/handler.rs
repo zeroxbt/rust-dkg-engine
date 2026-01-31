@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -90,12 +91,26 @@ impl SendPublishFinalityRequestCommandHandler {
 impl CommandHandler<SendPublishFinalityRequestCommandData>
     for SendPublishFinalityRequestCommandHandler
 {
+    #[instrument(
+        name = "op.publish_finality.send",
+        skip(self, data),
+        fields(
+            operation_id = tracing::field::Empty,
+            protocol = "publish_finality",
+            direction = "send",
+            publish_operation_id = %data.publish_operation_id,
+            blockchain = %data.blockchain,
+            kc_id = %data.knowledge_collection_id,
+            block_number = data.block_number,
+        )
+    )]
     async fn execute(
         &self,
         data: &SendPublishFinalityRequestCommandData,
     ) -> CommandExecutionResult {
         // Generate a new operation ID for the finality request
         let operation_id = Uuid::new_v4();
+        tracing::Span::current().record("operation_id", &tracing::field::display(operation_id));
         // Parse the operation ID from the raw string
         let publish_operation_id = match Uuid::parse_str(&data.publish_operation_id) {
             Ok(uuid) => uuid,
@@ -110,15 +125,12 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         };
 
         // Convert knowledge_collection_id from U256 to u128
-        let knowledge_collection_id: u128 = match data.knowledge_collection_id.try_into() {
-            Ok(id) => id,
-            Err(_) => {
-                tracing::error!(
-                    knowledge_collection_id = %data.knowledge_collection_id,
-                    "Knowledge collection ID exceeds u128 max"
-                );
-                return CommandExecutionResult::Completed;
-            }
+        let Ok(knowledge_collection_id) = data.knowledge_collection_id.try_into() else {
+            tracing::error!(
+            knowledge_collection_id = %data.knowledge_collection_id,
+            "Knowledge collection ID exceeds u128 max"
+            );
+            return CommandExecutionResult::Completed;
         };
 
         // Fetch the publisher address from the transaction
@@ -145,14 +157,14 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             }
         };
 
-        tracing::info!(
+        tracing::debug!(
             operation_id = %operation_id,
             blockchain = %data.blockchain,
             knowledge_collection_id = knowledge_collection_id,
             byte_size = data.byte_size,
             publisher = %publisher_address,
             block_number = data.block_number,
-            "Processing FinalizePublishOperation"
+            "Processing publish finality event"
         );
 
         // Retrieve cached dataset from pending storage
@@ -222,11 +234,11 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             None,
         );
 
-        tracing::info!(
+        tracing::debug!(
             operation_id = %operation_id,
             publish_operation_id = %publish_operation_id,
             ual = %ual,
-            "Inserting Knowledge Collection to the Triple Store's dkg repository."
+            "Inserting knowledge collection into triple store"
         );
 
         let total_triples = match self
@@ -239,7 +251,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                     operation_id = %operation_id,
                     ual = %ual,
                     total_triples = count,
-                    "Knowledge Collection has been successfully inserted to the Triple Store."
+                    "Knowledge collection inserted into triple store"
                 );
                 count
             }
@@ -278,10 +290,10 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                 "Failed to increment triples count, continuing anyway"
             );
         } else {
-            tracing::info!(
+            tracing::debug!(
                 operation_id = %operation_id,
                 total_triples = total_triples,
-                "Number of triples added to the database +{}", total_triples
+                "Triples counter incremented"
             );
         }
 
@@ -346,11 +358,11 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
 
         match result {
             Ok(ResponseBody::Ack(_)) => {
-                tracing::info!(
+                tracing::debug!(
                     operation_id = %operation_id,
                     publish_operation_id = %publish_operation_id,
                     peer = %publisher_peer_id,
-                    "Sent finality request to publisher"
+                    "Finality request acknowledged by publisher"
                 );
             }
             Ok(ResponseBody::Error(_)) => {

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use libp2p::PeerId;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -62,6 +63,18 @@ impl HandlePublishFinalityRequestCommandHandler {
 impl CommandHandler<HandlePublishFinalityRequestCommandData>
     for HandlePublishFinalityRequestCommandHandler
 {
+    #[instrument(
+        name = "op.publish_finality.recv",
+        skip(self, data),
+        fields(
+            operation_id = %data.operation_id,
+            protocol = "publish_finality",
+            direction = "recv",
+            publish_operation_id = %data.publish_store_operation_id,
+            ual = %data.ual,
+            remote_peer = %data.remote_peer_id,
+        )
+    )]
     async fn execute(
         &self,
         data: &HandlePublishFinalityRequestCommandData,
@@ -71,23 +84,15 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
         let publish_store_operation_id = &data.publish_store_operation_id;
         let remote_peer_id = &data.remote_peer_id;
 
-        tracing::info!(
-            operation_id = %publish_finality_operation_id,
-            publish_store_operation_id = %publish_store_operation_id,
-            ual = %ual,
-            remote_peer_id = %remote_peer_id,
-            "Handling finality request from storage node"
-        );
-
         // Retrieve the response channel
         let Some(channel) = self
             .response_channels
             .retrieve(remote_peer_id, publish_finality_operation_id)
         else {
-            tracing::error!(
+            tracing::warn!(
                 operation_id = %publish_finality_operation_id,
                 peer = %remote_peer_id,
-                "No cached response channel found for finality request. Channel may have expired."
+                "Response channel not found; finality request may have expired"
             );
             return CommandExecutionResult::Completed;
         };
@@ -128,7 +133,7 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
             return CommandExecutionResult::Completed;
         }
 
-        tracing::info!(
+        tracing::debug!(
             operation_id = %publish_finality_operation_id,
             publish_operation_id = %publish_store_operation_id,
             ual = %ual,
@@ -146,11 +151,11 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
         self.send_ack(channel, publish_finality_operation_id, ual)
             .await;
 
-        tracing::info!(
+        tracing::debug!(
             operation_id = %publish_finality_operation_id,
             peer = %remote_peer_id,
             ual = %ual,
-            "Finality request handled successfully"
+            "Finality request handled"
         );
 
         CommandExecutionResult::Completed

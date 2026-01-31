@@ -104,29 +104,41 @@ impl DialPeersCommandHandler {
 pub(crate) struct DialPeersCommandData;
 
 impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
+    #[tracing::instrument(
+        name = "periodic.dial_peers",
+        skip(self),
+        fields(
+            own_peer_id = tracing::field::Empty,
+            total_peers = tracing::field::Empty,
+            connected = tracing::field::Empty,
+            to_discover = tracing::field::Empty,
+        )
+    )]
     async fn execute(&self, _: &DialPeersCommandData) -> CommandExecutionResult {
         let repeat = || CommandExecutionResult::Repeat {
             delay: DIAL_PEERS_PERIOD,
         };
         let own_peer_id = *self.network_manager.peer_id();
+        tracing::Span::current().record("own_peer_id", &tracing::field::display(&own_peer_id));
 
         // Get all peer IDs from shard table
         let all_peers = match self.get_shard_peer_ids().await {
             Ok(peers) => peers,
             Err(e) => {
-                tracing::error!(error = %e);
+                tracing::error!(error = %e, "Failed to load shard peer IDs");
                 return repeat();
             }
         };
 
         let all_peers_set: HashSet<PeerId> = all_peers.iter().copied().collect();
         let total_peers = all_peers.len();
+        tracing::Span::current().record("total_peers", &tracing::field::display(total_peers));
 
         // Get currently connected peers
         let connected_peers = match self.get_connected_shard_peers(&all_peers_set).await {
             Ok(peers) => peers,
             Err(e) => {
-                tracing::error!(error = %e);
+                tracing::error!(error = %e, "Failed to load connected peers");
                 return repeat();
             }
         };
@@ -134,6 +146,15 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
         // Filter to peers we need to discover
         let peers_to_find =
             self.filter_peers_for_discovery(all_peers, &own_peer_id, &connected_peers);
+
+        tracing::Span::current().record(
+            "connected",
+            &tracing::field::display(connected_peers.len()),
+        );
+        tracing::Span::current().record(
+            "to_discover",
+            &tracing::field::display(peers_to_find.len()),
+        );
 
         if peers_to_find.is_empty() {
             tracing::debug!(
@@ -144,8 +165,8 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
             return repeat();
         }
 
-        tracing::info!(
-            count = peers_to_find.len(),
+        tracing::debug!(
+            to_discover = peers_to_find.len(),
             connected = connected_peers.len(),
             "discovering disconnected peers via DHT"
         );

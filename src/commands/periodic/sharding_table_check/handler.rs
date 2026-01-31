@@ -185,8 +185,17 @@ impl ShardingTableCheckCommandHandler {
 pub(crate) struct ShardingTableCheckCommandData;
 
 impl CommandHandler<ShardingTableCheckCommandData> for ShardingTableCheckCommandHandler {
+    #[tracing::instrument(
+        name = "periodic.sharding_table_check",
+        skip(self),
+        fields(blockchain_count = tracing::field::Empty)
+    )]
     async fn execute(&self, _: &ShardingTableCheckCommandData) -> CommandExecutionResult {
         let blockchain_ids = self.blockchain_manager.get_blockchain_ids();
+        tracing::Span::current().record(
+            "blockchain_count",
+            &tracing::field::display(blockchain_ids.len()),
+        );
 
         let futures = blockchain_ids
             .iter()

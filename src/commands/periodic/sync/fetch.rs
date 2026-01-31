@@ -62,7 +62,7 @@ pub(crate) async fn fetch_task(
                 tracing::error!(
                     blockchain_id = %blockchain_id,
                     error = %e,
-                    "[DKG SYNC] Fetch: failed to get shard peers"
+                    "Fetch: failed to get shard peers"
                 );
                 // Drain receiver and mark all as failed
                 while let Some(batch) = rx.recv().await {
@@ -75,7 +75,7 @@ pub(crate) async fn fetch_task(
     if peers.is_empty() {
         tracing::warn!(
             blockchain_id = %blockchain_id,
-            "[DKG SYNC] Fetch: no peers available"
+            "Fetch: no peers available"
         );
         while let Some(batch) = rx.recv().await {
             failures.extend(batch.iter().map(|kc| kc.kc_id));
@@ -92,7 +92,7 @@ pub(crate) async fn fetch_task(
             blockchain_id = %blockchain_id,
             found = peers.len(),
             required = min_required_peers,
-            "[DKG SYNC] Fetch: not enough peers available"
+            "Fetch: not enough peers available"
         );
         while let Some(batch) = rx.recv().await {
             failures.extend(batch.iter().map(|kc| kc.kc_id));
@@ -130,19 +130,19 @@ pub(crate) async fn fetch_task(
 
             // Send fetched KCs to insert stage
             if !fetched.is_empty() {
-                tracing::info!(
-                    blockchain_id = %blockchain_id,
-                    batch_size = to_fetch.len(),
-                    fetched_count = fetched.len(),
-                    failed_count = failures.len(),
-                    fetch_ms = fetch_start.elapsed().as_millis() as u64,
-                    total_received,
-                    total_fetched,
-                    elapsed_ms = task_start.elapsed().as_millis() as u64,
-                    "[DKG SYNC] Fetch: sending batch to insert stage"
-                );
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            batch_size = to_fetch.len(),
+            fetched_count = fetched.len(),
+            failed_count = failures.len(),
+            fetch_ms = fetch_start.elapsed().as_millis() as u64,
+            total_received,
+            total_fetched,
+            elapsed_ms = task_start.elapsed().as_millis() as u64,
+            "Fetch: sending batch to insert stage"
+        );
                 if tx.send(fetched).await.is_err() {
-                    tracing::debug!("[DKG SYNC] Fetch: insert stage receiver dropped, stopping");
+                    tracing::debug!("Fetch: insert stage receiver dropped, stopping");
                     failures.extend(accumulated.iter().map(|kc| kc.kc_id));
                     return FetchStats { failures };
                 }
@@ -172,24 +172,24 @@ pub(crate) async fn fetch_task(
         failures.extend(batch_failures);
 
         if !fetched.is_empty() {
-            tracing::info!(
+            tracing::debug!(
                 blockchain_id = %blockchain_id,
                 remaining = accumulated.len(),
                 fetched_count = fetched.len(),
                 final_failures = failures.len(),
                 fetch_ms = fetch_start.elapsed().as_millis() as u64,
-                "[DKG SYNC] Fetch: flushing remaining KCs"
+                "Fetch: flushing remaining KCs"
             );
             let _ = tx.send(fetched).await;
         }
     }
 
-    tracing::info!(
+    tracing::debug!(
         blockchain_id = %blockchain_id,
         total_ms = task_start.elapsed().as_millis() as u64,
         total_fetched,
         failures = failures.len(),
-        "[DKG SYNC] Fetch task completed"
+        "Fetch task completed"
     );
 
     FetchStats { failures }
@@ -319,7 +319,7 @@ async fn fetch_kc_batch_from_network(
     // Process responses as they complete, adding new peers as slots free up
     while let Some((peer, result, elapsed)) = futures.next().await {
         // Create a span for this peer's response
-        let peer_span = tracing::info_span!(
+        let peer_span = tracing::debug_span!(
             "peer_response",
             peer_id = %peer,
             latency_ms = elapsed.as_millis() as u64,
@@ -372,7 +372,7 @@ async fn fetch_kc_batch_from_network(
                 }
 
                 peer_span.record("valid_kcs", valid_count);
-                peer_span.record("status", "ok");
+                peer_span.record("status", &tracing::field::display("ok"));
 
                 // Record peer latency for successful responses with valid data
                 if valid_count > 0 {
@@ -386,11 +386,12 @@ async fn fetch_kc_batch_from_network(
             }
             Ok(ResponseBody::Error(_)) => {
                 peer_span.record("valid_kcs", 0usize);
-                peer_span.record("status", "nack");
+                peer_span.record("status", &tracing::field::display("nack"));
             }
             Err(e) => {
+                let status = e.to_string();
                 peer_span.record("valid_kcs", 0usize);
-                peer_span.record("status", e.to_string().as_str());
+                peer_span.record("status", &tracing::field::display(&status));
                 peer_performance_tracker.record_failure(&peer);
             }
         }

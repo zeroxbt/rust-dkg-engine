@@ -28,9 +28,13 @@ pub(crate) use token::Token;
 use super::provider::BlockchainProvider;
 use crate::managers::blockchain::{BlockchainConfig, ContractName, error::BlockchainError};
 
-/// Multicall3 contract address - same on all EVM chains
+/// Multicall3 contract address - standard address on most EVM chains.
 /// See: https://www.multicall3.com/
 const MULTICALL3_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
+/// NeuroWeb testnet (otp:20430) Multicall3 address.
+const NEUROWEB_TESTNET_MULTICALL3_ADDRESS: &str = "0x13e970420f3534A9C25309ebF81b22f8294D6162";
+/// NeuroWeb mainnet (otp:2043) Multicall3 address.
+const NEUROWEB_MAINNET_MULTICALL3_ADDRESS: &str = "0xDd0192E1C876ec50F08F4D20f121283cd89985a5";
 
 pub(crate) struct Contracts {
     hub: Hub::HubInstance<BlockchainProvider>,
@@ -331,11 +335,18 @@ pub(crate) async fn initialize_contracts(
             provider.clone(),
         )),
         multicall3: Multicall3::new(
-            MULTICALL3_ADDRESS
-                .parse()
-                .map_err(|_| BlockchainError::InvalidAddress {
-                    address: MULTICALL3_ADDRESS.to_string(),
-                })?,
+            {
+                let address = match config.blockchain_id().chain_id() {
+                    Some(20430) => NEUROWEB_TESTNET_MULTICALL3_ADDRESS,
+                    Some(2043) => NEUROWEB_MAINNET_MULTICALL3_ADDRESS,
+                    _ => MULTICALL3_ADDRESS,
+                };
+                address
+                    .parse()
+                    .map_err(|_| BlockchainError::InvalidAddress {
+                        address: address.to_string(),
+                    })?
+            },
             provider.clone(),
         ),
     })

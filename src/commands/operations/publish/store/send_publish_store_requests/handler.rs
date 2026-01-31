@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use futures::{StreamExt, stream::FuturesUnordered};
 use libp2p::PeerId;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -78,6 +79,20 @@ impl SendPublishStoreRequestsCommandHandler {
 impl CommandHandler<SendPublishStoreRequestsCommandData>
     for SendPublishStoreRequestsCommandHandler
 {
+    #[instrument(
+        name = "op.publish_store.send",
+        skip(self, data),
+        fields(
+            operation_id = %data.operation_id,
+            protocol = "publish_store",
+            direction = "send",
+            blockchain = %data.blockchain,
+            dataset_root = %data.dataset_root,
+            min_ack_responses = data.min_ack_responses,
+            dataset_public_len = data.dataset.public.len(),
+            peer_count = tracing::field::Empty,
+        )
+    )]
     async fn execute(&self, data: &SendPublishStoreRequestsCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;
@@ -106,17 +121,6 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
 
         let min_ack_responses = default_min.max(chain_min).max(user_min);
 
-        tracing::info!(
-            operation_id = %operation_id,
-            blockchain = %blockchain,
-            dataset_root = %dataset_root,
-            default_min = default_min,
-            chain_min = chain_min,
-            user_min = user_min,
-            effective_min_ack = min_ack_responses,
-            "Starting SendPublishRequests command"
-        );
-
         let shard_nodes = match self
             .repository_manager
             .shard_repository()
@@ -124,7 +128,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             .await
         {
             Ok(shard_nodes) => {
-                tracing::info!(
+                tracing::debug!(
                     operation_id = %operation_id,
                     shard_nodes_count = shard_nodes.len(),
                     "Retrieved shard nodes from repository"
@@ -168,8 +172,9 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         } else {
             remote_peers.len() as u16
         };
+        tracing::Span::current().record("peer_count", &tracing::field::display(total_peers));
 
-        tracing::info!(
+        tracing::debug!(
             operation_id = %operation_id,
             total_peers = total_peers,
             remote_peers = remote_peers.len(),
@@ -250,7 +255,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
 
         // Handle self-node signature if we're in the shard
         if self_in_shard {
-            tracing::info!(
+            tracing::debug!(
                 operation_id = %operation_id,
                 peer = %my_peer_id,
                 "Processing self-node (publisher), handling signature locally"
@@ -265,7 +270,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                     "Failed to handle self-node signature, continuing with other nodes"
                 );
             } else {
-                tracing::info!(
+                tracing::debug!(
                     operation_id = %operation_id,
                     "Self-node signature handled successfully"
                 );
@@ -345,7 +350,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                 operation_id = %operation_id,
                 success_count = success_count,
                 failure_count = failure_count,
-                "Publish operation completed - success threshold reached"
+                "Publish store completed"
             );
 
             if let Err(e) = self
@@ -368,7 +373,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             "Failed to get enough signatures. Success: {}, Failed: {}, Required: {}",
             success_count, failure_count, min_ack_responses
         );
-        tracing::warn!(operation_id = %operation_id, %error_message);
+        tracing::warn!(operation_id = %operation_id, %error_message, "Publish store failed");
         self.publish_store_operation_status_service
             .mark_failed(operation_id, error_message)
             .await;

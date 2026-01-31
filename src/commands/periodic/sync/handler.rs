@@ -111,7 +111,7 @@ impl SyncCommandHandler {
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,
                 existing_count,
-                "[DKG SYNC] Queue already has enough pending KCs, skipping enqueue"
+                "Queue already has enough pending KCs, skipping enqueue"
             );
             0
         };
@@ -119,7 +119,7 @@ impl SyncCommandHandler {
         let pending = pending_kcs.len();
 
         if pending == 0 {
-            tracing::debug!("[DKG SYNC] No pending KCs");
+            tracing::debug!("No pending KCs");
             return Ok(ContractSyncResult {
                 enqueued,
                 pending: 0,
@@ -165,7 +165,7 @@ impl SyncCommandHandler {
             kcs_fetch_failed = fetch_failures_count,
             kcs_synced = insert_stats.synced.len(),
             kcs_insert_failed = insert_failures_count,
-            "[DKG SYNC] Contract sync timing breakdown (pipelined)"
+            "Contract sync timing breakdown (pipelined)"
         );
 
         Ok(ContractSyncResult {
@@ -290,7 +290,7 @@ impl SyncCommandHandler {
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,
                 error = %e,
-                "[DKG SYNC] Failed to remove already-synced KCs from queue"
+                "Failed to remove already-synced KCs from queue"
             );
         }
 
@@ -308,7 +308,7 @@ impl SyncCommandHandler {
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,
                 error = %e,
-                "[DKG SYNC] Failed to remove expired KCs from queue"
+                "Failed to remove expired KCs from queue"
             );
         }
 
@@ -326,7 +326,7 @@ impl SyncCommandHandler {
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,
                 error = %e,
-                "[DKG SYNC] Failed to remove synced KCs from queue"
+                "Failed to remove synced KCs from queue"
             );
         }
 
@@ -343,7 +343,7 @@ impl SyncCommandHandler {
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,
                 error = %e,
-                "[DKG SYNC] Failed to increment retry count for failed KCs"
+                "Failed to increment retry count for failed KCs"
             );
         }
     }
@@ -359,7 +359,7 @@ impl SyncCommandHandler {
         tracing::debug!(
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
-            "[DKG SYNC] Fetching latest KC ID from chain..."
+            "Fetching latest KC ID from chain..."
         );
 
         let latest_on_chain = self
@@ -372,13 +372,13 @@ impl SyncCommandHandler {
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
             latest_on_chain,
-            "[DKG SYNC] Got latest KC ID from chain"
+            "Got latest KC ID from chain"
         );
 
         tracing::debug!(
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
-            "[DKG SYNC] Fetching sync progress from DB..."
+            "Fetching sync progress from DB..."
         );
 
         let last_checked = self
@@ -394,14 +394,14 @@ impl SyncCommandHandler {
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
             last_checked,
-            "[DKG SYNC] Got sync progress from DB"
+            "Got sync progress from DB"
         );
 
         if latest_on_chain <= last_checked {
             tracing::debug!(
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,
-                "[DKG SYNC] No new KCs to enqueue (latest_on_chain <= last_checked)"
+                "No new KCs to enqueue (latest_on_chain <= last_checked)"
             );
             return Ok(0);
         }
@@ -442,6 +442,11 @@ impl SyncCommandData {
 const SYNC_NO_PEERS_RETRY_DELAY: Duration = Duration::from_secs(5);
 
 impl CommandHandler<SyncCommandData> for SyncCommandHandler {
+    #[tracing::instrument(
+        name = "periodic.sync",
+        skip(self, data),
+        fields(blockchain_id = %data.blockchain_id)
+    )]
     async fn execute(&self, data: &SyncCommandData) -> CommandExecutionResult {
         // Check if we have enough connected peers before attempting sync
         let connected_peers = match self.network_manager.connected_peers().await {
@@ -450,7 +455,7 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
                 tracing::warn!(
                     blockchain_id = %data.blockchain_id,
                     error = %e,
-                    "[DKG SYNC] Failed to get connected peers, retrying later"
+                    "Failed to get connected peers, retrying later"
                 );
                 return CommandExecutionResult::Repeat {
                     delay: SYNC_NO_PEERS_RETRY_DELAY,
@@ -459,21 +464,21 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
         };
 
         if connected_peers.len() < batch_get::CONCURRENT_PEERS {
-            tracing::info!(
+            tracing::debug!(
                 blockchain_id = %data.blockchain_id,
                 connected = connected_peers.len(),
                 required = batch_get::CONCURRENT_PEERS,
-                "[DKG SYNC] Not enough peers connected yet, retrying later"
+                "Not enough peers connected yet, retrying later"
             );
             return CommandExecutionResult::Repeat {
                 delay: SYNC_NO_PEERS_RETRY_DELAY,
             };
         }
 
-        tracing::info!(
+        tracing::debug!(
             blockchain_id = %data.blockchain_id,
             connected_peers = connected_peers.len(),
-            "[DKG SYNC] Starting sync cycle"
+            "Starting sync cycle"
         );
 
         let contract_addresses = match self
@@ -489,7 +494,7 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
                 tracing::error!(
                     blockchain_id = %data.blockchain_id,
                     error = %e,
-                    "[DKG SYNC] Failed to get KC storage contract addresses"
+                    "Failed to get KC storage contract addresses"
                 );
                 return CommandExecutionResult::Repeat {
                     delay: SYNC_PERIOD_IDLE,
@@ -500,7 +505,7 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
         tracing::debug!(
             blockchain_id = %data.blockchain_id,
             contract_count = contract_addresses.len(),
-            "[DKG SYNC] Found KC storage contracts"
+            "Found KC storage contracts"
         );
 
         // Sync each contract in parallel
@@ -532,7 +537,7 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
                             pending = r.pending,
                             synced = r.synced,
                             failed = r.failed,
-                            "[DKG SYNC] Contract sync completed"
+                            "Contract sync completed"
                         );
                     }
                 }
@@ -541,7 +546,7 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
                         blockchain_id = %data.blockchain_id,
                         contract = ?contract_addresses[i],
                         error = %e,
-                        "[DKG SYNC] Failed to sync contract"
+                        "Failed to sync contract"
                     );
                 }
             }
@@ -554,7 +559,7 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
                 total_pending,
                 total_synced,
                 total_failed,
-                "[DKG SYNC] Sync cycle summary"
+                "Sync cycle summary"
             );
         }
 
@@ -566,13 +571,13 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
                 blockchain_id = %data.blockchain_id,
                 total_pending,
                 total_enqueued,
-                "[DKG SYNC] Still catching up, scheduling immediate resync"
+                "Still catching up, scheduling immediate resync"
             );
             SYNC_PERIOD_CATCHING_UP
         } else {
-            tracing::info!(
+            tracing::debug!(
                 blockchain_id = %data.blockchain_id,
-                "[DKG SYNC] Caught up, scheduling idle poll"
+                "Caught up, scheduling idle poll"
             );
             SYNC_PERIOD_IDLE
         };

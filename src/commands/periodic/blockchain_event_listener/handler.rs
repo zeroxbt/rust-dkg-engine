@@ -132,12 +132,12 @@ impl BlockchainEventListenerCommandHandler {
                 let blocks_behind = current_block.saturating_sub(last_checked_block);
                 if blocks_behind > self.max_blocks_to_sync {
                     tracing::warn!(
-                        "Extended downtime detected for {} ({}) on {}: {} blocks behind (max: {}). Skipping missed events.",
-                        contract_name.as_str(),
-                        contract_address_str,
-                        blockchain_id,
+                        blockchain = %blockchain_id,
+                        contract = %contract_name.as_str(),
+                        address = %contract_address_str,
                         blocks_behind,
-                        self.max_blocks_to_sync
+                        max_blocks = self.max_blocks_to_sync,
+                        "Extended downtime detected; skipping missed events"
                     );
 
                     self.repository_manager
@@ -192,9 +192,9 @@ impl BlockchainEventListenerCommandHandler {
 
         if !all_events.is_empty() {
             tracing::debug!(
-                "Fetched {} events for blockchain {}",
-                all_events.len(),
-                blockchain_id
+                blockchain = %blockchain_id,
+                event_count = all_events.len(),
+                "Fetched blockchain events"
             );
 
             // Sort events by (blockNumber, transactionIndex, logIndex)
@@ -250,9 +250,9 @@ impl BlockchainEventListenerCommandHandler {
     ) -> Result<(), BlockchainError> {
         let block_number = event.log().block_number.unwrap_or_default();
         tracing::trace!(
-            "Processing event from {} in block {}",
-            event.contract_name().as_str(),
-            block_number
+            contract = %event.contract_name().as_str(),
+            block_number,
+            "Processing event"
         );
 
         let log = event.log();
@@ -293,8 +293,8 @@ impl BlockchainEventListenerCommandHandler {
             },
             None => {
                 tracing::warn!(
-                    "Failed to decode event for contract {}",
-                    event.contract_name().as_str()
+                    contract = %event.contract_name().as_str(),
+                    "Failed to decode contract event"
                 );
             }
         }
@@ -310,10 +310,10 @@ impl BlockchainEventListenerCommandHandler {
         filter: &ParameterChangedFilter,
     ) -> Result<(), BlockchainError> {
         tracing::debug!(
-            "ParameterChanged on {}: {} = {}",
-            blockchain_id,
-            filter.parameterName,
-            filter.parameterValue
+            blockchain = %blockchain_id,
+            parameter = %filter.parameterName,
+            value = %filter.parameterValue,
+            "Parameter changed"
         );
         // TODO: Update contract call cache with new parameter values
         Ok(())
@@ -325,10 +325,10 @@ impl BlockchainEventListenerCommandHandler {
         filter: &NewContractFilter,
     ) -> Result<(), BlockchainError> {
         tracing::info!(
-            "NewContract on {}: {} at {:?}",
-            blockchain_id,
-            filter.contractName,
-            filter.newContractAddress
+            blockchain = %blockchain_id,
+            contract = %filter.contractName,
+            address = ?filter.newContractAddress,
+            "New contract deployed"
         );
 
         // Silently skip contracts not tracked by this node
@@ -409,16 +409,19 @@ impl BlockchainEventListenerCommandHandler {
         log: &alloy::rpc::types::Log,
     ) {
         tracing::info!(
-            "KnowledgeCollectionCreated on {}: id={}, merkleRoot=0x{}, byteSize={}",
-            blockchain_id,
-            filter.id,
-            to_hex_string(filter.merkleRoot),
-            filter.byteSize
+            blockchain = %blockchain_id,
+            kc_id = %filter.id,
+            merkle_root = %to_hex_string(filter.merkleRoot),
+            byte_size = %filter.byteSize,
+            "Knowledge collection created"
         );
 
         // Extract minimal data from the log - parsing happens in the command handler
         let Some(transaction_hash) = log.transaction_hash else {
-            tracing::error!("Missing transaction hash in KnowledgeCollectionCreated log");
+            tracing::error!(
+                blockchain = %blockchain_id,
+                "Missing transaction hash in KnowledgeCollectionCreated log"
+            );
             return;
         };
 
@@ -456,11 +459,27 @@ impl BlockchainEventListenerCommandData {
 }
 
 impl CommandHandler<BlockchainEventListenerCommandData> for BlockchainEventListenerCommandHandler {
+    #[tracing::instrument(
+        name = "periodic.blockchain_events",
+        skip(self, data),
+        fields(
+            blockchain_id = %data.blockchain_id,
+            poll_interval_ms = tracing::field::Empty,
+            max_blocks_to_sync = tracing::field::Empty,
+        )
+    )]
     async fn execute(&self, data: &BlockchainEventListenerCommandData) -> CommandExecutionResult {
         let blockchain = &data.blockchain_id;
+        tracing::Span::current().record(
+            "poll_interval_ms",
+            &tracing::field::display(self.poll_interval.as_millis()),
+        );
+        tracing::Span::current().record(
+            "max_blocks_to_sync",
+            &tracing::field::display(self.max_blocks_to_sync),
+        );
 
         tracing::trace!(
-            blockchain = %blockchain,
             poll_interval_ms = self.poll_interval.as_millis(),
             "Running blockchain event listener"
         );

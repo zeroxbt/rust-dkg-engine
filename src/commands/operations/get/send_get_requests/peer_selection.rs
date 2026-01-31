@@ -19,10 +19,10 @@ impl SendGetRequestsCommandHandler {
             .await
         {
             Ok(nodes) => {
-                tracing::info!(
+                tracing::debug!(
                     operation_id = %operation_id,
                     shard_nodes_count = nodes.len(),
-                    "Retrieved shard nodes from repository"
+                    "Loaded shard nodes from repository"
                 );
                 nodes
             }
@@ -46,7 +46,7 @@ impl SendGetRequestsCommandHandler {
 
         // Apply paranet filtering if paranet_ual is provided
         let peers: Vec<PeerId> = if let Some(paranet_ual) = paranet_ual {
-            tracing::info!(
+            tracing::debug!(
                 operation_id = %operation_id,
                 paranet_ual = %paranet_ual,
                 "Applying paranet node filtering"

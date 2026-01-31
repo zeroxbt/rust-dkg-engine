@@ -2,6 +2,7 @@ use std::{sync::Arc, time::Instant};
 
 use futures::{StreamExt, stream::FuturesUnordered};
 use libp2p::PeerId;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -11,7 +12,7 @@ use crate::{
         blockchain::BlockchainManager,
         network::{NetworkError, NetworkManager, messages::GetRequestData},
         repository::RepositoryManager,
-        triple_store::Assertion,
+        triple_store::{Assertion, TokenIds},
     },
     operations::{GetOperationResult, protocols},
     services::{
@@ -74,20 +75,82 @@ impl SendGetRequestsCommandHandler {
 }
 
 impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandler {
+    #[instrument(
+        name = "op.get.send",
+        skip(self, data),
+        fields(
+            operation_id = %data.operation_id,
+            protocol = "get",
+            direction = "send",
+            ual = %data.ual,
+            paranet = ?data.paranet_ual,
+            visibility = ?data.visibility,
+            include_metadata = data.include_metadata,
+            blockchain = tracing::field::Empty,
+            peer_count = tracing::field::Empty,
+        )
+    )]
     async fn execute(&self, data: &SendGetRequestsCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;
         let ual = &data.ual;
 
-        tracing::info!(
-            operation_id = %operation_id,
-            ual = %ual,
-            include_metadata = data.include_metadata,
-            visibility = ?data.visibility,
-            "Starting SendGetRequests command"
+        let parsed_ual = match self.parse_ual_phase(operation_id, ual).await {
+            Ok(parsed) => parsed,
+            Err(result) => return result,
+        };
+        tracing::Span::current().record(
+            "blockchain",
+            &tracing::field::display(&parsed_ual.blockchain),
         );
 
-        // Parse the UAL
-        let parsed_ual = match parse_ual(ual) {
+        if let Err(result) = self.validate_onchain_phase(operation_id, &parsed_ual).await {
+            return result;
+        }
+
+        let token_ids = self.resolve_token_ids(operation_id, &parsed_ual).await;
+
+        match self
+            .local_query_phase(
+                operation_id,
+                &parsed_ual,
+                &token_ids,
+                data.visibility,
+                data.include_metadata,
+            )
+            .await
+        {
+            Ok(LocalQueryOutcome::Completed) => return CommandExecutionResult::Completed,
+            Ok(LocalQueryOutcome::Continue) => {}
+            Err(result) => return result,
+        }
+
+        tracing::debug!(
+            operation_id = %operation_id,
+            "Local cache miss; querying network"
+        );
+
+        self.network_query_phase(operation_id, ual, &parsed_ual, token_ids, data)
+            .await
+    }
+}
+
+enum LocalQueryOutcome {
+    Completed,
+    Continue,
+}
+
+impl SendGetRequestsCommandHandler {
+    #[instrument(
+        name = "op.get.send.parse",
+        skip(self, ual),
+        fields(operation_id = %operation_id, ual = %ual)
+    )]
+    async fn parse_ual_phase(
+        &self,
+        operation_id: Uuid,
+        ual: &str,
+    ) -> Result<ParsedUal, CommandExecutionResult> {
+        match parse_ual(ual) {
             Ok(parsed) => {
                 tracing::debug!(
                     operation_id = %operation_id,
@@ -97,7 +160,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     ka_id = ?parsed.knowledge_asset_id,
                     "Parsed UAL"
                 );
-                parsed
+                Ok(parsed)
             }
             Err(e) => {
                 let error_message = format!("Invalid UAL format: {}", e);
@@ -105,11 +168,25 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                 self.get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
-                return CommandExecutionResult::Completed;
+                Err(CommandExecutionResult::Completed)
             }
-        };
+        }
+    }
 
-        // Validate UAL exists on-chain by checking if it has a publisher
+    #[instrument(
+        name = "op.get.send.validate_onchain",
+        skip(self, parsed_ual),
+        fields(
+            operation_id = %operation_id,
+            blockchain = %parsed_ual.blockchain,
+            kc_id = parsed_ual.knowledge_collection_id,
+        )
+    )]
+    async fn validate_onchain_phase(
+        &self,
+        operation_id: Uuid,
+        parsed_ual: &ParsedUal,
+    ) -> Result<(), CommandExecutionResult> {
         match self
             .blockchain_manager
             .get_knowledge_collection_publisher(
@@ -122,20 +199,24 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             Ok(Some(_publisher)) => {
                 tracing::debug!(
                     operation_id = %operation_id,
-                    kc_id = parsed_ual.knowledge_collection_id,
                     "Knowledge collection validated on-chain"
                 );
+                Ok(())
             }
             Ok(None) => {
                 let error_message = format!(
                     "Knowledge collection {} does not exist on blockchain {}",
                     parsed_ual.knowledge_collection_id, parsed_ual.blockchain
                 );
-                tracing::error!(operation_id = %operation_id, %error_message, "UAL validation failed");
+                tracing::error!(
+                    operation_id = %operation_id,
+                    %error_message,
+                    "UAL validation failed"
+                );
                 self.get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
-                return CommandExecutionResult::Completed;
+                Err(CommandExecutionResult::Completed)
             }
             Err(e) => {
                 // Log warning but continue - collection might be on old storage contract
@@ -144,20 +225,31 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     error = %e,
                     "Failed to validate UAL on-chain, continuing anyway"
                 );
+                Ok(())
             }
         }
+    }
 
-        let token_ids = self.resolve_token_ids(operation_id, &parsed_ual).await;
-
-        // Try local triple store query first (local-first pattern)
+    #[instrument(
+        name = "op.get.send.local",
+        skip(self, parsed_ual, token_ids),
+        fields(
+            operation_id = %operation_id,
+            visibility = ?visibility,
+            include_metadata = include_metadata,
+        )
+    )]
+    async fn local_query_phase(
+        &self,
+        operation_id: Uuid,
+        parsed_ual: &ParsedUal,
+        token_ids: &TokenIds,
+        visibility: Visibility,
+        include_metadata: bool,
+    ) -> Result<LocalQueryOutcome, CommandExecutionResult> {
         let local_result = self
             .triple_store_service
-            .query_assertion(
-                &parsed_ual,
-                &token_ids,
-                data.visibility,
-                data.include_metadata,
-            )
+            .query_assertion(parsed_ual, token_ids, visibility, include_metadata)
             .await;
 
         match local_result {
@@ -170,22 +262,21 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     "Found data locally, validating..."
                 );
 
-                // Validate local result
                 let is_valid = self
                     .get_validation_service
-                    .validate_response(&result.assertion, &parsed_ual, data.visibility)
+                    .validate_response(&result.assertion, parsed_ual, visibility)
                     .await;
 
                 if is_valid {
                     tracing::info!(
                         operation_id = %operation_id,
+                        source = "local",
                         public_count = result.assertion.public.len(),
                         has_private = result.assertion.private.is_some(),
                         has_metadata = result.metadata.is_some(),
-                        "Local data validated, completing operation"
+                        "Get operation completed"
                     );
 
-                    // Build the assertion from local data and store result
                     let assertion = Assertion {
                         public: result.assertion.public.clone(),
                         private: result.assertion.private.clone(),
@@ -197,14 +288,17 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                         .store_result(operation_id, &get_result)
                     {
                         let error_message = format!("Failed to store local result: {}", e);
-                        tracing::error!(operation_id = %operation_id, error = %e, "Failed to store local result");
+                        tracing::error!(
+                            operation_id = %operation_id,
+                            error = %e,
+                            "Failed to store local result"
+                        );
                         self.get_operation_status_service
                             .mark_failed(operation_id, error_message)
                             .await;
-                        return CommandExecutionResult::Completed;
+                        return Err(CommandExecutionResult::Completed);
                     }
 
-                    // Mark operation as completed (local-first success: 1 success, 0 failures)
                     if let Err(e) = self
                         .get_operation_status_service
                         .mark_completed(operation_id)
@@ -217,12 +311,13 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                         );
                     }
 
-                    return CommandExecutionResult::Completed;
+                    Ok(LocalQueryOutcome::Completed)
                 } else {
                     tracing::debug!(
                         operation_id = %operation_id,
-                        "Local data validation failed, querying network"
+                        "Local validation failed; querying network"
                     );
+                    Ok(LocalQueryOutcome::Continue)
                 }
             }
             Err(e) => {
@@ -231,38 +326,52 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     error = %e,
                     "Local triple store query failed; falling back to network"
                 );
+                Ok(LocalQueryOutcome::Continue)
             }
-            Ok(_) => {}
+            Ok(_) => Ok(LocalQueryOutcome::Continue),
         }
+    }
 
-        tracing::debug!(
+    #[instrument(
+        name = "op.get.send.network",
+        skip(self, parsed_ual, token_ids, data),
+        fields(
             operation_id = %operation_id,
-            "Data not found locally, querying network"
-        );
-
+            has_paranet = data.paranet_ual.is_some(),
+            peer_count = tracing::field::Empty,
+            min_ack = protocols::get::MIN_ACK_RESPONSES,
+        )
+    )]
+    async fn network_query_phase(
+        &self,
+        operation_id: Uuid,
+        ual: &str,
+        parsed_ual: &ParsedUal,
+        token_ids: TokenIds,
+        data: &SendGetRequestsCommandData,
+    ) -> CommandExecutionResult {
         let mut peers = match self
-            .load_shard_peers(operation_id, &parsed_ual, data.paranet_ual.as_deref())
+            .load_shard_peers(operation_id, parsed_ual, data.paranet_ual.as_deref())
             .await
         {
             Ok(peers) => peers,
             Err(result) => return result,
         };
+        tracing::Span::current().record("peer_count", &tracing::field::display(peers.len()));
 
-        // Prefer peers with better historical response times.
         self.peer_performance_tracker.sort_by_latency(&mut peers);
 
         let min_required_peers =
             protocols::get::MIN_PEERS.max(protocols::get::MIN_ACK_RESPONSES as usize);
         let total_peers = peers.len();
 
-        tracing::info!(
+        tracing::debug!(
             operation_id = %operation_id,
             total_peers = total_peers,
             has_paranet = data.paranet_ual.is_some(),
-            "Filtered peer IDs for operation"
+            "Selected peers for network query"
         );
 
-        // Check if we have enough peers
         if peers.len() < min_required_peers {
             let error_message = format!(
                 "Unable to find enough nodes for operation: {}. Found {} nodes, need at least {}",
@@ -276,19 +385,17 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             return CommandExecutionResult::Completed;
         }
 
-        // Build the get request data (reusing token_ids from local query)
         let get_request_data = GetRequestData::new(
             parsed_ual.blockchain.clone(),
             format!("{:?}", &parsed_ual.contract),
             parsed_ual.knowledge_collection_id,
             parsed_ual.knowledge_asset_id,
-            ual.clone(),
+            ual.to_string(),
             token_ids,
             data.include_metadata,
             data.paranet_ual.clone(),
         );
 
-        // Send requests to peers with bounded concurrency and process responses as they arrive.
         let mut success_count: u16 = 0;
         let mut failure_count: u16 = 0;
         let min_ack_required = protocols::get::MIN_ACK_RESPONSES;
@@ -359,9 +466,10 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
         if reached_threshold {
             tracing::info!(
                 operation_id = %operation_id,
+                source = "network",
                 success_count = success_count,
                 failure_count = failure_count,
-                "Get operation completed - success threshold reached"
+                "Get operation completed"
             );
 
             if let Err(e) = self
@@ -379,14 +487,13 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             return CommandExecutionResult::Completed;
         }
 
-        // All peer chunks exhausted without meeting success threshold
         let error_message = format!(
             "Failed to get data from network. Success: {}, Failed: {}, Required: {}",
             success_count,
             failure_count,
             protocols::get::MIN_ACK_RESPONSES
         );
-        tracing::warn!(operation_id = %operation_id, %error_message);
+        tracing::warn!(operation_id = %operation_id, %error_message, "Get operation failed");
         self.get_operation_status_service
             .mark_failed(operation_id, error_message)
             .await;

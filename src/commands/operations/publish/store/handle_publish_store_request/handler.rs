@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use libp2p::PeerId;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -72,6 +73,18 @@ impl HandlePublishStoreRequestCommandHandler {
 impl CommandHandler<HandlePublishStoreRequestCommandData>
     for HandlePublishStoreRequestCommandHandler
 {
+    #[instrument(
+        name = "op.publish_store.recv",
+        skip(self, data),
+        fields(
+            operation_id = %data.operation_id,
+            protocol = "publish_store",
+            direction = "recv",
+            blockchain = %data.blockchain,
+            dataset_root = %data.dataset_root,
+            remote_peer = %data.remote_peer_id,
+        )
+    )]
     async fn execute(&self, data: &HandlePublishStoreRequestCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;
@@ -79,21 +92,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
         let remote_peer_id = &data.remote_peer_id;
         let dataset = &data.dataset;
 
-        tracing::info!(
-            operation_id = %operation_id,
-            blockchain = %blockchain,
-            dataset_root = %dataset_root,
-            remote_peer_id = %remote_peer_id,
-            dataset_public_len = dataset.public.len(),
-            "Starting HandlePublishRequest command"
-        );
-
         // Retrieve the response channel
-        tracing::debug!(
-            operation_id = %operation_id,
-            peer = %remote_peer_id,
-            "Attempting to retrieve response channel"
-        );
         let Some(channel) = self
             .response_channels
             .retrieve(remote_peer_id, operation_id)
@@ -105,30 +104,17 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             );
             return CommandExecutionResult::Completed;
         };
-        tracing::debug!(
-            operation_id = %operation_id,
-            peer = %remote_peer_id,
-            "Response channel retrieved successfully"
-        );
-
-        tracing::debug!(
-            operation_id = %operation_id,
-            blockchain = %blockchain,
-            remote_peer_id = %remote_peer_id,
-            "Checking if remote peer exists in shard repository"
-        );
         match self
             .repository_manager
             .shard_repository()
             .get_peer_record(blockchain.as_str(), &remote_peer_id.to_base58())
             .await
         {
-            Ok(Some(record)) => {
-                tracing::info!(
+            Ok(Some(_record)) => {
+                tracing::debug!(
                     operation_id = %operation_id,
                     remote_peer_id = %remote_peer_id,
-                    peer_record = ?record,
-                    "Remote peer found in shard repository"
+                    "Remote peer validated against shard repository"
                 );
             }
             invalid_result => {
@@ -162,13 +148,9 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             }
         };
 
-        tracing::debug!(
-            operation_id = %operation_id,
-            "Calculating merkle root for dataset validation"
-        );
         let computed_dataset_root = validation::calculate_merkle_root(&dataset.public);
 
-        tracing::info!(
+        tracing::debug!(
             operation_id = %operation_id,
             received_dataset_root = %dataset_root,
             computed_dataset_root = %computed_dataset_root,
@@ -196,16 +178,11 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandExecutionResult::Completed;
         }
 
+        let identity_id = self.blockchain_manager.identity_id(blockchain);
         tracing::debug!(
             operation_id = %operation_id,
-            blockchain = %blockchain,
-            "Getting identity ID from blockchain manager"
-        );
-        let identity_id = self.blockchain_manager.identity_id(blockchain);
-        tracing::info!(
-            operation_id = %operation_id,
             identity_id = %identity_id,
-            "Identity ID retrieved successfully"
+            "Identity ID resolved"
         );
 
         let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
@@ -220,11 +197,6 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandExecutionResult::Completed;
         };
 
-        tracing::debug!(
-            operation_id = %operation_id,
-            dataset_root_hex = %dataset_root_hex,
-            "Signing message with blockchain manager"
-        );
         let signature = match self
             .blockchain_manager
             .sign_message(blockchain, dataset_root_hex)
@@ -274,7 +246,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandExecutionResult::Completed;
         }
 
-        tracing::info!(
+        tracing::debug!(
             operation_id = %operation_id,
             peer = %remote_peer_id,
             identity_id = %identity_id,
@@ -284,10 +256,10 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
         self.send_ack(channel, operation_id, identity_id, signature)
             .await;
 
-        tracing::info!(
+        tracing::debug!(
             operation_id = %operation_id,
             peer = %remote_peer_id,
-            "Store request validated and ACK sent successfully"
+            "Store request validated; ACK sent"
         );
 
         CommandExecutionResult::Completed

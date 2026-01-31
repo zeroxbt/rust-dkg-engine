@@ -82,29 +82,29 @@ pub(crate) async fn filter_task(
 
         // Send to fetch stage (blocks if channel full - backpressure)
         if !batch_result.to_sync.is_empty() {
-            tracing::info!(
+            tracing::debug!(
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,
                 batch_size = batch_result.to_sync.len(),
                 processed,
                 total_kcs,
                 elapsed_ms = task_start.elapsed().as_millis() as u64,
-                "[DKG SYNC] Filter: sending batch to fetch stage"
+                "Filter: sending batch to fetch stage"
             );
             if tx.send(batch_result.to_sync).await.is_err() {
-                tracing::debug!("[DKG SYNC] Filter: fetch stage receiver dropped, stopping");
+                tracing::debug!("Filter: fetch stage receiver dropped, stopping");
                 break;
             }
         }
     }
 
-    tracing::info!(
+    tracing::debug!(
         blockchain_id = %blockchain_id,
         contract = %contract_addr_str,
         total_ms = task_start.elapsed().as_millis() as u64,
         already_synced = already_synced.len(),
         expired = expired.len(),
-        "[DKG SYNC] Filter task completed"
+        "Filter task completed"
     );
 
     FilterStats {
@@ -281,7 +281,7 @@ async fn fetch_rpc_data_and_filter(
                 contract = %contract_addr_str,
                 error = %e,
                 kc_count = kc_ids.len(),
-                "[DKG SYNC] Multicall failed, will retry later"
+                "Multicall failed, will retry later"
             );
             return Vec::new();
         }
@@ -305,7 +305,7 @@ async fn fetch_rpc_data_and_filter(
                 kc_id = kc_id,
                 current_epoch = current,
                 end_epoch = end,
-                "[DKG SYNC] Filter: KC is expired, skipping"
+                "Filter: KC is expired, skipping"
             );
             expired.push(*kc_id);
             continue;
@@ -319,7 +319,7 @@ async fn fetch_rpc_data_and_filter(
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,
                 kc_id = kc_id,
-                "[DKG SYNC] KC has no token range on chain, skipping"
+                "KC has no token range on chain, skipping"
             );
             continue;
         };

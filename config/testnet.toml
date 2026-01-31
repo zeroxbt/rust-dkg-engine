@@ -12,7 +12,7 @@ app_data_path = "data"
 # ============================================
 [logger]
 level = "rust_ot_node=info"  # Production log level
-format = "json"              # Structured JSON for log aggregation
+format = "pretty"            # Human-readable format
 
 # ============================================
 # HTTP API Configuration

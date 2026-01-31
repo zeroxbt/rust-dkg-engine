@@ -1,5 +1,10 @@
 use super::*;
 
+use alloy::primitives::{Bytes, TxKind};
+use alloy::providers::Provider;
+use alloy::rpc::types::transaction::{TransactionInput, TransactionRequest};
+use futures::future::join_all;
+
 impl EvmChain {
     /// Execute a batch of heterogeneous calls using Multicall3.
     ///
@@ -29,32 +34,74 @@ impl EvmChain {
             return Ok(Vec::new());
         }
 
-        let contracts = self.contracts().await;
         let chunks: Vec<_> = batch.into_chunks().collect();
 
-        // Execute all chunks in parallel
-        let futures: Vec<_> = chunks
-            .into_iter()
-            .map(|chunk| {
-                let multicall3 = contracts.multicall3();
-                async move {
-                    self.rpc_call(multicall3.aggregate3(chunk).call())
-                        .await
-                        .map_err(|e| {
-                            BlockchainError::Custom(format!("Multicall3 aggregate3 failed: {}", e))
-                        })
+        let mut all_results = Vec::new();
+        let mut warned_fallback = false;
+
+        for chunk in chunks {
+            let contracts = self.contracts().await;
+            let multicall3 = contracts.multicall3();
+            let multicall_result = self
+                .rpc_call(multicall3.aggregate3(chunk.clone()).call())
+                .await;
+
+            match multicall_result {
+                Ok(chunk_results) => {
+                    all_results.extend(
+                        chunk_results.iter().map(MulticallResult::from_result),
+                    );
                 }
-            })
-            .collect();
-
-        let results = futures::future::try_join_all(futures).await?;
-
-        // Flatten results preserving order
-        let all_results: Vec<MulticallResult> = results
-            .iter()
-            .flat_map(|chunk_results| chunk_results.iter().map(MulticallResult::from_result))
-            .collect();
+                Err(e) => {
+                    if !warned_fallback {
+                        tracing::warn!(
+                            blockchain = %self.blockchain_id(),
+                            error = %e,
+                            "Multicall failed; falling back to single calls"
+                        );
+                        warned_fallback = true;
+                    }
+                    let fallback_results = self.execute_multicall_chunk_fallback(&chunk).await;
+                    all_results.extend(fallback_results);
+                }
+            }
+        }
 
         Ok(all_results)
+    }
+
+    async fn execute_multicall_chunk_fallback(
+        &self,
+        chunk: &[Multicall3::Call3],
+    ) -> Vec<crate::managers::blockchain::multicall::MulticallResult> {
+        use crate::managers::blockchain::multicall::MulticallResult;
+
+        let calls = chunk.iter().map(|call| async move {
+            let tx = TransactionRequest {
+                to: Some(TxKind::Call(call.target)),
+                input: TransactionInput::new(call.callData.clone()),
+                ..TransactionRequest::default()
+            };
+
+            match self.rpc_call(self.provider().call(tx)).await {
+                Ok(bytes) => MulticallResult {
+                    success: true,
+                    return_data: bytes,
+                },
+                Err(e) => {
+                    tracing::debug!(
+                        target = %call.target,
+                        error = %e,
+                        "Multicall fallback call failed"
+                    );
+                    MulticallResult {
+                        success: false,
+                        return_data: Bytes::new(),
+                    }
+                }
+            }
+        });
+
+        join_all(calls).await
     }
 }

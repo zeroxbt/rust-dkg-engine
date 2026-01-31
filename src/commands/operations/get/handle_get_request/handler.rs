@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use libp2p::PeerId;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -65,29 +66,34 @@ impl HandleGetRequestCommandHandler {
 }
 
 impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHandler {
+    #[instrument(
+        name = "op.get.recv",
+        skip(self, data),
+        fields(
+            operation_id = %data.operation_id,
+            protocol = "get",
+            direction = "recv",
+            ual = %data.ual,
+            remote_peer = %data.remote_peer_id,
+            include_metadata = data.include_metadata,
+            paranet = ?data.paranet_ual,
+            effective_visibility = tracing::field::Empty,
+        )
+    )]
     async fn execute(&self, data: &HandleGetRequestCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;
         let ual = &data.ual;
         let remote_peer_id = &data.remote_peer_id;
-
-        tracing::info!(
-            operation_id = %operation_id,
-            ual = %ual,
-            remote_peer_id = %remote_peer_id,
-            include_metadata = data.include_metadata,
-            has_paranet = data.paranet_ual.is_some(),
-            "Starting HandleGetRequest command"
-        );
 
         // Retrieve the response channel
         let Some(channel) = self
             .response_channels
             .retrieve(remote_peer_id, operation_id)
         else {
-            tracing::error!(
+            tracing::warn!(
                 operation_id = %operation_id,
                 peer = %remote_peer_id,
-                "No cached response channel found. Channel may have expired."
+                "Response channel not found; request may have expired"
             );
             return CommandExecutionResult::Completed;
         };
@@ -118,6 +124,10 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
                 remote_peer_id,
             )
             .await;
+        tracing::Span::current().record(
+            "effective_visibility",
+            &tracing::field::debug(&effective_visibility),
+        );
 
         tracing::debug!(
             operation_id = %operation_id,
@@ -138,13 +148,13 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
 
         match query_result {
             Ok(Some(result)) if result.assertion.has_data() => {
-                tracing::info!(
+                tracing::debug!(
                     operation_id = %operation_id,
                     ual = %ual,
                     public_count = result.assertion.public.len(),
                     has_private = result.assertion.private.is_some(),
                     has_metadata = result.metadata.is_some(),
-                    "Found assertion data - sending ACK"
+                    "Found assertion data; sending ACK"
                 );
 
                 self.send_ack(channel, operation_id, result.assertion, result.metadata)
@@ -168,7 +178,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
                     operation_id = %operation_id,
                     ual = %ual,
                     error = %e,
-                    "Triple store query failed"
+                    "Triple store query failed; sending NACK"
                 );
                 self.send_nack(
                     channel,

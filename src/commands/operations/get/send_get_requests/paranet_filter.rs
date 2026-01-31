@@ -27,7 +27,11 @@ impl SendGetRequestsCommandHandler {
             Ok(p) => p,
             Err(e) => {
                 let error_message = format!("Invalid paranet UAL: {}", e);
-                tracing::error!(operation_id = %operation_id, %error_message);
+                tracing::error!(
+                    operation_id = %operation_id,
+                    %error_message,
+                    "Paranet UAL parsing failed"
+                );
                 self.get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
@@ -38,7 +42,11 @@ impl SendGetRequestsCommandHandler {
         // 2. Validate paranet UAL has knowledge_asset_id
         let Some(ka_id) = paranet_parsed.knowledge_asset_id else {
             let error_message = "Paranet UAL must include knowledge asset ID".to_string();
-            tracing::error!(operation_id = %operation_id, %error_message);
+            tracing::error!(
+                operation_id = %operation_id,
+                %error_message,
+                "Paranet UAL missing knowledge asset ID"
+            );
             self.get_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
@@ -67,7 +75,11 @@ impl SendGetRequestsCommandHandler {
 
         if !exists {
             let error_message = format!("Paranet does not exist: {}", paranet_ual);
-            tracing::error!(operation_id = %operation_id, %error_message);
+            tracing::error!(
+                operation_id = %operation_id,
+                %error_message,
+                "Paranet not found"
+            );
             self.get_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
@@ -83,7 +95,11 @@ impl SendGetRequestsCommandHandler {
             Ok(p) => p,
             Err(e) => {
                 let error_message = format!("Failed to get access policy: {}", e);
-                tracing::error!(operation_id = %operation_id, %error_message);
+                tracing::error!(
+                    operation_id = %operation_id,
+                    %error_message,
+                    "Failed to load paranet access policy"
+                );
                 self.get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
@@ -110,7 +126,11 @@ impl SendGetRequestsCommandHandler {
 
         if !kc_registered {
             let error_message = "Knowledge collection not registered in paranet".to_string();
-            tracing::error!(operation_id = %operation_id, %error_message);
+            tracing::error!(
+                operation_id = %operation_id,
+                %error_message,
+                "Knowledge collection not registered in paranet"
+            );
             self.get_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
@@ -128,7 +148,11 @@ impl SendGetRequestsCommandHandler {
                     Ok(nodes) => nodes,
                     Err(e) => {
                         let error_message = format!("Failed to get permissioned nodes: {}", e);
-                        tracing::error!(operation_id = %operation_id, %error_message);
+                        tracing::error!(
+                            operation_id = %operation_id,
+                            %error_message,
+                            "Failed to fetch permissioned nodes"
+                        );
                         self.get_operation_status_service
                             .mark_failed(operation_id, error_message)
                             .await;
@@ -160,10 +184,10 @@ impl SendGetRequestsCommandHandler {
                     })
                     .collect();
 
-                tracing::info!(
+                tracing::debug!(
                     operation_id = %operation_id,
                     filtered_count = filtered.len(),
-                    "Filtered to permissioned nodes only"
+                    "Filtered peers to permissioned set"
                 );
 
                 Ok(filtered)

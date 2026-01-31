@@ -38,13 +38,13 @@ pub(crate) async fn insert_task(
     while let Some(batch) = rx.recv().await {
         let batch_start = Instant::now();
         total_received += batch.len();
-        tracing::info!(
+        tracing::debug!(
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
             batch_size = batch.len(),
             total_received,
             elapsed_ms = task_start.elapsed().as_millis() as u64,
-            "[DKG SYNC] Insert: received batch"
+            "Insert: received batch"
         );
 
         // Insert all KCs in parallel
@@ -56,26 +56,29 @@ pub(crate) async fn insert_task(
         )
         .await;
 
+        let batch_synced_count = batch_synced.len();
+        let batch_failed_count = batch_failed.len();
         synced.extend(batch_synced);
         failed.extend(batch_failed);
 
-        tracing::info!(
+        tracing::debug!(
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
             batch_ms = batch_start.elapsed().as_millis() as u64,
-            batch_synced = synced.len(),
+            batch_synced = batch_synced_count,
+            batch_failed = batch_failed_count,
             total_synced = synced.len(),
-            "[DKG SYNC] Insert: batch completed"
+            "Insert: batch completed"
         );
     }
 
-    tracing::info!(
+    tracing::debug!(
         blockchain_id = %blockchain_id,
         contract = %contract_addr_str,
         total_ms = task_start.elapsed().as_millis() as u64,
         synced = synced.len(),
         failed = failed.len(),
-        "[DKG SYNC] Insert task completed"
+        "Insert task completed"
     );
 
     InsertStats { synced, failed }
@@ -121,7 +124,7 @@ async fn insert_kcs_to_store(
                     kc_id = kc_id,
                     ual = %ual,
                     triples = triples_inserted,
-                    "[DKG SYNC] Stored synced KC in triple store"
+                    "Stored synced KC in triple store"
                 );
                 synced.push(kc_id);
             }
@@ -131,7 +134,7 @@ async fn insert_kcs_to_store(
                     contract = %contract_addr_str,
                     kc_id = kc_id,
                     error = %e,
-                    "[DKG SYNC] Failed to store KC in triple store"
+                    "Failed to store KC in triple store"
                 );
                 failed.push(kc_id);
             }

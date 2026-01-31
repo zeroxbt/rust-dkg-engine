@@ -15,6 +15,13 @@ level = "rust_ot_node=debug"  # Verbose logging for development
 format = "pretty"              # Human-readable format
 
 # ============================================
+# Telemetry Configuration
+# ============================================
+[telemetry]
+enabled = true
+otlp_endpoint = "http://localhost:4317"
+
+# ============================================
 # HTTP API Configuration
 # ============================================
 [http_api]

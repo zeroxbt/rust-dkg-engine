@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use libp2p::PeerId;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -60,27 +61,31 @@ impl HandleBatchGetRequestCommandHandler {
 }
 
 impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestCommandHandler {
+    #[instrument(
+        name = "op.batch_get.recv",
+        skip(self, data),
+        fields(
+            operation_id = %data.operation_id,
+            protocol = "batch_get",
+            direction = "recv",
+            remote_peer = %data.remote_peer_id,
+            include_metadata = data.include_metadata,
+            ual_count = tracing::field::Empty,
+        )
+    )]
     async fn execute(&self, data: &HandleBatchGetRequestCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;
         let remote_peer_id = &data.remote_peer_id;
-
-        tracing::info!(
-            operation_id = %operation_id,
-            remote_peer_id = %remote_peer_id,
-            ual_count = data.uals.len(),
-            include_metadata = data.include_metadata,
-            "Starting HandleBatchGetRequest command"
-        );
 
         // Retrieve the response channel
         let Some(channel) = self
             .response_channels
             .retrieve(remote_peer_id, operation_id)
         else {
-            tracing::error!(
+            tracing::warn!(
                 operation_id = %operation_id,
                 peer = %remote_peer_id,
-                "No cached response channel found. Channel may have expired."
+                "Response channel not found; request may have expired"
             );
             return CommandExecutionResult::Completed;
         };
@@ -92,6 +97,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             .take(batch_get::UAL_MAX_LIMIT)
             .cloned()
             .collect();
+        tracing::Span::current().record("ual_count", &tracing::field::display(uals.len()));
 
         // Parse UALs and pair with token IDs
         let mut uals_with_token_ids: Vec<(ParsedUal, TokenIds)> = Vec::new();
@@ -162,7 +168,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             }
         }
 
-        tracing::info!(
+        tracing::debug!(
             operation_id = %operation_id,
             assertions_count = assertions.len(),
             metadata_count = metadata.len(),
