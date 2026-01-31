@@ -1,3 +1,5 @@
+//! Finality protocol message types.
+
 use serde::{Deserialize, Serialize};
 
 use crate::{managers::network::message::ResponseBody, types::BlockchainId};

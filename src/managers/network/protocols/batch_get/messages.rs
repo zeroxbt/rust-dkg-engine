@@ -1,3 +1,5 @@
+//! Batch get protocol message types.
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};

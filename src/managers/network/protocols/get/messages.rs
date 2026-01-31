@@ -1,3 +1,5 @@
+//! Get protocol message types.
+
 use serde::{Deserialize, Serialize};
 
 use crate::{

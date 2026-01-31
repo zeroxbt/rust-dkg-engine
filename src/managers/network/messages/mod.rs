@@ -1,17 +1,15 @@
 //! Protocol message types for network communication.
 //!
-//! These types define the request/response formats for each protocol
-//! (Store, Get, BatchGet, Finality).
+//! **DEPRECATED**: This module is kept for backwards compatibility during
+//! the migration to `protocols/`. New code should import from `protocols::*`.
+//!
+//! These types are now re-exported from the protocol submodules.
 
-mod batch_get;
-mod finality;
-mod get;
-mod store;
-
-pub(crate) use batch_get::{BatchGetAck, BatchGetRequestData, BatchGetResponseData};
-pub(crate) use finality::{FinalityAck, FinalityRequestData, FinalityResponseData};
-pub(crate) use get::{GetAck, GetRequestData, GetResponseData};
-pub(crate) use store::{StoreAck, StoreRequestData, StoreResponseData};
+// Re-export from protocols for backwards compatibility
+pub(crate) use super::protocols::{
+    BatchGetAck, BatchGetRequestData, BatchGetResponseData, FinalityAck, FinalityRequestData,
+    GetAck, GetRequestData, GetResponseData, StoreAck, StoreRequestData, StoreResponseData,
+};
 
 #[cfg(test)]
 mod tests;

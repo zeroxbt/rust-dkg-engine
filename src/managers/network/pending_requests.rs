@@ -1,6 +1,9 @@
-use std::sync::Arc;
+//! Pending request tracking.
+//!
+//! Tracks outbound requests and their oneshot channels for response delivery.
 
-use dashmap::DashMap;
+use std::collections::HashMap;
+
 use tokio::sync::oneshot;
 
 use super::{error::NetworkError, request_response::OutboundRequestId};
@@ -14,11 +17,11 @@ use super::{error::NetworkError, request_response::OutboundRequestId};
 ///
 /// # Thread Safety
 ///
-/// All operations are thread-safe via DashMap. Multiple requests can be in flight
-/// concurrently.
+/// This is designed for single-threaded access within the NetworkService event loop.
+/// All methods take `&mut self` and use a plain `HashMap`.
 pub(crate) struct PendingRequests<T> {
     /// Maps request_id -> oneshot sender for delivering responses
-    pending: Arc<DashMap<OutboundRequestId, oneshot::Sender<Result<T, NetworkError>>>>,
+    pending: HashMap<OutboundRequestId, oneshot::Sender<Result<T, NetworkError>>>,
 }
 
 impl<T> PendingRequests<T>
@@ -27,7 +30,7 @@ where
 {
     pub(crate) fn new() -> Self {
         Self {
-            pending: Arc::new(DashMap::new()),
+            pending: HashMap::new(),
         }
     }
 
@@ -36,7 +39,7 @@ where
     /// This is the preferred method - the caller creates the channel and passes the sender,
     /// keeping the receiver to await the response. This avoids nested channel indirection.
     pub(crate) fn insert_sender(
-        &self,
+        &mut self,
         request_id: OutboundRequestId,
         sender: oneshot::Sender<Result<T, NetworkError>>,
     ) {
@@ -49,8 +52,8 @@ where
     /// Called by the network event handler when a response arrives.
     /// Returns true if the request was found and completed, false if it was
     /// already completed or timed out.
-    pub(crate) fn complete_success(&self, request_id: OutboundRequestId, response: T) -> bool {
-        if let Some((_, sender)) = self.pending.remove(&request_id) {
+    pub(crate) fn complete_success(&mut self, request_id: OutboundRequestId, response: T) -> bool {
+        if let Some(sender) = self.pending.remove(&request_id) {
             let _ = sender.send(Ok(response));
             tracing::trace!(?request_id, "Completed pending request with success");
             true
@@ -69,11 +72,11 @@ where
     /// Returns true if the request was found and completed, false if it was
     /// already completed.
     pub(crate) fn complete_failure(
-        &self,
+        &mut self,
         request_id: OutboundRequestId,
         error: NetworkError,
     ) -> bool {
-        if let Some((_, sender)) = self.pending.remove(&request_id) {
+        if let Some(sender) = self.pending.remove(&request_id) {
             let _ = sender.send(Err(error));
             tracing::trace!(?request_id, "Completed pending request with failure");
             true

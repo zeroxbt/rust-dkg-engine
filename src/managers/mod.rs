@@ -9,7 +9,7 @@ use std::sync::Arc;
 pub(crate) use blockchain::BlockchainManager;
 pub(crate) use key_value_store::KeyValueStoreManager;
 use libp2p::identity::Keypair;
-pub(crate) use network::NetworkManager;
+pub(crate) use network::{NetworkManager, NetworkEventLoop};
 pub(crate) use repository::RepositoryManager;
 pub(crate) use triple_store::TripleStoreManager;
 
@@ -25,17 +25,19 @@ pub(crate) struct Managers {
 }
 
 /// Initialize all managers.
+///
+/// Returns a tuple of (Managers, NetworkEventLoop). The NetworkEventLoop must be
+/// spawned separately to run the network event loop.
 pub(crate) async fn initialize(
     config: &ManagersConfig,
     paths: &AppPaths,
     network_key: Keypair,
-) -> Managers {
-    // NetworkManager creates base protocols (kad, identify) and app protocols (store, get, etc.)
-    let network = Arc::new(
+) -> (Managers, NetworkEventLoop) {
+    // NetworkManager::connect returns (handle, service) tuple
+    let (network_handle, network_service) =
         NetworkManager::connect(&config.network, network_key)
-            .await
-            .expect("Failed to initialize network manager"),
-    );
+            .expect("Failed to initialize network manager");
+    let network = Arc::new(network_handle);
 
     let repository = Arc::new(
         RepositoryManager::connect(&config.repository)
@@ -63,11 +65,13 @@ pub(crate) async fn initialize(
             .expect("Failed to initialize key-value store manager"),
     );
 
-    Managers {
+    let managers = Managers {
         network,
         repository,
         blockchain,
         triple_store,
         key_value_store,
-    }
+    };
+
+    (managers, network_service)
 }

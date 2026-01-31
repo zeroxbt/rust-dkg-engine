@@ -51,10 +51,16 @@ async fn main() {
     let command_scheduler_for_shutdown = command_scheduler.clone();
 
     // Initialize managers and services
-    let managers = managers::initialize(&config.managers, &paths, network_key).await;
+    let (managers, mut network_event_loop) =
+        managers::initialize(&config.managers, &paths, network_key).await;
+
+    // Start listening before spawning the network task
+    if let Err(error) = network_event_loop.start_listening() {
+        tracing::error!("Failed to start swarm listener: {}", error);
+        return;
+    }
 
     // Clone refs needed after managers is moved into Context
-    let network_manager_for_task = Arc::clone(&managers.network);
     let blockchain_manager_for_ids = Arc::clone(&managers.blockchain);
 
     if config::is_dev_env() {
@@ -85,16 +91,12 @@ async fn main() {
     // Spawn command executor task
     let execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
 
-    // Spawn network manager event loop task with RPC router as the event handler
+    // Spawn network service event loop task with RPC router as the event handler
     let rpc_router = controllers.rpc_router;
     let network_event_loop_task = tokio::task::spawn(async move {
-        if let Err(error) = network_manager_for_task.start_listening().await {
-            tracing::error!("Failed to start swarm listener: {}", error);
-            return;
-        }
-
-        // Run the network manager event loop with the RPC router handling events
-        network_manager_for_task.run(&rpc_router).await;
+        // Run the network service event loop with the RPC router handling events
+        // The service is consumed here (runs until action channel closes)
+        network_event_loop.run(&rpc_router).await;
     });
 
     // Spawn HTTP API task if enabled
