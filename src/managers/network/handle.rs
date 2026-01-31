@@ -26,7 +26,6 @@ use super::{
 pub(crate) struct NetworkManager {
     action_tx: mpsc::Sender<NetworkAction>,
     peer_id: PeerId,
-    config: NetworkManagerConfig,
 }
 
 impl NetworkManager {
@@ -51,22 +50,16 @@ impl NetworkManager {
         let handle = Self {
             action_tx,
             peer_id: local_peer_id,
-            config: config.clone(),
         };
 
-        let service = super::event_loop::NetworkEventLoop::new(swarm, action_rx, config.clone());
+        let event_loop = super::event_loop::NetworkEventLoop::new(swarm, action_rx, config.clone());
 
-        Ok((handle, service))
+        Ok((handle, event_loop))
     }
 
     /// Returns the peer ID of this node.
     pub(crate) fn peer_id(&self) -> &PeerId {
         &self.peer_id
-    }
-
-    /// Returns the network configuration.
-    pub(crate) fn config(&self) -> &NetworkManagerConfig {
-        &self.config
     }
 
     async fn enqueue_action(&self, action: NetworkAction) -> Result<(), NetworkError> {

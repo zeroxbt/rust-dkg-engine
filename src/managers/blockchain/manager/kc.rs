@@ -1,4 +1,12 @@
-use crate::managers::blockchain::*;
+use alloy::primitives::Address;
+
+use crate::{
+    managers::{
+        BlockchainManager,
+        blockchain::{error::BlockchainError, multicall},
+    },
+    types::BlockchainId,
+};
 
 impl BlockchainManager {
     /// Check if a knowledge collection exists on-chain.

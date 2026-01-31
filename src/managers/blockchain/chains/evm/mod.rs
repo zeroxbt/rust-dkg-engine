@@ -1,9 +1,5 @@
 use std::str::FromStr;
 
-use alloy::{
-    primitives::{Address, U256},
-    providers::Provider,
-};
 use tokio::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::managers::blockchain::{
@@ -13,7 +9,6 @@ use crate::managers::blockchain::{
         provider::{BlockchainProvider, initialize_provider, initialize_provider_with_wallet},
     },
     error::BlockchainError,
-    gas::fetch_gas_price_from_oracle,
     substrate::validate_evm_wallets,
 };
 

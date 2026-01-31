@@ -1,11 +1,19 @@
-use crate::managers::blockchain::*;
+use alloy::primitives::{Address, B256, FixedBytes};
+
+use crate::{
+    managers::{
+        BlockchainManager,
+        blockchain::{ContractLog, ContractName, error::BlockchainError},
+    },
+    types::BlockchainId,
+};
 
 impl BlockchainManager {
     pub(crate) async fn get_event_logs(
         &self,
         blockchain: &BlockchainId,
         contract_name: &ContractName,
-        event_signatures: &[H256],
+        event_signatures: &[FixedBytes<32>],
         from_block: u64,
         current_block: u64,
     ) -> Result<Vec<ContractLog>, BlockchainError> {
@@ -27,7 +35,7 @@ impl BlockchainManager {
     pub(crate) async fn get_transaction_sender(
         &self,
         blockchain: &BlockchainId,
-        tx_hash: H256,
+        tx_hash: FixedBytes<32>,
     ) -> Result<Option<Address>, BlockchainError> {
         let blockchain_impl = self.chain(blockchain)?;
         blockchain_impl.get_transaction_sender(tx_hash).await

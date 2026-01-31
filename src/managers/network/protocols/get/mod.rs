@@ -6,9 +6,10 @@ mod messages;
 
 use std::time::Duration;
 
-pub(crate) use messages::*;
-
 use super::ProtocolSpec;
+pub(crate) use crate::managers::network::protocols::get::messages::{
+    GetAck, GetRequestData, GetResponseData,
+};
 
 /// Get protocol marker type.
 pub(crate) struct GetProtocol;

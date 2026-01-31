@@ -1,4 +1,11 @@
-use super::*;
+use alloy::{
+    primitives::{Address, U256},
+    providers::Provider,
+};
+
+use crate::managers::blockchain::{
+    chains::evm::EvmChain, error::BlockchainError, gas::fetch_gas_price_from_oracle,
+};
 
 /// Format a balance in wei to a human-readable string with the specified decimals.
 pub(crate) fn format_balance(wei: U256, decimals: u8) -> String {

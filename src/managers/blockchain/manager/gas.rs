@@ -1,4 +1,12 @@
-use crate::managers::blockchain::*;
+use alloy::primitives::{Address, U256};
+
+use crate::{
+    managers::{
+        BlockchainManager,
+        blockchain::{GasConfig, error::BlockchainError},
+    },
+    types::BlockchainId,
+};
 
 impl BlockchainManager {
     /// Get the current gas price for a blockchain.

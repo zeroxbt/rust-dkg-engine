@@ -1,4 +1,12 @@
-use crate::managers::blockchain::*;
+use alloy::primitives::Address;
+
+use crate::{
+    managers::{
+        BlockchainManager,
+        blockchain::{ContractName, error::BlockchainError},
+    },
+    types::BlockchainId,
+};
 
 impl BlockchainManager {
     pub(crate) async fn re_initialize_contract(

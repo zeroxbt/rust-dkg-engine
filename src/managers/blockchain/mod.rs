@@ -31,11 +31,9 @@ pub(crate) type KnowledgeCollectionCreatedFilter =
 pub(crate) use alloy::primitives::{Address, B256, B256 as H256, U256};
 use serde::Deserialize;
 
-use crate::managers::blockchain::{
-    chains::evm::ShardingTableLib::NodeInfo, error::BlockchainError,
-};
+use crate::managers::blockchain::error::BlockchainError;
 // Re-export shared domain types from crate::types
-pub(crate) use crate::types::{BlockchainId, SignatureComponents};
+pub(crate) use crate::types::BlockchainId;
 
 /// Configuration for a blockchain network.
 ///

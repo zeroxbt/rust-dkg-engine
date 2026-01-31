@@ -1,4 +1,10 @@
-use crate::managers::blockchain::*;
+use crate::{
+    managers::{
+        BlockchainManager,
+        blockchain::{chains::evm::NodeInfo, error::BlockchainError},
+    },
+    types::BlockchainId,
+};
 
 impl BlockchainManager {
     pub(crate) async fn get_sharding_table_head(

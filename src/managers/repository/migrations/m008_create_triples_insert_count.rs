@@ -1,7 +1,7 @@
 use sea_orm_migration::{
     async_trait::async_trait,
     prelude::{DbErr, DeriveMigrationName, Iden, MigrationTrait, SchemaManager, Table},
-    schema::*,
+    schema::{big_integer, pk_auto},
     sea_query,
 };
 

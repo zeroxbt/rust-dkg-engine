@@ -13,20 +13,6 @@ impl EvmChain {
         Ok(head.to::<u128>())
     }
 
-    pub(crate) async fn get_minimum_required_signatures(&self) -> Result<u64, BlockchainError> {
-        use alloy::primitives::U256;
-        let contracts = self.contracts().await;
-        let min_signatures: U256 = self
-            .rpc_call(
-                contracts
-                    .parameters_storage()
-                    .minimumRequiredSignatures()
-                    .call(),
-            )
-            .await?;
-        Ok(min_signatures.to::<u64>())
-    }
-
     pub(crate) async fn get_sharding_table_length(&self) -> Result<u128, BlockchainError> {
         use alloy::primitives::Uint;
         let contracts = self.contracts().await;

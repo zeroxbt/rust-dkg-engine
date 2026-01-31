@@ -7,9 +7,10 @@ mod messages;
 
 use std::time::Duration;
 
-pub(crate) use messages::*;
-
 use super::ProtocolSpec;
+pub(crate) use crate::managers::network::protocols::finality::messages::{
+    FinalityAck, FinalityRequestData, FinalityResponseData,
+};
 
 /// Finality protocol marker type.
 pub(crate) struct FinalityProtocol;

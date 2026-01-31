@@ -1,4 +1,7 @@
-use crate::managers::blockchain::*;
+use crate::{
+    managers::{BlockchainManager, blockchain::error::BlockchainError},
+    types::{BlockchainId, SignatureComponents},
+};
 
 impl BlockchainManager {
     pub(crate) async fn sign_message(
