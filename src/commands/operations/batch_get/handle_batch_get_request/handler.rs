@@ -7,12 +7,7 @@ use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     managers::{
-        network::{
-            NetworkManager, ResponseMessage,
-            message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
-            messages::BatchGetAck,
-            request_response::ResponseChannel,
-        },
+        network::{NetworkManager, messages::BatchGetAck},
         triple_store::{Assertion, TokenIds},
     },
     operations::protocols::batch_get,
@@ -49,7 +44,7 @@ impl HandleBatchGetRequestCommandData {
 }
 
 pub(crate) struct HandleBatchGetRequestCommandHandler {
-    network_manager: Arc<NetworkManager>,
+    pub(super) network_manager: Arc<NetworkManager>,
     triple_store_service: Arc<TripleStoreService>,
     response_channels: Arc<ResponseChannels<BatchGetAck>>,
 }
@@ -61,55 +56,6 @@ impl HandleBatchGetRequestCommandHandler {
             triple_store_service: Arc::clone(context.triple_store_service()),
             response_channels: Arc::clone(context.batch_get_response_channels()),
         }
-    }
-
-    async fn send_response(
-        &self,
-        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
-        operation_id: Uuid,
-        message: ResponseMessage<BatchGetAck>,
-    ) {
-        if let Err(e) = self
-            .network_manager
-            .send_batch_get_response(channel, message)
-            .await
-        {
-            tracing::error!(
-                operation_id = %operation_id,
-                error = %e,
-                "Failed to send batch get response"
-            );
-        }
-    }
-
-    async fn send_ack(
-        &self,
-        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
-        operation_id: Uuid,
-        assertions: HashMap<String, Assertion>,
-        metadata: HashMap<String, Vec<String>>,
-    ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: ResponseBody::ack(BatchGetAck {
-                assertions,
-                metadata,
-            }),
-        };
-        self.send_response(channel, operation_id, message).await;
-    }
-
-    async fn send_nack(
-        &self,
-        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
-        operation_id: Uuid,
-        message: impl Into<String>,
-    ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: ResponseBody::error(message),
-        };
-        self.send_response(channel, operation_id, message).await;
     }
 }
 

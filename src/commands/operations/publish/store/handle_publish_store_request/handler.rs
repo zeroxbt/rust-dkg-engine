@@ -9,10 +9,8 @@ use crate::{
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
         network::{
-            NetworkManager, ResponseMessage,
-            message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
+            NetworkManager,
             messages::StoreAck,
-            request_response::ResponseChannel,
         },
         repository::RepositoryManager,
         triple_store::Assertion,
@@ -52,7 +50,7 @@ impl HandlePublishStoreRequestCommandData {
 
 pub(crate) struct HandlePublishStoreRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager>,
+    pub(super) network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
     response_channels: Arc<ResponseChannels<StoreAck>>,
     pending_storage_service: Arc<PendingStorageService>,
@@ -69,37 +67,6 @@ impl HandlePublishStoreRequestCommandHandler {
         }
     }
 
-    async fn send_response(
-        &self,
-        channel: ResponseChannel<ResponseMessage<StoreAck>>,
-        operation_id: Uuid,
-        message: ResponseMessage<StoreAck>,
-    ) {
-        if let Err(e) = self
-            .network_manager
-            .send_store_response(channel, message)
-            .await
-        {
-            tracing::error!(
-                operation_id = %operation_id,
-                error = %e,
-                "Failed to send response"
-            );
-        }
-    }
-
-    async fn send_nack(
-        &self,
-        channel: ResponseChannel<ResponseMessage<StoreAck>>,
-        operation_id: Uuid,
-        error_message: &str,
-    ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: ResponseBody::error(error_message),
-        };
-        self.send_response(channel, operation_id, message).await;
-    }
 }
 
 impl CommandHandler<HandlePublishStoreRequestCommandData>
@@ -342,14 +309,6 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandExecutionResult::Completed;
         }
 
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: ResponseBody::ack(StoreAck {
-                identity_id,
-                signature,
-            }),
-        };
-
         tracing::info!(
             operation_id = %operation_id,
             peer = %remote_peer_id,
@@ -357,7 +316,8 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             "Sending ACK response with signature"
         );
 
-        self.send_response(channel, operation_id, message).await;
+        self.send_ack(channel, operation_id, identity_id, signature)
+            .await;
 
         tracing::info!(
             operation_id = %operation_id,

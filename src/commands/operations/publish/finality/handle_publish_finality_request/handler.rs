@@ -8,10 +8,8 @@ use crate::{
     context::Context,
     managers::{
         network::{
-            NetworkManager, ResponseMessage,
-            message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
+            NetworkManager,
             messages::FinalityAck,
-            request_response::ResponseChannel,
         },
         repository::RepositoryManager,
     },
@@ -50,7 +48,7 @@ impl HandlePublishFinalityRequestCommandData {
 
 pub(crate) struct HandlePublishFinalityRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager>,
+    pub(super) network_manager: Arc<NetworkManager>,
     response_channels: Arc<ResponseChannels<FinalityAck>>,
 }
 
@@ -63,52 +61,6 @@ impl HandlePublishFinalityRequestCommandHandler {
         }
     }
 
-    async fn send_response(
-        &self,
-        channel: ResponseChannel<ResponseMessage<FinalityAck>>,
-        operation_id: Uuid,
-        message: ResponseMessage<FinalityAck>,
-    ) {
-        if let Err(e) = self
-            .network_manager
-            .send_finality_response(channel, message)
-            .await
-        {
-            tracing::error!(
-                operation_id = %operation_id,
-                error = %e,
-                "Failed to send finality response"
-            );
-        }
-    }
-
-    async fn send_ack(
-        &self,
-        channel: ResponseChannel<ResponseMessage<FinalityAck>>,
-        operation_id: Uuid,
-        ual: &str,
-    ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: ResponseBody::ack(FinalityAck {
-                message: format!("Acknowledged storing of {}", ual),
-            }),
-        };
-        self.send_response(channel, operation_id, message).await;
-    }
-
-    async fn send_nack(
-        &self,
-        channel: ResponseChannel<ResponseMessage<FinalityAck>>,
-        operation_id: Uuid,
-        ual: &str,
-    ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: ResponseBody::error(format!("Failed to acknowledge storing of {}", ual)),
-        };
-        self.send_response(channel, operation_id, message).await;
-    }
 }
 
 impl CommandHandler<HandlePublishFinalityRequestCommandData>

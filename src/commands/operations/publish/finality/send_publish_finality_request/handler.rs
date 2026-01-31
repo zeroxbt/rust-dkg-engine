@@ -1,4 +1,4 @@
-use std::{ops::ControlFlow, sync::Arc};
+use std::sync::Arc;
 
 use uuid::Uuid;
 
@@ -7,13 +7,13 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, H256, U256},
-        network::{NetworkManager, PeerId, message::ResponseBody, messages::FinalityRequestData},
+        network::{NetworkManager, PeerId},
         repository::RepositoryManager,
         triple_store::KnowledgeCollectionMetadata,
     },
     services::{TripleStoreService, pending_storage_service::PendingStorageService},
     types::derive_ual,
-    utils::{peer_fanout::{for_each_peer_concurrently, limit_peers}, validation},
+    utils::validation,
 };
 
 /// Raw event data from KnowledgeCollectionCreated event.
@@ -68,8 +68,8 @@ impl SendPublishFinalityRequestCommandData {
 }
 
 pub(crate) struct SendPublishFinalityRequestCommandHandler {
-    repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager>,
+    pub(super) repository_manager: Arc<RepositoryManager>,
+    pub(super) network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
     pending_storage_service: Arc<PendingStorageService>,
     triple_store_service: Arc<TripleStoreService>,
@@ -324,90 +324,14 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             return CommandExecutionResult::Completed;
         }
 
-        let finality_request_data = FinalityRequestData::new(
+        self.send_finality_request_to_publisher(
+            operation_id,
+            publish_operation_id,
+            &data.publish_operation_id,
             ual,
-            data.publish_operation_id.clone(),
             data.blockchain.clone(),
-        );
-
-        let mut peers = vec![publisher_peer_id];
-        peers = limit_peers(
-            peers,
-            crate::operations::protocols::publish_finality::MAX_PEERS,
-        );
-
-        let min_required_peers = crate::operations::protocols::publish_finality::MIN_PEERS.max(
-            crate::operations::protocols::publish_finality::MIN_ACK_RESPONSES as usize,
-        );
-
-        if peers.len() < min_required_peers {
-            tracing::warn!(
-                operation_id = %operation_id,
-                publish_operation_id = %publish_operation_id,
-                found = peers.len(),
-                required = min_required_peers,
-                "Not enough peers to send finality request"
-            );
-            return CommandExecutionResult::Completed;
-        }
-
-        let mut ack_count: u16 = 0;
-        for_each_peer_concurrently(
-            &peers,
-            crate::operations::protocols::publish_finality::CONCURRENT_PEERS,
-            |peer| {
-                let request_data = finality_request_data.clone();
-                let network_manager = Arc::clone(&self.network_manager);
-                async move {
-                    let addresses = network_manager
-                        .get_peer_addresses(peer)
-                        .await
-                        .unwrap_or_default();
-                    let result = network_manager
-                        .send_finality_request(peer, addresses, operation_id, request_data)
-                        .await;
-                    (peer, result)
-                }
-            },
-            |(peer, result)| {
-                match result {
-                    Ok(ResponseBody::Ack(_)) => {
-                        ack_count = ack_count.saturating_add(1);
-                        tracing::info!(
-                            operation_id = %operation_id,
-                            publish_operation_id = %publish_operation_id,
-                            peer = %peer,
-                            "Sent finality request to publisher"
-                        );
-                    }
-                    Ok(ResponseBody::Error(_)) => {
-                        tracing::warn!(
-                            operation_id = %operation_id,
-                            publish_operation_id = %publish_operation_id,
-                            peer = %peer,
-                            "Publisher returned error for finality request"
-                        );
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            operation_id = %operation_id,
-                            publish_operation_id = %publish_operation_id,
-                            peer = %peer,
-                            error = %e,
-                            "Failed to send finality request to publisher"
-                        );
-                    }
-                }
-
-                if ack_count >= crate::operations::protocols::publish_finality::MIN_ACK_RESPONSES {
-                    ControlFlow::Break(())
-                } else {
-                    ControlFlow::Continue(())
-                }
-            },
+            publisher_peer_id,
         )
-        .await;
-
-        CommandExecutionResult::Completed
+        .await
     }
 }

@@ -8,13 +8,8 @@ use crate::{
     context::Context,
     managers::{
         blockchain::BlockchainManager,
-        network::{
-            NetworkManager, ResponseMessage,
-            message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
-            messages::GetAck,
-            request_response::ResponseChannel,
-        },
-        triple_store::{Assertion, TokenIds},
+        network::{NetworkManager, messages::GetAck},
+        triple_store::TokenIds,
     },
     services::{ResponseChannels, TripleStoreService},
     types::parse_ual,
@@ -67,56 +62,6 @@ impl HandleGetRequestCommandHandler {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
         }
     }
-
-    async fn send_response(
-        &self,
-        channel: ResponseChannel<ResponseMessage<GetAck>>,
-        operation_id: Uuid,
-        message: ResponseMessage<GetAck>,
-    ) {
-        if let Err(e) = self
-            .network_manager
-            .send_get_response(channel, message)
-            .await
-        {
-            tracing::error!(
-                operation_id = %operation_id,
-                error = %e,
-                "Failed to send get response"
-            );
-        }
-    }
-
-    async fn send_nack(
-        &self,
-        channel: ResponseChannel<ResponseMessage<GetAck>>,
-        operation_id: Uuid,
-        error_message: &str,
-    ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: ResponseBody::error(error_message),
-        };
-        self.send_response(channel, operation_id, message).await;
-    }
-
-    async fn send_ack(
-        &self,
-        channel: ResponseChannel<ResponseMessage<GetAck>>,
-        operation_id: Uuid,
-        assertion: Assertion,
-        metadata: Option<Vec<String>>,
-    ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: ResponseBody::ack(GetAck {
-                assertion,
-                metadata,
-            }),
-        };
-        self.send_response(channel, operation_id, message).await;
-    }
-
 }
 
 impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHandler {

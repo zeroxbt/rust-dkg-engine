@@ -6,18 +6,16 @@ use uuid::Uuid;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    error::NodeError,
     managers::{
-        blockchain::{BlockchainId, BlockchainManager, H256, utils::keccak256_encode_packed},
+        blockchain::{BlockchainId, BlockchainManager},
         network::{
             NetworkManager,
-            message::ResponseBody,
-            messages::{StoreRequestData, StoreResponseData},
+            messages::StoreRequestData,
         },
         repository::RepositoryManager,
         triple_store::Assertion,
     },
-    operations::{PublishStoreOperationResult, PublishStoreSignatureData, protocols},
+    operations::{PublishStoreOperationResult, protocols},
     services::{
         operation_status::OperationStatusService as GenericOperationService,
         pending_storage_service::PendingStorageService,
@@ -55,12 +53,12 @@ impl SendPublishStoreRequestsCommandData {
 }
 
 pub(crate) struct SendPublishStoreRequestsCommandHandler {
-    repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager>,
-    blockchain_manager: Arc<BlockchainManager>,
-    publish_store_operation_status_service:
+    pub(super) repository_manager: Arc<RepositoryManager>,
+    pub(super) network_manager: Arc<NetworkManager>,
+    pub(super) blockchain_manager: Arc<BlockchainManager>,
+    pub(super) publish_store_operation_status_service:
         Arc<GenericOperationService<PublishStoreOperationResult>>,
-    pending_storage_service: Arc<PendingStorageService>,
+    pub(super) pending_storage_service: Arc<PendingStorageService>,
 }
 
 impl SendPublishStoreRequestsCommandHandler {
@@ -76,139 +74,6 @@ impl SendPublishStoreRequestsCommandHandler {
         }
     }
 
-    /// Handle self-node signature (when publisher is in the shard).
-    /// Stores the signature directly to redb and records a successful response.
-    async fn handle_self_node_signature(
-        &self,
-        operation_id: Uuid,
-        blockchain: &BlockchainId,
-        dataset_root_hex: &str,
-        identity_id: u128,
-    ) -> Result<(), NodeError> {
-        let signature = self
-            .blockchain_manager
-            .sign_message(blockchain, dataset_root_hex)
-            .await?;
-
-        // Add self-node signature directly to redb as a network signature
-        let sig_data = PublishStoreSignatureData::new(
-            identity_id.to_string(),
-            signature.v,
-            signature.r.clone(),
-            signature.s.clone(),
-            signature.vs.clone(),
-        );
-
-        self.publish_store_operation_status_service.update_result(
-            operation_id,
-            PublishStoreOperationResult::new(None, Vec::new()),
-            |result| {
-                result.network_signatures.push(sig_data);
-            },
-        )?;
-
-        Ok(())
-    }
-
-    /// Create publisher signature and store it in context.
-    /// Returns the PublishStoreSignatureData for storage in context.
-    async fn create_publisher_signature(
-        &self,
-        blockchain: &BlockchainId,
-        dataset_root: &str,
-        identity_id: u128,
-    ) -> Result<PublishStoreSignatureData, NodeError> {
-        let dataset_root_h256: H256 = dataset_root
-            .parse()
-            .map_err(|e| NodeError::Other(format!("Invalid dataset root hex: {e}")))?;
-        // JS uses: keccak256EncodePacked(['uint72', 'bytes32'], [identityId, datasetRoot])
-        // uint72 = 9 bytes, so we encode identity_id as FixedBytes(9) to match Solidity's packed
-        // encoding
-        let identity_bytes = {
-            let bytes = identity_id.to_be_bytes(); // u128 = 16 bytes
-            let mut out = [0u8; 9];
-            out.copy_from_slice(&bytes[16 - 9..]); // Take last 9 bytes for uint72
-            out
-        };
-        let message_hash =
-            keccak256_encode_packed(&[&identity_bytes, dataset_root_h256.as_slice()]);
-        let signature = self
-            .blockchain_manager
-            .sign_message(
-                blockchain,
-                &format!(
-                    "0x{}",
-                    crate::managers::blockchain::utils::to_hex_string(message_hash)
-                ),
-            )
-            .await?;
-
-        Ok(PublishStoreSignatureData::new(
-            identity_id.to_string(),
-            signature.v,
-            signature.r,
-            signature.s,
-            signature.vs,
-        ))
-    }
-
-    /// Process a store response and store the signature if valid.
-    ///
-    /// Returns true if the response is a valid ACK with signature data.
-    fn process_store_response(
-        &self,
-        operation_id: Uuid,
-        peer: &PeerId,
-        response: &StoreResponseData,
-    ) -> bool {
-        match response {
-            ResponseBody::Ack(ack) => {
-                let identity_id = ack.identity_id;
-                let signature = &ack.signature;
-                let sig_data = PublishStoreSignatureData::new(
-                    identity_id.to_string(),
-                    signature.v,
-                    signature.r.clone(),
-                    signature.s.clone(),
-                    signature.vs.clone(),
-                );
-
-                // Store signature incrementally to redb
-                if let Err(e) = self.publish_store_operation_status_service.update_result(
-                    operation_id,
-                    PublishStoreOperationResult::new(None, Vec::new()),
-                    |result| {
-                        result.network_signatures.push(sig_data);
-                    },
-                ) {
-                    tracing::error!(
-                        operation_id = %operation_id,
-                        peer = %peer,
-                        error = %e,
-                        "Failed to store network signature"
-                    );
-                    return false;
-                }
-
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    peer = %peer,
-                    identity_id = %identity_id,
-                    "Signature stored successfully"
-                );
-                true
-            }
-            ResponseBody::Error(err) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    peer = %peer,
-                    error = %err.error_message,
-                    "Peer returned error response"
-                );
-                false
-            }
-        }
-    }
 }
 
 impl CommandHandler<SendPublishStoreRequestsCommandData>
