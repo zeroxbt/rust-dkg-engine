@@ -1,4 +1,7 @@
-use super::super::*;
+use crate::managers::blockchain::{
+    chains::evm::{EvmChain, NodeInfo},
+    error::BlockchainError,
+};
 
 impl EvmChain {
     pub(crate) async fn get_sharding_table_head(&self) -> Result<u128, BlockchainError> {

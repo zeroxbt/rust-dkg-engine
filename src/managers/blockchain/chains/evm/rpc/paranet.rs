@@ -1,5 +1,12 @@
-use super::super::*;
-use crate::{managers::blockchain::chains::evm::contracts::PermissionedNode, types::AccessPolicy};
+use alloy::primitives::B256;
+
+use crate::{
+    managers::blockchain::{
+        chains::evm::{EvmChain, contracts::PermissionedNode},
+        error::BlockchainError,
+    },
+    types::AccessPolicy,
+};
 
 impl EvmChain {
     /// Check if a paranet exists on-chain.

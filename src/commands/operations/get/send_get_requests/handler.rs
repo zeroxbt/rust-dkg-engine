@@ -1,5 +1,7 @@
-use std::{ops::ControlFlow, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 
+use futures::{StreamExt, stream::FuturesUnordered};
+use libp2p::PeerId;
 use uuid::Uuid;
 
 use crate::{
@@ -7,7 +9,7 @@ use crate::{
     context::Context,
     managers::{
         blockchain::BlockchainManager,
-        network::{NetworkManager, messages::GetRequestData},
+        network::{NetworkError, NetworkManager, messages::GetRequestData},
         repository::RepositoryManager,
         triple_store::Assertion,
     },
@@ -16,8 +18,7 @@ use crate::{
         GetValidationService, PeerPerformanceTracker, TripleStoreService,
         operation_status::OperationStatusService as GenericOperationService,
     },
-    types::{Visibility, parse_ual},
-    utils::peer_fanout::{for_each_peer_concurrently, limit_peers},
+    types::{ParsedUal, Visibility, parse_ual},
 };
 
 /// Command data for sending get requests to network nodes.
@@ -250,7 +251,6 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
         // Prefer peers with better historical response times.
         self.peer_performance_tracker.sort_by_latency(&mut peers);
 
-        peers = limit_peers(peers, protocols::get::MAX_PEERS);
         let min_required_peers =
             protocols::get::MIN_PEERS.max(protocols::get::MIN_ACK_RESPONSES as usize);
         let total_peers = peers.len();
@@ -294,43 +294,25 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
         let min_ack_required = protocols::get::MIN_ACK_RESPONSES;
         let mut reached_threshold = false;
 
-        for_each_peer_concurrently(
-            &peers,
-            protocols::get::CONCURRENT_PEERS,
-            |peer| {
-                let request_data = get_request_data.clone();
-                let network_manager = Arc::clone(&self.network_manager);
-                let parsed_ual = parsed_ual.clone();
-                let visibility = data.visibility;
-                async move {
-                    let start = Instant::now();
-                    let addresses = network_manager
-                        .get_peer_addresses(peer)
-                        .await
-                        .unwrap_or_default();
-                    let result = network_manager
-                        .send_get_request(peer, addresses, operation_id, request_data)
-                        .await;
-                    let elapsed = start.elapsed();
-                    let outcome = match result {
-                        Ok(response) => {
-                            let is_valid = self
-                                .validate_and_store_response(
-                                    operation_id,
-                                    &peer,
-                                    &response,
-                                    &parsed_ual,
-                                    visibility,
-                                )
-                                .await;
-                            Ok(is_valid)
-                        }
-                        Err(e) => Err(e),
-                    };
-                    (peer, outcome, elapsed)
+        if !peers.is_empty() {
+            let mut futures = FuturesUnordered::new();
+            let mut peers_iter = peers.iter().cloned();
+            let limit = protocols::get::CONCURRENT_PEERS.max(1).min(peers.len());
+
+            for _ in 0..limit {
+                if let Some(peer) = peers_iter.next() {
+                    futures.push(send_get_request_to_peer(
+                        self,
+                        peer,
+                        operation_id,
+                        get_request_data.clone(),
+                        parsed_ual.clone(),
+                        data.visibility,
+                    ));
                 }
-            },
-            |(peer, outcome, elapsed)| {
+            }
+
+            while let Some((peer, outcome, elapsed)) = futures.next().await {
                 match outcome {
                     Ok(true) => {
                         success_count += 1;
@@ -358,13 +340,21 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
 
                 if success_count >= min_ack_required {
                     reached_threshold = true;
-                    return ControlFlow::Break(());
+                    break;
                 }
 
-                ControlFlow::Continue(())
-            },
-        )
-        .await;
+                if let Some(peer) = peers_iter.next() {
+                    futures.push(send_get_request_to_peer(
+                        self,
+                        peer,
+                        operation_id,
+                        get_request_data.clone(),
+                        parsed_ual.clone(),
+                        data.visibility,
+                    ));
+                }
+            }
+        }
 
         if reached_threshold {
             tracing::info!(
@@ -403,4 +393,41 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
 
         CommandExecutionResult::Completed
     }
+}
+
+async fn send_get_request_to_peer(
+    handler: &SendGetRequestsCommandHandler,
+    peer: PeerId,
+    operation_id: Uuid,
+    request_data: GetRequestData,
+    parsed_ual: ParsedUal,
+    visibility: Visibility,
+) -> (PeerId, Result<bool, NetworkError>, std::time::Duration) {
+    let start = Instant::now();
+    let addresses = handler
+        .network_manager
+        .get_peer_addresses(peer)
+        .await
+        .unwrap_or_default();
+    let result = handler
+        .network_manager
+        .send_get_request(peer, addresses, operation_id, request_data)
+        .await;
+    let elapsed = start.elapsed();
+    let outcome = match result {
+        Ok(response) => {
+            let is_valid = handler
+                .validate_and_store_response(
+                    operation_id,
+                    &peer,
+                    &response,
+                    &parsed_ual,
+                    visibility,
+                )
+                .await;
+            Ok(is_valid)
+        }
+        Err(e) => Err(e),
+    };
+    (peer, outcome, elapsed)
 }

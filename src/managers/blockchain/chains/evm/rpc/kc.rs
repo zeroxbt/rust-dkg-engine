@@ -1,4 +1,6 @@
-use super::super::*;
+use alloy::primitives::{Address, U256};
+
+use crate::managers::blockchain::{chains::evm::EvmChain, error::BlockchainError};
 
 impl EvmChain {
     /// Check if a knowledge collection exists on-chain.

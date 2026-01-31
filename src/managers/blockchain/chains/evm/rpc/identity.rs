@@ -1,4 +1,13 @@
-use super::super::*;
+use alloy::{
+    hex,
+    primitives::{Address, Bytes},
+};
+
+use crate::managers::blockchain::{
+    chains::evm::{EvmChain, contracts::Profile},
+    error::BlockchainError,
+    error_utils::handle_contract_call,
+};
 
 impl EvmChain {
     pub(crate) async fn get_identity_id(&self) -> Option<u128> {

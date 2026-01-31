@@ -1,4 +1,17 @@
-use super::super::*;
+use alloy::hex;
+
+use crate::{
+    managers::blockchain::{
+        chains::evm::{
+            EvmChain,
+            contracts::{Staking, Token},
+            initialize_provider_with_wallet,
+        },
+        error::BlockchainError,
+        error_utils::handle_contract_call,
+    },
+    types::SignatureComponents,
+};
 
 impl EvmChain {
     pub(crate) async fn sign_message(

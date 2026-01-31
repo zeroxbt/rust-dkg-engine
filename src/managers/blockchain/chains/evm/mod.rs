@@ -1,20 +1,18 @@
 use std::str::FromStr;
 
 use alloy::{
-    primitives::{Address, B256, Bytes, U256, hex},
+    primitives::{Address, U256},
     providers::Provider,
-    rpc::types::Filter,
 };
 use tokio::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::managers::blockchain::{
-    BlockchainConfig, BlockchainId, GasConfig, RpcRateLimiter, SignatureComponents,
+    BlockchainConfig, BlockchainId, GasConfig, RpcRateLimiter,
     chains::evm::{
-        contracts::{Contracts, Profile, Staking, Token, initialize_contracts},
+        contracts::{Contracts, initialize_contracts},
         provider::{BlockchainProvider, initialize_provider, initialize_provider_with_wallet},
     },
     error::BlockchainError,
-    error_utils::handle_contract_call,
     gas::fetch_gas_price_from_oracle,
     substrate::validate_evm_wallets,
 };

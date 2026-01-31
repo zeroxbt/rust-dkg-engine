@@ -14,7 +14,10 @@ use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::{NETWORK_FETCH_BATCH_SIZE, types::{FetchStats, FetchedKc, KcToSync}};
+use super::{
+    NETWORK_FETCH_BATCH_SIZE,
+    types::{FetchStats, FetchedKc, KcToSync},
+};
 use crate::{
     managers::{
         blockchain::BlockchainId,
@@ -29,7 +32,6 @@ use crate::{
     operations::protocols::batch_get,
     services::{GetValidationService, PeerPerformanceTracker},
     types::{ParsedUal, Visibility, parse_ual},
-    utils::peer_fanout::limit_peers,
 };
 
 /// Fetch task: receives filtered KCs, fetches from network, sends to insert stage.
@@ -83,7 +85,6 @@ pub(crate) async fn fetch_task(
 
     // Sort peers by latency (fastest first)
     peer_performance_tracker.sort_by_latency(&mut peers);
-    peers = limit_peers(peers, batch_get::MAX_PEERS);
 
     let min_required_peers = batch_get::MIN_PEERS;
     if peers.len() < min_required_peers {

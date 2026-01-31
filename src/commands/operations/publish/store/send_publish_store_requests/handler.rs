@@ -1,5 +1,6 @@
-use std::{ops::ControlFlow, sync::Arc};
+use std::sync::Arc;
 
+use futures::{StreamExt, stream::FuturesUnordered};
 use libp2p::PeerId;
 use uuid::Uuid;
 
@@ -8,7 +9,10 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
-        network::{NetworkManager, messages::StoreRequestData},
+        network::{
+            NetworkError, NetworkManager,
+            messages::{StoreRequestData, StoreResponseData},
+        },
         repository::RepositoryManager,
         triple_store::Assertion,
     },
@@ -17,7 +21,6 @@ use crate::{
         operation_status::OperationStatusService as GenericOperationService,
         pending_storage_service::PendingStorageService,
     },
-    utils::peer_fanout::{for_each_peer_concurrently, limit_peers},
 };
 
 /// Command data for sending publish store requests to network nodes.
@@ -159,8 +162,6 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             .filter(|peer_id| *peer_id != my_peer_id)
             .collect();
 
-        let remote_peers = limit_peers(remote_peers, protocols::publish_store::MAX_PEERS);
-
         // Total peers includes self if we're in the shard
         let total_peers = if self_in_shard {
             remote_peers.len() as u16 + 1
@@ -283,57 +284,60 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         let mut failure_count: u16 = 0;
         let mut reached_threshold = success_count >= min_ack_required;
 
-        if !reached_threshold {
-            for_each_peer_concurrently(
-                &remote_peers,
-                protocols::publish_store::CONCURRENT_PEERS,
-                |peer| {
-                    let request_data = store_request_data.clone();
-                    let network_manager = Arc::clone(&self.network_manager);
-                    async move {
-                        let addresses = network_manager
-                            .get_peer_addresses(peer)
-                            .await
-                            .unwrap_or_default();
-                        let result = network_manager
-                            .send_store_request(peer, addresses, operation_id, request_data)
-                            .await;
-                        (peer, result)
-                    }
-                },
-                |(peer, result)| {
-                    match result {
-                        Ok(response) => {
-                            let is_valid =
-                                self.process_store_response(operation_id, &peer, &response);
+        if !reached_threshold && !remote_peers.is_empty() {
+            let mut futures = FuturesUnordered::new();
+            let mut peers_iter = remote_peers.iter().cloned();
+            let limit = protocols::publish_store::CONCURRENT_PEERS
+                .max(1)
+                .min(remote_peers.len());
 
-                            if !is_valid {
-                                failure_count += 1;
-                                return ControlFlow::Continue(());
-                            }
+            for _ in 0..limit {
+                if let Some(peer) = peers_iter.next() {
+                    futures.push(send_store_request_to_peer(
+                        self,
+                        peer,
+                        operation_id,
+                        store_request_data.clone(),
+                    ));
+                }
+            }
 
+            while let Some((peer, result)) = futures.next().await {
+                match result {
+                    Ok(response) => {
+                        let is_valid = self.process_store_response(operation_id, &peer, &response);
+
+                        if !is_valid {
+                            failure_count += 1;
+                        } else {
                             success_count += 1;
                         }
-                        Err(e) => {
-                            failure_count += 1;
-                            tracing::debug!(
-                                operation_id = %operation_id,
-                                peer = %peer,
-                                error = %e,
-                                "Store request failed"
-                            );
-                        }
                     }
-
-                    if success_count >= min_ack_required {
-                        reached_threshold = true;
-                        return ControlFlow::Break(());
+                    Err(e) => {
+                        failure_count += 1;
+                        tracing::debug!(
+                            operation_id = %operation_id,
+                            peer = %peer,
+                            error = %e,
+                            "Store request failed"
+                        );
                     }
+                }
 
-                    ControlFlow::Continue(())
-                },
-            )
-            .await;
+                if success_count >= min_ack_required {
+                    reached_threshold = true;
+                    break;
+                }
+
+                if let Some(peer) = peers_iter.next() {
+                    futures.push(send_store_request_to_peer(
+                        self,
+                        peer,
+                        operation_id,
+                        store_request_data.clone(),
+                    ));
+                }
+            }
         }
 
         if reached_threshold {
@@ -371,4 +375,22 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
 
         CommandExecutionResult::Completed
     }
+}
+
+async fn send_store_request_to_peer(
+    handler: &SendPublishStoreRequestsCommandHandler,
+    peer: PeerId,
+    operation_id: Uuid,
+    request_data: StoreRequestData,
+) -> (PeerId, Result<StoreResponseData, NetworkError>) {
+    let addresses = handler
+        .network_manager
+        .get_peer_addresses(peer)
+        .await
+        .unwrap_or_default();
+    let result = handler
+        .network_manager
+        .send_store_request(peer, addresses, operation_id, request_data)
+        .await;
+    (peer, result)
 }

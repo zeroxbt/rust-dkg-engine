@@ -1,4 +1,6 @@
-use super::super::*;
+use alloy::primitives::Address;
+
+use crate::managers::blockchain::{ContractName, chains::evm::EvmChain, error::BlockchainError};
 
 impl EvmChain {
     pub(crate) async fn re_initialize_contract(

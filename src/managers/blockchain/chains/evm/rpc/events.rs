@@ -1,4 +1,14 @@
-use super::super::*;
+use alloy::{
+    primitives::{Address, B256},
+    providers::Provider,
+    rpc::types::Filter,
+};
+
+use crate::managers::blockchain::{
+    ContractLog, ContractName,
+    chains::evm::{EvmChain, MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH},
+    error::BlockchainError,
+};
 
 impl EvmChain {
     pub(crate) async fn get_block_number(&self) -> Result<u64, BlockchainError> {
