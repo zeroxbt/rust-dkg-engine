@@ -201,47 +201,12 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             blockchain = %blockchain,
             "Getting identity ID from blockchain manager"
         );
-        let identity_id = match self.blockchain_manager.get_identity_id(blockchain).await {
-            Ok(Some(id)) => {
-                tracing::info!(
-                    operation_id = %operation_id,
-                    identity_id = %id,
-                    "Identity ID retrieved successfully"
-                );
-                id
-            }
-            Ok(None) => {
-                tracing::warn!(
-                    operation_id = %operation_id,
-                    blockchain = %blockchain,
-                    "Identity ID not found - sending NACK"
-                );
-                self.send_nack(
-                    channel,
-                    operation_id,
-                    &format!("Identity ID not found for blockchain {}", blockchain),
-                )
-                .await;
-
-                return CommandExecutionResult::Completed;
-            }
-            Err(e) => {
-                tracing::error!(
-                    operation_id = %operation_id,
-                    blockchain = %blockchain,
-                    error = %e,
-                    "Failed to get identity ID - sending NACK"
-                );
-                self.send_nack(
-                    channel,
-                    operation_id,
-                    &format!("Failed to get identity ID: {}", e),
-                )
-                .await;
-
-                return CommandExecutionResult::Completed;
-            }
-        };
+        let identity_id = self.blockchain_manager.identity_id(blockchain);
+        tracing::info!(
+            operation_id = %operation_id,
+            identity_id = %identity_id,
+            "Identity ID retrieved successfully"
+        );
 
         let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
             tracing::warn!(

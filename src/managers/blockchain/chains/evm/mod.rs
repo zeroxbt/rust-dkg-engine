@@ -215,6 +215,10 @@ impl EvmChain {
         self.identity_id = Some(id);
     }
 
+    pub(crate) fn identity_id(&self) -> Option<u128> {
+        self.identity_id
+    }
+
     pub(crate) fn gas_config(&self) -> &GasConfig {
         &self.gas_config
     }

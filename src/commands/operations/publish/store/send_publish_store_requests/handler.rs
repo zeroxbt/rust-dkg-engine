@@ -8,10 +8,7 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
-        network::{
-            NetworkManager,
-            messages::StoreRequestData,
-        },
+        network::{NetworkManager, messages::StoreRequestData},
         repository::RepositoryManager,
         triple_store::Assertion,
     },
@@ -73,7 +70,6 @@ impl SendPublishStoreRequestsCommandHandler {
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
     }
-
 }
 
 impl CommandHandler<SendPublishStoreRequestsCommandData>
@@ -195,24 +191,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             return CommandExecutionResult::Completed;
         }
 
-        let identity_id = match self.blockchain_manager.get_identity_id(blockchain).await {
-            Ok(Some(id)) => id,
-            Ok(None) => {
-                self.publish_store_operation_status_service
-                    .mark_failed(
-                        operation_id,
-                        format!("Identity ID not found for blockchain {}", blockchain),
-                    )
-                    .await;
-                return CommandExecutionResult::Completed;
-            }
-            Err(e) => {
-                self.publish_store_operation_status_service
-                    .mark_failed(operation_id, format!("Failed to get identity ID: {}", e))
-                    .await;
-                return CommandExecutionResult::Completed;
-            }
-        };
+        let identity_id = self.blockchain_manager.identity_id(blockchain);
 
         let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
             self.publish_store_operation_status_service
@@ -221,13 +200,13 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             return CommandExecutionResult::Completed;
         };
 
-        // Create and store publisher signature directly to redb
+        // Create and store publisher signature directly to result storage
         match self
             .create_publisher_signature(blockchain, dataset_root, identity_id)
             .await
         {
             Ok(sig) => {
-                // Store publisher signature to redb immediately
+                // Store publisher signature to result storage immediately
                 if let Err(e) = self.publish_store_operation_status_service.update_result(
                     operation_id,
                     PublishStoreOperationResult::new(None, Vec::new()),
@@ -238,7 +217,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                     tracing::warn!(
                         operation_id = %operation_id,
                         error = %e,
-                        "Failed to store publisher signature to redb"
+                        "Failed to store publisher signature to result storage"
                     );
                 }
             }

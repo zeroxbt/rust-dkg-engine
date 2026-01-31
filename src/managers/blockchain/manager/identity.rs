@@ -1,12 +1,13 @@
 use crate::managers::blockchain::*;
 
 impl BlockchainManager {
-    pub(crate) async fn get_identity_id(
-        &self,
-        blockchain: &BlockchainId,
-    ) -> Result<Option<u128>, BlockchainError> {
-        let blockchain_impl = self.chain(blockchain)?;
-        Ok(blockchain_impl.get_identity_id().await)
+    pub(crate) fn identity_id(&self, blockchain: &BlockchainId) -> u128 {
+        let blockchain_impl = self
+            .chain(blockchain)
+            .expect("Blockchain not initialized");
+        blockchain_impl
+            .identity_id()
+            .expect("Identity ID not initialized")
     }
 
     pub(crate) async fn initialize_identities(
