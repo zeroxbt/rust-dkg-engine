@@ -22,8 +22,10 @@ use crate::{
         operation::OperationStatusService as GenericOperationService,
     },
     types::{AccessPolicy, ParsedUal, Visibility, parse_ual},
-    utils::peer_fanout::{for_each_peer_concurrently, limit_peers},
-    utils::paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
+    utils::{
+        paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
+        peer_fanout::{for_each_peer_concurrently, limit_peers},
+    },
 };
 
 /// Command data for sending get requests to network nodes.
@@ -731,7 +733,11 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                 "Get operation completed - success threshold reached"
             );
 
-            if let Err(e) = self.get_operation_service.mark_completed(operation_id).await {
+            if let Err(e) = self
+                .get_operation_service
+                .mark_completed(operation_id)
+                .await
+            {
                 tracing::error!(
                     operation_id = %operation_id,
                     error = %e,

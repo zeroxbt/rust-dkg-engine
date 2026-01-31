@@ -75,10 +75,7 @@ where
     }
 
     /// Get a cached operation result from the key-value store.
-    pub(crate) fn get_result(
-        &self,
-        operation_id: Uuid,
-    ) -> Result<Option<R>, ResultStoreError> {
+    pub(crate) fn get_result(&self, operation_id: Uuid) -> Result<Option<R>, ResultStoreError> {
         Ok(self.result_table.get(operation_id)?)
     }
 
@@ -125,11 +122,7 @@ where
         let result = self
             .repository
             .operation_repository()
-            .update(
-                operation_id,
-                Some(OperationStatus::Failed),
-                Some(reason),
-            )
+            .update(operation_id, Some(OperationStatus::Failed), Some(reason))
             .await;
 
         let _ = self.result_table.remove(operation_id);

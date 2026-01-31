@@ -5,9 +5,9 @@ use uuid::Uuid;
 use crate::{
     context::Context,
     controllers::rpc_controller::v1::{
-        batch_get_rpc_controller::BatchGetRpcController,
-        finality_rpc_controller::FinalityRpcController, get_rpc_controller::GetRpcController,
-        store_rpc_controller::StoreRpcController,
+        batch_get_rpc_controller::BatchGetRpcController, get_rpc_controller::GetRpcController,
+        publish_finality_rpc_controller::PublishFinalityRpcController,
+        publish_store_rpc_controller::PublishStoreRpcController,
     },
     managers::network::{
         Multiaddr, NetworkEventHandler, NetworkManager, PeerId,
@@ -26,9 +26,9 @@ use crate::{
 
 pub(crate) struct RpcRouter {
     network_manager: Arc<NetworkManager>,
-    store_controller: Arc<StoreRpcController>,
+    store_controller: Arc<PublishStoreRpcController>,
     get_controller: Arc<GetRpcController>,
-    finality_controller: Arc<FinalityRpcController>,
+    finality_controller: Arc<PublishFinalityRpcController>,
     batch_get_controller: Arc<BatchGetRpcController>,
     peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
     peer_rate_limiter: Arc<PeerRateLimiter>,
@@ -38,9 +38,9 @@ impl RpcRouter {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         RpcRouter {
             network_manager: Arc::clone(context.network_manager()),
-            store_controller: Arc::new(StoreRpcController::new(Arc::clone(&context))),
+            store_controller: Arc::new(PublishStoreRpcController::new(Arc::clone(&context))),
             get_controller: Arc::new(GetRpcController::new(Arc::clone(&context))),
-            finality_controller: Arc::new(FinalityRpcController::new(Arc::clone(&context))),
+            finality_controller: Arc::new(PublishFinalityRpcController::new(Arc::clone(&context))),
             batch_get_controller: Arc::new(BatchGetRpcController::new(Arc::clone(&context))),
             peer_discovery_tracker: Arc::clone(context.peer_discovery_tracker()),
             peer_rate_limiter: Arc::clone(context.peer_rate_limiter()),

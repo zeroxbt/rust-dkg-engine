@@ -18,10 +18,10 @@ use crate::{
     services::ResponseChannels,
 };
 
-/// Command data for handling incoming finality requests from storage nodes.
+/// Command data for handling incoming publish finality requests from storage nodes.
 /// This runs on the publisher node when a storage node confirms it has stored the data.
 #[derive(Clone)]
-pub(crate) struct HandleFinalityRequestCommandData {
+pub(crate) struct HandlePublishFinalityRequestCommandData {
     /// The operation ID for this finality request
     pub operation_id: Uuid,
     /// The UAL (Universal Asset Locator) of the knowledge collection
@@ -32,7 +32,7 @@ pub(crate) struct HandleFinalityRequestCommandData {
     pub remote_peer_id: PeerId,
 }
 
-impl HandleFinalityRequestCommandData {
+impl HandlePublishFinalityRequestCommandData {
     pub(crate) fn new(
         operation_id: Uuid,
         ual: String,
@@ -48,13 +48,13 @@ impl HandleFinalityRequestCommandData {
     }
 }
 
-pub(crate) struct HandleFinalityRequestCommandHandler {
+pub(crate) struct HandlePublishFinalityRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
     response_channels: Arc<ResponseChannels<FinalityAck>>,
 }
 
-impl HandleFinalityRequestCommandHandler {
+impl HandlePublishFinalityRequestCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
@@ -111,8 +111,13 @@ impl HandleFinalityRequestCommandHandler {
     }
 }
 
-impl CommandHandler<HandleFinalityRequestCommandData> for HandleFinalityRequestCommandHandler {
-    async fn execute(&self, data: &HandleFinalityRequestCommandData) -> CommandExecutionResult {
+impl CommandHandler<HandlePublishFinalityRequestCommandData>
+    for HandlePublishFinalityRequestCommandHandler
+{
+    async fn execute(
+        &self,
+        data: &HandlePublishFinalityRequestCommandData,
+    ) -> CommandExecutionResult {
         let operation_id = data.operation_id;
         let ual = &data.ual;
         let publish_operation_id = &data.publish_operation_id;

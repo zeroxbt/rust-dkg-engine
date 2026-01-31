@@ -16,7 +16,6 @@ use tracing::instrument;
 
 use super::{CONCURRENT_PEER_REQUESTS, FetchStats, FetchedKc, KcToSync, NETWORK_FETCH_BATCH_SIZE};
 use crate::{
-    commands::operations::get::protocols::batch_get::BATCH_GET_UAL_MAX_LIMIT,
     managers::{
         blockchain::BlockchainId,
         network::{
@@ -27,6 +26,7 @@ use crate::{
         repository::RepositoryManager,
         triple_store::{TokenIds, parse_metadata_from_triples},
     },
+    operations::protocols::batch_get,
     services::{GetValidationService, PeerPerformanceTracker},
     types::{ParsedUal, Visibility, parse_ual},
 };
@@ -94,7 +94,7 @@ pub(crate) async fn fetch_task(
         while accumulated.len() >= NETWORK_FETCH_BATCH_SIZE
             || (!accumulated.is_empty() && rx.is_empty())
         {
-            let batch_size = accumulated.len().min(BATCH_GET_UAL_MAX_LIMIT);
+            let batch_size = accumulated.len().min(batch_get::UAL_MAX_LIMIT);
             let to_fetch: Vec<KcToSync> = accumulated.drain(..batch_size).collect();
 
             let fetch_start = Instant::now();

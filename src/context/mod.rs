@@ -97,9 +97,11 @@ impl Context {
         &self.services.get_operation
     }
 
-    pub(crate) fn publish_operation_service(
+    /// Publish polling status/results for store phase (signatures), not finality.
+    pub(crate) fn publish_store_operation_service(
         &self,
-    ) -> &Arc<crate::services::OperationStatusService<crate::operations::PublishOperationResult>> {
-        &self.services.publish_operation
+    ) -> &Arc<crate::services::OperationStatusService<crate::operations::PublishStoreOperationResult>>
+    {
+        &self.services.publish_store_operation
     }
 }

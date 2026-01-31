@@ -17,10 +17,10 @@ use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLaye
 use super::{
     middleware::{AuthConfig, RateLimiterConfig},
     v1::{
-        finality_http_api_controller::FinalityStatusHttpApiController,
         info_http_api_controller::InfoHttpApiController,
         operation_result_http_api_controller::OperationResultHttpApiController,
-        publish_http_api_controller::PublishHttpApiController,
+        publish_finality_http_api_controller::PublishFinalityStatusHttpApiController,
+        publish_store_http_api_controller::PublishStoreHttpApiController,
     },
 };
 use crate::{
@@ -59,7 +59,7 @@ impl HttpApiRouter {
             .route("/v1/info", get(InfoHttpApiController::handle_request))
             .route(
                 "/v1/publish",
-                post(PublishHttpApiController::handle_request),
+                post(PublishStoreHttpApiController::handle_request),
             )
             .route(
                 "/v1/publish/{operation_id}",
@@ -67,7 +67,7 @@ impl HttpApiRouter {
             )
             .route(
                 "/v1/finality",
-                get(FinalityStatusHttpApiController::handle_request),
+                get(PublishFinalityStatusHttpApiController::handle_request),
             )
             .route("/v1/get", post(GetHttpApiController::handle_request))
             .route(

@@ -8,15 +8,15 @@ use validator::Validate;
 use crate::{
     commands::{
         command_executor::CommandExecutionRequest, command_registry::Command,
-        operations::publish::protocols::store::send_store_requests_command::SendStoreRequestsCommandData,
+        operations::publish::store::send_publish_store_requests::SendPublishStoreRequestsCommandData,
     },
     context::Context,
     controllers::http_api_controller::v1::dto::publish::{PublishRequest, PublishResponse},
 };
 
-pub(crate) struct PublishHttpApiController;
+pub(crate) struct PublishStoreHttpApiController;
 
-impl PublishHttpApiController {
+impl PublishStoreHttpApiController {
     pub(crate) async fn handle_request(
         State(context): State<Arc<Context>>,
         Json(req): Json<PublishRequest>,
@@ -25,10 +25,10 @@ impl PublishHttpApiController {
             Ok(_) => {
                 let operation_id = Uuid::new_v4();
 
-                // Create operation record - we don't need the completion receiver for HTTP API
-                // (client polls for status via separate endpoint)
+                // Create operation record for the store phase (signatures).
+                // Finality is handled separately; clients poll the result endpoint.
                 if let Err(e) = context
-                    .publish_operation_service()
+                    .publish_store_operation_service()
                     .create_operation(operation_id)
                     .await
                     .map(|_| ())
@@ -45,13 +45,14 @@ impl PublishHttpApiController {
 
                 // Pass user-provided value to command; command handler will determine effective
                 // value
-                let command = Command::SendStoreRequests(SendStoreRequestsCommandData::new(
-                    operation_id,
-                    req.blockchain,
-                    req.dataset_root,
-                    req.minimum_number_of_node_replications,
-                    req.dataset,
-                ));
+                let command =
+                    Command::SendPublishStoreRequests(SendPublishStoreRequestsCommandData::new(
+                        operation_id,
+                        req.blockchain,
+                        req.dataset_root,
+                        req.minimum_number_of_node_replications,
+                        req.dataset,
+                    ));
 
                 context
                     .command_scheduler()

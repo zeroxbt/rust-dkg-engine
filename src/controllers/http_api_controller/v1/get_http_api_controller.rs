@@ -8,7 +8,7 @@ use validator::Validate;
 use crate::{
     commands::{
         command_executor::CommandExecutionRequest, command_registry::Command,
-        operations::get::protocols::get::send_get_requests_command::SendGetRequestsCommandData,
+        operations::get::send_get_requests::SendGetRequestsCommandData,
     },
     context::Context,
     controllers::http_api_controller::v1::dto::get::{GetRequest, GetResponse},

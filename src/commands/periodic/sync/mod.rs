@@ -18,15 +18,14 @@ mod fetch;
 mod filter;
 mod insert;
 mod types;
-
-use crate::commands::{
-    operations::get::protocols::batch_get::BATCH_GET_UAL_MAX_LIMIT,
-    periodic::sync_command::{
+use crate::{
+    commands::periodic::sync::{
         fetch::fetch_task,
         filter::filter_task,
         insert::insert_task,
         types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
     },
+    operations::protocols::batch_get,
 };
 /// Interval between sync cycles when there's pending work (catching up)
 pub(crate) const SYNC_PERIOD_CATCHING_UP: Duration = Duration::from_secs(0);
@@ -38,7 +37,7 @@ pub(crate) const SYNC_PERIOD_IDLE: Duration = Duration::from_secs(30);
 pub(crate) const MAX_RETRY_ATTEMPTS: u32 = 2;
 
 /// Maximum new KCs to process per contract per sync cycle
-pub(crate) const MAX_NEW_KCS_PER_CONTRACT: u64 = BATCH_GET_UAL_MAX_LIMIT as u64;
+pub(crate) const MAX_NEW_KCS_PER_CONTRACT: u64 = batch_get::UAL_MAX_LIMIT as u64;
 
 /// Batch size for filter task (KCs per batch sent through channel)
 /// Aligned with MULTICALL_CHUNK_SIZE (100) for optimal RPC batching.

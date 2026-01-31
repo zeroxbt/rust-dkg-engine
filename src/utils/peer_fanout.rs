@@ -1,6 +1,6 @@
 use std::{future::Future, ops::ControlFlow};
 
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::{StreamExt, stream::FuturesUnordered};
 
 /// Limit a peer list to a maximum count, preserving order.
 pub(crate) fn limit_peers<T>(mut peers: Vec<T>, max_peers: usize) -> Vec<T> {

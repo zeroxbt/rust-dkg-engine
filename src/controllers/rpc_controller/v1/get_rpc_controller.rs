@@ -4,7 +4,7 @@ use crate::{
     commands::{
         command_executor::{CommandExecutionRequest, CommandScheduler},
         command_registry::Command,
-        operations::get::protocols::get::handle_get_request_command::HandleGetRequestCommandData,
+        operations::get::handle_get_request::HandleGetRequestCommandData,
     },
     context::Context,
     controllers::rpc_controller::messages::{GetAck, GetRequestData},

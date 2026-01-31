@@ -4,7 +4,7 @@ use crate::{
     commands::{
         command_executor::{CommandExecutionRequest, CommandScheduler},
         command_registry::Command,
-        operations::publish::protocols::finality::handle_finality_request_command::HandleFinalityRequestCommandData,
+        operations::publish::finality::handle_publish_finality_request::HandlePublishFinalityRequestCommandData,
     },
     context::Context,
     controllers::rpc_controller::messages::{FinalityAck, FinalityRequestData},
@@ -16,12 +16,12 @@ use crate::{
     services::ResponseChannels,
 };
 
-pub(crate) struct FinalityRpcController {
+pub(crate) struct PublishFinalityRpcController {
     response_channels: Arc<ResponseChannels<FinalityAck>>,
     command_scheduler: CommandScheduler,
 }
 
-impl FinalityRpcController {
+impl PublishFinalityRpcController {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             response_channels: Arc::clone(context.finality_response_channels()),
@@ -51,8 +51,8 @@ impl FinalityRpcController {
         self.response_channels
             .store(&remote_peer_id, operation_id, channel);
 
-        // Schedule the HandleFinalityRequest command
-        let command_data = HandleFinalityRequestCommandData::new(
+        // Schedule the HandlePublishFinalityRequest command
+        let command_data = HandlePublishFinalityRequestCommandData::new(
             operation_id,
             data.ual().to_string(),
             data.publish_operation_id().to_string(),
@@ -61,7 +61,7 @@ impl FinalityRpcController {
 
         self.command_scheduler
             .schedule(CommandExecutionRequest::new(
-                Command::HandleFinalityRequest(command_data),
+                Command::HandlePublishFinalityRequest(command_data),
             ))
             .await;
     }

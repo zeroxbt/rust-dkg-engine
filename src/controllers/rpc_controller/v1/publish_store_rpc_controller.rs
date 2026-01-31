@@ -4,7 +4,7 @@ use crate::{
     commands::{
         command_executor::{CommandExecutionRequest, CommandScheduler},
         command_registry::Command,
-        operations::publish::protocols::store::handle_store_request_command::HandleStoreRequestCommandData,
+        operations::publish::store::handle_publish_store_request::HandlePublishStoreRequestCommandData,
     },
     context::Context,
     controllers::rpc_controller::messages::{StoreAck, StoreRequestData},
@@ -19,12 +19,12 @@ use crate::{
     services::ResponseChannels,
 };
 
-pub(crate) struct StoreRpcController {
+pub(crate) struct PublishStoreRpcController {
     response_channels: Arc<ResponseChannels<StoreAck>>,
     command_scheduler: CommandScheduler,
 }
 
-impl StoreRpcController {
+impl PublishStoreRpcController {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             response_channels: Arc::clone(context.store_response_channels()),
@@ -60,13 +60,14 @@ impl StoreRpcController {
         };
 
         // Schedule command with dataset passed inline
-        let command = Command::HandleStoreRequest(HandleStoreRequestCommandData::new(
-            data.blockchain().clone(),
-            operation_id,
-            data.dataset_root().to_owned(),
-            remote_peer_id,
-            dataset,
-        ));
+        let command =
+            Command::HandlePublishStoreRequest(HandlePublishStoreRequestCommandData::new(
+                data.blockchain().clone(),
+                operation_id,
+                data.dataset_root().to_owned(),
+                remote_peer_id,
+                dataset,
+            ));
 
         self.command_scheduler
             .schedule(CommandExecutionRequest::new(command))

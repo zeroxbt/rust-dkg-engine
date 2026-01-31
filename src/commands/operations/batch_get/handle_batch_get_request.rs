@@ -3,7 +3,6 @@ use std::{collections::HashMap, sync::Arc};
 use libp2p::PeerId;
 use uuid::Uuid;
 
-use super::BATCH_GET_UAL_MAX_LIMIT;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
@@ -16,6 +15,7 @@ use crate::{
         },
         triple_store::{Assertion, TokenIds},
     },
+    operations::protocols::batch_get,
     services::{ResponseChannels, TripleStoreService},
     types::{ParsedUal, Visibility, parse_ual},
 };
@@ -143,7 +143,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         let uals: Vec<String> = data
             .uals
             .iter()
-            .take(BATCH_GET_UAL_MAX_LIMIT)
+            .take(batch_get::UAL_MAX_LIMIT)
             .cloned()
             .collect();
 

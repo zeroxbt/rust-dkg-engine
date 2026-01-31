@@ -21,10 +21,10 @@ use crate::{
     utils::validation,
 };
 
-/// Command data for handling incoming publish/store requests.
+/// Command data for handling incoming publish store requests.
 /// Dataset is passed inline; channel is retrieved from session manager.
 #[derive(Clone)]
-pub(crate) struct HandleStoreRequestCommandData {
+pub(crate) struct HandlePublishStoreRequestCommandData {
     pub blockchain: BlockchainId,
     pub operation_id: Uuid,
     pub dataset_root: String,
@@ -32,7 +32,7 @@ pub(crate) struct HandleStoreRequestCommandData {
     pub dataset: Assertion,
 }
 
-impl HandleStoreRequestCommandData {
+impl HandlePublishStoreRequestCommandData {
     pub(crate) fn new(
         blockchain: BlockchainId,
         operation_id: Uuid,
@@ -50,7 +50,7 @@ impl HandleStoreRequestCommandData {
     }
 }
 
-pub(crate) struct HandleStoreRequestCommandHandler {
+pub(crate) struct HandlePublishStoreRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -58,7 +58,7 @@ pub(crate) struct HandleStoreRequestCommandHandler {
     pending_storage_service: Arc<PendingStorageService>,
 }
 
-impl HandleStoreRequestCommandHandler {
+impl HandlePublishStoreRequestCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
@@ -102,8 +102,10 @@ impl HandleStoreRequestCommandHandler {
     }
 }
 
-impl CommandHandler<HandleStoreRequestCommandData> for HandleStoreRequestCommandHandler {
-    async fn execute(&self, data: &HandleStoreRequestCommandData) -> CommandExecutionResult {
+impl CommandHandler<HandlePublishStoreRequestCommandData>
+    for HandlePublishStoreRequestCommandHandler
+{
+    async fn execute(&self, data: &HandlePublishStoreRequestCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;
         let dataset_root = &data.dataset_root;

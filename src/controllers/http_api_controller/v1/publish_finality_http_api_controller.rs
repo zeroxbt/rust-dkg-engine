@@ -15,9 +15,9 @@ use crate::{
     },
 };
 
-pub(crate) struct FinalityStatusHttpApiController;
+pub(crate) struct PublishFinalityStatusHttpApiController;
 
-impl FinalityStatusHttpApiController {
+impl PublishFinalityStatusHttpApiController {
     pub(crate) async fn handle_request(
         State(context): State<Arc<Context>>,
         Query(req): Query<FinalityRequest>,

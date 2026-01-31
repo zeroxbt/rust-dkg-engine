@@ -19,7 +19,7 @@ use crate::{
 /// Raw event data from KnowledgeCollectionCreated event.
 /// Parsing and validation happens in the command handler, not the event listener.
 #[derive(Clone)]
-pub(crate) struct SendFinalityRequestCommandData {
+pub(crate) struct SendPublishFinalityRequestCommandData {
     /// The blockchain where the event was emitted
     pub blockchain: BlockchainId,
     /// The publish operation ID (raw string from event, parsed to UUID in handler)
@@ -40,7 +40,7 @@ pub(crate) struct SendFinalityRequestCommandData {
     pub block_timestamp: u64,
 }
 
-impl SendFinalityRequestCommandData {
+impl SendPublishFinalityRequestCommandData {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         blockchain: BlockchainId,
@@ -67,7 +67,7 @@ impl SendFinalityRequestCommandData {
     }
 }
 
-pub(crate) struct SendFinalityRequestCommandHandler {
+pub(crate) struct SendPublishFinalityRequestCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -75,7 +75,7 @@ pub(crate) struct SendFinalityRequestCommandHandler {
     triple_store_service: Arc<TripleStoreService>,
 }
 
-impl SendFinalityRequestCommandHandler {
+impl SendPublishFinalityRequestCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
@@ -87,8 +87,13 @@ impl SendFinalityRequestCommandHandler {
     }
 }
 
-impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestCommandHandler {
-    async fn execute(&self, data: &SendFinalityRequestCommandData) -> CommandExecutionResult {
+impl CommandHandler<SendPublishFinalityRequestCommandData>
+    for SendPublishFinalityRequestCommandHandler
+{
+    async fn execute(
+        &self,
+        data: &SendPublishFinalityRequestCommandData,
+    ) -> CommandExecutionResult {
         // Generate a new operation ID for the finality request
         let operation_id = Uuid::new_v4();
         // Parse the operation ID from the raw string
@@ -328,7 +333,7 @@ impl CommandHandler<SendFinalityRequestCommandData> for SendFinalityRequestComma
         let peers = vec![publisher_peer_id];
         for_each_peer_concurrently(
             &peers,
-            crate::operations::protocols::finality::CONCURRENT_PEERS,
+            crate::operations::protocols::publish_finality::CONCURRENT_PEERS,
             |peer| {
                 let request_data = finality_request_data.clone();
                 let network_manager = Arc::clone(&self.network_manager);

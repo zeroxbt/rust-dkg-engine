@@ -1,4 +1,5 @@
 use std::{ops::ControlFlow, sync::Arc};
+
 use libp2p::PeerId;
 use uuid::Uuid;
 
@@ -16,7 +17,7 @@ use crate::{
         repository::RepositoryManager,
         triple_store::Assertion,
     },
-    operations::{PublishOperationResult, SignatureData, protocols},
+    operations::{PublishStoreOperationResult, PublishStoreSignatureData, protocols},
     services::{
         operation::OperationStatusService as GenericOperationService,
         pending_storage_service::PendingStorageService,
@@ -24,10 +25,10 @@ use crate::{
     utils::peer_fanout::{for_each_peer_concurrently, limit_peers},
 };
 
-/// Command data for sending publish requests to network nodes.
+/// Command data for sending publish store requests to network nodes.
 /// Dataset is passed inline instead of being retrieved from storage.
 #[derive(Clone)]
-pub(crate) struct SendStoreRequestsCommandData {
+pub(crate) struct SendPublishStoreRequestsCommandData {
     pub operation_id: Uuid,
     pub blockchain: BlockchainId,
     pub dataset_root: String,
@@ -35,7 +36,7 @@ pub(crate) struct SendStoreRequestsCommandData {
     pub dataset: Assertion,
 }
 
-impl SendStoreRequestsCommandData {
+impl SendPublishStoreRequestsCommandData {
     pub(crate) fn new(
         operation_id: Uuid,
         blockchain: BlockchainId,
@@ -53,21 +54,21 @@ impl SendStoreRequestsCommandData {
     }
 }
 
-pub(crate) struct SendStoreRequestsCommandHandler {
+pub(crate) struct SendPublishStoreRequestsCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
-    publish_operation_service: Arc<GenericOperationService<PublishOperationResult>>,
+    publish_store_operation_service: Arc<GenericOperationService<PublishStoreOperationResult>>,
     pending_storage_service: Arc<PendingStorageService>,
 }
 
-impl SendStoreRequestsCommandHandler {
+impl SendPublishStoreRequestsCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
-            publish_operation_service: Arc::clone(context.publish_operation_service()),
+            publish_store_operation_service: Arc::clone(context.publish_store_operation_service()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
     }
@@ -87,7 +88,7 @@ impl SendStoreRequestsCommandHandler {
             .await?;
 
         // Add self-node signature directly to redb as a network signature
-        let sig_data = SignatureData::new(
+        let sig_data = PublishStoreSignatureData::new(
             identity_id.to_string(),
             signature.v,
             signature.r.clone(),
@@ -95,9 +96,9 @@ impl SendStoreRequestsCommandHandler {
             signature.vs.clone(),
         );
 
-        self.publish_operation_service.update_result(
+        self.publish_store_operation_service.update_result(
             operation_id,
-            PublishOperationResult::new(None, Vec::new()),
+            PublishStoreOperationResult::new(None, Vec::new()),
             |result| {
                 result.network_signatures.push(sig_data);
             },
@@ -107,13 +108,13 @@ impl SendStoreRequestsCommandHandler {
     }
 
     /// Create publisher signature and store it in context.
-    /// Returns the SignatureData for storage in context.
+    /// Returns the PublishStoreSignatureData for storage in context.
     async fn create_publisher_signature(
         &self,
         blockchain: &BlockchainId,
         dataset_root: &str,
         identity_id: u128,
-    ) -> Result<SignatureData, NodeError> {
+    ) -> Result<PublishStoreSignatureData, NodeError> {
         let dataset_root_h256: H256 = dataset_root
             .parse()
             .map_err(|e| NodeError::Other(format!("Invalid dataset root hex: {e}")))?;
@@ -139,7 +140,7 @@ impl SendStoreRequestsCommandHandler {
             )
             .await?;
 
-        Ok(SignatureData::new(
+        Ok(PublishStoreSignatureData::new(
             identity_id.to_string(),
             signature.v,
             signature.r,
@@ -161,7 +162,7 @@ impl SendStoreRequestsCommandHandler {
             ResponseBody::Ack(ack) => {
                 let identity_id = ack.identity_id;
                 let signature = &ack.signature;
-                let sig_data = SignatureData::new(
+                let sig_data = PublishStoreSignatureData::new(
                     identity_id.to_string(),
                     signature.v,
                     signature.r.clone(),
@@ -170,9 +171,9 @@ impl SendStoreRequestsCommandHandler {
                 );
 
                 // Store signature incrementally to redb
-                if let Err(e) = self.publish_operation_service.update_result(
+                if let Err(e) = self.publish_store_operation_service.update_result(
                     operation_id,
-                    PublishOperationResult::new(None, Vec::new()),
+                    PublishStoreOperationResult::new(None, Vec::new()),
                     |result| {
                         result.network_signatures.push(sig_data);
                     },
@@ -207,15 +208,17 @@ impl SendStoreRequestsCommandHandler {
     }
 }
 
-impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHandler {
-    async fn execute(&self, data: &SendStoreRequestsCommandData) -> CommandExecutionResult {
+impl CommandHandler<SendPublishStoreRequestsCommandData>
+    for SendPublishStoreRequestsCommandHandler
+{
+    async fn execute(&self, data: &SendPublishStoreRequestsCommandData) -> CommandExecutionResult {
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;
         let dataset_root = &data.dataset_root;
         let dataset = &data.dataset;
 
         // Determine effective min_ack_responses using max(default, chain_min, user_provided)
-        let default_min = protocols::store::MIN_ACK_RESPONSES as u8;
+        let default_min = protocols::publish_store::MIN_ACK_RESPONSES as u8;
         let user_min = data.min_ack_responses;
         let chain_min = match self
             .blockchain_manager
@@ -271,7 +274,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
                     "Failed to get shard nodes"
                 );
 
-                self.publish_operation_service
+                self.publish_store_operation_service
                     .mark_failed(operation_id, error_message)
                     .await;
                 return CommandExecutionResult::Completed;
@@ -292,7 +295,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
             .filter(|peer_id| *peer_id != my_peer_id)
             .collect();
 
-        let remote_peers = limit_peers(remote_peers, protocols::store::MAX_PEERS);
+        let remote_peers = limit_peers(remote_peers, protocols::publish_store::MAX_PEERS);
 
         // Total peers includes self if we're in the shard
         let total_peers = if self_in_shard {
@@ -311,13 +314,13 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
         );
 
         let min_ack_required = min_ack_responses as u16;
-        let min_required_peers = protocols::store::MIN_PEERS.max(min_ack_required as usize);
+        let min_required_peers = protocols::publish_store::MIN_PEERS.max(min_ack_required as usize);
         if (total_peers as usize) < min_required_peers {
             let error_message = format!(
                 "Unable to find enough nodes for operation: {operation_id}. Minimum number of nodes required: {min_required_peers}"
             );
 
-            self.publish_operation_service
+            self.publish_store_operation_service
                 .mark_failed(operation_id, error_message)
                 .await;
 
@@ -327,7 +330,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
         let identity_id = match self.blockchain_manager.get_identity_id(blockchain).await {
             Ok(Some(id)) => id,
             Ok(None) => {
-                self.publish_operation_service
+                self.publish_store_operation_service
                     .mark_failed(
                         operation_id,
                         format!("Identity ID not found for blockchain {}", blockchain),
@@ -336,7 +339,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
                 return CommandExecutionResult::Completed;
             }
             Err(e) => {
-                self.publish_operation_service
+                self.publish_store_operation_service
                     .mark_failed(operation_id, format!("Failed to get identity ID: {}", e))
                     .await;
                 return CommandExecutionResult::Completed;
@@ -344,7 +347,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
         };
 
         let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
-            self.publish_operation_service
+            self.publish_store_operation_service
                 .mark_failed(operation_id, "Dataset root missing '0x' prefix".to_string())
                 .await;
             return CommandExecutionResult::Completed;
@@ -357,9 +360,9 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
         {
             Ok(sig) => {
                 // Store publisher signature to redb immediately
-                if let Err(e) = self.publish_operation_service.update_result(
+                if let Err(e) = self.publish_store_operation_service.update_result(
                     operation_id,
-                    PublishOperationResult::new(None, Vec::new()),
+                    PublishStoreOperationResult::new(None, Vec::new()),
                     |result| {
                         result.publisher_signature = Some(sig);
                     },
@@ -391,7 +394,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
                 error = %e,
                 "Failed to store dataset in pending storage"
             );
-            self.publish_operation_service
+            self.publish_store_operation_service
                 .mark_failed(operation_id, format!("Failed to store dataset: {}", e))
                 .await;
             return CommandExecutionResult::Completed;
@@ -436,7 +439,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
         if !reached_threshold {
             for_each_peer_concurrently(
                 &remote_peers,
-                protocols::store::CONCURRENT_PEERS,
+                protocols::publish_store::CONCURRENT_PEERS,
                 |peer| {
                     let request_data = store_request_data.clone();
                     let network_manager = Arc::clone(&self.network_manager);
@@ -494,7 +497,11 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
                 "Publish operation completed - success threshold reached"
             );
 
-            if let Err(e) = self.publish_operation_service.mark_completed(operation_id).await {
+            if let Err(e) = self
+                .publish_store_operation_service
+                .mark_completed(operation_id)
+                .await
+            {
                 tracing::error!(
                     operation_id = %operation_id,
                     error = %e,
@@ -511,7 +518,7 @@ impl CommandHandler<SendStoreRequestsCommandData> for SendStoreRequestsCommandHa
             success_count, failure_count, min_ack_responses
         );
         tracing::warn!(operation_id = %operation_id, %error_message);
-        self.publish_operation_service
+        self.publish_store_operation_service
             .mark_failed(operation_id, error_message)
             .await;
 

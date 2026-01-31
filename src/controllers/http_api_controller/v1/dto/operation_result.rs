@@ -11,10 +11,10 @@ pub(crate) struct SignatureData {
     pub vs: String,
 }
 
-/// Data specific to publish operation results
+/// Data specific to publish store operation results
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct PublishOperationData {
+pub(crate) struct PublishStoreOperationData {
     pub min_acks_reached: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publisher_node_signature: Option<SignatureData>,
@@ -32,7 +32,7 @@ pub(crate) struct PublishOperationData {
 pub(crate) struct OperationResultResponse {
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<PublishOperationData>,
+    pub data: Option<PublishStoreOperationData>,
 }
 
 impl OperationResultResponse {
@@ -49,7 +49,7 @@ impl OperationResultResponse {
     ) -> Self {
         Self {
             status: "COMPLETED".to_string(),
-            data: Some(PublishOperationData {
+            data: Some(PublishStoreOperationData {
                 min_acks_reached: true,
                 publisher_node_signature: publisher_signature,
                 signatures: Some(network_signatures),
@@ -62,7 +62,7 @@ impl OperationResultResponse {
     pub(crate) fn failed(error_message: Option<String>) -> Self {
         Self {
             status: "FAILED".to_string(),
-            data: Some(PublishOperationData {
+            data: Some(PublishStoreOperationData {
                 min_acks_reached: false,
                 publisher_node_signature: None,
                 signatures: None,

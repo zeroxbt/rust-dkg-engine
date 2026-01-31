@@ -1,10 +1,14 @@
 use std::{sync::Arc, time::Duration};
 
+mod blockchain_event_spec;
+
+use blockchain_event_spec::{ContractEvent, decode_contract_event, monitored_contract_events};
+
 use crate::{
     commands::{
         command_executor::{CommandExecutionRequest, CommandExecutionResult, CommandScheduler},
         command_registry::{Command, CommandHandler},
-        operations::publish::protocols::finality::send_finality_request_command::SendFinalityRequestCommandData,
+        operations::publish::finality::send_publish_finality_request::SendPublishFinalityRequestCommandData,
     },
     config,
     context::Context,
@@ -20,10 +24,6 @@ use crate::{
         repository::RepositoryManager,
     },
 };
-
-mod blockchain_event_spec;
-
-use blockchain_event_spec::{ContractEvent, decode_contract_event, monitored_contract_events};
 
 /// Event fetch interval for mainnet (10 seconds)
 const EVENT_FETCH_INTERVAL_MAINNET: Duration = Duration::from_secs(10);
@@ -424,17 +424,18 @@ impl BlockchainEventListenerCommandHandler {
         // byteSize is uint88 in the contract, convert to u128
         let byte_size: u128 = filter.byteSize.to();
 
-        let command = Command::SendFinalityRequest(SendFinalityRequestCommandData::new(
-            blockchain_id.to_owned(),
-            filter.publishOperationId.clone(),
-            filter.id,
-            log.address(),
-            byte_size,
-            filter.merkleRoot,
-            transaction_hash,
-            log.block_number.unwrap_or_default(),
-            log.block_timestamp.unwrap_or_default(),
-        ));
+        let command =
+            Command::SendPublishFinalityRequest(SendPublishFinalityRequestCommandData::new(
+                blockchain_id.to_owned(),
+                filter.publishOperationId.clone(),
+                filter.id,
+                log.address(),
+                byte_size,
+                filter.merkleRoot,
+                transaction_hash,
+                log.block_number.unwrap_or_default(),
+                log.block_timestamp.unwrap_or_default(),
+            ));
 
         self.command_scheduler
             .schedule(CommandExecutionRequest::new(command))

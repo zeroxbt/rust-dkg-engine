@@ -15,7 +15,7 @@ use crate::{
         operation_result::{OperationResultErrorResponse, OperationResultResponse, SignatureData},
     },
     managers::repository::OperationStatus,
-    operations::{PublishOperationResult, protocols},
+    operations::{PublishStoreOperationResult, protocols},
 };
 
 pub(crate) struct OperationResultHttpApiController;
@@ -25,6 +25,7 @@ impl OperationResultHttpApiController {
         State(context): State<Arc<Context>>,
         Path(operation_id): Path<String>,
     ) -> impl IntoResponse {
+        // Publish polling covers the store phase only (signatures), not finality.
         // Validate operation ID format
         let Ok(operation_uuid) = Uuid::parse_str(&operation_id) else {
             return (
@@ -41,7 +42,7 @@ impl OperationResultHttpApiController {
         let operation_record = match context
             .repository_manager()
             .operation_repository()
-            .get_by_id_and_name(operation_uuid, protocols::store::NAME)
+            .get_by_id_and_name(operation_uuid, protocols::publish_store::NAME)
             .await
         {
             Ok(Some(record)) => record,
@@ -135,14 +136,14 @@ impl OperationResultHttpApiController {
         operation_id: Uuid,
     ) -> Result<(Option<SignatureData>, Vec<SignatureData>), String> {
         // Get result from redb via publish operation service
-        let result: Option<PublishOperationResult> = context
-            .publish_operation_service()
+        let result: Option<PublishStoreOperationResult> = context
+            .publish_store_operation_service()
             .get_result(operation_id)
             .map_err(|e| e.to_string())?;
 
         match result {
             Some(publish_result) => {
-                // Convert from operations::SignatureData to dto::SignatureData
+                // Convert from operations::PublishStoreSignatureData to dto::SignatureData
                 let publisher_sig = publish_result.publisher_signature.map(|sig| SignatureData {
                     identity_id: sig.identity_id,
                     v: sig.v,
