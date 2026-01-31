@@ -50,6 +50,3 @@ pub(crate) const NETWORK_FETCH_BATCH_SIZE: usize = 100;
 
 /// Channel buffer size (number of batches that can be buffered between stages)
 pub(crate) const PIPELINE_CHANNEL_BUFFER: usize = 6;
-
-/// Number of peers to query concurrently during network fetch
-pub(crate) const CONCURRENT_PEER_REQUESTS: usize = 3;

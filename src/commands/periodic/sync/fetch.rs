@@ -14,10 +14,7 @@ use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::{
-    CONCURRENT_PEER_REQUESTS, NETWORK_FETCH_BATCH_SIZE,
-    types::{FetchStats, FetchedKc, KcToSync},
-};
+use super::{NETWORK_FETCH_BATCH_SIZE, types::{FetchStats, FetchedKc, KcToSync}};
 use crate::{
     managers::{
         blockchain::BlockchainId,
@@ -32,6 +29,7 @@ use crate::{
     operations::protocols::batch_get,
     services::{GetValidationService, PeerPerformanceTracker},
     types::{ParsedUal, Visibility, parse_ual},
+    utils::peer_fanout::limit_peers,
 };
 
 /// Fetch task: receives filtered KCs, fetches from network, sends to insert stage.
@@ -85,6 +83,21 @@ pub(crate) async fn fetch_task(
 
     // Sort peers by latency (fastest first)
     peer_performance_tracker.sort_by_latency(&mut peers);
+    peers = limit_peers(peers, batch_get::MAX_PEERS);
+
+    let min_required_peers = batch_get::MIN_PEERS;
+    if peers.len() < min_required_peers {
+        tracing::warn!(
+            blockchain_id = %blockchain_id,
+            found = peers.len(),
+            required = min_required_peers,
+            "[DKG SYNC] Fetch: not enough peers available"
+        );
+        while let Some(batch) = rx.recv().await {
+            failures.extend(batch.iter().map(|kc| kc.kc_id));
+        }
+        return FetchStats { failures };
+    }
 
     // Accumulate KCs until we have enough for a network batch
     let mut accumulated: Vec<KcToSync> = Vec::new();
@@ -292,7 +305,7 @@ async fn fetch_kc_batch_from_network(
     let initial_request = build_request(&uals_still_needed);
 
     // Start initial batch of concurrent requests
-    for _ in 0..CONCURRENT_PEER_REQUESTS {
+    for _ in 0..batch_get::CONCURRENT_PEERS {
         if let Some(&peer) = peers_iter.next() {
             futures.push(make_peer_request(
                 peer,

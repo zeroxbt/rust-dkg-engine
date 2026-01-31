@@ -33,7 +33,7 @@ pub(crate) mod batch_get {
     /// Maximum number of peers to contact for this operation.
     pub(crate) const MAX_PEERS: usize = usize::MAX;
     /// Maximum number of in-flight peer requests for this operation.
-    pub(crate) const CONCURRENT_PEERS: usize = 5;
+    pub(crate) const CONCURRENT_PEERS: usize = 3;
 }
 
 pub(crate) mod publish_finality {

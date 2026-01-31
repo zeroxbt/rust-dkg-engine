@@ -9,8 +9,8 @@ use tokio::sync::mpsc;
 use tracing::Instrument;
 
 use super::{
-    CONCURRENT_PEER_REQUESTS, MAX_NEW_KCS_PER_CONTRACT, MAX_RETRY_ATTEMPTS,
-    PIPELINE_CHANNEL_BUFFER, SYNC_PERIOD_CATCHING_UP, SYNC_PERIOD_IDLE,
+    MAX_NEW_KCS_PER_CONTRACT, MAX_RETRY_ATTEMPTS, PIPELINE_CHANNEL_BUFFER, SYNC_PERIOD_CATCHING_UP,
+    SYNC_PERIOD_IDLE,
     fetch::fetch_task,
     filter::filter_task,
     insert::insert_task,
@@ -23,6 +23,7 @@ use crate::{
         blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
         repository::RepositoryManager,
     },
+    operations::protocols::batch_get,
     services::{GetValidationService, PeerPerformanceTracker, TripleStoreService},
 };
 
@@ -457,11 +458,11 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
             }
         };
 
-        if connected_peers.len() < CONCURRENT_PEER_REQUESTS {
+        if connected_peers.len() < batch_get::CONCURRENT_PEERS {
             tracing::info!(
                 blockchain_id = %data.blockchain_id,
                 connected = connected_peers.len(),
-                required = CONCURRENT_PEER_REQUESTS,
+                required = batch_get::CONCURRENT_PEERS,
                 "[DKG SYNC] Not enough peers connected yet, retrying later"
             );
             return CommandExecutionResult::Repeat {
