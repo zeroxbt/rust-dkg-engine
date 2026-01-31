@@ -7,7 +7,7 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, H256, U256},
-        network::{NetworkManager, PeerId},
+        network::{NetworkManager, PeerId, message::ResponseBody, messages::FinalityRequestData},
         repository::RepositoryManager,
         triple_store::KnowledgeCollectionMetadata,
     },
@@ -324,13 +324,54 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             return CommandExecutionResult::Completed;
         }
 
-        self.send_finality_request_to_publisher(
-            operation_id,
-            publish_operation_id,
+        let finality_request_data = FinalityRequestData::new(
             ual,
+            data.publish_operation_id.clone(),
             data.blockchain.clone(),
-            publisher_peer_id,
-        )
-        .await
+        );
+        let addresses = self
+            .network_manager
+            .get_peer_addresses(publisher_peer_id)
+            .await
+            .unwrap_or_default();
+        let result = self
+            .network_manager
+            .send_finality_request(
+                publisher_peer_id,
+                addresses,
+                operation_id,
+                finality_request_data,
+            )
+            .await;
+
+        match result {
+            Ok(ResponseBody::Ack(_)) => {
+                tracing::info!(
+                    operation_id = %operation_id,
+                    publish_operation_id = %publish_operation_id,
+                    peer = %publisher_peer_id,
+                    "Sent finality request to publisher"
+                );
+            }
+            Ok(ResponseBody::Error(_)) => {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    publish_operation_id = %publish_operation_id,
+                    peer = %publisher_peer_id,
+                    "Publisher returned error for finality request"
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    publish_operation_id = %publish_operation_id,
+                    peer = %publisher_peer_id,
+                    error = %e,
+                    "Failed to send finality request to publisher"
+                );
+            }
+        }
+
+        CommandExecutionResult::Completed
     }
 }
