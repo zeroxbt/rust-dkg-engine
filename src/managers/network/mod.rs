@@ -27,10 +27,8 @@ pub(crate) use event_loop::NetworkEventLoop;
 pub(crate) use handle::NetworkManager;
 pub(crate) use handler::NetworkEventHandler;
 pub(crate) use key_manager::KeyManager;
-
 // Re-export libp2p types for application use
 pub(crate) use libp2p::{Multiaddr, PeerId, request_response};
-
 // Re-export message types
 pub(crate) use message::{RequestMessage, ResponseMessage};
 pub(crate) use pending_requests::PendingRequests;

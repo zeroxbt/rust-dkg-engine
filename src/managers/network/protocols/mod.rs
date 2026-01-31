@@ -16,11 +16,14 @@ pub(crate) mod finality;
 pub(crate) mod get;
 pub(crate) mod store;
 
-pub(crate) use codec::JsCompatCodec;
-pub(crate) use spec::{ProtocolResponse, ProtocolSpec};
-
 // Re-export protocol types for convenience
-pub(crate) use batch_get::{BatchGetAck, BatchGetProtocol, BatchGetRequestData, BatchGetResponseData};
-pub(crate) use finality::{FinalityAck, FinalityProtocol, FinalityRequestData, FinalityResponseData};
+pub(crate) use batch_get::{
+    BatchGetAck, BatchGetProtocol, BatchGetRequestData, BatchGetResponseData,
+};
+pub(crate) use codec::JsCompatCodec;
+pub(crate) use finality::{
+    FinalityAck, FinalityProtocol, FinalityRequestData, FinalityResponseData,
+};
 pub(crate) use get::{GetAck, GetProtocol, GetRequestData, GetResponseData};
+pub(crate) use spec::{ProtocolResponse, ProtocolSpec};
 pub(crate) use store::{StoreAck, StoreProtocol, StoreRequestData, StoreResponseData};

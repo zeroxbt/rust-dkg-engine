@@ -2,7 +2,9 @@
 
 use std::{sync::Arc, time::Duration};
 
-use super::blockchain_event_spec::{ContractEvent, decode_contract_event, monitored_contract_events};
+use super::blockchain_event_spec::{
+    ContractEvent, decode_contract_event, monitored_contract_events,
+};
 use crate::{
     commands::{
         command_executor::{CommandExecutionRequest, CommandExecutionResult, CommandScheduler},

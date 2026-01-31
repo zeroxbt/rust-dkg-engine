@@ -189,13 +189,12 @@ pub(crate) fn build_swarm(
         // Validate that it's a valid public IPv4 address
         match external_ip.parse::<std::net::Ipv4Addr>() {
             Ok(ip) if !ip.is_private() && !ip.is_loopback() && !ip.is_link_local() => {
-                let external_addr: Multiaddr =
-                    format!("/ip4/{}/tcp/{}", external_ip, config.port)
-                        .parse()
-                        .map_err(|e| NetworkError::InvalidMultiaddr {
-                            parsed: format!("/ip4/{}/tcp/{}", external_ip, config.port),
-                            source: e,
-                        })?;
+                let external_addr: Multiaddr = format!("/ip4/{}/tcp/{}", external_ip, config.port)
+                    .parse()
+                    .map_err(|e| NetworkError::InvalidMultiaddr {
+                        parsed: format!("/ip4/{}/tcp/{}", external_ip, config.port),
+                        source: e,
+                    })?;
                 swarm.add_external_address(external_addr.clone());
                 info!(
                     "Added external address for NAT traversal: {}",

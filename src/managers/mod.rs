@@ -9,7 +9,7 @@ use std::sync::Arc;
 pub(crate) use blockchain::BlockchainManager;
 pub(crate) use key_value_store::KeyValueStoreManager;
 use libp2p::identity::Keypair;
-pub(crate) use network::{NetworkManager, NetworkEventLoop};
+pub(crate) use network::{NetworkEventLoop, NetworkManager};
 pub(crate) use repository::RepositoryManager;
 pub(crate) use triple_store::TripleStoreManager;
 
@@ -34,9 +34,8 @@ pub(crate) async fn initialize(
     network_key: Keypair,
 ) -> (Managers, NetworkEventLoop) {
     // NetworkManager::connect returns (handle, service) tuple
-    let (network_handle, network_service) =
-        NetworkManager::connect(&config.network, network_key)
-            .expect("Failed to initialize network manager");
+    let (network_handle, network_service) = NetworkManager::connect(&config.network, network_key)
+        .expect("Failed to initialize network manager");
     let network = Arc::new(network_handle);
 
     let repository = Arc::new(

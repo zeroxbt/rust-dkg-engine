@@ -68,7 +68,7 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
 
     /// Called when a Kademlia lookup fails to find the target peer.
     fn on_kad_peer_not_found(&self, target: PeerId)
-        -> impl std::future::Future<Output = ()> + Send;
+    -> impl std::future::Future<Output = ()> + Send;
 
     /// Called when a new connection is established with a peer.
     fn on_connection_established(
@@ -78,7 +78,7 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
 
     /// Called when a connection with a peer is closed.
     fn on_connection_closed(&self, peer_id: PeerId)
-        -> impl std::future::Future<Output = ()> + Send;
+    -> impl std::future::Future<Output = ()> + Send;
 
     /// Called when this node starts listening on a new address.
     fn on_new_listen_addr(&self, address: Multiaddr);

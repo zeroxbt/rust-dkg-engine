@@ -5,4 +5,6 @@
 mod blockchain_event_spec;
 mod handler;
 
-pub(crate) use handler::{BlockchainEventListenerCommandData, BlockchainEventListenerCommandHandler};
+pub(crate) use handler::{
+    BlockchainEventListenerCommandData, BlockchainEventListenerCommandHandler,
+};

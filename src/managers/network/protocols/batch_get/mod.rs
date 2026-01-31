@@ -6,9 +6,9 @@
 
 mod messages;
 
-pub(crate) use messages::*;
-
 use std::time::Duration;
+
+pub(crate) use messages::*;
 
 use super::ProtocolSpec;
 

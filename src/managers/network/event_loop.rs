@@ -3,8 +3,10 @@
 //! This is the internal implementation that handles all network events.
 //! It receives actions from NetworkManager handles and processes swarm events.
 
-use libp2p::{Multiaddr, PeerId, Swarm, identify, kad, request_response, swarm::SwarmEvent};
-use libp2p::swarm::NetworkBehaviour;
+use libp2p::{
+    Multiaddr, PeerId, Swarm, identify, kad, request_response,
+    swarm::{NetworkBehaviour, SwarmEvent},
+};
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
@@ -260,12 +262,8 @@ impl NetworkEventLoop {
                     .await;
                 }
                 NodeBehaviourEvent::Get(inner) => {
-                    handle_protocol_event::<GetProtocol, _>(
-                        inner,
-                        &mut self.pending_get,
-                        handler,
-                    )
-                    .await;
+                    handle_protocol_event::<GetProtocol, _>(inner, &mut self.pending_get, handler)
+                        .await;
                 }
                 NodeBehaviourEvent::Finality(inner) => {
                     handle_protocol_event::<FinalityProtocol, _>(
@@ -376,7 +374,10 @@ impl NetworkEventLoop {
                 listen_addrs,
             } => {
                 for address in listen_addrs {
-                    self.swarm.behaviour_mut().kad.add_address(&peer_id, address);
+                    self.swarm
+                        .behaviour_mut()
+                        .kad
+                        .add_address(&peer_id, address);
                 }
             }
             // Protocol request/response actions

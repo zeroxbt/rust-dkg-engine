@@ -14,7 +14,10 @@ use futures::future::join_all;
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::{FILTER_BATCH_SIZE, types::{FilterStats, KcToSync}};
+use super::{
+    FILTER_BATCH_SIZE,
+    types::{FilterStats, KcToSync},
+};
 use crate::{
     managers::{
         blockchain::{
