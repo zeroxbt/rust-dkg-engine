@@ -9,7 +9,7 @@ use futures::future::join_all;
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::{FetchedKc, InsertStats};
+use super::types::{FetchedKc, InsertStats};
 use crate::{managers::blockchain::BlockchainId, services::TripleStoreService};
 
 /// Insert task: receives fetched KCs and inserts into triple store.

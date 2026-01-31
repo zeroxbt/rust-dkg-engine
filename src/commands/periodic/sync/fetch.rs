@@ -14,7 +14,10 @@ use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::{CONCURRENT_PEER_REQUESTS, FetchStats, FetchedKc, KcToSync, NETWORK_FETCH_BATCH_SIZE};
+use super::{
+    CONCURRENT_PEER_REQUESTS, NETWORK_FETCH_BATCH_SIZE,
+    types::{FetchStats, FetchedKc, KcToSync},
+};
 use crate::{
     managers::{
         blockchain::BlockchainId,
