@@ -1,6 +1,5 @@
-use std::{collections::HashSet, ops::ControlFlow, sync::Arc, time::Instant};
+use std::{ops::ControlFlow, sync::Arc, time::Instant};
 
-use libp2p::PeerId;
 use uuid::Uuid;
 
 use crate::{
@@ -8,24 +7,17 @@ use crate::{
     context::Context,
     managers::{
         blockchain::BlockchainManager,
-        network::{
-            NetworkManager,
-            message::ResponseBody,
-            messages::{GetRequestData, GetResponseData},
-        },
+        network::{NetworkManager, messages::GetRequestData},
         repository::RepositoryManager,
-        triple_store::{Assertion, MAX_TOKENS_PER_KC, TokenIds},
+        triple_store::Assertion,
     },
     operations::{GetOperationResult, protocols},
     services::{
         GetValidationService, PeerPerformanceTracker, TripleStoreService,
         operation_status::OperationStatusService as GenericOperationService,
     },
-    types::{AccessPolicy, ParsedUal, Visibility, parse_ual},
-    utils::{
-        paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
-        peer_fanout::{for_each_peer_concurrently, limit_peers},
-    },
+    types::{Visibility, parse_ual},
+    utils::peer_fanout::{for_each_peer_concurrently, limit_peers},
 };
 
 /// Command data for sending get requests to network nodes.
@@ -57,13 +49,13 @@ impl SendGetRequestsCommandData {
 }
 
 pub(crate) struct SendGetRequestsCommandHandler {
-    blockchain_manager: Arc<BlockchainManager>,
-    triple_store_service: Arc<TripleStoreService>,
-    repository_manager: Arc<RepositoryManager>,
-    network_manager: Arc<NetworkManager>,
-    get_operation_status_service: Arc<GenericOperationService<GetOperationResult>>,
-    get_validation_service: Arc<GetValidationService>,
-    peer_performance_tracker: Arc<PeerPerformanceTracker>,
+    pub(super) blockchain_manager: Arc<BlockchainManager>,
+    pub(super) triple_store_service: Arc<TripleStoreService>,
+    pub(super) repository_manager: Arc<RepositoryManager>,
+    pub(super) network_manager: Arc<NetworkManager>,
+    pub(super) get_operation_status_service: Arc<GenericOperationService<GetOperationResult>>,
+    pub(super) get_validation_service: Arc<GetValidationService>,
+    pub(super) peer_performance_tracker: Arc<PeerPerformanceTracker>,
 }
 
 impl SendGetRequestsCommandHandler {
@@ -76,249 +68,6 @@ impl SendGetRequestsCommandHandler {
             get_operation_status_service: Arc::clone(context.get_operation_status_service()),
             get_validation_service: Arc::clone(context.get_validation_service()),
             peer_performance_tracker: Arc::clone(context.peer_performance_tracker()),
-        }
-    }
-
-    /// Handle paranet validation and return filtered peers based on access policy.
-    ///
-    /// For PERMISSIONED paranets, only returns nodes that are in the permissioned list.
-    /// For OPEN paranets, returns all provided peers.
-    ///
-    /// Returns Ok(peers) for valid paranets, or Err(()) if validation fails
-    /// (operation is marked as failed in that case).
-    async fn handle_paranet_node_selection(
-        &self,
-        operation_id: Uuid,
-        paranet_ual: &str,
-        target_ual: &ParsedUal,
-        all_shard_peers: Vec<PeerId>,
-    ) -> Result<Vec<PeerId>, ()> {
-        // 1. Parse paranet UAL
-        let paranet_parsed = match parse_ual(paranet_ual) {
-            Ok(p) => p,
-            Err(e) => {
-                let error_message = format!("Invalid paranet UAL: {}", e);
-                tracing::error!(operation_id = %operation_id, %error_message);
-                self.get_operation_status_service
-                    .mark_failed(operation_id, error_message)
-                    .await;
-                return Err(());
-            }
-        };
-
-        // 2. Validate paranet UAL has knowledge_asset_id
-        let Some(ka_id) = paranet_parsed.knowledge_asset_id else {
-            let error_message = "Paranet UAL must include knowledge asset ID".to_string();
-            tracing::error!(operation_id = %operation_id, %error_message);
-            self.get_operation_status_service
-                .mark_failed(operation_id, error_message)
-                .await;
-            return Err(());
-        };
-
-        // 3. Construct paranet ID
-        let paranet_id = construct_paranet_id(
-            paranet_parsed.contract,
-            paranet_parsed.knowledge_collection_id,
-            ka_id,
-        );
-
-        tracing::debug!(
-            operation_id = %operation_id,
-            paranet_id = %paranet_id,
-            "Constructed paranet ID"
-        );
-
-        // 4. Check paranet exists
-        let exists = self
-            .blockchain_manager
-            .paranet_exists(&target_ual.blockchain, paranet_id)
-            .await
-            .unwrap_or(false);
-
-        if !exists {
-            let error_message = format!("Paranet does not exist: {}", paranet_ual);
-            tracing::error!(operation_id = %operation_id, %error_message);
-            self.get_operation_status_service
-                .mark_failed(operation_id, error_message)
-                .await;
-            return Err(());
-        }
-
-        // 5. Get access policy
-        let policy = match self
-            .blockchain_manager
-            .get_nodes_access_policy(&target_ual.blockchain, paranet_id)
-            .await
-        {
-            Ok(p) => p,
-            Err(e) => {
-                let error_message = format!("Failed to get access policy: {}", e);
-                tracing::error!(operation_id = %operation_id, %error_message);
-                self.get_operation_status_service
-                    .mark_failed(operation_id, error_message)
-                    .await;
-                return Err(());
-            }
-        };
-
-        tracing::debug!(
-            operation_id = %operation_id,
-            policy = ?policy,
-            "Retrieved paranet access policy"
-        );
-
-        // 6. Check KC is registered in paranet
-        let kc_onchain_id = construct_knowledge_collection_onchain_id(
-            target_ual.contract,
-            target_ual.knowledge_collection_id,
-        );
-        let kc_registered = self
-            .blockchain_manager
-            .is_knowledge_collection_registered(&target_ual.blockchain, paranet_id, kc_onchain_id)
-            .await
-            .unwrap_or(false);
-
-        if !kc_registered {
-            let error_message = "Knowledge collection not registered in paranet".to_string();
-            tracing::error!(operation_id = %operation_id, %error_message);
-            self.get_operation_status_service
-                .mark_failed(operation_id, error_message)
-                .await;
-            return Err(());
-        }
-
-        // 7. Filter peers based on policy
-        match policy {
-            AccessPolicy::Permissioned => {
-                let permissioned_nodes = match self
-                    .blockchain_manager
-                    .get_permissioned_nodes(&target_ual.blockchain, paranet_id)
-                    .await
-                {
-                    Ok(nodes) => nodes,
-                    Err(e) => {
-                        let error_message = format!("Failed to get permissioned nodes: {}", e);
-                        tracing::error!(operation_id = %operation_id, %error_message);
-                        self.get_operation_status_service
-                            .mark_failed(operation_id, error_message)
-                            .await;
-                        return Err(());
-                    }
-                };
-
-                // Convert node_id bytes to peer IDs
-                let permissioned_peer_ids: HashSet<PeerId> = permissioned_nodes
-                    .iter()
-                    .filter_map(|node| {
-                        String::from_utf8(node.nodeId.to_vec())
-                            .ok()
-                            .and_then(|s| s.parse::<PeerId>().ok())
-                    })
-                    .collect();
-
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    permissioned_count = permissioned_peer_ids.len(),
-                    "Retrieved permissioned nodes for paranet"
-                );
-
-                let my_peer_id = *self.network_manager.peer_id();
-                let filtered: Vec<PeerId> = all_shard_peers
-                    .into_iter()
-                    .filter(|peer_id| {
-                        *peer_id != my_peer_id && permissioned_peer_ids.contains(peer_id)
-                    })
-                    .collect();
-
-                tracing::info!(
-                    operation_id = %operation_id,
-                    filtered_count = filtered.len(),
-                    "Filtered to permissioned nodes only"
-                );
-
-                Ok(filtered)
-            }
-            AccessPolicy::Open => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    "Paranet is OPEN, using all shard nodes"
-                );
-                Ok(all_shard_peers)
-            }
-        }
-    }
-
-    /// Validate a get response and store the result if valid.
-    ///
-    /// Returns true if the response is valid and was stored successfully.
-    async fn validate_and_store_response(
-        &self,
-        operation_id: Uuid,
-        peer: &PeerId,
-        response: &GetResponseData,
-        parsed_ual: &ParsedUal,
-        visibility: Visibility,
-    ) -> bool {
-        match response {
-            ResponseBody::Ack(ack) => {
-                let assertion = &ack.assertion;
-                let metadata = &ack.metadata;
-                // Validate the assertion
-                let is_valid = self
-                    .get_validation_service
-                    .validate_response(assertion, parsed_ual, visibility)
-                    .await;
-
-                if !is_valid {
-                    tracing::debug!(
-                        operation_id = %operation_id,
-                        peer = %peer,
-                        "Response validation failed"
-                    );
-                    return false;
-                }
-
-                // Build and store the result
-                let get_result = GetOperationResult::new(
-                    Assertion::new(assertion.public.clone(), assertion.private.clone()),
-                    metadata.clone(),
-                );
-
-                match self
-                    .get_operation_status_service
-                    .store_result(operation_id, &get_result)
-                {
-                    Ok(()) => {
-                        tracing::debug!(
-                            operation_id = %operation_id,
-                            peer = %peer,
-                            public_count = assertion.public.len(),
-                            has_private = assertion.private.is_some(),
-                            "Response validated and stored"
-                        );
-                        true
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            operation_id = %operation_id,
-                            peer = %peer,
-                            error = %e,
-                            "Failed to store result"
-                        );
-                        false
-                    }
-                }
-            }
-            ResponseBody::Error(err) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    peer = %peer,
-                    error = %err.error_message,
-                    "Peer returned error response"
-                );
-                false
-            }
         }
     }
 }
@@ -397,64 +146,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             }
         }
 
-        let token_ids = if let Some(token_id) = parsed_ual.knowledge_asset_id {
-            TokenIds::single(token_id as u64)
-        } else {
-            // Get token IDs range from blockchain
-            let chain_range = match self
-                .blockchain_manager
-                .get_knowledge_assets_range(
-                    &parsed_ual.blockchain,
-                    parsed_ual.contract,
-                    parsed_ual.knowledge_collection_id,
-                )
-                .await
-            {
-                Ok(range) => {
-                    if let Some((start, end, ref burned)) = range {
-                        tracing::debug!(
-                            operation_id = %operation_id,
-                            start_token_id = start,
-                            end_token_id = end,
-                            burned_count = burned.len(),
-                            "Retrieved knowledge assets range from chain"
-                        );
-                    }
-                    range
-                }
-                Err(e) => {
-                    // Fallback for old ContentAssetStorage contracts
-                    tracing::warn!(
-                        operation_id = %operation_id,
-                        error = %e,
-                        "Failed to get knowledge assets range, using fallback"
-                    );
-                    None
-                }
-            };
-
-            // Use on-chain data if available
-            match chain_range {
-                Some((global_start, global_end, global_burned)) => {
-                    // Convert global token IDs to local 1-based indices
-                    // Global: (kc_id - 1) * 1_000_000 + local_id
-                    // Local: global - (kc_id - 1) * 1_000_000
-                    let offset =
-                        (parsed_ual.knowledge_collection_id as u64 - 1) * MAX_TOKENS_PER_KC;
-                    let local_start = global_start.saturating_sub(offset);
-                    let local_end = global_end.saturating_sub(offset);
-                    let local_burned: Vec<u64> = global_burned
-                        .into_iter()
-                        .map(|b| b.saturating_sub(offset))
-                        .collect();
-                    TokenIds::new(local_start, local_end, local_burned)
-                }
-                None => {
-                    // Fallback for old ContentAssetStorage contracts
-                    TokenIds::single(1)
-                }
-            }
-        };
+        let token_ids = self.resolve_token_ids(operation_id, &parsed_ual).await;
 
         // Try local triple store query first (local-first pattern)
         let local_result = self
@@ -547,63 +239,12 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             "Data not found locally, querying network"
         );
 
-        // Get shard nodes for the blockchain
-        let shard_nodes = match self
-            .repository_manager
-            .shard_repository()
-            .get_all_peer_records(parsed_ual.blockchain.as_str())
+        let mut peers = match self
+            .load_shard_peers(operation_id, &parsed_ual, data.paranet_ual.as_deref())
             .await
         {
-            Ok(nodes) => {
-                tracing::info!(
-                    operation_id = %operation_id,
-                    shard_nodes_count = nodes.len(),
-                    "Retrieved shard nodes from repository"
-                );
-                nodes
-            }
-            Err(e) => {
-                let error_message = format!("Failed to get shard nodes: {}", e);
-                tracing::error!(operation_id = %operation_id, error = %e, "Failed to get shard nodes");
-                self.get_operation_status_service
-                    .mark_failed(operation_id, error_message)
-                    .await;
-                return CommandExecutionResult::Completed;
-            }
-        };
-
-        // Filter out self and parse peer IDs
-        let my_peer_id = *self.network_manager.peer_id();
-        let all_shard_peers: Vec<PeerId> = shard_nodes
-            .iter()
-            .filter_map(|record| record.peer_id.parse().ok())
-            .filter(|peer_id| *peer_id != my_peer_id)
-            .collect();
-
-        // Apply paranet filtering if paranet_ual is provided
-        let mut peers: Vec<PeerId> = if let Some(ref paranet_ual) = data.paranet_ual {
-            tracing::info!(
-                operation_id = %operation_id,
-                paranet_ual = %paranet_ual,
-                "Applying paranet node filtering"
-            );
-            match self
-                .handle_paranet_node_selection(
-                    operation_id,
-                    paranet_ual,
-                    &parsed_ual,
-                    all_shard_peers,
-                )
-                .await
-            {
-                Ok(filtered_peers) => filtered_peers,
-                Err(()) => {
-                    // Operation already marked as failed in handle_paranet_node_selection
-                    return CommandExecutionResult::Completed;
-                }
-            }
-        } else {
-            all_shard_peers
+            Ok(peers) => peers,
+            Err(result) => return result,
         };
 
         // Prefer peers with better historical response times.

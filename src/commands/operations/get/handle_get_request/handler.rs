@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use libp2p::PeerId;
 use uuid::Uuid;
@@ -17,8 +17,7 @@ use crate::{
         triple_store::{Assertion, TokenIds},
     },
     services::{ResponseChannels, TripleStoreService},
-    types::{AccessPolicy, ParsedUal, Visibility, parse_ual},
-    utils::paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
+    types::parse_ual,
 };
 
 /// Command data for handling incoming get requests.
@@ -53,10 +52,10 @@ impl HandleGetRequestCommandData {
 }
 
 pub(crate) struct HandleGetRequestCommandHandler {
-    network_manager: Arc<NetworkManager>,
+    pub(super) network_manager: Arc<NetworkManager>,
     triple_store_service: Arc<TripleStoreService>,
     response_channels: Arc<ResponseChannels<GetAck>>,
-    blockchain_manager: Arc<BlockchainManager>,
+    pub(super) blockchain_manager: Arc<BlockchainManager>,
 }
 
 impl HandleGetRequestCommandHandler {
@@ -118,144 +117,6 @@ impl HandleGetRequestCommandHandler {
         self.send_response(channel, operation_id, message).await;
     }
 
-    /// Determine effective visibility based on paranet authorization.
-    ///
-    /// For PERMISSIONED paranets where both remote and local peers are authorized,
-    /// returns `Visibility::All` (public + private data).
-    /// Otherwise returns `Visibility::Public`.
-    async fn determine_visibility_for_paranet(
-        &self,
-        target_ual: &ParsedUal,
-        paranet_ual: Option<&str>,
-        remote_peer_id: &PeerId,
-    ) -> Visibility {
-        let Some(paranet_ual) = paranet_ual else {
-            return Visibility::Public;
-        };
-
-        // Parse paranet UAL
-        let Ok(paranet_parsed) = parse_ual(paranet_ual) else {
-            tracing::debug!(
-                paranet_ual = %paranet_ual,
-                "Failed to parse paranet UAL, using Public visibility"
-            );
-            return Visibility::Public;
-        };
-
-        let Some(ka_id) = paranet_parsed.knowledge_asset_id else {
-            tracing::debug!(
-                paranet_ual = %paranet_ual,
-                "Paranet UAL missing knowledge_asset_id, using Public visibility"
-            );
-            return Visibility::Public;
-        };
-
-        // Construct paranet ID
-        let paranet_id = construct_paranet_id(
-            paranet_parsed.contract,
-            paranet_parsed.knowledge_collection_id,
-            ka_id,
-        );
-
-        // Get access policy
-        let Ok(policy) = self
-            .blockchain_manager
-            .get_nodes_access_policy(&target_ual.blockchain, paranet_id)
-            .await
-        else {
-            tracing::debug!(
-                paranet_id = %paranet_id,
-                "Failed to get access policy, using Public visibility"
-            );
-            return Visibility::Public;
-        };
-
-        if policy != AccessPolicy::Permissioned {
-            tracing::debug!(
-                paranet_id = %paranet_id,
-                policy = ?policy,
-                "Paranet is not PERMISSIONED, using Public visibility"
-            );
-            return Visibility::Public;
-        }
-
-        // For PERMISSIONED: verify KC is registered
-        let kc_onchain_id = construct_knowledge_collection_onchain_id(
-            target_ual.contract,
-            target_ual.knowledge_collection_id,
-        );
-
-        let Ok(kc_registered) = self
-            .blockchain_manager
-            .is_knowledge_collection_registered(&target_ual.blockchain, paranet_id, kc_onchain_id)
-            .await
-        else {
-            tracing::debug!(
-                paranet_id = %paranet_id,
-                "Failed to check KC registration, using Public visibility"
-            );
-            return Visibility::Public;
-        };
-
-        if !kc_registered {
-            tracing::debug!(
-                paranet_id = %paranet_id,
-                kc_id = target_ual.knowledge_collection_id,
-                "Knowledge collection not registered in paranet, using Public visibility"
-            );
-            return Visibility::Public;
-        }
-
-        // Get permissioned nodes and check both peers
-        let Ok(permissioned_nodes) = self
-            .blockchain_manager
-            .get_permissioned_nodes(&target_ual.blockchain, paranet_id)
-            .await
-        else {
-            tracing::debug!(
-                paranet_id = %paranet_id,
-                "Failed to get permissioned nodes, using Public visibility"
-            );
-            return Visibility::Public;
-        };
-
-        let permissioned_peer_ids: HashSet<PeerId> = permissioned_nodes
-            .iter()
-            .filter_map(|node| {
-                String::from_utf8(node.nodeId.to_vec())
-                    .ok()
-                    .and_then(|s| s.parse::<PeerId>().ok())
-            })
-            .collect();
-
-        // Check remote peer is authorized
-        if !permissioned_peer_ids.contains(remote_peer_id) {
-            tracing::debug!(
-                peer = %remote_peer_id,
-                paranet_id = %paranet_id,
-                "Remote peer not in permissioned list, using Public visibility"
-            );
-            return Visibility::Public;
-        }
-
-        // Check local node is authorized
-        let my_peer_id = self.network_manager.peer_id();
-        if !permissioned_peer_ids.contains(my_peer_id) {
-            tracing::debug!(
-                paranet_id = %paranet_id,
-                "Local node not in permissioned list, using Public visibility"
-            );
-            return Visibility::Public;
-        }
-
-        // Both peers authorized - return ALL data (public + private)
-        tracing::info!(
-            paranet_id = %paranet_id,
-            remote_peer = %remote_peer_id,
-            "Both peers authorized for permissioned paranet, using All visibility"
-        );
-        Visibility::All
-    }
 }
 
 impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHandler {
