@@ -7,10 +7,7 @@ use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     managers::{
-        network::{
-            NetworkManager,
-            messages::FinalityAck,
-        },
+        network::{NetworkManager, messages::FinalityAck},
         repository::RepositoryManager,
     },
     services::ResponseChannels,
@@ -25,7 +22,7 @@ pub(crate) struct HandlePublishFinalityRequestCommandData {
     /// The UAL (Universal Asset Locator) of the knowledge collection
     pub ual: String,
     /// The original publish operation ID
-    pub publish_operation_id: String,
+    pub publish_store_operation_id: String,
     /// The peer ID of the storage node sending the finality request
     pub remote_peer_id: PeerId,
 }
@@ -34,13 +31,13 @@ impl HandlePublishFinalityRequestCommandData {
     pub(crate) fn new(
         operation_id: Uuid,
         ual: String,
-        publish_operation_id: String,
+        publish_store_operation_id: String,
         remote_peer_id: PeerId,
     ) -> Self {
         Self {
             operation_id,
             ual,
-            publish_operation_id,
+            publish_store_operation_id,
             remote_peer_id,
         }
     }
@@ -60,7 +57,6 @@ impl HandlePublishFinalityRequestCommandHandler {
             response_channels: Arc::clone(context.finality_response_channels()),
         }
     }
-
 }
 
 impl CommandHandler<HandlePublishFinalityRequestCommandData>
@@ -70,14 +66,14 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
         &self,
         data: &HandlePublishFinalityRequestCommandData,
     ) -> CommandExecutionResult {
-        let operation_id = data.operation_id;
+        let publish_finality_operation_id = data.operation_id;
         let ual = &data.ual;
-        let publish_operation_id = &data.publish_operation_id;
+        let publish_store_operation_id = &data.publish_store_operation_id;
         let remote_peer_id = &data.remote_peer_id;
 
         tracing::info!(
-            operation_id = %operation_id,
-            publish_operation_id = %publish_operation_id,
+            operation_id = %publish_finality_operation_id,
+            publish_store_operation_id = %publish_store_operation_id,
             ual = %ual,
             remote_peer_id = %remote_peer_id,
             "Handling finality request from storage node"
@@ -86,10 +82,10 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
         // Retrieve the response channel
         let Some(channel) = self
             .response_channels
-            .retrieve(remote_peer_id, operation_id)
+            .retrieve(remote_peer_id, publish_finality_operation_id)
         else {
             tracing::error!(
-                operation_id = %operation_id,
+                operation_id = %publish_finality_operation_id,
                 peer = %remote_peer_id,
                 "No cached response channel found for finality request. Channel may have expired."
             );
@@ -97,16 +93,17 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
         };
 
         // Parse the publish operation ID
-        let publish_op_uuid = match Uuid::parse_str(publish_operation_id) {
+        let publish_store_operation_id = match Uuid::parse_str(publish_store_operation_id) {
             Ok(uuid) => uuid,
             Err(e) => {
                 tracing::error!(
-                    operation_id = %operation_id,
-                    publish_operation_id = %publish_operation_id,
+                    operation_id = %publish_finality_operation_id,
+                    publish_store_operation_id = %publish_store_operation_id,
                     error = %e,
                     "Failed to parse publish_operation_id as UUID"
                 );
-                self.send_nack(channel, operation_id, ual).await;
+                self.send_nack(channel, publish_finality_operation_id, ual)
+                    .await;
                 return CommandExecutionResult::Completed;
             }
         };
@@ -115,24 +112,25 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
         if let Err(e) = self
             .repository_manager
             .finality_status_repository()
-            .save_finality_ack(publish_op_uuid, ual, &remote_peer_id.to_base58())
+            .save_finality_ack(publish_store_operation_id, ual, &remote_peer_id.to_base58())
             .await
         {
             tracing::error!(
-                operation_id = %operation_id,
-                publish_operation_id = %publish_operation_id,
+                operation_id = %publish_finality_operation_id,
+                publish_operation_id = %publish_store_operation_id,
                 ual = %ual,
                 peer = %remote_peer_id,
                 error = %e,
                 "Failed to save finality ack"
             );
-            self.send_nack(channel, operation_id, ual).await;
+            self.send_nack(channel, publish_finality_operation_id, ual)
+                .await;
             return CommandExecutionResult::Completed;
         }
 
         tracing::info!(
-            operation_id = %operation_id,
-            publish_operation_id = %publish_operation_id,
+            operation_id = %publish_finality_operation_id,
+            publish_operation_id = %publish_store_operation_id,
             ual = %ual,
             peer = %remote_peer_id,
             "Finality ack saved successfully"
@@ -140,15 +138,16 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
 
         // Send ACK response back to the storage node
         tracing::debug!(
-            operation_id = %operation_id,
+            operation_id = %publish_finality_operation_id,
             peer = %remote_peer_id,
             "Sending finality ACK response"
         );
 
-        self.send_ack(channel, operation_id, ual).await;
+        self.send_ack(channel, publish_finality_operation_id, ual)
+            .await;
 
         tracing::info!(
-            operation_id = %operation_id,
+            operation_id = %publish_finality_operation_id,
             peer = %remote_peer_id,
             ual = %ual,
             "Finality request handled successfully"

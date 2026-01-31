@@ -3,31 +3,25 @@ use std::ops::ControlFlow;
 use libp2p::PeerId;
 use uuid::Uuid;
 
+use super::handler::SendPublishFinalityRequestCommandHandler;
 use crate::{
     commands::command_executor::CommandExecutionResult,
-    managers::network::message::ResponseBody,
-    managers::network::messages::FinalityRequestData,
+    managers::network::{message::ResponseBody, messages::FinalityRequestData},
     operations::protocols::publish_finality,
     utils::peer_fanout::{for_each_peer_concurrently, limit_peers},
 };
-
-use super::handler::SendPublishFinalityRequestCommandHandler;
 
 impl SendPublishFinalityRequestCommandHandler {
     pub(crate) async fn send_finality_request_to_publisher(
         &self,
         operation_id: Uuid,
         publish_operation_id: Uuid,
-        publish_operation_id_str: &str,
         ual: String,
         blockchain: crate::managers::blockchain::BlockchainId,
         publisher_peer_id: PeerId,
     ) -> CommandExecutionResult {
-        let finality_request_data = FinalityRequestData::new(
-            ual,
-            publish_operation_id_str.to_string(),
-            blockchain,
-        );
+        let finality_request_data =
+            FinalityRequestData::new(ual, publish_operation_id.to_string(), blockchain);
 
         let mut peers = vec![publisher_peer_id];
         peers = limit_peers(peers, publish_finality::MAX_PEERS);

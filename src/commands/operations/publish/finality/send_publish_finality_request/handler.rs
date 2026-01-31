@@ -327,7 +327,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         self.send_finality_request_to_publisher(
             operation_id,
             publish_operation_id,
-            &data.publish_operation_id,
             ual,
             data.blockchain.clone(),
             publisher_peer_id,
