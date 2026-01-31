@@ -26,7 +26,6 @@ use crate::operations::protocols::batch_get;
 
 // Re-export public types
 pub(crate) use handler::{SyncCommandData, SyncCommandHandler};
-pub(crate) use types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync};
 
 /// Interval between sync cycles when there's pending work (catching up)
 pub(crate) const SYNC_PERIOD_CATCHING_UP: Duration = Duration::from_secs(0);
