@@ -28,7 +28,7 @@ impl GetHttpApiController {
                 // Create operation record - we don't need the completion receiver for HTTP API
                 // (client polls for status via separate endpoint)
                 if let Err(e) = context
-                    .get_operation_service()
+                    .get_operation_status_service()
                     .create_operation(operation_id)
                     .await
                     .map(|_| ())

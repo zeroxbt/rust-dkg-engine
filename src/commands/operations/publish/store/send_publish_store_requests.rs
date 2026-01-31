@@ -19,7 +19,7 @@ use crate::{
     },
     operations::{PublishStoreOperationResult, PublishStoreSignatureData, protocols},
     services::{
-        operation::OperationStatusService as GenericOperationService,
+        operation_status::OperationStatusService as GenericOperationService,
         pending_storage_service::PendingStorageService,
     },
     utils::peer_fanout::{for_each_peer_concurrently, limit_peers},
@@ -58,7 +58,8 @@ pub(crate) struct SendPublishStoreRequestsCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
-    publish_store_operation_service: Arc<GenericOperationService<PublishStoreOperationResult>>,
+    publish_store_operation_status_service:
+        Arc<GenericOperationService<PublishStoreOperationResult>>,
     pending_storage_service: Arc<PendingStorageService>,
 }
 
@@ -68,7 +69,9 @@ impl SendPublishStoreRequestsCommandHandler {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
-            publish_store_operation_service: Arc::clone(context.publish_store_operation_service()),
+            publish_store_operation_status_service: Arc::clone(
+                context.publish_store_operation_status_service(),
+            ),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
     }
@@ -96,7 +99,7 @@ impl SendPublishStoreRequestsCommandHandler {
             signature.vs.clone(),
         );
 
-        self.publish_store_operation_service.update_result(
+        self.publish_store_operation_status_service.update_result(
             operation_id,
             PublishStoreOperationResult::new(None, Vec::new()),
             |result| {
@@ -171,7 +174,7 @@ impl SendPublishStoreRequestsCommandHandler {
                 );
 
                 // Store signature incrementally to redb
-                if let Err(e) = self.publish_store_operation_service.update_result(
+                if let Err(e) = self.publish_store_operation_status_service.update_result(
                     operation_id,
                     PublishStoreOperationResult::new(None, Vec::new()),
                     |result| {
@@ -274,7 +277,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                     "Failed to get shard nodes"
                 );
 
-                self.publish_store_operation_service
+                self.publish_store_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
                 return CommandExecutionResult::Completed;
@@ -320,7 +323,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                 "Unable to find enough nodes for operation: {operation_id}. Minimum number of nodes required: {min_required_peers}"
             );
 
-            self.publish_store_operation_service
+            self.publish_store_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
 
@@ -330,7 +333,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         let identity_id = match self.blockchain_manager.get_identity_id(blockchain).await {
             Ok(Some(id)) => id,
             Ok(None) => {
-                self.publish_store_operation_service
+                self.publish_store_operation_status_service
                     .mark_failed(
                         operation_id,
                         format!("Identity ID not found for blockchain {}", blockchain),
@@ -339,7 +342,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                 return CommandExecutionResult::Completed;
             }
             Err(e) => {
-                self.publish_store_operation_service
+                self.publish_store_operation_status_service
                     .mark_failed(operation_id, format!("Failed to get identity ID: {}", e))
                     .await;
                 return CommandExecutionResult::Completed;
@@ -347,7 +350,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         };
 
         let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
-            self.publish_store_operation_service
+            self.publish_store_operation_status_service
                 .mark_failed(operation_id, "Dataset root missing '0x' prefix".to_string())
                 .await;
             return CommandExecutionResult::Completed;
@@ -360,7 +363,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         {
             Ok(sig) => {
                 // Store publisher signature to redb immediately
-                if let Err(e) = self.publish_store_operation_service.update_result(
+                if let Err(e) = self.publish_store_operation_status_service.update_result(
                     operation_id,
                     PublishStoreOperationResult::new(None, Vec::new()),
                     |result| {
@@ -394,7 +397,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                 error = %e,
                 "Failed to store dataset in pending storage"
             );
-            self.publish_store_operation_service
+            self.publish_store_operation_status_service
                 .mark_failed(operation_id, format!("Failed to store dataset: {}", e))
                 .await;
             return CommandExecutionResult::Completed;
@@ -498,7 +501,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             );
 
             if let Err(e) = self
-                .publish_store_operation_service
+                .publish_store_operation_status_service
                 .mark_completed(operation_id)
                 .await
             {
@@ -518,7 +521,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             success_count, failure_count, min_ack_responses
         );
         tracing::warn!(operation_id = %operation_id, %error_message);
-        self.publish_store_operation_service
+        self.publish_store_operation_status_service
             .mark_failed(operation_id, error_message)
             .await;
 

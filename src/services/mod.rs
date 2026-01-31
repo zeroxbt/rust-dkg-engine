@@ -1,6 +1,6 @@
 pub(crate) mod file_service;
 pub(crate) mod get_validation_service;
-pub(crate) mod operation;
+pub(crate) mod operation_status;
 pub(crate) mod peer_discovery_tracker;
 pub(crate) mod peer_performance_tracker;
 pub(crate) mod peer_rate_limiter;
@@ -11,7 +11,7 @@ pub(crate) mod triple_store_service;
 use std::sync::Arc;
 
 pub(crate) use get_validation_service::GetValidationService;
-pub(crate) use operation::OperationStatusService;
+pub(crate) use operation_status::OperationStatusService;
 pub(crate) use peer_discovery_tracker::PeerDiscoveryTracker;
 pub(crate) use peer_performance_tracker::PeerPerformanceTracker;
 pub(crate) use peer_rate_limiter::{PeerRateLimiter, PeerRateLimiterConfig};

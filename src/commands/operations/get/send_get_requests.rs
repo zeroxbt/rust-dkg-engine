@@ -19,7 +19,7 @@ use crate::{
     operations::{GetOperationResult, protocols},
     services::{
         GetValidationService, PeerPerformanceTracker, TripleStoreService,
-        operation::OperationStatusService as GenericOperationService,
+        operation_status::OperationStatusService as GenericOperationService,
     },
     types::{AccessPolicy, ParsedUal, Visibility, parse_ual},
     utils::{
@@ -61,7 +61,7 @@ pub(crate) struct SendGetRequestsCommandHandler {
     triple_store_service: Arc<TripleStoreService>,
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
-    get_operation_service: Arc<GenericOperationService<GetOperationResult>>,
+    get_operation_status_service: Arc<GenericOperationService<GetOperationResult>>,
     get_validation_service: Arc<GetValidationService>,
     peer_performance_tracker: Arc<PeerPerformanceTracker>,
 }
@@ -73,7 +73,7 @@ impl SendGetRequestsCommandHandler {
             triple_store_service: Arc::clone(context.triple_store_service()),
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            get_operation_service: Arc::clone(context.get_operation_service()),
+            get_operation_status_service: Arc::clone(context.get_operation_status_service()),
             get_validation_service: Arc::clone(context.get_validation_service()),
             peer_performance_tracker: Arc::clone(context.peer_performance_tracker()),
         }
@@ -99,7 +99,7 @@ impl SendGetRequestsCommandHandler {
             Err(e) => {
                 let error_message = format!("Invalid paranet UAL: {}", e);
                 tracing::error!(operation_id = %operation_id, %error_message);
-                self.get_operation_service
+                self.get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
                 return Err(());
@@ -110,7 +110,7 @@ impl SendGetRequestsCommandHandler {
         let Some(ka_id) = paranet_parsed.knowledge_asset_id else {
             let error_message = "Paranet UAL must include knowledge asset ID".to_string();
             tracing::error!(operation_id = %operation_id, %error_message);
-            self.get_operation_service
+            self.get_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
             return Err(());
@@ -139,7 +139,7 @@ impl SendGetRequestsCommandHandler {
         if !exists {
             let error_message = format!("Paranet does not exist: {}", paranet_ual);
             tracing::error!(operation_id = %operation_id, %error_message);
-            self.get_operation_service
+            self.get_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
             return Err(());
@@ -155,7 +155,7 @@ impl SendGetRequestsCommandHandler {
             Err(e) => {
                 let error_message = format!("Failed to get access policy: {}", e);
                 tracing::error!(operation_id = %operation_id, %error_message);
-                self.get_operation_service
+                self.get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
                 return Err(());
@@ -182,7 +182,7 @@ impl SendGetRequestsCommandHandler {
         if !kc_registered {
             let error_message = "Knowledge collection not registered in paranet".to_string();
             tracing::error!(operation_id = %operation_id, %error_message);
-            self.get_operation_service
+            self.get_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
             return Err(());
@@ -200,7 +200,7 @@ impl SendGetRequestsCommandHandler {
                     Err(e) => {
                         let error_message = format!("Failed to get permissioned nodes: {}", e);
                         tracing::error!(operation_id = %operation_id, %error_message);
-                        self.get_operation_service
+                        self.get_operation_status_service
                             .mark_failed(operation_id, error_message)
                             .await;
                         return Err(());
@@ -286,7 +286,7 @@ impl SendGetRequestsCommandHandler {
                 );
 
                 match self
-                    .get_operation_service
+                    .get_operation_status_service
                     .store_result(operation_id, &get_result)
                 {
                     Ok(()) => {
@@ -352,7 +352,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             Err(e) => {
                 let error_message = format!("Invalid UAL format: {}", e);
                 tracing::error!(operation_id = %operation_id, error = %e, "Failed to parse UAL");
-                self.get_operation_service
+                self.get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
                 return CommandExecutionResult::Completed;
@@ -382,7 +382,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     parsed_ual.knowledge_collection_id, parsed_ual.blockchain
                 );
                 tracing::error!(operation_id = %operation_id, %error_message, "UAL validation failed");
-                self.get_operation_service
+                self.get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
                 return CommandExecutionResult::Completed;
@@ -500,12 +500,12 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     let get_result = GetOperationResult::new(assertion, result.metadata.clone());
 
                     if let Err(e) = self
-                        .get_operation_service
+                        .get_operation_status_service
                         .store_result(operation_id, &get_result)
                     {
                         let error_message = format!("Failed to store local result: {}", e);
                         tracing::error!(operation_id = %operation_id, error = %e, "Failed to store local result");
-                        self.get_operation_service
+                        self.get_operation_status_service
                             .mark_failed(operation_id, error_message)
                             .await;
                         return CommandExecutionResult::Completed;
@@ -513,7 +513,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
 
                     // Mark operation as completed (local-first success: 1 success, 0 failures)
                     if let Err(e) = self
-                        .get_operation_service
+                        .get_operation_status_service
                         .mark_completed(operation_id)
                         .await
                     {
@@ -565,7 +565,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             Err(e) => {
                 let error_message = format!("Failed to get shard nodes: {}", e);
                 tracing::error!(operation_id = %operation_id, error = %e, "Failed to get shard nodes");
-                self.get_operation_service
+                self.get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
                 return CommandExecutionResult::Completed;
@@ -629,7 +629,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                 peers.len(),
                 min_required_peers
             );
-            self.get_operation_service
+            self.get_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
             return CommandExecutionResult::Completed;
@@ -734,7 +734,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             );
 
             if let Err(e) = self
-                .get_operation_service
+                .get_operation_status_service
                 .mark_completed(operation_id)
                 .await
             {
@@ -756,7 +756,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             protocols::get::MIN_ACK_RESPONSES
         );
         tracing::warn!(operation_id = %operation_id, %error_message);
-        self.get_operation_service
+        self.get_operation_status_service
             .mark_failed(operation_id, error_message)
             .await;
 

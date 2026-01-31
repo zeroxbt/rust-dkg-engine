@@ -137,7 +137,7 @@ impl OperationResultHttpApiController {
     ) -> Result<(Option<SignatureData>, Vec<SignatureData>), String> {
         // Get result from redb via publish operation service
         let result: Option<PublishStoreOperationResult> = context
-            .publish_store_operation_service()
+            .publish_store_operation_status_service()
             .get_result(operation_id)
             .map_err(|e| e.to_string())?;
 
@@ -250,7 +250,7 @@ impl OperationResultHttpApiController {
             }
             OperationStatus::Completed => {
                 // Get result from redb store via new operation service
-                match context.get_operation_service().get_result(operation_uuid) {
+                match context.get_operation_status_service().get_result(operation_uuid) {
                     Ok(Some(result)) => {
                         let response = GetOperationResultResponse::completed(
                             result.assertion,

@@ -39,7 +39,7 @@ pub(crate) struct SendBatchGetRequestsCommandHandler {
     triple_store_service: Arc<TripleStoreService>,
     repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
-    batch_get_operation_service: Arc<GenericOperationService<BatchGetOperation>>,
+    batch_get_operation_status_service: Arc<GenericOperationService<BatchGetOperation>>,
     get_validation_service: Arc<GetValidationService>,
 }
 
@@ -50,7 +50,7 @@ impl SendBatchGetRequestsCommandHandler {
             triple_store_service: Arc::clone(context.triple_store_service()),
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            batch_get_operation_service: Arc::clone(context.batch_get_operation_service()),
+            batch_get_operation_status_service: Arc::clone(context.batch_get_operation_status_service()),
             get_validation_service: Arc::clone(context.get_validation_service()),
         }
     }
@@ -142,7 +142,7 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
         if parsed_uals.is_empty() {
             let error_message = "No valid UALs provided".to_string();
             tracing::error!(operation_id = %operation_id, %error_message);
-            self.batch_get_operation_service
+            self.batch_get_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
             return CommandExecutionResult::Completed;
@@ -222,7 +222,7 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
             );
 
             if let Err(e) = self
-                .batch_get_operation_service
+                .batch_get_operation_status_service
                 .store_result(operation_id, &final_result)
             {
                 tracing::error!(
@@ -233,7 +233,7 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
             }
 
             if let Err(e) = self
-                .batch_get_operation_service
+                .batch_get_operation_status_service
                 .mark_completed(operation_id)
                 .await
             {
@@ -261,7 +261,7 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
             Err(e) => {
                 let error_message = format!("Failed to get shard nodes: {}", e);
                 tracing::error!(operation_id = %operation_id, error = %e, "Failed to get shard nodes");
-                self.batch_get_operation_service
+                self.batch_get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
                 return CommandExecutionResult::Completed;
@@ -286,7 +286,7 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
         if peers.is_empty() {
             let error_message = "No peers available for batch get".to_string();
             tracing::error!(operation_id = %operation_id, %error_message);
-            self.batch_get_operation_service
+            self.batch_get_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
             return CommandExecutionResult::Completed;
@@ -424,7 +424,7 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
         );
 
         if let Err(e) = self
-            .batch_get_operation_service
+            .batch_get_operation_status_service
             .store_result(operation_id, &final_result)
         {
             tracing::error!(
@@ -436,7 +436,7 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
 
         if total_found > 0 {
             if let Err(e) = self
-                .batch_get_operation_service
+                .batch_get_operation_status_service
                 .mark_completed(operation_id)
                 .await
             {
@@ -451,7 +451,7 @@ impl CommandHandler<SendBatchGetRequestsCommandData> for SendBatchGetRequestsCom
                 "Failed to retrieve any UALs. Missing: {}",
                 uals_still_needed.join(", ")
             );
-            self.batch_get_operation_service
+            self.batch_get_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
         }

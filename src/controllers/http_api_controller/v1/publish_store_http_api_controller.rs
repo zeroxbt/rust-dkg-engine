@@ -28,7 +28,7 @@ impl PublishStoreHttpApiController {
                 // Create operation record for the store phase (signatures).
                 // Finality is handled separately; clients poll the result endpoint.
                 if let Err(e) = context
-                    .publish_store_operation_service()
+                    .publish_store_operation_status_service()
                     .create_operation(operation_id)
                     .await
                     .map(|_| ())
