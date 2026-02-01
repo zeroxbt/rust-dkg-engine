@@ -6,6 +6,8 @@ pub(crate) mod multicall;
 pub(crate) mod params;
 pub(crate) mod paranet;
 pub(crate) mod profile;
+pub(crate) mod random_sampling;
+pub(crate) mod random_sampling_storage;
 pub(crate) mod sharding;
 pub(crate) mod staking;
 pub(crate) mod token;
@@ -21,6 +23,8 @@ pub(crate) use multicall::Multicall3;
 pub(crate) use params::ParametersStorage;
 pub(crate) use paranet::{ParanetsRegistry, PermissionedNode};
 pub(crate) use profile::Profile;
+pub(crate) use random_sampling::RandomSampling;
+pub(crate) use random_sampling_storage::RandomSamplingStorage;
 pub(crate) use sharding::{ShardingTable, ShardingTableLib, ShardingTableStorage};
 pub(crate) use staking::Staking;
 pub(crate) use token::Token;
@@ -52,6 +56,9 @@ pub(crate) struct Contracts {
     chronos: Chronos::ChronosInstance<BlockchainProvider>,
     paranets_registry: Option<ParanetsRegistry::ParanetsRegistryInstance<BlockchainProvider>>,
     multicall3: Multicall3::Multicall3Instance<BlockchainProvider>,
+    random_sampling: RandomSampling::RandomSamplingInstance<BlockchainProvider>,
+    random_sampling_storage:
+        RandomSamplingStorage::RandomSamplingStorageInstance<BlockchainProvider>,
 }
 
 impl Contracts {
@@ -115,6 +122,18 @@ impl Contracts {
 
     pub(crate) fn multicall3(&self) -> &Multicall3::Multicall3Instance<BlockchainProvider> {
         &self.multicall3
+    }
+
+    pub(crate) fn random_sampling(
+        &self,
+    ) -> &RandomSampling::RandomSamplingInstance<BlockchainProvider> {
+        &self.random_sampling
+    }
+
+    pub(crate) fn random_sampling_storage(
+        &self,
+    ) -> &RandomSamplingStorage::RandomSamplingStorageInstance<BlockchainProvider> {
+        &self.random_sampling_storage
     }
 
     pub(crate) fn get_address(
@@ -347,6 +366,24 @@ pub(crate) async fn initialize_contracts(
                         address: address.to_string(),
                     })?
             },
+            provider.clone(),
+        ),
+        random_sampling: RandomSampling::new(
+            Address::from(
+                hub.getContractAddress("RandomSampling".to_string())
+                    .call()
+                    .await?
+                    .0,
+            ),
+            provider.clone(),
+        ),
+        random_sampling_storage: RandomSamplingStorage::new(
+            Address::from(
+                hub.getContractAddress("RandomSamplingStorage".to_string())
+                    .call()
+                    .await?
+                    .0,
+            ),
             provider.clone(),
         ),
     })

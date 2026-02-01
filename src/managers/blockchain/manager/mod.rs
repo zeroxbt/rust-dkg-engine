@@ -4,5 +4,6 @@ mod gas;
 mod identity;
 mod kc;
 mod paranet;
+mod random_sampling;
 mod sharding;
 mod staking;

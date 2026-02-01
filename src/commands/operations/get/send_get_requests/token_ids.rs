@@ -1,10 +1,7 @@
 use uuid::Uuid;
 
 use super::handler::SendGetRequestsCommandHandler;
-use crate::{
-    managers::triple_store::{MAX_TOKENS_PER_KC, TokenIds},
-    types::ParsedUal,
-};
+use crate::{managers::triple_store::TokenIds, types::ParsedUal};
 
 impl SendGetRequestsCommandHandler {
     pub(crate) async fn resolve_token_ids(
@@ -51,19 +48,12 @@ impl SendGetRequestsCommandHandler {
 
         // Use on-chain data if available
         match chain_range {
-            Some((global_start, global_end, global_burned)) => {
-                // Convert global token IDs to local 1-based indices
-                // Global: (kc_id - 1) * 1_000_000 + local_id
-                // Local: global - (kc_id - 1) * 1_000_000
-                let offset = (parsed_ual.knowledge_collection_id as u64 - 1) * MAX_TOKENS_PER_KC;
-                let local_start = global_start.saturating_sub(offset);
-                let local_end = global_end.saturating_sub(offset);
-                let local_burned: Vec<u64> = global_burned
-                    .into_iter()
-                    .map(|b| b.saturating_sub(offset))
-                    .collect();
-                TokenIds::new(local_start, local_end, local_burned)
-            }
+            Some((global_start, global_end, global_burned)) => TokenIds::from_global_range(
+                parsed_ual.knowledge_collection_id,
+                global_start,
+                global_end,
+                global_burned,
+            ),
             None => {
                 // Fallback for old ContentAssetStorage contracts
                 TokenIds::single(1)

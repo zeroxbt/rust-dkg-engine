@@ -1,12 +1,11 @@
 use uuid::Uuid;
 
+use super::handler::SendPublishStoreRequestsCommandHandler;
 use crate::{
     error::NodeError,
     managers::blockchain::{BlockchainId, H256, utils::keccak256_encode_packed},
     operations::{PublishStoreOperationResult, PublishStoreSignatureData},
 };
-
-use super::handler::SendPublishStoreRequestsCommandHandler;
 
 impl SendPublishStoreRequestsCommandHandler {
     /// Handle self-node signature (when publisher is in the shard).

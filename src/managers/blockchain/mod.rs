@@ -101,7 +101,6 @@ pub(crate) struct BlockchainConfig {
     /// Common values: 25 (free tier), 50-100 (paid tier), None (unlimited).
     #[serde(default)]
     max_rpc_requests_per_second: Option<u32>,
-
 }
 
 impl BlockchainConfig {
@@ -129,7 +128,6 @@ impl BlockchainConfig {
     pub(crate) fn evm_management_wallet_private_key(&self) -> Option<&str> {
         self.evm_management_wallet_private_key.as_deref()
     }
-
 
     /// Sets the operational wallet private key (called during secret resolution).
     pub(crate) fn set_operational_wallet_private_key(&mut self, key: String) {

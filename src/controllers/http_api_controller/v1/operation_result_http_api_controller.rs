@@ -250,7 +250,10 @@ impl OperationResultHttpApiController {
             }
             OperationStatus::Completed => {
                 // Get result from redb store via new operation service
-                match context.get_operation_status_service().get_result(operation_uuid) {
+                match context
+                    .get_operation_status_service()
+                    .get_result(operation_uuid)
+                {
                     Ok(Some(result)) => {
                         let response = GetOperationResultResponse::completed(
                             result.assertion,

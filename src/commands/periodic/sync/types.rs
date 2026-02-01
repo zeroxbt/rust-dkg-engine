@@ -1,15 +1,13 @@
 //! Shared types for the sync pipeline stages.
 
-use crate::managers::triple_store::{Assertion, KnowledgeCollectionMetadata};
+use crate::managers::triple_store::{Assertion, KnowledgeCollectionMetadata, TokenIds};
 
 /// KC that needs to be fetched from the network (output of filter stage)
 #[derive(Clone)]
 pub(crate) struct KcToSync {
     pub kc_id: u64,
     pub ual: String,
-    pub start_token_id: u64,
-    pub end_token_id: u64,
-    pub burned: Vec<u64>,
+    pub token_ids: TokenIds,
     pub merkle_root: Option<String>,
 }
 

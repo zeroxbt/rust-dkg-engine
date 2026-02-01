@@ -24,7 +24,7 @@ use crate::{
             Address, BlockchainId, BlockchainManager,
             multicall::{MulticallBatch, MulticallRequest, encoders},
         },
-        triple_store::MAX_TOKENS_PER_KC,
+        triple_store::TokenIds,
     },
     services::TripleStoreService,
     types::derive_ual,
@@ -325,21 +325,13 @@ async fn fetch_rpc_data_and_filter(
         };
 
         let merkle_root = merkle_result.as_bytes32_hex();
-
-        let offset = (*kc_id - 1) * MAX_TOKENS_PER_KC;
-        let start_token_id = global_start.saturating_sub(offset);
-        let end_token_id = global_end.saturating_sub(offset);
-        let burned: Vec<u64> = global_burned
-            .into_iter()
-            .map(|b| b.saturating_sub(offset))
-            .collect();
+        let token_ids =
+            TokenIds::from_global_range(*kc_id as u128, global_start, global_end, global_burned);
 
         batch_to_sync.push(KcToSync {
             kc_id: *kc_id,
             ual: ual.clone(),
-            start_token_id,
-            end_token_id,
-            burned,
+            token_ids,
             merkle_root,
         });
     }

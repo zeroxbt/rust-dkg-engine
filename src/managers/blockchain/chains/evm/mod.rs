@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+pub(crate) use gas::format_balance;
 use tokio::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::managers::blockchain::{
@@ -11,21 +12,19 @@ use crate::managers::blockchain::{
     error::BlockchainError,
     substrate::validate_evm_wallets,
 };
-
-const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
-
 mod contracts;
 mod gas;
 mod multicall;
 mod provider;
 mod rpc;
 mod wallets;
-
 pub(crate) use contracts::{
     Hub, KnowledgeCollectionStorage, Multicall3, ParametersStorage, PermissionedNode,
     ShardingTableLib, ShardingTableLib::NodeInfo,
 };
-pub(crate) use gas::format_balance;
+pub(crate) use rpc::random_sampling::{NodeChallenge, ProofPeriodStatus};
+
+const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum ContractName {

@@ -32,6 +32,7 @@ use super::{
             BlockchainEventListenerCommandData, BlockchainEventListenerCommandHandler,
         },
         dial_peers::{DialPeersCommandData, DialPeersCommandHandler},
+        proving::{ProvingCommandData, ProvingCommandHandler},
         sharding_table_check::{ShardingTableCheckCommandData, ShardingTableCheckCommandHandler},
         sync::{SyncCommandData, SyncCommandHandler},
     },
@@ -149,6 +150,10 @@ command_registry! {
     sync: Sync => {
         data: SyncCommandData,
         handler: SyncCommandHandler
+    },
+    proving: Proving => {
+        data: ProvingCommandData,
+        handler: ProvingCommandHandler
     }
 }
 
@@ -170,6 +175,9 @@ pub(crate) fn default_command_requests(
         ));
         requests.push(CommandExecutionRequest::new(Command::Sync(
             SyncCommandData::new(blockchain_id.clone()),
+        )));
+        requests.push(CommandExecutionRequest::new(Command::Proving(
+            ProvingCommandData::new(blockchain_id.clone()),
         )));
     }
 

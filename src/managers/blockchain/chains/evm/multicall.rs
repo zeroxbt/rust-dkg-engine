@@ -1,9 +1,11 @@
-use super::*;
-
-use alloy::primitives::{Bytes, TxKind};
-use alloy::providers::Provider;
-use alloy::rpc::types::transaction::{TransactionInput, TransactionRequest};
+use alloy::{
+    primitives::{Bytes, TxKind},
+    providers::Provider,
+    rpc::types::transaction::{TransactionInput, TransactionRequest},
+};
 use futures::future::join_all;
+
+use super::*;
 
 impl EvmChain {
     /// Execute a batch of heterogeneous calls using Multicall3.
@@ -48,9 +50,7 @@ impl EvmChain {
 
             match multicall_result {
                 Ok(chunk_results) => {
-                    all_results.extend(
-                        chunk_results.iter().map(MulticallResult::from_result),
-                    );
+                    all_results.extend(chunk_results.iter().map(MulticallResult::from_result));
                 }
                 Err(e) => {
                     if !warned_fallback {

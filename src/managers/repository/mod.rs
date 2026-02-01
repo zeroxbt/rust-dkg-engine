@@ -7,12 +7,15 @@ mod types;
 use std::sync::Arc;
 
 use error::RepositoryError;
-pub(crate) use repositories::shard_repository::ShardRecordInput;
 use repositories::{
     blockchain_repository::BlockchainRepository,
     finality_status_repository::FinalityStatusRepository, kc_sync_repository::KcSyncRepository,
-    operation_repository::OperationRepository, shard_repository::ShardRepository,
+    operation_repository::OperationRepository,
+    proof_challenge_repository::ProofChallengeRepository, shard_repository::ShardRepository,
     triples_insert_count_repository::TriplesInsertCountRepository,
+};
+pub(crate) use repositories::{
+    proof_challenge_repository::ChallengeState, shard_repository::ShardRecordInput,
 };
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
@@ -29,6 +32,7 @@ pub(crate) struct RepositoryManager {
     finality_status_repository: FinalityStatusRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
     kc_sync_repository: KcSyncRepository,
+    proof_challenge_repository: ProofChallengeRepository,
 }
 
 impl RepositoryManager {
@@ -70,6 +74,7 @@ impl RepositoryManager {
             finality_status_repository: FinalityStatusRepository::new(Arc::clone(&conn)),
             triples_insert_count_repository: TriplesInsertCountRepository::new(Arc::clone(&conn)),
             kc_sync_repository: KcSyncRepository::new(Arc::clone(&conn)),
+            proof_challenge_repository: ProofChallengeRepository::new(Arc::clone(&conn)),
         })
     }
 
@@ -95,6 +100,10 @@ impl RepositoryManager {
 
     pub(crate) fn kc_sync_repository(&self) -> &KcSyncRepository {
         &self.kc_sync_repository
+    }
+
+    pub(crate) fn proof_challenge_repository(&self) -> &ProofChallengeRepository {
+        &self.proof_challenge_repository
     }
 }
 

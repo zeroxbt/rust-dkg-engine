@@ -7,6 +7,7 @@ mod m007_create_finality_status;
 mod m008_create_triples_insert_count;
 mod m009_create_kc_sync_progress;
 mod m010_create_kc_sync_queue;
+mod m011_create_proof_challenge;
 
 pub(crate) struct Migrator;
 
@@ -21,6 +22,7 @@ impl MigratorTrait for Migrator {
             Box::new(m008_create_triples_insert_count::Migration),
             Box::new(m009_create_kc_sync_progress::Migration),
             Box::new(m010_create_kc_sync_queue::Migration),
+            Box::new(m011_create_proof_challenge::Migration),
         ]
     }
 }

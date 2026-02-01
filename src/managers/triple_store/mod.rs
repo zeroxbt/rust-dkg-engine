@@ -13,7 +13,7 @@ use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
 pub(crate) use rdf::{extract_subject, group_nquads_by_subject, parse_metadata_from_triples};
 use tokio::sync::Semaphore;
-pub(crate) use types::{Assertion, GraphVisibility, KnowledgeAsset, MAX_TOKENS_PER_KC, TokenIds};
+pub(crate) use types::{Assertion, GraphVisibility, KnowledgeAsset, TokenIds};
 
 pub(crate) use crate::types::KnowledgeCollectionMetadata;
 

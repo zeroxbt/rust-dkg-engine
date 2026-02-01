@@ -1,12 +1,11 @@
 use libp2p::PeerId;
 use uuid::Uuid;
 
+use super::handler::SendPublishStoreRequestsCommandHandler;
 use crate::{
     managers::network::{message::ResponseBody, messages::StoreResponseData},
     operations::{PublishStoreOperationResult, PublishStoreSignatureData},
 };
-
-use super::handler::SendPublishStoreRequestsCommandHandler;
 
 impl SendPublishStoreRequestsCommandHandler {
     /// Process a store response and store the signature if valid.

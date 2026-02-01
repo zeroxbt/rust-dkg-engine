@@ -9,10 +9,7 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
-        network::{
-            NetworkManager,
-            messages::StoreAck,
-        },
+        network::{NetworkManager, messages::StoreAck},
         repository::RepositoryManager,
         triple_store::Assertion,
     },
@@ -67,7 +64,6 @@ impl HandlePublishStoreRequestCommandHandler {
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
     }
-
 }
 
 impl CommandHandler<HandlePublishStoreRequestCommandData>

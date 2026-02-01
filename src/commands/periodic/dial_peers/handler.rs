@@ -147,14 +147,10 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
         let peers_to_find =
             self.filter_peers_for_discovery(all_peers, &own_peer_id, &connected_peers);
 
-        tracing::Span::current().record(
-            "connected",
-            &tracing::field::display(connected_peers.len()),
-        );
-        tracing::Span::current().record(
-            "to_discover",
-            &tracing::field::display(peers_to_find.len()),
-        );
+        tracing::Span::current()
+            .record("connected", &tracing::field::display(connected_peers.len()));
+        tracing::Span::current()
+            .record("to_discover", &tracing::field::display(peers_to_find.len()));
 
         if peers_to_find.is_empty() {
             tracing::debug!(

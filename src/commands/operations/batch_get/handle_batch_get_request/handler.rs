@@ -97,7 +97,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             .take(batch_get::UAL_MAX_LIMIT)
             .cloned()
             .collect();
-        tracing::Span::current().record("ual_count", &tracing::field::display(uals.len()));
+        tracing::Span::current().record("ual_count", tracing::field::display(uals.len()));
 
         // Parse UALs and pair with token IDs
         let mut uals_with_token_ids: Vec<(ParsedUal, TokenIds)> = Vec::new();

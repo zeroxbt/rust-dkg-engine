@@ -130,17 +130,17 @@ pub(crate) async fn fetch_task(
 
             // Send fetched KCs to insert stage
             if !fetched.is_empty() {
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
-            batch_size = to_fetch.len(),
-            fetched_count = fetched.len(),
-            failed_count = failures.len(),
-            fetch_ms = fetch_start.elapsed().as_millis() as u64,
-            total_received,
-            total_fetched,
-            elapsed_ms = task_start.elapsed().as_millis() as u64,
-            "Fetch: sending batch to insert stage"
-        );
+                tracing::debug!(
+                    blockchain_id = %blockchain_id,
+                    batch_size = to_fetch.len(),
+                    fetched_count = fetched.len(),
+                    failed_count = failures.len(),
+                    fetch_ms = fetch_start.elapsed().as_millis() as u64,
+                    total_received,
+                    total_fetched,
+                    elapsed_ms = task_start.elapsed().as_millis() as u64,
+                    "Fetch: sending batch to insert stage"
+                );
                 if tx.send(fetched).await.is_err() {
                     tracing::debug!("Fetch: insert stage receiver dropped, stopping");
                     failures.extend(accumulated.iter().map(|kc| kc.kc_id));
@@ -277,10 +277,7 @@ async fn fetch_kc_batch_from_network(
     // Build token IDs map for the request
     let token_ids_map: HashMap<String, TokenIds> = kcs
         .iter()
-        .map(|kc| {
-            let token_ids = TokenIds::new(kc.start_token_id, kc.end_token_id, kc.burned.clone());
-            (kc.ual.clone(), token_ids)
-        })
+        .map(|kc| (kc.ual.clone(), kc.token_ids.clone()))
         .collect();
 
     // Helper to build batch request for remaining UALs
@@ -386,12 +383,12 @@ async fn fetch_kc_batch_from_network(
             }
             Ok(ResponseBody::Error(_)) => {
                 peer_span.record("valid_kcs", 0usize);
-                peer_span.record("status", &tracing::field::display("nack"));
+                peer_span.record("status", tracing::field::display("nack"));
             }
             Err(e) => {
                 let status = e.to_string();
                 peer_span.record("valid_kcs", 0usize);
-                peer_span.record("status", &tracing::field::display(&status));
+                peer_span.record("status", tracing::field::display(&status));
                 peer_performance_tracker.record_failure(&peer);
             }
         }

@@ -66,6 +66,111 @@ pub(crate) fn calculate_assertion_size(quads: &[String]) -> usize {
     num_chunks * CHUNK_SIZE
 }
 
+/// Result of Merkle proof calculation.
+#[derive(Debug)]
+pub(crate) struct MerkleProofResult {
+    /// The chunk content (string)
+    pub chunk: String,
+    /// The Merkle proof path (32-byte hashes)
+    pub proof: Vec<B256>,
+}
+
+/// Calculate Merkle proof for a specific chunk.
+///
+/// Returns the chunk content and proof path, or an error if chunk_index is out of range.
+pub(crate) fn calculate_merkle_proof(
+    quads: &[String],
+    chunk_index: usize,
+) -> Result<MerkleProofResult, String> {
+    let chunks = split_into_chunks(quads);
+
+    if chunks.is_empty() {
+        return Err("No chunks to prove".to_string());
+    }
+
+    if chunk_index >= chunks.len() {
+        return Err(format!(
+            "Chunk index {} out of range, only {} chunks exist",
+            chunk_index,
+            chunks.len()
+        ));
+    }
+
+    // Hash all leaves
+    let leaves: Vec<B256> = chunks
+        .iter()
+        .enumerate()
+        .map(|(i, c)| leaf_hash(c, i))
+        .collect();
+
+    // Build proof by walking up the tree
+    let proof = build_merkle_proof(&leaves, chunk_index);
+
+    Ok(MerkleProofResult {
+        chunk: chunks[chunk_index].clone(),
+        proof,
+    })
+}
+
+/// Build a Merkle proof for the given leaf index.
+/// Matches the JS implementation: traverse tree upward, collecting sibling hashes.
+fn build_merkle_proof(leaves: &[B256], leaf_index: usize) -> Vec<B256> {
+    if leaves.len() <= 1 {
+        return vec![];
+    }
+
+    let mut proof = Vec::new();
+    let mut current_level = leaves.to_vec();
+    let mut index = leaf_index;
+
+    while current_level.len() > 1 {
+        let mut next_level = Vec::new();
+
+        let mut i = 0usize;
+        while i < current_level.len() {
+            let left = current_level[i];
+
+            if i + 1 >= current_level.len() {
+                // Odd node - no sibling, just carry up
+                next_level.push(left);
+
+                // If this is our target index, update for next level
+                if i == index {
+                    index = i / 2;
+                }
+                break;
+            }
+
+            let right = current_level[i + 1];
+
+            // If this pair contains our target index, add sibling to proof
+            if i == index || i + 1 == index {
+                let sibling = if index == i { right } else { left };
+                proof.push(sibling);
+                index = i / 2; // Update index to parent position
+            }
+
+            // Hash pair (sorted order)
+            let (a, b) = if left <= right {
+                (left, right)
+            } else {
+                (right, left)
+            };
+
+            let mut buf = [0u8; 64];
+            buf[..32].copy_from_slice(a.as_slice());
+            buf[32..].copy_from_slice(b.as_slice());
+
+            next_level.push(keccak256(buf));
+            i += 2;
+        }
+
+        current_level = next_level;
+    }
+
+    proof
+}
+
 fn split_into_chunks(quads: &[String]) -> Vec<String> {
     let concatenated = quads.join("\n");
     let bytes = concatenated.as_bytes();
@@ -89,6 +194,7 @@ fn leaf_hash(chunk: &str, index: usize) -> B256 {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -139,5 +245,161 @@ mod tests {
         let quads = vec!["a".to_string(), "b".to_string()];
         let chunks = split_into_chunks(&quads);
         assert_eq!(chunks, vec!["a\nb"]);
+    }
+
+    #[test]
+    fn test_merkle_proof_verifies() {
+        // Test that proof can be used to reconstruct the root
+        let quads: Vec<String> = [
+            "<urn:us-cities:data:new-york> <http://schema.org/averageIncome> \"$63,998\" .",
+            "<urn:us-cities:data:new-york> <http://schema.org/crimeRate> \"Low\" .",
+            "<urn:us-cities:data:new-york> <http://schema.org/infrastructureScore> \"8.5\" .",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+
+        let expected_root = calculate_merkle_root(&quads);
+
+        // Test proof for each chunk
+        let chunks = split_into_chunks(&quads);
+        for chunk_index in 0..chunks.len() {
+            let result = calculate_merkle_proof(&quads, chunk_index).unwrap();
+
+            // Verify by reconstructing root from leaf and proof
+            let mut current = leaf_hash(&result.chunk, chunk_index);
+
+            for sibling in &result.proof {
+                let (a, b) = if current <= *sibling {
+                    (current, *sibling)
+                } else {
+                    (*sibling, current)
+                };
+
+                let mut buf = [0u8; 64];
+                buf[..32].copy_from_slice(a.as_slice());
+                buf[32..].copy_from_slice(b.as_slice());
+                current = keccak256(buf);
+            }
+
+            let reconstructed_root = format!("0x{}", hex::encode(current.as_slice()));
+            assert_eq!(
+                reconstructed_root, expected_root,
+                "Proof verification failed for chunk {}",
+                chunk_index
+            );
+        }
+    }
+
+    #[test]
+    fn test_merkle_proof_matches_js_implementation() {
+        // Test data with known merkle root from JS implementation.
+        // Values computed by scripts/compute_merkle_test_values.js
+        let quads: Vec<String> = [
+            "<urn:us-cities:data:new-york> <http://schema.org/averageIncome> \"$63,998\" .",
+            "<urn:us-cities:data:new-york> <http://schema.org/crimeRate> \"Low\" .",
+            "<urn:us-cities:data:new-york> <http://schema.org/infrastructureScore> \"8.5\" .",
+            "<urn:us-cities:data:new-york> <http://schema.org/relatedCities> <urn:us-cities:info:chicago> .",
+            "<urn:us-cities:data:new-york> <http://schema.org/relatedCities> <urn:us-cities:info:los-angeles> .",
+            "<urn:us-cities:data:new-york> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/CityPrivateData> .",
+            "<urn:us-cities:info:chicago> <http://schema.org/name> \"Chicago\" .",
+            "<urn:us-cities:info:los-angeles> <http://schema.org/name> \"Los Angeles\" ."
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+
+        // Expected values from JS implementation (ground truth)
+        let expected_root = "0xaac2a420672a1eb77506c544ff01beed2be58c0ee3576fe037c846f97481cefd";
+
+        // Chunk 0 expected values
+        let expected_chunk_0 = "<urn:us-cities:data:new-york> <h";
+        let expected_leaf_0 = "0xb089efe712bfafeedb85909d5f66e31477c8bde6f51ef17a50bd52724359ea33";
+        let expected_proof_0 = vec![
+            "0x775be8c6d24fab821b0ddf791c82e7f0c438fa7c30a4cb5dc65002780ad35fdc",
+            "0x7237ac7bfd6365610cf199f5f0a2e6650932057f665f646221106a0003709534",
+            "0xb805e9c3d1990b59ef39029b06f720f6bb2cc23bdc6a3cf9b07ab32b95c3682a",
+            "0x9687dcbece3e1cfb0dc081053bb5701d4955368d1c77e285c6b0c6092459d9b7",
+            "0x2d62427a000a95d1f57b2f4e16cf588935039af6134a8014fbbbcfbcffdb4971",
+        ];
+
+        // Chunk 5 expected values
+        let expected_chunk_5 = "ata:new-york> <http://schema.org";
+        let expected_leaf_5 = "0x4a583ba6710db1d4c189100fecdec85bf966f0eae7c7f2401aa0254999a08bd3";
+        let expected_proof_5 = vec![
+            "0xc3619fcb5bd5188c2874bbd6c456660817157af10910000de0e7b18dec3d1266",
+            "0x6f78f502387aef8b40113a1cfafd2cbbaa8d24398c3d7469072ea67da906fc76",
+            "0x8985dbdd01925ab25b1586cb66124c1a785c5a9b8551302ec2b493335e7bf21c",
+            "0x9687dcbece3e1cfb0dc081053bb5701d4955368d1c77e285c6b0c6092459d9b7",
+            "0x2d62427a000a95d1f57b2f4e16cf588935039af6134a8014fbbbcfbcffdb4971",
+        ];
+
+        // Verify root calculation matches JS
+        let root = calculate_merkle_root(&quads);
+        assert_eq!(root, expected_root, "Root calculation must match JS");
+
+        let chunks = split_into_chunks(&quads);
+        assert_eq!(chunks.len(), 22, "Should have 22 chunks");
+
+        // Test chunk 0
+        let result_0 = calculate_merkle_proof(&quads, 0).unwrap();
+        assert_eq!(
+            result_0.chunk, expected_chunk_0,
+            "Chunk 0 content must match"
+        );
+        let leaf_0 = format!(
+            "0x{}",
+            hex::encode(leaf_hash(&result_0.chunk, 0).as_slice())
+        );
+        assert_eq!(leaf_0, expected_leaf_0, "Chunk 0 leaf hash must match");
+        let proof_0: Vec<String> = result_0
+            .proof
+            .iter()
+            .map(|b| format!("0x{}", hex::encode(b.as_slice())))
+            .collect();
+        assert_eq!(proof_0, expected_proof_0, "Chunk 0 proof must match");
+
+        // Test chunk 5
+        let result_5 = calculate_merkle_proof(&quads, 5).unwrap();
+        assert_eq!(
+            result_5.chunk, expected_chunk_5,
+            "Chunk 5 content must match"
+        );
+        let leaf_5 = format!(
+            "0x{}",
+            hex::encode(leaf_hash(&result_5.chunk, 5).as_slice())
+        );
+        assert_eq!(leaf_5, expected_leaf_5, "Chunk 5 leaf hash must match");
+        let proof_5: Vec<String> = result_5
+            .proof
+            .iter()
+            .map(|b| format!("0x{}", hex::encode(b.as_slice())))
+            .collect();
+        assert_eq!(proof_5, expected_proof_5, "Chunk 5 proof must match");
+
+        // Verify all proofs reconstruct the root
+        for chunk_idx in 0..chunks.len() {
+            let result = calculate_merkle_proof(&quads, chunk_idx).unwrap();
+            let mut current = leaf_hash(&result.chunk, chunk_idx);
+
+            for sibling in &result.proof {
+                let (a, b) = if current <= *sibling {
+                    (current, *sibling)
+                } else {
+                    (*sibling, current)
+                };
+                let mut buf = [0u8; 64];
+                buf[..32].copy_from_slice(a.as_slice());
+                buf[32..].copy_from_slice(b.as_slice());
+                current = keccak256(buf);
+            }
+
+            let reconstructed = format!("0x{}", hex::encode(current.as_slice()));
+            assert_eq!(
+                reconstructed, expected_root,
+                "Proof for chunk {} must reconstruct the root",
+                chunk_idx
+            );
+        }
     }
 }

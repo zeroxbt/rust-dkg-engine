@@ -39,6 +39,27 @@ impl TokenIds {
         }
     }
 
+    /// Create token IDs from global (on-chain) range by converting to local 1-based indices.
+    ///
+    /// On-chain token IDs use a global formula: `(kc_id - 1) * 1_000_000 + local_token_id`
+    /// This method converts back to local indices for use in triple store queries.
+    pub(crate) fn from_global_range(
+        knowledge_collection_id: u128,
+        global_start: u64,
+        global_end: u64,
+        global_burned: Vec<u64>,
+    ) -> Self {
+        let offset = (knowledge_collection_id as u64 - 1) * MAX_TOKENS_PER_KC;
+        let local_start = global_start.saturating_sub(offset);
+        let local_end = global_end.saturating_sub(offset);
+        let local_burned: Vec<u64> = global_burned
+            .into_iter()
+            .map(|b| b.saturating_sub(offset))
+            .collect();
+
+        Self::new(local_start, local_end, local_burned)
+    }
+
     /// Returns the starting token ID (inclusive).
     pub(crate) fn start_token_id(&self) -> u64 {
         self.start_token_id

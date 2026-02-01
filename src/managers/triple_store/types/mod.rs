@@ -1,4 +1,4 @@
-pub(crate) use crate::types::{Assertion, KnowledgeAsset, MAX_TOKENS_PER_KC, TokenIds};
+pub(crate) use crate::types::{Assertion, KnowledgeAsset, TokenIds};
 
 /// Visibility for triple store graph operations.
 ///

@@ -1,0 +1,176 @@
+use alloy::primitives::{Address, FixedBytes, U256};
+
+use crate::managers::blockchain::{
+    chains::evm::EvmChain, error::BlockchainError, error_utils::handle_contract_call,
+};
+
+/// Status of the current proof period.
+#[derive(Debug, Clone)]
+pub(crate) struct ProofPeriodStatus {
+    pub active_proof_period_start_block: U256,
+    pub is_valid: bool,
+}
+
+/// Challenge data from the RandomSamplingStorage contract.
+#[derive(Debug, Clone)]
+pub(crate) struct NodeChallenge {
+    pub knowledge_collection_id: U256,
+    pub chunk_id: U256,
+    pub knowledge_collection_storage_contract: Address,
+    pub epoch: U256,
+    pub active_proof_period_start_block: U256,
+    pub proofing_period_duration_in_blocks: U256,
+    pub solved: bool,
+}
+
+impl EvmChain {
+    /// Get the active proof period status.
+    pub(crate) async fn get_active_proof_period_status(
+        &self,
+    ) -> Result<ProofPeriodStatus, BlockchainError> {
+        let contracts = self.contracts().await;
+
+        let result = self
+            .rpc_call(
+                contracts
+                    .random_sampling()
+                    .getActiveProofPeriodStatus()
+                    .call(),
+            )
+            .await?;
+
+        Ok(ProofPeriodStatus {
+            active_proof_period_start_block: result.activeProofPeriodStartBlock,
+            is_valid: result.isValid,
+        })
+    }
+
+    /// Create a new challenge for this node.
+    pub(crate) async fn create_challenge(&self) -> Result<(), BlockchainError> {
+        let contracts = self.contracts().await;
+
+        let gas_price = self.get_gas_price().await;
+
+        let create_call = contracts
+            .random_sampling()
+            .createChallenge()
+            .gas_price(gas_price.to::<u128>());
+
+        match self.tx_call(create_call.send()).await {
+            Ok(pending_tx) => {
+                handle_contract_call(Ok(pending_tx)).await?;
+                tracing::debug!("Challenge created successfully");
+                Ok(())
+            }
+            Err(err) => {
+                // Check for "already exists" error - treat as success
+                let err_str = format!("{:?}", err);
+                if err_str.contains("unsolved challenge already exists") {
+                    tracing::debug!("Challenge already exists for current proof period");
+                    return Ok(());
+                }
+
+                tracing::warn!("Create challenge failed: {:?}", err);
+                Err(BlockchainError::TransactionFailed {
+                    contract: "RandomSampling".to_string(),
+                    function: "createChallenge".to_string(),
+                    reason: err_str,
+                })
+            }
+        }
+    }
+
+    /// Get the current challenge for a node.
+    pub(crate) async fn get_node_challenge(
+        &self,
+        identity_id: u128,
+    ) -> Result<NodeChallenge, BlockchainError> {
+        use alloy::primitives::Uint;
+
+        let contracts = self.contracts().await;
+
+        let result = self
+            .rpc_call(
+                contracts
+                    .random_sampling_storage()
+                    .getNodeChallenge(Uint::<72, 2>::from(identity_id))
+                    .call(),
+            )
+            .await?;
+
+        Ok(NodeChallenge {
+            knowledge_collection_id: result.knowledgeCollectionId,
+            chunk_id: result.chunkId,
+            knowledge_collection_storage_contract: result.knowledgeCollectionStorageContract,
+            epoch: result.epoch,
+            active_proof_period_start_block: result.activeProofPeriodStartBlock,
+            proofing_period_duration_in_blocks: result.proofingPeriodDurationInBlocks,
+            solved: result.solved,
+        })
+    }
+
+    /// Get the score for a node in a specific epoch and proof period.
+    pub(crate) async fn get_node_epoch_proof_period_score(
+        &self,
+        identity_id: u128,
+        epoch: U256,
+        proof_period_start_block: U256,
+    ) -> Result<U256, BlockchainError> {
+        use alloy::primitives::Uint;
+
+        let contracts = self.contracts().await;
+
+        let score = self
+            .rpc_call(
+                contracts
+                    .random_sampling_storage()
+                    .getNodeEpochProofPeriodScore(
+                        Uint::<72, 2>::from(identity_id),
+                        epoch,
+                        proof_period_start_block,
+                    )
+                    .call(),
+            )
+            .await?;
+
+        Ok(score)
+    }
+
+    /// Submit a proof for the current challenge.
+    pub(crate) async fn submit_proof(
+        &self,
+        chunk: &str,
+        merkle_proof: &[[u8; 32]],
+    ) -> Result<(), BlockchainError> {
+        let contracts = self.contracts().await;
+
+        let gas_price = self.get_gas_price().await;
+
+        // Convert merkle proof to FixedBytes<32> array
+        let proof_bytes: Vec<FixedBytes<32>> = merkle_proof
+            .iter()
+            .map(|bytes| FixedBytes::from_slice(bytes))
+            .collect();
+
+        let submit_call = contracts
+            .random_sampling()
+            .submitProof(chunk.to_string(), proof_bytes)
+            .gas_price(gas_price.to::<u128>());
+
+        match self.tx_call(submit_call.send()).await {
+            Ok(pending_tx) => {
+                handle_contract_call(Ok(pending_tx)).await?;
+                tracing::info!("Proof submitted successfully");
+                Ok(())
+            }
+            Err(err) => {
+                tracing::warn!("Submit proof failed: {:?}", err);
+                Err(BlockchainError::TransactionFailed {
+                    contract: "RandomSampling".to_string(),
+                    function: "submitProof".to_string(),
+                    reason: format!("{:?}", err),
+                })
+            }
+        }
+    }
+}
