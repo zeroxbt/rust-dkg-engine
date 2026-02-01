@@ -100,7 +100,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
         };
         tracing::Span::current().record(
             "blockchain",
-            &tracing::field::display(&parsed_ual.blockchain),
+            tracing::field::display(&parsed_ual.blockchain),
         );
 
         if let Err(result) = self.validate_onchain_phase(operation_id, &parsed_ual).await {
@@ -357,7 +357,7 @@ impl SendGetRequestsCommandHandler {
             Ok(peers) => peers,
             Err(result) => return result,
         };
-        tracing::Span::current().record("peer_count", &tracing::field::display(peers.len()));
+        tracing::Span::current().record("peer_count", tracing::field::display(peers.len()));
 
         self.peer_performance_tracker.sort_by_latency(&mut peers);
 

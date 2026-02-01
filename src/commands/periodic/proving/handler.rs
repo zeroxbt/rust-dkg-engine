@@ -1,9 +1,12 @@
 //! Proving command handler implementation.
 
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration, time::Instant};
 
 use alloy::primitives::U256;
 use chrono::Utc;
+use futures::{StreamExt, stream::FuturesUnordered};
+use libp2p::PeerId;
+use uuid::Uuid;
 
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
@@ -11,14 +14,19 @@ use crate::{
     context::Context,
     managers::{
         blockchain::BlockchainManager,
-        network::NetworkManager,
+        network::{
+            NetworkError, NetworkManager, message::ResponseBody,
+            messages::{GetRequestData, GetResponseData},
+        },
         repository::{ChallengeState, RepositoryManager},
         triple_store::{
-            TokenIds, group_nquads_by_subject, query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
+            Assertion, TokenIds, group_nquads_by_subject,
+            query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
         },
     },
-    services::TripleStoreService,
-    types::{BlockchainId, Visibility, derive_ual},
+    operations::protocols,
+    services::{GetValidationService, PeerPerformanceTracker, TripleStoreService},
+    types::{BlockchainId, ParsedUal, Visibility, derive_ual},
     utils::validation,
 };
 
@@ -38,6 +46,8 @@ pub(crate) struct ProvingCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     triple_store_service: Arc<TripleStoreService>,
     network_manager: Arc<NetworkManager>,
+    get_validation_service: Arc<GetValidationService>,
+    peer_performance_tracker: Arc<PeerPerformanceTracker>,
 }
 
 impl ProvingCommandHandler {
@@ -47,6 +57,8 @@ impl ProvingCommandHandler {
             repository_manager: Arc::clone(context.repository_manager()),
             triple_store_service: Arc::clone(context.triple_store_service()),
             network_manager: Arc::clone(context.network_manager()),
+            get_validation_service: Arc::clone(context.get_validation_service()),
+            peer_performance_tracker: Arc::clone(context.peer_performance_tracker()),
         }
     }
 
@@ -97,6 +109,222 @@ impl ProvingCommandHandler {
                 sorted_group.into_iter().map(String::from)
             })
             .collect()
+    }
+
+    /// Load shard peers for the given blockchain.
+    async fn load_shard_peers(&self, blockchain_id: &BlockchainId) -> Vec<PeerId> {
+        let shard_nodes = match self
+            .repository_manager
+            .shard_repository()
+            .get_all_peer_records(blockchain_id.as_str())
+            .await
+        {
+            Ok(nodes) => nodes,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to get shard nodes");
+                return Vec::new();
+            }
+        };
+
+        // Filter out self and parse peer IDs
+        let my_peer_id = *self.network_manager.peer_id();
+        shard_nodes
+            .iter()
+            .filter_map(|record| record.peer_id.parse().ok())
+            .filter(|peer_id| *peer_id != my_peer_id)
+            .collect()
+    }
+
+    /// Fetch assertion from network peers.
+    ///
+    /// Uses the same concurrent request pattern as the GET command:
+    /// - Sort peers by latency
+    /// - Send concurrent requests
+    /// - Track success/failure for peer performance
+    /// - Return on first valid response (proving only needs 1)
+    #[tracing::instrument(
+        name = "proving.network_fetch",
+        skip(self, parsed_ual, token_ids),
+        fields(
+            ual = %parsed_ual.to_ual_string(),
+            peer_count = tracing::field::Empty,
+        )
+    )]
+    async fn fetch_from_network(
+        &self,
+        parsed_ual: &ParsedUal,
+        token_ids: TokenIds,
+    ) -> Option<Assertion> {
+        let mut peers = self.load_shard_peers(&parsed_ual.blockchain).await;
+
+        if peers.is_empty() {
+            tracing::warn!("No peers available in shard");
+            return None;
+        }
+
+        tracing::Span::current().record("peer_count", tracing::field::display(peers.len()));
+
+        // Sort by latency (best performers first)
+        self.peer_performance_tracker.sort_by_latency(&mut peers);
+
+        tracing::debug!(
+            total_peers = peers.len(),
+            "Selected peers for network query"
+        );
+
+        // Build request data
+        let request_data = GetRequestData::new(
+            parsed_ual.blockchain.clone(),
+            format!("{:?}", &parsed_ual.contract),
+            parsed_ual.knowledge_collection_id,
+            parsed_ual.knowledge_asset_id,
+            parsed_ual.to_ual_string(),
+            token_ids,
+            false, // no metadata needed for proving
+            None,  // no paranet
+        );
+
+        // Use a random operation ID for tracking
+        let operation_id = Uuid::new_v4();
+
+        // Concurrent request pattern (same as GET command)
+        let mut futures = FuturesUnordered::new();
+        let mut peers_iter = peers.iter().cloned();
+        let limit = protocols::get::CONCURRENT_PEERS.max(1).min(peers.len());
+
+        // Start initial batch of concurrent requests
+        for _ in 0..limit {
+            if let Some(peer) = peers_iter.next() {
+                futures.push(self.send_get_request_to_peer(
+                    peer,
+                    operation_id,
+                    request_data.clone(),
+                    parsed_ual.clone(),
+                ));
+            }
+        }
+
+        let mut success_count = 0u16;
+        let mut failure_count = 0u16;
+
+        // Process responses as they arrive
+        while let Some((peer, outcome, elapsed, assertion)) = futures.next().await {
+            match outcome {
+                Ok(true) => {
+                    success_count += 1;
+                    self.peer_performance_tracker.record_latency(&peer, elapsed);
+
+                    tracing::info!(
+                        peer = %peer,
+                        elapsed_ms = elapsed.as_millis(),
+                        "Got valid assertion from network"
+                    );
+
+                    // For proving, we only need 1 valid response
+                    return assertion;
+                }
+                Ok(false) => {
+                    failure_count += 1;
+                    tracing::debug!(
+                        peer = %peer,
+                        "Response validation failed"
+                    );
+                }
+                Err(e) => {
+                    failure_count += 1;
+                    self.peer_performance_tracker.record_failure(&peer);
+                    tracing::debug!(
+                        peer = %peer,
+                        error = %e,
+                        "Request to peer failed"
+                    );
+                }
+            }
+
+            // Queue next peer if available
+            if let Some(peer) = peers_iter.next() {
+                futures.push(self.send_get_request_to_peer(
+                    peer,
+                    operation_id,
+                    request_data.clone(),
+                    parsed_ual.clone(),
+                ));
+            }
+        }
+
+        tracing::warn!(
+            success_count,
+            failure_count,
+            "Failed to fetch assertion from any peer"
+        );
+        None
+    }
+
+    /// Send GET request to a single peer and validate response.
+    async fn send_get_request_to_peer(
+        &self,
+        peer: PeerId,
+        operation_id: Uuid,
+        request_data: GetRequestData,
+        parsed_ual: ParsedUal,
+    ) -> (PeerId, Result<bool, NetworkError>, Duration, Option<Assertion>) {
+        let start = Instant::now();
+        let addresses = self
+            .network_manager
+            .get_peer_addresses(peer)
+            .await
+            .unwrap_or_default();
+
+        let result = self
+            .network_manager
+            .send_get_request(peer, addresses, operation_id, request_data)
+            .await;
+
+        let elapsed = start.elapsed();
+
+        match result {
+            Ok(response) => {
+                let assertion = self
+                    .validate_response(&response, &parsed_ual, Visibility::Public)
+                    .await;
+                let is_valid = assertion.is_some();
+                (peer, Ok(is_valid), elapsed, assertion)
+            }
+            Err(e) => (peer, Err(e), elapsed, None),
+        }
+    }
+
+    /// Validate a GET response and extract the assertion if valid.
+    async fn validate_response(
+        &self,
+        response: &GetResponseData,
+        parsed_ual: &ParsedUal,
+        visibility: Visibility,
+    ) -> Option<Assertion> {
+        match response {
+            ResponseBody::Ack(ack) => {
+                let assertion = &ack.assertion;
+
+                // Validate the assertion using the same service as GET command
+                let is_valid = self
+                    .get_validation_service
+                    .validate_response(assertion, parsed_ual, visibility)
+                    .await;
+
+                if !is_valid {
+                    return None;
+                }
+
+                Some(Assertion::new(
+                    assertion.public.clone(),
+                    assertion.private.clone(),
+                ))
+            }
+            ResponseBody::Error(err) => {
+                tracing::debug!(error = %err.error_message, "Peer returned error");
+                None
+            }
+        }
     }
 }
 
@@ -182,7 +410,8 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                                 // Score is positive - wait for reorg buffer before finalizing
                                 let updated_at = challenge.updated_at;
                                 let now = Utc::now().timestamp();
-                                let elapsed = Duration::from_secs((now - updated_at).max(0) as u64);
+                                let elapsed =
+                                    Duration::from_secs((now - updated_at).max(0) as u64);
 
                                 if elapsed < REORG_BUFFER {
                                     tracing::debug!(
@@ -365,26 +594,68 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
             }
         };
 
-        // Query from local triple store
-        let assertion_result = self
+        // Try local triple store first (same as GET command's local_query_phase)
+        let assertion = match self
             .triple_store_service
             .query_assertion(&parsed_ual, &token_ids, Visibility::Public, false)
-            .await;
+            .await
+        {
+            Ok(Some(result)) if result.assertion.has_data() => {
+                // Validate local data
+                let is_valid = self
+                    .get_validation_service
+                    .validate_response(&result.assertion, &parsed_ual, Visibility::Public)
+                    .await;
 
-        let assertion = match assertion_result {
-            Ok(Some(result)) if result.assertion.has_data() => result.assertion,
+                if is_valid {
+                    tracing::debug!("Found valid assertion locally");
+                    result.assertion
+                } else {
+                    tracing::debug!("Local validation failed, trying network");
+                    match self
+                        .fetch_from_network(&parsed_ual, token_ids.clone())
+                        .await
+                    {
+                        Some(assertion) => assertion,
+                        None => {
+                            tracing::warn!(ual = %ual, "Assertion not found on network");
+                            return CommandExecutionResult::Repeat {
+                                delay: PROVING_PERIOD,
+                            };
+                        }
+                    }
+                }
+            }
             Ok(_) => {
-                tracing::warn!(ual = %ual, "Assertion not found locally");
-                // TODO: Fetch from network
-                return CommandExecutionResult::Repeat {
-                    delay: PROVING_PERIOD,
-                };
+                // Not found locally - try network
+                tracing::debug!(ual = %ual, "Assertion not found locally, trying network");
+                match self
+                    .fetch_from_network(&parsed_ual, token_ids.clone())
+                    .await
+                {
+                    Some(assertion) => assertion,
+                    None => {
+                        tracing::warn!(ual = %ual, "Assertion not found locally or on network");
+                        return CommandExecutionResult::Repeat {
+                            delay: PROVING_PERIOD,
+                        };
+                    }
+                }
             }
             Err(e) => {
-                tracing::warn!(error = %e, "Failed to query assertion");
-                return CommandExecutionResult::Repeat {
-                    delay: PROVING_PERIOD,
-                };
+                tracing::warn!(error = %e, "Failed to query local triple store, trying network");
+                match self
+                    .fetch_from_network(&parsed_ual, token_ids.clone())
+                    .await
+                {
+                    Some(assertion) => assertion,
+                    None => {
+                        tracing::warn!(ual = %ual, "Assertion not found on network");
+                        return CommandExecutionResult::Repeat {
+                            delay: PROVING_PERIOD,
+                        };
+                    }
+                }
             }
         };
 
