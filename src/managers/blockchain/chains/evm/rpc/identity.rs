@@ -149,4 +149,52 @@ impl EvmChain {
             Err(BlockchainError::IdentityNotFound)
         }
     }
+
+    /// Sets the ask price for this node's identity (dev environment only).
+    pub(crate) async fn set_ask(&self, ask_wei: u128) -> Result<(), BlockchainError> {
+        use alloy::primitives::Uint;
+
+        let contracts = self.contracts().await;
+
+        // Get identity ID
+        let identity_id = self
+            .get_identity_id()
+            .await
+            .ok_or(BlockchainError::IdentityIdNotFound)?;
+
+        // Get gas price before sending transaction
+        let gas_price = self.get_gas_price().await;
+
+        // Update ask via Profile contract - identity_id is uint72, ask_wei is uint96
+        let update_ask_call = contracts
+            .profile()
+            .updateAsk(
+                Uint::<72, 2>::from(identity_id),
+                Uint::<96, 2>::from(ask_wei),
+            )
+            .gas_price(gas_price.to::<u128>());
+
+        match self.tx_call(update_ask_call.send()).await {
+            Ok(pending_tx) => {
+                handle_contract_call(Ok(pending_tx)).await?;
+                tracing::info!("Set ask completed for identity {}", identity_id);
+                Ok(())
+            }
+            Err(err) => {
+                if err
+                    .as_decoded_error::<Profile::AskUpdateOnCooldown>()
+                    .is_some()
+                {
+                    Ok(())
+                } else {
+                    tracing::error!("Set ask failed: {:?}", err);
+                    Err(BlockchainError::TransactionFailed {
+                        contract: "Profile".to_string(),
+                        function: "updateAsk".to_string(),
+                        reason: format!("{:?}", err),
+                    })
+                }
+            }
+        }
+    }
 }

@@ -21,4 +21,13 @@ impl BlockchainManager {
 
         Ok(())
     }
+
+    pub(crate) async fn set_ask(
+        &self,
+        blockchain: &BlockchainId,
+        ask_wei: u128,
+    ) -> Result<(), BlockchainError> {
+        let blockchain_impl = self.chain(blockchain)?;
+        blockchain_impl.set_ask(ask_wei).await
+    }
 }

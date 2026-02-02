@@ -69,9 +69,12 @@ async fn main() {
 
     let services = services::initialize(&managers, config.managers.network.rate_limiter.clone());
 
+    // Clone scheduler for the executor before moving into context
+    let command_scheduler_for_executor = command_scheduler.clone();
+
     let context = Arc::new(Context::new(command_scheduler, managers, services));
 
-    let command_executor = Arc::new(CommandExecutor::new(Arc::clone(&context), command_rx));
+    let command_executor = CommandExecutor::new(Arc::clone(&context), command_rx);
 
     // Schedule default commands (including per-blockchain event listeners)
     let blockchain_ids: Vec<_> = blockchain_manager_for_ids
@@ -79,17 +82,19 @@ async fn main() {
         .into_iter()
         .cloned()
         .collect();
-    command_executor
-        .schedule_commands(default_command_requests(&blockchain_ids))
-        .await;
+    for request in default_command_requests(&blockchain_ids) {
+        command_scheduler_for_executor.schedule(request).await;
+    }
 
     let controllers = controllers::initialize(&config.http_api, &context);
 
     // Create HTTP shutdown channel (oneshot for single signal)
     let (http_shutdown_tx, http_shutdown_rx) = oneshot::channel::<()>();
 
-    // Spawn command executor task
-    let execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
+    // Spawn command executor task (executor is consumed, scheduler is borrowed)
+    let execute_commands_task = tokio::task::spawn(async move {
+        command_executor.run(&command_scheduler_for_executor).await
+    });
 
     // Spawn network service event loop task with RPC router as the event handler
     let rpc_router = controllers.rpc_router;

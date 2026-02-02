@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use futures::stream::{FuturesUnordered, StreamExt};
-use tokio::sync::{Mutex, Semaphore, mpsc};
+use tokio::sync::{Semaphore, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use super::{
@@ -88,6 +88,11 @@ impl CommandScheduler {
         self.shutdown.cancel();
     }
 
+    /// Returns a future that completes when shutdown is requested.
+    pub(crate) fn cancelled(&self) -> tokio_util::sync::WaitForCancellationFuture<'_> {
+        self.shutdown.cancelled()
+    }
+
     /// Schedule a command for execution. Logs an error if scheduling fails.
     pub(crate) async fn schedule(&self, request: CommandExecutionRequest) {
         // Don't schedule new commands if shutdown has been signaled
@@ -144,10 +149,14 @@ impl CommandScheduler {
     }
 }
 
+/// CommandExecutor owns the receiver and runs the command processing loop.
+///
+/// This follows the same pattern as NetworkEventLoop - it owns the receiver
+/// and is consumed when run() is called. The scheduler is passed by reference
+/// to avoid circular dependencies.
 pub(crate) struct CommandExecutor {
-    command_resolver: CommandResolver,
-    scheduler: CommandScheduler,
-    rx: Arc<Mutex<mpsc::Receiver<CommandExecutionRequest>>>,
+    command_resolver: Arc<CommandResolver>,
+    rx: mpsc::Receiver<CommandExecutionRequest>,
     semaphore: Arc<Semaphore>,
 }
 
@@ -159,36 +168,39 @@ pub(crate) struct CommandExecutor {
 impl CommandExecutor {
     pub(crate) fn new(context: Arc<Context>, rx: mpsc::Receiver<CommandExecutionRequest>) -> Self {
         Self {
-            command_resolver: CommandResolver::new(Arc::clone(&context)),
-            scheduler: context.command_scheduler().clone(),
-            rx: Arc::new(Mutex::new(rx)),
+            command_resolver: Arc::new(CommandResolver::new(context)),
+            rx,
             semaphore: Arc::new(Semaphore::new(COMMAND_CONCURRENT_LIMIT)),
         }
     }
 
-    /// Schedule initial commands to be executed.
-    pub(crate) async fn schedule_commands(&self, requests: Vec<CommandExecutionRequest>) {
-        for request in requests {
-            self.scheduler.schedule(request).await;
-        }
-    }
-
-    pub(crate) async fn run(&self) {
-        let mut pending_tasks = FuturesUnordered::new();
+    /// Runs the command executor loop until shutdown.
+    ///
+    /// This method consumes self and runs until either:
+    /// - Shutdown is requested and no pending commands remain
+    /// - The command channel is closed
+    pub(crate) async fn run(mut self, scheduler: &CommandScheduler) {
+        let mut pending_tasks: FuturesUnordered<_> = FuturesUnordered::new();
 
         loop {
-            let mut locked_rx = self.rx.lock().await;
-
             tokio::select! {
-                _ = pending_tasks.select_next_some(), if !pending_tasks.is_empty() => {
-                    // Continue the loop when a task completes.
+                // Graceful shutdown: exit when shutdown is requested and no pending work
+                _ = scheduler.cancelled(), if pending_tasks.is_empty() => {
+                    tracing::info!("Shutdown requested and no pending commands, exiting executor");
+                    break;
                 }
-                command = locked_rx.recv() => {
+                result = pending_tasks.select_next_some(), if !pending_tasks.is_empty() => {
+                    // Reschedule command if it returned Repeat
+                    if let Some(request) = result {
+                        scheduler.schedule(request).await;
+                    }
+                }
+                command = self.rx.recv() => {
                     match command {
                         Some(request) => {
-                            drop(locked_rx);
-                            let permit = self.semaphore.clone().acquire_owned().await.expect("Permit aquired");
-                            pending_tasks.push(self.execute(request, permit));
+                            let permit = self.semaphore.clone().acquire_owned().await.expect("Permit acquired");
+                            let resolver = Arc::clone(&self.command_resolver);
+                            pending_tasks.push(Self::execute(resolver, request, permit));
                         }
                         None => {
                             tracing::info!("Command channel closed, shutting down executor");
@@ -198,41 +210,31 @@ impl CommandExecutor {
                 }
             }
         }
-
-        // Drain pending tasks before returning
-        if !pending_tasks.is_empty() {
-            tracing::info!(
-                pending_count = pending_tasks.len(),
-                "Waiting for pending commands to complete"
-            );
-            while pending_tasks.next().await.is_some() {}
-            tracing::info!("All pending commands completed");
-        }
     }
 
+    /// Execute a command and return a reschedule request if the command wants to repeat.
     async fn execute(
-        &self,
+        command_resolver: Arc<CommandResolver>,
         request: CommandExecutionRequest,
         _permit: tokio::sync::OwnedSemaphorePermit,
-    ) {
+    ) -> Option<CommandExecutionRequest> {
         let command_name = request.command().name();
 
         // Check if command has expired
         if request.is_expired() {
             tracing::warn!(command = %command_name, "Command expired, dropping");
-            return;
+            return None;
         }
 
-        let result = self.command_resolver.execute(request.command()).await;
+        let result = command_resolver.execute(request.command()).await;
 
         match result {
             CommandExecutionResult::Repeat { delay } => {
-                let new_request =
-                    CommandExecutionRequest::new(request.into_command()).with_delay(delay);
-                self.scheduler.schedule(new_request).await;
+                Some(CommandExecutionRequest::new(request.into_command()).with_delay(delay))
             }
             CommandExecutionResult::Completed => {
                 tracing::trace!(command = %command_name, "Command completed");
+                None
             }
         }
     }
