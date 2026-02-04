@@ -1,4 +1,5 @@
 pub(crate) mod contracts;
+pub(crate) mod delegators;
 pub(crate) mod events;
 pub(crate) mod identity;
 pub(crate) mod kc;

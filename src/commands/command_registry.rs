@@ -31,6 +31,7 @@ use super::{
         blockchain_event_listener::{
             BlockchainEventListenerCommandData, BlockchainEventListenerCommandHandler,
         },
+        claim_rewards::{ClaimRewardsCommandData, ClaimRewardsCommandHandler},
         dial_peers::{DialPeersCommandData, DialPeersCommandHandler},
         proving::{ProvingCommandData, ProvingCommandHandler},
         sharding_table_check::{ShardingTableCheckCommandData, ShardingTableCheckCommandHandler},
@@ -154,6 +155,10 @@ command_registry! {
     proving: Proving => {
         data: ProvingCommandData,
         handler: ProvingCommandHandler
+    },
+    claim_rewards: ClaimRewards => {
+        data: ClaimRewardsCommandData,
+        handler: ClaimRewardsCommandHandler
     }
 }
 
@@ -178,6 +183,9 @@ pub(crate) fn default_command_requests(
         )));
         requests.push(CommandExecutionRequest::new(Command::Proving(
             ProvingCommandData::new(blockchain_id.clone()),
+        )));
+        requests.push(CommandExecutionRequest::new(Command::ClaimRewards(
+            ClaimRewardsCommandData::new(blockchain_id.clone()),
         )));
     }
 

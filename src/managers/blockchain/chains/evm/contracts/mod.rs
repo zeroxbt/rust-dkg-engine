@@ -1,4 +1,5 @@
 pub(crate) mod chronos;
+pub(crate) mod delegators_info;
 pub(crate) mod hub;
 pub(crate) mod identity_storage;
 pub(crate) mod kc_storage;
@@ -16,6 +17,7 @@ use std::collections::HashMap;
 
 use alloy::primitives::Address;
 pub(crate) use chronos::Chronos;
+pub(crate) use delegators_info::DelegatorsInfo;
 pub(crate) use hub::Hub;
 pub(crate) use identity_storage::IdentityStorage;
 pub(crate) use kc_storage::KnowledgeCollectionStorage;
@@ -59,6 +61,7 @@ pub(crate) struct Contracts {
     random_sampling: RandomSampling::RandomSamplingInstance<BlockchainProvider>,
     random_sampling_storage:
         RandomSamplingStorage::RandomSamplingStorageInstance<BlockchainProvider>,
+    delegators_info: DelegatorsInfo::DelegatorsInfoInstance<BlockchainProvider>,
 }
 
 impl Contracts {
@@ -136,6 +139,12 @@ impl Contracts {
         &self.random_sampling_storage
     }
 
+    pub(crate) fn delegators_info(
+        &self,
+    ) -> &DelegatorsInfo::DelegatorsInfoInstance<BlockchainProvider> {
+        &self.delegators_info
+    }
+
     pub(crate) fn get_address(
         &self,
         contract_name: &ContractName,
@@ -145,6 +154,7 @@ impl Contracts {
             ContractName::ShardingTable => Ok(*self.sharding_table.address()),
             ContractName::ShardingTableStorage => Ok(*self.sharding_table_storage.address()),
             ContractName::Staking => Ok(*self.staking.address()),
+            ContractName::DelegatorsInfo => Ok(*self.delegators_info.address()),
             ContractName::Profile => Ok(*self.profile.address()),
             ContractName::ParametersStorage => Ok(*self.parameters_storage.address()),
             ContractName::KnowledgeCollectionStorage => self
@@ -207,6 +217,9 @@ impl Contracts {
             ContractName::ParametersStorage => {
                 self.parameters_storage =
                     ParametersStorage::new(contract_address, provider.clone());
+            }
+            ContractName::DelegatorsInfo => {
+                self.delegators_info = DelegatorsInfo::new(contract_address, provider.clone());
             }
             ContractName::KnowledgeCollectionStorage => {
                 // ADD contract instead of replacing (supports multiple storage contracts)
@@ -380,6 +393,15 @@ pub(crate) async fn initialize_contracts(
         random_sampling_storage: RandomSamplingStorage::new(
             Address::from(
                 hub.getContractAddress("RandomSamplingStorage".to_string())
+                    .call()
+                    .await?
+                    .0,
+            ),
+            provider.clone(),
+        ),
+        delegators_info: DelegatorsInfo::new(
+            Address::from(
+                hub.getContractAddress("DelegatorsInfo".to_string())
                     .call()
                     .await?
                     .0,
