@@ -42,10 +42,12 @@ impl EvmChain {
         let mut warned_fallback = false;
 
         for chunk in chunks {
-            let contracts = self.contracts().await;
-            let multicall3 = contracts.multicall3();
             let multicall_result = self
-                .rpc_call(multicall3.aggregate3(chunk.clone()).call())
+                .rpc_call(|| async {
+                    let contracts = self.contracts().await;
+                    let multicall3 = contracts.multicall3();
+                    multicall3.aggregate3(chunk.clone()).call().await
+                })
                 .await;
 
             match multicall_result {
@@ -83,7 +85,13 @@ impl EvmChain {
                 ..TransactionRequest::default()
             };
 
-            match self.rpc_call(self.provider().call(tx)).await {
+            match self
+                .rpc_call(|| async {
+                    let provider = self.provider().await;
+                    provider.call(tx.clone()).await
+                })
+                .await
+            {
                 Ok(bytes) => MulticallResult {
                     success: true,
                     return_data: bytes,

@@ -8,7 +8,6 @@ use crate::{
             initialize_provider_with_wallet,
         },
         error::BlockchainError,
-        error_utils::handle_contract_call,
     },
     types::SignatureComponents,
 };
@@ -83,8 +82,8 @@ impl EvmChain {
         drop(contracts);
 
         // Create contracts with management wallet provider
-        let staking = Staking::new(staking_address, &management_provider);
-        let token = Token::new(token_address, &management_provider);
+        let staking = Staking::new(staking_address, management_provider.clone());
+        let token = Token::new(token_address, management_provider.clone());
 
         // Get identity ID
         let identity_id = self
@@ -92,16 +91,17 @@ impl EvmChain {
             .await
             .ok_or(BlockchainError::IdentityIdNotFound)?;
 
-        // Get gas price before sending transactions
-        let gas_price = self.get_gas_price().await;
-
         // Approve token spending
-        let approve_call = token
-            .increaseAllowance(staking_address, U256::from(stake_wei))
-            .gas_price(gas_price.to::<u128>());
-        match self.tx_call(approve_call.send()).await {
+        match self
+            .tx_call_with(|| {
+                token
+                    .increaseAllowance(staking_address, U256::from(stake_wei))
+                    .with_cloned_provider()
+            })
+            .await
+        {
             Ok(pending_tx) => {
-                handle_contract_call(Ok(pending_tx)).await?;
+                self.handle_contract_call(Ok(pending_tx)).await?;
             }
             Err(err) => {
                 tracing::error!("Token approval failed: {:?}", err);
@@ -114,16 +114,19 @@ impl EvmChain {
         }
 
         // Stake tokens - identity_id is uint72, stake_wei is uint96
-        let stake_call = staking
-            .stake(
-                Uint::<72, 2>::from(identity_id),
-                Uint::<96, 2>::from(stake_wei),
-            )
-            .gas_price(gas_price.to::<u128>());
-
-        match self.tx_call(stake_call.send()).await {
+        match self
+            .tx_call_with(|| {
+                staking
+                    .stake(
+                        Uint::<72, 2>::from(identity_id),
+                        Uint::<96, 2>::from(stake_wei),
+                    )
+                    .with_cloned_provider()
+            })
+            .await
+        {
             Ok(pending_tx) => {
-                handle_contract_call(Ok(pending_tx)).await?;
+                self.handle_contract_call(Ok(pending_tx)).await?;
                 tracing::info!("Set stake completed for identity {}", identity_id);
                 Ok(())
             }

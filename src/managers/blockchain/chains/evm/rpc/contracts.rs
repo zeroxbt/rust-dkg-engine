@@ -12,10 +12,11 @@ impl EvmChain {
             .parse::<ContractName>()
             .map_err(BlockchainError::Custom)?;
 
+        let provider = self.provider().await;
         let mut contracts = self.contracts_mut().await;
 
         contracts
-            .replace_contract(self.provider(), contract_name, contract_address)
+            .replace_contract(&provider, contract_name, contract_address)
             .await
     }
 

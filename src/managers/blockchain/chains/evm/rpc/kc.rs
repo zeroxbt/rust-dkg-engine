@@ -1,4 +1,8 @@
-use alloy::primitives::{Address, U256};
+use alloy::{
+    contract::Error as ContractError,
+    primitives::{Address, U256},
+    transports::TransportErrorKind,
+};
 
 use crate::managers::blockchain::{chains::evm::EvmChain, error::BlockchainError};
 
@@ -16,23 +20,22 @@ impl EvmChain {
         contract_address: Address,
         knowledge_collection_id: u128,
     ) -> Result<Option<Address>, BlockchainError> {
-        let contracts = self.contracts().await;
-        let kc_storage = contracts
-                .knowledge_collection_storage_by_address(&contract_address)
-                .ok_or_else(|| {
-                    BlockchainError::Custom(format!(
-                        "KnowledgeCollectionStorage at {:?} is not registered. \
-                         The node only knows about contracts from initialization or NewAssetStorage events.",
-                        contract_address
-                    ))
-                })?;
-
         let publisher = self
-            .rpc_call(
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
+                let kc_storage = contracts
+                    .knowledge_collection_storage_by_address(&contract_address)
+                    .ok_or_else(|| {
+                        ContractError::TransportError(TransportErrorKind::custom_str(&format!(
+                            "KnowledgeCollectionStorage at {:?} is not registered",
+                            contract_address
+                        )))
+                    })?;
                 kc_storage
                     .getLatestMerkleRootPublisher(U256::from(knowledge_collection_id))
-                    .call(),
-            )
+                    .call()
+                    .await
+            })
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(
@@ -60,23 +63,22 @@ impl EvmChain {
         contract_address: Address,
         knowledge_collection_id: u128,
     ) -> Result<Option<(u64, u64, Vec<u64>)>, BlockchainError> {
-        let contracts = self.contracts().await;
-        let kc_storage = contracts
-                .knowledge_collection_storage_by_address(&contract_address)
-                .ok_or_else(|| {
-                    BlockchainError::Custom(format!(
-                        "KnowledgeCollectionStorage at {:?} is not registered. \
-                         The node only knows about contracts from initialization or NewAssetStorage events.",
-                        contract_address
-                    ))
-                })?;
-
         let result = self
-            .rpc_call(
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
+                let kc_storage = contracts
+                    .knowledge_collection_storage_by_address(&contract_address)
+                    .ok_or_else(|| {
+                        ContractError::TransportError(TransportErrorKind::custom_str(&format!(
+                            "KnowledgeCollectionStorage at {:?} is not registered",
+                            contract_address
+                        )))
+                    })?;
                 kc_storage
                     .getKnowledgeAssetsRange(U256::from(knowledge_collection_id))
-                    .call(),
-            )
+                    .call()
+                    .await
+            })
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(
@@ -118,23 +120,22 @@ impl EvmChain {
         contract_address: Address,
         knowledge_collection_id: u128,
     ) -> Result<Option<String>, BlockchainError> {
-        let contracts = self.contracts().await;
-        let kc_storage = contracts
-                .knowledge_collection_storage_by_address(&contract_address)
-                .ok_or_else(|| {
-                    BlockchainError::Custom(format!(
-                        "KnowledgeCollectionStorage at {:?} is not registered. \
-                         The node only knows about contracts from initialization or NewAssetStorage events.",
-                        contract_address
-                    ))
-                })?;
-
         let merkle_root = self
-            .rpc_call(
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
+                let kc_storage = contracts
+                    .knowledge_collection_storage_by_address(&contract_address)
+                    .ok_or_else(|| {
+                        ContractError::TransportError(TransportErrorKind::custom_str(&format!(
+                            "KnowledgeCollectionStorage at {:?} is not registered",
+                            contract_address
+                        )))
+                    })?;
                 kc_storage
                     .getLatestMerkleRoot(U256::from(knowledge_collection_id))
-                    .call(),
-            )
+                    .call()
+                    .await
+            })
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(
@@ -162,19 +163,22 @@ impl EvmChain {
         &self,
         contract_address: Address,
     ) -> Result<u64, BlockchainError> {
-        let contracts = self.contracts().await;
-        let kc_storage = contracts
-                .knowledge_collection_storage_by_address(&contract_address)
-                .ok_or_else(|| {
-                    BlockchainError::Custom(format!(
-                        "KnowledgeCollectionStorage at {:?} is not registered. \
-                         The node only knows about contracts from initialization or NewAssetStorage events.",
-                        contract_address
-                    ))
-                })?;
-
         let latest_id = self
-            .rpc_call(kc_storage.getLatestKnowledgeCollectionId().call())
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
+                let kc_storage = contracts
+                    .knowledge_collection_storage_by_address(&contract_address)
+                    .ok_or_else(|| {
+                        ContractError::TransportError(TransportErrorKind::custom_str(&format!(
+                            "KnowledgeCollectionStorage at {:?} is not registered",
+                            contract_address
+                        )))
+                    })?;
+                kc_storage
+                    .getLatestKnowledgeCollectionId()
+                    .call()
+                    .await
+            })
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(
@@ -190,11 +194,12 @@ impl EvmChain {
 
     /// Get the current epoch from the Chronos contract.
     pub(crate) async fn get_current_epoch(&self) -> Result<u64, BlockchainError> {
-        let contracts = self.contracts().await;
-        let chronos = contracts.chronos();
-
         let current_epoch = self
-            .rpc_call(chronos.getCurrentEpoch().call())
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
+                let chronos = contracts.chronos();
+                chronos.getCurrentEpoch().call().await
+            })
             .await
             .map_err(|e| BlockchainError::Custom(format!("Failed to get current epoch: {}", e)))?;
 

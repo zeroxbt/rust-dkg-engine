@@ -1,4 +1,4 @@
-use alloy::primitives::B256;
+use alloy::{contract::Error as ContractError, primitives::B256, transports::TransportErrorKind};
 
 use crate::{
     managers::blockchain::{
@@ -11,11 +11,14 @@ use crate::{
 impl EvmChain {
     /// Check if a paranet exists on-chain.
     pub(crate) async fn paranet_exists(&self, paranet_id: B256) -> Result<bool, BlockchainError> {
-        let contracts = self.contracts().await;
-        let registry = contracts.paranets_registry()?;
-
         let exists = self
-            .rpc_call(registry.paranetExists(paranet_id).call())
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
+                let registry = contracts.paranets_registry().map_err(|err| {
+                    ContractError::TransportError(TransportErrorKind::custom_str(&err.to_string()))
+                })?;
+                registry.paranetExists(paranet_id).call().await
+            })
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!("Failed to check paranet exists: {}", e))
@@ -29,11 +32,14 @@ impl EvmChain {
         &self,
         paranet_id: B256,
     ) -> Result<AccessPolicy, BlockchainError> {
-        let contracts = self.contracts().await;
-        let registry = contracts.paranets_registry()?;
-
         let policy = self
-            .rpc_call(registry.getNodesAccessPolicy(paranet_id).call())
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
+                let registry = contracts.paranets_registry().map_err(|err| {
+                    ContractError::TransportError(TransportErrorKind::custom_str(&err.to_string()))
+                })?;
+                registry.getNodesAccessPolicy(paranet_id).call().await
+            })
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!("Failed to get nodes access policy: {}", e))
@@ -47,11 +53,14 @@ impl EvmChain {
         &self,
         paranet_id: B256,
     ) -> Result<Vec<PermissionedNode>, BlockchainError> {
-        let contracts = self.contracts().await;
-        let registry = contracts.paranets_registry()?;
-
         let nodes = self
-            .rpc_call(registry.getPermissionedNodes(paranet_id).call())
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
+                let registry = contracts.paranets_registry().map_err(|err| {
+                    ContractError::TransportError(TransportErrorKind::custom_str(&err.to_string()))
+                })?;
+                registry.getPermissionedNodes(paranet_id).call().await
+            })
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!("Failed to get permissioned nodes: {}", e))
@@ -66,15 +75,17 @@ impl EvmChain {
         paranet_id: B256,
         knowledge_collection_id: B256,
     ) -> Result<bool, BlockchainError> {
-        let contracts = self.contracts().await;
-        let registry = contracts.paranets_registry()?;
-
         let registered = self
-            .rpc_call(
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
+                let registry = contracts.paranets_registry().map_err(|err| {
+                    ContractError::TransportError(TransportErrorKind::custom_str(&err.to_string()))
+                })?;
                 registry
                     .isKnowledgeCollectionRegistered(paranet_id, knowledge_collection_id)
-                    .call(),
-            )
+                    .call()
+                    .await
+            })
             .await
             .map_err(|e| {
                 BlockchainError::Custom(format!(

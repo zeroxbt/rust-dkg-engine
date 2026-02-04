@@ -12,7 +12,10 @@ use crate::managers::blockchain::{
 
 impl EvmChain {
     pub(crate) async fn get_block_number(&self) -> Result<u64, BlockchainError> {
-        self.rpc_call(self.provider().get_block_number())
+        self.rpc_call(|| async {
+            let provider = self.provider().await;
+            provider.get_block_number().await
+        })
             .await
             .map_err(BlockchainError::get_block_number)
     }
@@ -23,7 +26,10 @@ impl EvmChain {
         tx_hash: B256,
     ) -> Result<Option<Address>, BlockchainError> {
         let tx = self
-            .rpc_call(self.provider().get_transaction_by_hash(tx_hash))
+            .rpc_call(|| async {
+                let provider = self.provider().await;
+                provider.get_transaction_by_hash(tx_hash).await
+            })
             .await
             .map_err(|e| BlockchainError::Custom(format!("Failed to get transaction: {}", e)))?;
 
@@ -80,7 +86,10 @@ impl EvmChain {
             }
 
             let logs = self
-                .rpc_call(self.provider().get_logs(&filter))
+                .rpc_call(|| async {
+                    let provider = self.provider().await;
+                    provider.get_logs(&filter).await
+                })
                 .await
                 .map_err(BlockchainError::get_logs)?;
 

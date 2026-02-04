@@ -1,4 +1,4 @@
-use std::{num::NonZeroUsize, sync::Arc};
+use std::num::NonZeroUsize;
 
 use alloy::{
     network::{Ethereum, EthereumWallet},
@@ -15,8 +15,8 @@ use tower::ServiceBuilder;
 use super::wallets::wallet_from_private_key;
 use crate::managers::blockchain::{BlockchainConfig, error::BlockchainError};
 
-/// Use Arc<DynProvider> for thread-safe sharing.
-pub(crate) type BlockchainProvider = Arc<DynProvider<Ethereum>>;
+/// Type-erased provider handle (cheap to clone).
+pub(crate) type BlockchainProvider = DynProvider<Ethereum>;
 
 /// Creates a provider with the given wallet and RPC endpoints.
 /// Supports both HTTP and WebSocket endpoints with automatic failover.
@@ -89,7 +89,7 @@ pub(crate) async fn initialize_provider_with_wallet(
                 block,
                 valid_endpoints
             );
-            Ok(Arc::new(provider.erased()))
+            Ok(provider.erased())
         }
         Err(e) => {
             tracing::error!("All RPC endpoints failed connectivity check: {}", e);

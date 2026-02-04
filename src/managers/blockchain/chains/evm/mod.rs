@@ -1,15 +1,24 @@
 use std::str::FromStr;
 
-pub(crate) use gas::format_balance;
+use alloy::{
+    contract::{CallBuilder, CallDecoder, Error as ContractError},
+    network::Ethereum,
+    providers::PendingTransactionBuilder,
+    rpc::types::TransactionReceipt,
+};
 use tokio::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::managers::blockchain::{
     BlockchainConfig, BlockchainId, GasConfig, RpcRateLimiter,
     chains::evm::{
         contracts::{Contracts, initialize_contracts},
-        provider::{BlockchainProvider, initialize_provider, initialize_provider_with_wallet},
+        provider::{BlockchainProvider, initialize_provider},
     },
     error::BlockchainError,
+    error_classification::{
+        contract_error_backoff_hint, is_retryable_contract_error, should_bump_gas_price,
+    },
+    rpc_executor::{RetryPolicy, RetryableError, backoff_delay},
     substrate::validate_evm_wallets,
 };
 mod contracts;
@@ -22,9 +31,11 @@ pub(crate) use contracts::{
     Hub, KnowledgeCollectionStorage, Multicall3, ParametersStorage, PermissionedNode,
     ShardingTableLib, ShardingTableLib::NodeInfo,
 };
+pub(crate) use provider::initialize_provider_with_wallet;
 pub(crate) use rpc::random_sampling::{NodeChallenge, ProofPeriodStatus};
 
 const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
+const GAS_ESTIMATE_MULTIPLIER: f64 = 1.2;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum ContractName {
@@ -92,7 +103,7 @@ impl ContractLog {
 
 pub(crate) struct EvmChain {
     config: BlockchainConfig,
-    provider: BlockchainProvider,
+    provider: RwLock<BlockchainProvider>,
     contracts: RwLock<Contracts>,
     identity_id: Option<u128>,
     gas_config: GasConfig,
@@ -100,6 +111,9 @@ pub(crate) struct EvmChain {
     native_token_ticker: &'static str,
     rpc_rate_limiter: RpcRateLimiter,
     tx_mutex: Mutex<()>,
+    provider_refresh_mutex: Mutex<()>,
+    rpc_retry_policy: RetryPolicy,
+    tx_retry_policy: RetryPolicy,
 }
 
 impl EvmChain {
@@ -171,7 +185,7 @@ impl EvmChain {
         }
 
         Ok(Self {
-            provider,
+            provider: RwLock::new(provider),
             config,
             contracts: RwLock::new(contracts),
             identity_id: None,
@@ -180,6 +194,9 @@ impl EvmChain {
             native_token_ticker,
             rpc_rate_limiter,
             tx_mutex: Mutex::new(()),
+            provider_refresh_mutex: Mutex::new(()),
+            rpc_retry_policy: RetryPolicy::rpc_default(),
+            tx_retry_policy: RetryPolicy::tx_default(),
         })
     }
 
@@ -191,8 +208,8 @@ impl EvmChain {
         &self.config
     }
 
-    pub(crate) fn provider(&self) -> &BlockchainProvider {
-        &self.provider
+    pub(crate) async fn provider(&self) -> BlockchainProvider {
+        self.provider.read().await.clone()
     }
 
     pub(crate) async fn contracts(&self) -> RwLockReadGuard<'_, Contracts> {
@@ -232,25 +249,334 @@ impl EvmChain {
     ///
     /// # Example
     /// ```ignore
-    /// let result = self.rpc_call(contract.method().call()).await?;
+    /// let result = self.rpc_call(|| async { contract.method().call().await }).await?;
     /// ```
-    pub(crate) async fn rpc_call<T, F>(&self, operation: F) -> T::Output
+    pub(crate) async fn rpc_call<T, E, F, O>(&self, mut operation: F) -> Result<T, E>
     where
-        F: std::future::IntoFuture<IntoFuture = T>,
-        T: std::future::Future,
+        E: crate::managers::blockchain::rpc_executor::RetryableError,
+        F: FnMut() -> O,
+        O: std::future::IntoFuture<Output = Result<T, E>>,
     {
-        self.rpc_rate_limiter.acquire().await;
-        operation.into_future().await
+        let mut attempt = 1;
+        loop {
+            self.rpc_rate_limiter.acquire().await;
+            let result = operation().into_future().await;
+            match result {
+                Ok(value) => return Ok(value),
+                Err(err) => {
+                    let retryable = err.is_retryable();
+                    if attempt >= self.rpc_retry_policy.max_attempts || !retryable {
+                        return Err(err);
+                    }
+
+                    if err.should_refresh_provider() {
+                        if let Err(refresh_err) = self.refresh_provider_and_contracts().await {
+                            tracing::error!(
+                                blockchain = %self.blockchain_id(),
+                                error = %refresh_err,
+                                "Failed to refresh provider after backend error"
+                            );
+                        }
+                    }
+
+                    let delay = backoff_delay(&self.rpc_retry_policy, attempt, err.backoff_hint());
+                    tracing::warn!(
+                        attempt,
+                        max_attempts = self.rpc_retry_policy.max_attempts,
+                        delay_ms = delay.as_millis(),
+                        error = %err,
+                        "rpc_call failed; retrying"
+                    );
+                    tokio::time::sleep(delay).await;
+                    attempt += 1;
+                }
+            }
+        }
     }
 
     /// Execute a transaction with rate limiting and nonce-safe serialization.
-    pub(crate) async fn tx_call<T, F>(&self, operation: F) -> T::Output
+    pub(crate) async fn tx_call<D, F>(
+        &self,
+        mut build_call: F,
+    ) -> Result<PendingTransactionBuilder<Ethereum>, ContractError>
     where
-        F: std::future::IntoFuture<IntoFuture = T>,
-        T: std::future::Future,
+        D: CallDecoder,
+        for<'a> F: FnMut(&'a Contracts) -> CallBuilder<&'a BlockchainProvider, D, Ethereum>,
     {
         let _guard = self.tx_mutex.lock().await;
-        self.rpc_rate_limiter.acquire().await;
-        operation.into_future().await
+
+        let mut attempt = 1;
+        let mut gas_price = self.get_gas_price().await;
+        if gas_price > self.gas_config.max_gas_price {
+            gas_price = self.gas_config.max_gas_price;
+        }
+
+        let mut cached_gas_limit: Option<u64> = None;
+
+        loop {
+            let contracts = self.contracts().await;
+            let mut call = build_call(&contracts)
+                .with_cloned_provider()
+                .gas_price(gas_price.to::<u128>());
+            drop(contracts);
+
+            if cached_gas_limit.is_none() {
+                self.rpc_rate_limiter.acquire().await;
+                match call.estimate_gas().await {
+                    Ok(estimate) => {
+                        let estimated = apply_gas_estimate_multiplier(estimate);
+                        cached_gas_limit = Some(estimated);
+                    }
+                    Err(err) => {
+                        drop(call);
+                        let retryable = is_retryable_contract_error(&err);
+                        if attempt >= self.tx_retry_policy.max_attempts || !retryable {
+                            return Err(err);
+                        }
+
+                        let delay = backoff_delay(
+                            &self.tx_retry_policy,
+                            attempt,
+                            contract_error_backoff_hint(&err),
+                        );
+                        tracing::warn!(
+                            attempt,
+                            max_attempts = self.tx_retry_policy.max_attempts,
+                            delay_ms = delay.as_millis(),
+                            error = %err,
+                            "Gas estimation failed; retrying"
+                        );
+                        tokio::time::sleep(delay).await;
+                        attempt += 1;
+                        continue;
+                    }
+                }
+            }
+
+            if let Some(gas_limit) = cached_gas_limit {
+                call = call.gas(gas_limit);
+            }
+
+            self.rpc_rate_limiter.acquire().await;
+            match call.send().await {
+                Ok(pending_tx) => return Ok(pending_tx),
+                Err(err) => {
+                    drop(call);
+                    let bump_needed = should_bump_gas_price(&err);
+                    let retryable = is_retryable_contract_error(&err) || bump_needed;
+
+                    if attempt >= self.tx_retry_policy.max_attempts || !retryable {
+                        return Err(err);
+                    }
+
+                    if err.should_refresh_provider() {
+                        if let Err(refresh_err) = self.refresh_provider_and_contracts().await {
+                            tracing::error!(
+                                blockchain = %self.blockchain_id(),
+                                error = %refresh_err,
+                                "Failed to refresh provider after backend error"
+                            );
+                        }
+                    }
+
+                    if bump_needed {
+                        match self.gas_config.bump_gas_price(gas_price) {
+                            Some(bumped) => gas_price = bumped,
+                            None => return Err(err),
+                        }
+                    }
+
+                    let delay = backoff_delay(
+                        &self.tx_retry_policy,
+                        attempt,
+                        contract_error_backoff_hint(&err),
+                    );
+                    tracing::warn!(
+                        attempt,
+                        max_attempts = self.tx_retry_policy.max_attempts,
+                        delay_ms = delay.as_millis(),
+                        error = %err,
+                        "Transaction submission failed; retrying"
+                    );
+                    tokio::time::sleep(delay).await;
+                    attempt += 1;
+                }
+            }
+        }
     }
+
+    pub(crate) async fn tx_call_with<D, F>(
+        &self,
+        mut build_call: F,
+    ) -> Result<PendingTransactionBuilder<Ethereum>, ContractError>
+    where
+        D: CallDecoder,
+        F: FnMut() -> CallBuilder<BlockchainProvider, D, Ethereum>,
+    {
+        let _guard = self.tx_mutex.lock().await;
+
+        let mut attempt = 1;
+        let mut gas_price = self.get_gas_price().await;
+        if gas_price > self.gas_config.max_gas_price {
+            gas_price = self.gas_config.max_gas_price;
+        }
+
+        let mut cached_gas_limit: Option<u64> = None;
+
+        loop {
+            let mut call = build_call().gas_price(gas_price.to::<u128>());
+
+            if cached_gas_limit.is_none() {
+                self.rpc_rate_limiter.acquire().await;
+                match call.estimate_gas().await {
+                    Ok(estimate) => {
+                        let estimated = apply_gas_estimate_multiplier(estimate);
+                        cached_gas_limit = Some(estimated);
+                    }
+                    Err(err) => {
+                        let retryable = is_retryable_contract_error(&err);
+                        if attempt >= self.tx_retry_policy.max_attempts || !retryable {
+                            return Err(err);
+                        }
+
+                        let delay = backoff_delay(
+                            &self.tx_retry_policy,
+                            attempt,
+                            contract_error_backoff_hint(&err),
+                        );
+                        tracing::warn!(
+                            attempt,
+                            max_attempts = self.tx_retry_policy.max_attempts,
+                            delay_ms = delay.as_millis(),
+                            error = %err,
+                            "Gas estimation failed; retrying"
+                        );
+                        tokio::time::sleep(delay).await;
+                        attempt += 1;
+                        continue;
+                    }
+                }
+            }
+
+            if let Some(gas_limit) = cached_gas_limit {
+                call = call.gas(gas_limit);
+            }
+
+            self.rpc_rate_limiter.acquire().await;
+            match call.send().await {
+                Ok(pending_tx) => return Ok(pending_tx),
+                Err(err) => {
+                    let bump_needed = should_bump_gas_price(&err);
+                    let retryable = is_retryable_contract_error(&err) || bump_needed;
+
+                    if attempt >= self.tx_retry_policy.max_attempts || !retryable {
+                        return Err(err);
+                    }
+
+                    if err.should_refresh_provider() {
+                        if let Err(refresh_err) = self.refresh_provider_and_contracts().await {
+                            tracing::error!(
+                                blockchain = %self.blockchain_id(),
+                                error = %refresh_err,
+                                "Failed to refresh provider after backend error"
+                            );
+                        }
+                    }
+
+                    if bump_needed {
+                        match self.gas_config.bump_gas_price(gas_price) {
+                            Some(bumped) => gas_price = bumped,
+                            None => return Err(err),
+                        }
+                    }
+
+                    let delay = backoff_delay(
+                        &self.tx_retry_policy,
+                        attempt,
+                        contract_error_backoff_hint(&err),
+                    );
+                    tracing::warn!(
+                        attempt,
+                        max_attempts = self.tx_retry_policy.max_attempts,
+                        delay_ms = delay.as_millis(),
+                        error = %err,
+                        "Transaction submission failed; retrying"
+                    );
+                    tokio::time::sleep(delay).await;
+                    attempt += 1;
+                }
+            }
+        }
+    }
+}
+
+impl EvmChain {
+    async fn refresh_provider_and_contracts(&self) -> Result<(), BlockchainError> {
+        let _guard = self.provider_refresh_mutex.lock().await;
+
+        let provider =
+            initialize_provider(&self.config)
+                .await
+                .map_err(|e| BlockchainError::ProviderInit {
+                    reason: e.to_string(),
+                })?;
+
+        let contracts = initialize_contracts(&self.config, &provider)
+            .await
+            .map_err(|e| BlockchainError::ContractInit {
+                reason: e.to_string(),
+            })?;
+
+        *self.provider.write().await = provider;
+        *self.contracts.write().await = contracts;
+
+        tracing::info!(
+            "{}: Refreshed provider and contract instances",
+            self.blockchain_id()
+        );
+
+        Ok(())
+    }
+
+    /// Await the receipt for a pending transaction with configured confirmations/timeout.
+    pub(crate) async fn handle_contract_call(
+        &self,
+        result: Result<PendingTransactionBuilder<alloy::network::Ethereum>, ContractError>,
+    ) -> Result<TransactionReceipt, BlockchainError> {
+        match result {
+            Ok(pending_tx) => {
+                let pending_tx = pending_tx
+                    .with_required_confirmations(self.config.tx_confirmations())
+                    .with_timeout(self.config.tx_receipt_timeout());
+
+                match pending_tx.get_receipt().await {
+                    Ok(receipt) => Ok(receipt),
+                    Err(err) => {
+                        tracing::error!("Failed to retrieve transaction receipt: {:?}", err);
+                        Err(BlockchainError::ReceiptFailed {
+                            reason: err.to_string(),
+                        })
+                    }
+                }
+            }
+            Err(err) => {
+                tracing::error!("Contract call failed: {:?}", err);
+                Err(BlockchainError::Contract(err))
+            }
+        }
+    }
+}
+
+fn apply_gas_estimate_multiplier(estimate: u64) -> u64 {
+    if estimate == 0 {
+        return 0;
+    }
+
+    let scaled = (estimate as f64 * GAS_ESTIMATE_MULTIPLIER).ceil();
+    if !scaled.is_finite() || scaled <= 0.0 {
+        return estimate;
+    }
+
+    let scaled = scaled.min(u64::MAX as f64) as u64;
+    scaled.max(estimate)
 }

@@ -6,7 +6,6 @@ use alloy::{
 use crate::managers::blockchain::{
     chains::evm::{EvmChain, contracts::Profile},
     error::BlockchainError,
-    error_utils::handle_contract_call,
 };
 
 impl EvmChain {
@@ -19,15 +18,15 @@ impl EvmChain {
             return None;
         };
 
-        let contracts = self.contracts().await;
-
         let result = self
-            .rpc_call(
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
                 contracts
                     .identity_storage()
                     .getIdentityId(evm_operational_address)
-                    .call(),
-            )
+                    .call()
+                    .await
+            })
             .await;
 
         match result {
@@ -61,29 +60,23 @@ impl EvmChain {
         let peer_id_bytes = Bytes::from(peer_id.as_bytes().to_vec());
         let operator_fee = config.operator_fee().unwrap_or(0);
 
-        let contracts = self.contracts().await;
-
-        // Get gas price before sending transaction
-        let gas_price = self.get_gas_price().await;
-
         // Profile ABI: createProfile(adminWallet, operationalWallets, nodeName, nodeId,
         // initialOperatorFee)
-        let create_profile_call = contracts
-            .profile()
-            .createProfile(
-                admin_wallet,
-                vec![], // additional operational wallets (we only support single wallet)
-                node_name.into(), // nodeName
-                peer_id_bytes, // nodeId (peer ID as bytes)
-                operator_fee as u16,
-            )
-            .gas_price(gas_price.to::<u128>());
-
-        let result = self.tx_call(create_profile_call.send()).await;
+        let result = self
+            .tx_call(|contracts| {
+                contracts.profile().createProfile(
+                    admin_wallet,
+                    vec![], // additional operational wallets (we only support single wallet)
+                    node_name.into(), // nodeName
+                    peer_id_bytes.clone(), // nodeId (peer ID as bytes)
+                    operator_fee as u16,
+                )
+            })
+            .await;
 
         match result {
             Ok(pending_tx) => {
-                handle_contract_call(Ok(pending_tx)).await?;
+                self.handle_contract_call(Ok(pending_tx)).await?;
                 tracing::info!(
                     "Profile created with name: {}, operator fee: {}%",
                     node_name,
@@ -154,29 +147,24 @@ impl EvmChain {
     pub(crate) async fn set_ask(&self, ask_wei: u128) -> Result<(), BlockchainError> {
         use alloy::primitives::Uint;
 
-        let contracts = self.contracts().await;
-
         // Get identity ID
         let identity_id = self
             .get_identity_id()
             .await
             .ok_or(BlockchainError::IdentityIdNotFound)?;
 
-        // Get gas price before sending transaction
-        let gas_price = self.get_gas_price().await;
-
         // Update ask via Profile contract - identity_id is uint72, ask_wei is uint96
-        let update_ask_call = contracts
-            .profile()
-            .updateAsk(
-                Uint::<72, 2>::from(identity_id),
-                Uint::<96, 2>::from(ask_wei),
-            )
-            .gas_price(gas_price.to::<u128>());
-
-        match self.tx_call(update_ask_call.send()).await {
+        match self
+            .tx_call(|contracts| {
+                contracts.profile().updateAsk(
+                    Uint::<72, 2>::from(identity_id),
+                    Uint::<96, 2>::from(ask_wei),
+                )
+            })
+            .await
+        {
             Ok(pending_tx) => {
-                handle_contract_call(Ok(pending_tx)).await?;
+                self.handle_contract_call(Ok(pending_tx)).await?;
                 tracing::info!("Set ask completed for identity {}", identity_id);
                 Ok(())
             }

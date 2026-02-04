@@ -1,8 +1,6 @@
 use alloy::primitives::{Address, FixedBytes, U256};
 
-use crate::managers::blockchain::{
-    chains::evm::EvmChain, error::BlockchainError, error_utils::handle_contract_call,
-};
+use crate::managers::blockchain::{chains::evm::EvmChain, error::BlockchainError};
 
 /// Status of the current proof period.
 #[derive(Debug, Clone)]
@@ -28,15 +26,15 @@ impl EvmChain {
     pub(crate) async fn get_active_proof_period_status(
         &self,
     ) -> Result<ProofPeriodStatus, BlockchainError> {
-        let contracts = self.contracts().await;
-
         let result = self
-            .rpc_call(
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
                 contracts
                     .random_sampling()
                     .getActiveProofPeriodStatus()
-                    .call(),
-            )
+                    .call()
+                    .await
+            })
             .await?;
 
         Ok(ProofPeriodStatus {
@@ -47,18 +45,12 @@ impl EvmChain {
 
     /// Create a new challenge for this node.
     pub(crate) async fn create_challenge(&self) -> Result<(), BlockchainError> {
-        let contracts = self.contracts().await;
-
-        let gas_price = self.get_gas_price().await;
-
-        let create_call = contracts
-            .random_sampling()
-            .createChallenge()
-            .gas_price(gas_price.to::<u128>());
-
-        match self.tx_call(create_call.send()).await {
+        match self
+            .tx_call(|contracts| contracts.random_sampling().createChallenge())
+            .await
+        {
             Ok(pending_tx) => {
-                handle_contract_call(Ok(pending_tx)).await?;
+                self.handle_contract_call(Ok(pending_tx)).await?;
                 tracing::debug!("Challenge created successfully");
                 Ok(())
             }
@@ -87,15 +79,15 @@ impl EvmChain {
     ) -> Result<NodeChallenge, BlockchainError> {
         use alloy::primitives::Uint;
 
-        let contracts = self.contracts().await;
-
         let result = self
-            .rpc_call(
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
                 contracts
                     .random_sampling_storage()
                     .getNodeChallenge(Uint::<72, 2>::from(identity_id))
-                    .call(),
-            )
+                    .call()
+                    .await
+            })
             .await?;
 
         Ok(NodeChallenge {
@@ -118,10 +110,9 @@ impl EvmChain {
     ) -> Result<U256, BlockchainError> {
         use alloy::primitives::Uint;
 
-        let contracts = self.contracts().await;
-
         let score = self
-            .rpc_call(
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
                 contracts
                     .random_sampling_storage()
                     .getNodeEpochProofPeriodScore(
@@ -129,8 +120,9 @@ impl EvmChain {
                         epoch,
                         proof_period_start_block,
                     )
-                    .call(),
-            )
+                    .call()
+                    .await
+            })
             .await?;
 
         Ok(score)
@@ -142,24 +134,22 @@ impl EvmChain {
         chunk: &str,
         merkle_proof: &[[u8; 32]],
     ) -> Result<(), BlockchainError> {
-        let contracts = self.contracts().await;
-
-        let gas_price = self.get_gas_price().await;
-
         // Convert merkle proof to FixedBytes<32> array
         let proof_bytes: Vec<FixedBytes<32>> = merkle_proof
             .iter()
             .map(|bytes| FixedBytes::from_slice(bytes))
             .collect();
 
-        let submit_call = contracts
-            .random_sampling()
-            .submitProof(chunk.to_string(), proof_bytes)
-            .gas_price(gas_price.to::<u128>());
-
-        match self.tx_call(submit_call.send()).await {
+        match self
+            .tx_call(|contracts| {
+                contracts
+                    .random_sampling()
+                    .submitProof(chunk.to_string(), proof_bytes.clone())
+            })
+            .await
+        {
             Ok(pending_tx) => {
-                handle_contract_call(Ok(pending_tx)).await?;
+                self.handle_contract_call(Ok(pending_tx)).await?;
                 tracing::info!("Proof submitted successfully");
                 Ok(())
             }

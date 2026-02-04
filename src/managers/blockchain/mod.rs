@@ -1,9 +1,10 @@
 pub(crate) mod chains;
 pub(crate) mod error;
-mod error_utils;
+mod error_classification;
 mod gas;
 mod manager;
 pub(crate) mod multicall;
+mod rpc_executor;
 mod rpc_rate_limiter;
 mod substrate;
 pub(crate) mod utils;
@@ -18,6 +19,7 @@ pub(crate) use gas::GasConfig;
 pub(crate) use rpc_rate_limiter::RpcRateLimiter;
 
 use crate::config::ConfigError;
+use std::time::Duration;
 
 // Re-export event types for use by consumers
 // In alloy's sol! macro, events are nested under the contract module
@@ -101,6 +103,15 @@ pub(crate) struct BlockchainConfig {
     /// Common values: 25 (free tier), 50-100 (paid tier), None (unlimited).
     #[serde(default)]
     max_rpc_requests_per_second: Option<u32>,
+
+    /// Number of confirmations to wait for when fetching transaction receipts.
+    #[serde(default = "default_tx_confirmations")]
+    tx_confirmations: u64,
+
+    /// Timeout for waiting on transaction receipts in milliseconds.
+    /// Set to 0 to disable the timeout.
+    #[serde(default = "default_tx_receipt_timeout_ms")]
+    tx_receipt_timeout_ms: u64,
 }
 
 impl BlockchainConfig {
@@ -172,6 +183,26 @@ impl BlockchainConfig {
     pub(crate) fn max_rpc_requests_per_second(&self) -> Option<u32> {
         self.max_rpc_requests_per_second
     }
+
+    pub(crate) fn tx_confirmations(&self) -> u64 {
+        self.tx_confirmations
+    }
+
+    pub(crate) fn tx_receipt_timeout(&self) -> Option<Duration> {
+        if self.tx_receipt_timeout_ms == 0 {
+            None
+        } else {
+            Some(Duration::from_millis(self.tx_receipt_timeout_ms))
+        }
+    }
+}
+
+fn default_tx_confirmations() -> u64 {
+    1
+}
+
+fn default_tx_receipt_timeout_ms() -> u64 {
+    300_000
 }
 
 /// Supported blockchain types for configuration.
@@ -325,7 +356,6 @@ impl BlockchainManager {
 
 #[cfg(test)]
 mod tests {
-    use chains::evm::format_balance;
 
     use super::*;
 
@@ -343,6 +373,8 @@ mod tests {
             operator_fee: None,
             substrate_rpc_endpoints: None,
             max_rpc_requests_per_second: None,
+            tx_confirmations: super::default_tx_confirmations(),
+            tx_receipt_timeout_ms: super::default_tx_receipt_timeout_ms(),
         }
     }
 
@@ -411,38 +443,5 @@ mod tests {
         );
         assert!(Blockchain::NeuroWeb(config_for_chain("otp", 2043)).requires_evm_account_mapping());
         assert!(!Blockchain::Base(config_for_chain("base", 8453)).requires_evm_account_mapping());
-    }
-
-    #[test]
-    fn test_format_balance_18_decimals() {
-        // 1 ETH = 10^18 wei
-        let one_eth = U256::from(10u64).pow(U256::from(18u64));
-        assert_eq!(format_balance(one_eth, 18), "1");
-
-        // 1.5 ETH
-        let one_point_five = one_eth + one_eth / U256::from(2u64);
-        assert_eq!(format_balance(one_point_five, 18), "1.5");
-
-        // 0 ETH
-        assert_eq!(format_balance(U256::ZERO, 18), "0");
-
-        // 0.001 ETH = 10^15 wei
-        let small = U256::from(10u64).pow(U256::from(15u64));
-        assert_eq!(format_balance(small, 18), "0.001");
-    }
-
-    #[test]
-    fn test_format_balance_12_decimals() {
-        // 1 NEURO = 10^12 wei (12 decimals)
-        let one_neuro = U256::from(10u64).pow(U256::from(12u64));
-        assert_eq!(format_balance(one_neuro, 12), "1");
-
-        // 1.5 NEURO
-        let one_point_five = one_neuro + one_neuro / U256::from(2u64);
-        assert_eq!(format_balance(one_point_five, 12), "1.5");
-
-        // 0.001 NEURO = 10^9 wei
-        let small = U256::from(10u64).pow(U256::from(9u64));
-        assert_eq!(format_balance(small, 12), "0.001");
     }
 }

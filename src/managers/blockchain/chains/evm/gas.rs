@@ -36,7 +36,10 @@ impl EvmChain {
         address: Address,
     ) -> Result<String, BlockchainError> {
         let balance = self
-            .rpc_call(self.provider.get_balance(address))
+            .rpc_call(|| async {
+                let provider = self.provider().await;
+                provider.get_balance(address).await
+            })
             .await
             .map_err(|e| BlockchainError::Custom(format!("Failed to get balance: {}", e)))?;
 
@@ -79,7 +82,13 @@ impl EvmChain {
         }
 
         // Try provider's gas price estimate
-        match self.rpc_call(self.provider.get_gas_price()).await {
+        match self
+            .rpc_call(|| async {
+                let provider = self.provider().await;
+                provider.get_gas_price().await
+            })
+            .await
+        {
             Ok(price) => {
                 let price = U256::from(price);
                 tracing::debug!("Gas price from provider: {} wei", price);
