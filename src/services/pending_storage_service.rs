@@ -1,4 +1,6 @@
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -33,6 +35,8 @@ pub(crate) struct PendingStorageData {
     dataset_root: String,
     dataset: Assertion,
     publisher_peer_id: String,
+    #[serde(default = "default_stored_at")]
+    stored_at: i64,
 }
 
 impl PendingStorageData {
@@ -41,6 +45,7 @@ impl PendingStorageData {
             dataset_root,
             dataset,
             publisher_peer_id,
+            stored_at: Utc::now().timestamp_millis(),
         }
     }
 
@@ -55,6 +60,14 @@ impl PendingStorageData {
     pub(crate) fn publisher_peer_id(&self) -> &str {
         &self.publisher_peer_id
     }
+
+    pub(crate) fn stored_at(&self) -> i64 {
+        self.stored_at
+    }
+}
+
+fn default_stored_at() -> i64 {
+    0
 }
 
 /// Service for storing pending datasets awaiting finality.
@@ -127,6 +140,30 @@ impl PendingStorageService {
                 operation_id = %operation_id,
                 "Dataset removed from pending storage"
             );
+        }
+
+        Ok(removed)
+    }
+
+    /// Remove expired pending storage entries based on their stored timestamp.
+    /// Returns the number of entries removed.
+    pub(crate) fn remove_expired(
+        &self,
+        ttl: Duration,
+        max_remove: usize,
+    ) -> Result<usize, PendingStorageError> {
+        let ttl_ms = ttl.as_millis() as i64;
+        let cutoff = Utc::now().timestamp_millis().saturating_sub(ttl_ms);
+
+        let keys = self
+            .table
+            .collect_keys_matching(max_remove, |data| data.stored_at() <= cutoff)?;
+
+        let mut removed = 0usize;
+        for key in keys {
+            if self.table.remove(key)? {
+                removed += 1;
+            }
         }
 
         Ok(removed)

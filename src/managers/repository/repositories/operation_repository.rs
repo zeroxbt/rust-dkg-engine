@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
+};
 use uuid::Uuid;
 
 use crate::managers::repository::{
@@ -107,5 +110,58 @@ impl OperationRepository {
         status: OperationStatus,
     ) -> Result<Model, RepositoryError> {
         self.update(operation_id, Some(status), None).await
+    }
+
+    /// Find operation IDs by status and updated_at cutoff, limited by `limit`.
+    pub(crate) async fn find_ids_by_status_older_than(
+        &self,
+        statuses: &[OperationStatus],
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: u64,
+    ) -> Result<Vec<Uuid>, RepositoryError> {
+        if statuses.is_empty() || limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let status_values: Vec<String> = statuses
+            .iter()
+            .map(|status| status.as_str().to_string())
+            .collect();
+
+        let records = Entity::find()
+            .filter(operations::Column::Status.is_in(status_values))
+            .filter(operations::Column::UpdatedAt.lt(cutoff))
+            .order_by_asc(operations::Column::UpdatedAt)
+            .limit(limit)
+            .all(self.conn.as_ref())
+            .await?;
+
+        let mut ids = Vec::with_capacity(records.len());
+        for record in records {
+            if let Ok(id) = Uuid::parse_str(&record.operation_id) {
+                ids.push(id);
+            }
+        }
+
+        Ok(ids)
+    }
+
+    /// Delete operations by ID. Returns rows affected.
+    pub(crate) async fn delete_by_ids(
+        &self,
+        ids: &[Uuid],
+    ) -> Result<u64, RepositoryError> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+
+        let id_strings: Vec<String> = ids.iter().map(|id| id.to_string()).collect();
+
+        let result = Entity::delete_many()
+            .filter(operations::Column::OperationId.is_in(id_strings))
+            .exec(self.conn.as_ref())
+            .await?;
+
+        Ok(result.rows_affected)
     }
 }

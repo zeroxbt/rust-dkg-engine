@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use sea_orm::{ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveValue, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect,
+};
 
 use crate::managers::repository::{
     error::Result,
@@ -136,5 +139,50 @@ impl ProofChallengeRepository {
         Entity::update(update).exec(self.conn.as_ref()).await?;
 
         Ok(())
+    }
+
+    /// Find challenges older than cutoff (based on updated_at).
+    pub(crate) async fn find_expired(
+        &self,
+        cutoff: i64,
+        limit: u64,
+    ) -> Result<Vec<Model>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        Ok(Entity::find()
+            .filter(Column::UpdatedAt.lt(cutoff))
+            .order_by_asc(Column::UpdatedAt)
+            .limit(limit)
+            .all(self.conn.as_ref())
+            .await?)
+    }
+
+    /// Delete challenges by composite key. Returns rows affected.
+    pub(crate) async fn delete_by_keys(
+        &self,
+        entries: &[Model],
+    ) -> Result<u64> {
+        if entries.is_empty() {
+            return Ok(0);
+        }
+
+        let mut condition = Condition::any();
+        for entry in entries {
+            condition = condition.add(
+                Condition::all()
+                    .add(Column::BlockchainId.eq(entry.blockchain_id.clone()))
+                    .add(Column::Epoch.eq(entry.epoch))
+                    .add(Column::ProofPeriodStartBlock.eq(entry.proof_period_start_block)),
+            );
+        }
+
+        let result = Entity::delete_many()
+            .filter(condition)
+            .exec(self.conn.as_ref())
+            .await?;
+
+        Ok(result.rows_affected)
     }
 }

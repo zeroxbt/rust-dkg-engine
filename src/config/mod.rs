@@ -76,6 +76,8 @@ pub(crate) struct Config {
     pub managers: ManagersConfig,
     pub http_api: HttpApiConfig,
     #[serde(default)]
+    pub cleanup: CleanupConfig,
+    #[serde(default)]
     pub logger: LoggerConfig,
     #[serde(default)]
     pub telemetry: TelemetryConfig,
@@ -152,6 +154,176 @@ fn default_otlp_endpoint() -> String {
 
 fn default_service_name() -> String {
     "rust-ot-node".to_string()
+}
+
+/// Cleanup configuration for periodic maintenance tasks.
+#[derive(Debug, Deserialize, Clone)]
+pub(crate) struct CleanupConfig {
+    #[serde(default = "default_cleanup_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_cleanup_interval_secs")]
+    pub interval_secs: u64,
+    #[serde(default)]
+    pub operations: OperationsCleanupConfig,
+    #[serde(default)]
+    pub pending_storage: PendingStorageCleanupConfig,
+    #[serde(default)]
+    pub finality_acks: FinalityAcksCleanupConfig,
+    #[serde(default)]
+    pub proof_challenges: ProofChallengesCleanupConfig,
+    #[serde(default)]
+    pub kc_sync_queue: KcSyncQueueCleanupConfig,
+}
+
+impl Default for CleanupConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_cleanup_enabled(),
+            interval_secs: default_cleanup_interval_secs(),
+            operations: OperationsCleanupConfig::default(),
+            pending_storage: PendingStorageCleanupConfig::default(),
+            finality_acks: FinalityAcksCleanupConfig::default(),
+            proof_challenges: ProofChallengesCleanupConfig::default(),
+            kc_sync_queue: KcSyncQueueCleanupConfig::default(),
+        }
+    }
+}
+
+fn default_cleanup_enabled() -> bool {
+    true
+}
+
+fn default_cleanup_interval_secs() -> u64 {
+    60 * 60
+}
+
+/// Cleanup config for operation status + result cache.
+#[derive(Debug, Deserialize, Clone)]
+pub(crate) struct OperationsCleanupConfig {
+    #[serde(default = "default_operations_ttl_secs")]
+    pub ttl_secs: u64,
+    #[serde(default = "default_repo_batch_size")]
+    pub batch_size: usize,
+}
+
+impl Default for OperationsCleanupConfig {
+    fn default() -> Self {
+        Self {
+            ttl_secs: default_operations_ttl_secs(),
+            batch_size: default_repo_batch_size(),
+        }
+    }
+}
+
+fn default_operations_ttl_secs() -> u64 {
+    24 * 60 * 60
+}
+
+/// Cleanup config for pending storage (redb).
+#[derive(Debug, Deserialize, Clone)]
+pub(crate) struct PendingStorageCleanupConfig {
+    #[serde(default = "default_pending_storage_ttl_secs")]
+    pub ttl_secs: u64,
+    #[serde(default = "default_kv_batch_size")]
+    pub batch_size: usize,
+}
+
+impl Default for PendingStorageCleanupConfig {
+    fn default() -> Self {
+        Self {
+            ttl_secs: default_pending_storage_ttl_secs(),
+            batch_size: default_kv_batch_size(),
+        }
+    }
+}
+
+fn default_pending_storage_ttl_secs() -> u64 {
+    12 * 60 * 60
+}
+
+/// Cleanup config for finality ack records.
+#[derive(Debug, Deserialize, Clone)]
+pub(crate) struct FinalityAcksCleanupConfig {
+    #[serde(default = "default_finality_ttl_secs")]
+    pub ttl_secs: u64,
+    #[serde(default = "default_repo_batch_size")]
+    pub batch_size: usize,
+}
+
+impl Default for FinalityAcksCleanupConfig {
+    fn default() -> Self {
+        Self {
+            ttl_secs: default_finality_ttl_secs(),
+            batch_size: default_repo_batch_size(),
+        }
+    }
+}
+
+fn default_finality_ttl_secs() -> u64 {
+    24 * 60 * 60
+}
+
+/// Cleanup config for proof challenge records.
+#[derive(Debug, Deserialize, Clone)]
+pub(crate) struct ProofChallengesCleanupConfig {
+    #[serde(default = "default_proof_challenges_ttl_secs")]
+    pub ttl_secs: u64,
+    #[serde(default = "default_compound_batch_size")]
+    pub batch_size: usize,
+}
+
+impl Default for ProofChallengesCleanupConfig {
+    fn default() -> Self {
+        Self {
+            ttl_secs: default_proof_challenges_ttl_secs(),
+            batch_size: default_compound_batch_size(),
+        }
+    }
+}
+
+fn default_proof_challenges_ttl_secs() -> u64 {
+    7 * 24 * 60 * 60
+}
+
+/// Cleanup config for KC sync queue.
+#[derive(Debug, Deserialize, Clone)]
+pub(crate) struct KcSyncQueueCleanupConfig {
+    #[serde(default = "default_kc_sync_queue_ttl_secs")]
+    pub ttl_secs: u64,
+    #[serde(default = "default_kc_sync_queue_max_retries")]
+    pub max_retries: u32,
+    #[serde(default = "default_compound_batch_size")]
+    pub batch_size: usize,
+}
+
+impl Default for KcSyncQueueCleanupConfig {
+    fn default() -> Self {
+        Self {
+            ttl_secs: default_kc_sync_queue_ttl_secs(),
+            max_retries: default_kc_sync_queue_max_retries(),
+            batch_size: default_compound_batch_size(),
+        }
+    }
+}
+
+fn default_kc_sync_queue_ttl_secs() -> u64 {
+    24 * 60 * 60
+}
+
+fn default_kc_sync_queue_max_retries() -> u32 {
+    2
+}
+
+fn default_repo_batch_size() -> usize {
+    50_000
+}
+
+fn default_kv_batch_size() -> usize {
+    50_000
+}
+
+fn default_compound_batch_size() -> usize {
+    1_000
 }
 
 #[derive(Debug, Deserialize, Clone)]

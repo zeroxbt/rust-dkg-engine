@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, Set};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
+};
 use uuid::Uuid;
 
 use crate::managers::repository::{
@@ -78,5 +81,42 @@ impl FinalityStatusRepository {
             .await?;
 
         Ok(count)
+    }
+
+    /// Find finality ack IDs older than the cutoff time.
+    pub(crate) async fn find_ids_older_than(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: u64,
+    ) -> Result<Vec<i32>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let records = Entity::find()
+            .filter(Column::UpdatedAt.lt(cutoff))
+            .order_by_asc(Column::UpdatedAt)
+            .limit(limit)
+            .all(self.conn.as_ref())
+            .await?;
+
+        Ok(records.into_iter().map(|record| record.id).collect())
+    }
+
+    /// Delete finality ack records by ID. Returns rows affected.
+    pub(crate) async fn delete_by_ids(
+        &self,
+        ids: &[i32],
+    ) -> Result<u64, RepositoryError> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+
+        let result = Entity::delete_many()
+            .filter(Column::Id.is_in(ids.to_vec()))
+            .exec(self.conn.as_ref())
+            .await?;
+
+        Ok(result.rows_affected)
     }
 }

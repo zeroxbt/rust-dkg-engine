@@ -82,7 +82,7 @@ async fn main() {
         .into_iter()
         .cloned()
         .collect();
-    for request in default_command_requests(&blockchain_ids) {
+    for request in default_command_requests(&blockchain_ids, &config.cleanup) {
         command_scheduler_for_executor.schedule(request).await;
     }
 

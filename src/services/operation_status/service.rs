@@ -74,6 +74,11 @@ where
         Ok(())
     }
 
+    /// Remove a result from the key-value store.
+    pub(crate) fn remove_result(&self, operation_id: Uuid) -> Result<bool, ResultStoreError> {
+        Ok(self.result_table.remove(operation_id)?)
+    }
+
     /// Get a cached operation result from the key-value store.
     pub(crate) fn get_result(&self, operation_id: Uuid) -> Result<Option<R>, ResultStoreError> {
         Ok(self.result_table.get(operation_id)?)

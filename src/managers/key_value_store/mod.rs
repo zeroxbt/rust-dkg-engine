@@ -117,6 +117,45 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         tracing::trace!(key = %key, "Updated value in table");
         Ok(())
     }
+
+    /// Collect up to `limit` keys whose values satisfy `predicate`.
+    ///
+    /// This is intended for maintenance tasks (e.g., TTL cleanup) and performs
+    /// a full table scan until the limit is reached.
+    pub(crate) fn collect_keys_matching<F>(
+        &self,
+        limit: usize,
+        mut predicate: F,
+    ) -> Result<Vec<Uuid>, KeyValueStoreError>
+    where
+        F: FnMut(&V) -> bool,
+    {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let read_txn = self.db.begin_read()?;
+        let table = read_txn.open_table(self.table_def)?;
+        let mut keys = Vec::new();
+
+        for entry in table.iter()? {
+            let (key, value) = entry?;
+            let key_bytes = key.value();
+            let value_bytes = value.value();
+
+            let uuid = Uuid::from_slice(key_bytes).map_err(|_| KeyValueStoreError::InvalidUuid)?;
+            let decoded: V = serde_json::from_slice(value_bytes)?;
+
+            if predicate(&decoded) {
+                keys.push(uuid);
+                if keys.len() >= limit {
+                    break;
+                }
+            }
+        }
+
+        Ok(keys)
+    }
 }
 
 /// Key-Value Store Manager

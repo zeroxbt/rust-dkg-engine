@@ -15,6 +15,34 @@ level = "rust_ot_node=info"  # Production log level
 format = "pretty"            # Human-readable format
 
 # ============================================
+# Cleanup Configuration
+# ============================================
+[cleanup]
+enabled = true
+interval_secs = 3600
+
+[cleanup.operations]
+ttl_secs = 86400
+batch_size = 50000
+
+[cleanup.pending_storage]
+ttl_secs = 43200
+batch_size = 50000
+
+[cleanup.finality_acks]
+ttl_secs = 86400
+batch_size = 50000
+
+[cleanup.proof_challenges]
+ttl_secs = 604800
+batch_size = 1000
+
+[cleanup.kc_sync_queue]
+ttl_secs = 86400
+max_retries = 2
+batch_size = 1000
+
+# ============================================
 # HTTP API Configuration
 # ============================================
 [http_api]
