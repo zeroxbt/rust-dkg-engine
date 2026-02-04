@@ -1,6 +1,9 @@
 //! Proving command handler implementation.
 
-use std::{sync::Arc, time::Duration, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use alloy::primitives::U256;
 use chrono::Utc;
@@ -15,7 +18,8 @@ use crate::{
     managers::{
         blockchain::BlockchainManager,
         network::{
-            NetworkError, NetworkManager, message::ResponseBody,
+            NetworkError, NetworkManager,
+            message::ResponseBody,
             messages::{GetRequestData, GetResponseData},
         },
         repository::{ChallengeState, RepositoryManager},
@@ -267,7 +271,12 @@ impl ProvingCommandHandler {
         operation_id: Uuid,
         request_data: GetRequestData,
         parsed_ual: ParsedUal,
-    ) -> (PeerId, Result<bool, NetworkError>, Duration, Option<Assertion>) {
+    ) -> (
+        PeerId,
+        Result<bool, NetworkError>,
+        Duration,
+        Option<Assertion>,
+    ) {
         let start = Instant::now();
         let addresses = self
             .network_manager
@@ -360,13 +369,6 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
             }
         };
 
-        if !proof_period.is_valid {
-            tracing::debug!("No valid proof period active");
-            return CommandExecutionResult::Repeat {
-                delay: PROVING_PERIOD,
-            };
-        }
-
         // 3. Get latest challenge from database
         let latest_challenge = self
             .repository_manager
@@ -378,8 +380,17 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
 
         let current_start_block = proof_period.active_proof_period_start_block;
 
+        if !proof_period.is_valid {
+            tracing::debug!(
+                active_start_block = %proof_period.active_proof_period_start_block,
+                "No valid proof period active"
+            );
+        }
+
         // Check if we have a challenge for the current period
-        if let Some(ref challenge) = latest_challenge {
+        if proof_period.is_valid
+            && let Some(ref challenge) = latest_challenge
+        {
             let challenge_start_block = U256::from(challenge.proof_period_start_block as u64);
 
             if challenge_start_block == current_start_block {
@@ -410,8 +421,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                                 // Score is positive - wait for reorg buffer before finalizing
                                 let updated_at = challenge.updated_at;
                                 let now = Utc::now().timestamp();
-                                let elapsed =
-                                    Duration::from_secs((now - updated_at).max(0) as u64);
+                                let elapsed = Duration::from_secs((now - updated_at).max(0) as u64);
 
                                 if elapsed < REORG_BUFFER {
                                     tracing::debug!(
@@ -445,7 +455,8 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                                 };
                             }
                             Ok(_) => {
-                                // Score is zero - reset to Pending and fall through to re-submit
+                                // Score is zero - reset to Pending and fall through to
+                                // re-submit
                                 tracing::warn!("Score is zero, resetting challenge to retry");
                                 if let Err(e) = self
                                     .repository_manager
@@ -480,10 +491,14 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
         }
 
         // 4. Create new challenge if needed
-        let needs_new_challenge = latest_challenge
-            .as_ref()
-            .map(|c| U256::from(c.proof_period_start_block as u64) != current_start_block)
-            .unwrap_or(true);
+        let needs_new_challenge = if !proof_period.is_valid {
+            true
+        } else {
+            latest_challenge
+                .as_ref()
+                .map(|c| U256::from(c.proof_period_start_block as u64) != current_start_block)
+                .unwrap_or(true)
+        };
 
         if needs_new_challenge
             && let Err(e) = self
