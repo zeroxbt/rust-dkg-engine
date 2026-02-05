@@ -1,4 +1,8 @@
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 use clap::{Arg, Command};
 use figment::{
@@ -23,6 +27,23 @@ pub(crate) enum ConfigError {
 
     #[error("Missing required secret: {0}")]
     MissingSecret(String),
+
+    #[error("Missing required config file: {0}")]
+    MissingConfig(String),
+
+    #[error("Missing required environment setting: {0}")]
+    MissingEnvironment(String),
+
+    #[error("Unknown environment: {0}")]
+    UnknownEnvironment(String),
+}
+
+const DEFAULTS_TOML: &str = include_str!("../../config/defaults.toml");
+static CONFIG_ENV: OnceLock<String> = OnceLock::new();
+
+#[derive(Debug, Deserialize)]
+struct EnvironmentConfig {
+    environment: Option<String>,
 }
 
 /// Centralized application paths derived from the root data directory.
@@ -61,12 +82,19 @@ impl AppPaths {
     }
 }
 
+/// Returns the currently selected environment.
+/// This is set during configuration initialization.
+pub(crate) fn current_env() -> String {
+    CONFIG_ENV
+        .get()
+        .cloned()
+        .expect("configuration environment not initialized")
+}
+
 /// Returns true if running in a development environment.
-/// Derived from NODE_ENV environment variable (true if "development" or "devnet").
+/// Derived from config/environment (true if "development" or "devnet").
 pub(crate) fn is_dev_env() -> bool {
-    env::var("NODE_ENV")
-        .map(|v| matches!(v.as_str(), "development" | "devnet"))
-        .unwrap_or(true) // default to dev if NODE_ENV not set
+    matches!(current_env().as_str(), "development" | "devnet")
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -339,17 +367,6 @@ pub(crate) fn initialize_configuration() -> Config {
 }
 
 fn load_configuration() -> Result<Config, ConfigError> {
-    let node_env = env::var("NODE_ENV").unwrap_or_else(|_| "development".to_string());
-
-    tracing::info!("Loading configuration for environment: {}", node_env);
-
-    // Build configuration with layered sources (priority: lowest to highest)
-    let mut figment = Figment::new()
-        // Base configuration from TOML
-        .merge(Toml::file(format!("config/{}.toml", node_env)))
-        // User overrides from config.toml
-        .merge(Toml::file("config.toml"));
-
     // Parse CLI arguments for custom config file
     let matches = Command::new("OriginTrail Rust Node")
         .arg(
@@ -361,8 +378,22 @@ fn load_configuration() -> Result<Config, ConfigError> {
         )
         .get_matches();
 
+    let custom_config_path = matches.get_one::<String>("config").map(String::as_str);
+    let node_env = resolve_environment(custom_config_path)?;
+    set_config_env(&node_env);
+
+    tracing::info!("Loading configuration for environment: {}", node_env);
+
+    // Build configuration with layered sources (priority: lowest to highest)
+    let mut figment = Figment::from(Toml::string(DEFAULTS_TOML)).select(&node_env);
+
+    // User overrides from config.toml
+    if Path::new("config.toml").exists() {
+        figment = figment.merge(Toml::file("config.toml"));
+    }
+
     // If custom config file is provided, merge it with highest priority
-    if let Some(config_path) = matches.get_one::<String>("config") {
+    if let Some(config_path) = custom_config_path {
         tracing::info!("Loading custom config file: {}", config_path);
         figment = figment.merge(Toml::file(config_path));
     }
@@ -376,6 +407,53 @@ fn load_configuration() -> Result<Config, ConfigError> {
     tracing::info!("Configuration loaded successfully");
 
     Ok(config)
+}
+
+fn set_config_env(env: &str) {
+    let _ = CONFIG_ENV.set(env.to_string());
+}
+
+fn resolve_environment(custom_config_path: Option<&str>) -> Result<String, ConfigError> {
+    let config_path = custom_config_path.unwrap_or("config.toml");
+
+    if !Path::new(config_path).exists() {
+        return Err(ConfigError::MissingConfig(config_path.to_string()));
+    }
+
+    let env = read_environment_from(config_path).ok_or_else(|| {
+        ConfigError::MissingEnvironment(
+            "set environment = \"development|testnet|mainnet\" in your config".to_string(),
+        )
+    })?;
+
+    let env = normalize_env(env);
+
+    if !matches!(env.as_str(), "development" | "testnet" | "mainnet") {
+        return Err(ConfigError::UnknownEnvironment(env));
+    }
+
+    Ok(env)
+}
+
+fn read_environment_from(path: &str) -> Option<String> {
+    if !Path::new(path).exists() {
+        return None;
+    }
+
+    Figment::from(Toml::file(path))
+        .extract::<EnvironmentConfig>()
+        .ok()
+        .and_then(|config| config.environment)
+        .map(normalize_env)
+}
+
+fn normalize_env(env: String) -> String {
+    match env.trim().to_lowercase().as_str() {
+        "dev" | "development" | "devnet" => "development".to_string(),
+        "test" | "testnet" => "testnet".to_string(),
+        "main" | "mainnet" => "mainnet".to_string(),
+        other => other.to_string(),
+    }
 }
 
 /// Resolves secrets from environment variables into the config.

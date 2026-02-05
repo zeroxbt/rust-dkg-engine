@@ -1,9 +1,13 @@
 # ============================================
 # Local Network Node Configuration Template
 # ============================================
-# This template is used by scripts to generate node configs
-# Placeholders will be replaced by the setup script
+# This template is used by tools/local_network to generate node configs.
+# Placeholders will be replaced by the setup tool.
 
+# Select environment defaults embedded in the binary
+environment = "development"
+
+# Root data directory used to derive all app paths
 app_data_path = "{{APP_DATA_PATH}}"
 
 # ============================================
@@ -29,7 +33,7 @@ database = "{{DATABASE_NAME}}"
 host = "localhost"
 port = 3306
 user = "root"
-# password provided via DB_PASSWORD env var
+password = ""
 
 # ============================================
 # Blockchain Configuration - Hardhat Local
@@ -39,14 +43,11 @@ user = "root"
 blockchain_id = "{{BLOCKCHAIN_ID}}"
 hub_contract_address = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
 
-# Staking configuration
-initial_stake_amount = 50_000
-initial_ask_amount = 0.2
-
 # Wallets (Hardhat test accounts - DO NOT USE IN PRODUCTION)
-# Private keys provided via EVM_OPERATIONAL_WALLET_PRIVATE_KEY and EVM_MANAGEMENT_WALLET_PRIVATE_KEY env vars
 evm_operational_wallet_address = "{{OPERATIONAL_WALLET_PUBLIC}}"
+evm_operational_wallet_private_key = "{{OPERATIONAL_WALLET_PRIVATE}}"
 evm_management_wallet_address = "{{MANAGEMENT_WALLET_PUBLIC}}"
+evm_management_wallet_private_key = "{{MANAGEMENT_WALLET_PRIVATE}}"
 
 # RPC endpoints
 rpc_endpoints = ["ws://localhost:8545", "http://localhost:8545"]
@@ -54,15 +55,17 @@ rpc_endpoints = ["ws://localhost:8545", "http://localhost:8545"]
 # Node identity
 node_name = "{{NODE_NAME}}"
 
+# Transaction receipt settings
+# (defaults: tx_confirmations=1, tx_receipt_timeout_ms=300000)
+tx_confirmations = 1
+tx_receipt_timeout_ms = 300000
+
 # ============================================
 # Triple Store Manager Configuration
 # ============================================
 [managers.triple_store]
 # Use embedded Oxigraph (faster, no external service needed)
 backend = "oxigraph"
-repository = "{{TRIPLE_STORE_REPOSITORY}}"
-# data_path is derived from app_data_path automatically
-
 # For Blazegraph (requires running Blazegraph server), use:
 # backend = "blazegraph"
 # url = "http://localhost:9999"
@@ -73,9 +76,3 @@ repository = "{{TRIPLE_STORE_REPOSITORY}}"
 query_ms = 60000
 insert_ms = 300000
 ask_ms = 10000
-
-# ============================================
-# Validation Manager Configuration
-# ============================================
-[managers.validation]
-# Validation settings here

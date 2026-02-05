@@ -23,10 +23,6 @@ pub(crate) enum NodeError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    /// File service errors
-    #[error("File service error: {0}")]
-    FileService(#[from] crate::services::file_service::FileServiceError),
-
     /// Generic application error
     #[error("{0}")]
     Other(String),

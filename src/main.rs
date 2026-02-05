@@ -17,7 +17,6 @@ use commands::{
     command_registry::default_command_requests,
 };
 use context::Context;
-use dotenvy::dotenv;
 use managers::network::KeyManager;
 use tokio::{select, signal::unix::SignalKind, sync::oneshot};
 
@@ -29,8 +28,6 @@ async fn main() {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");
-
-    dotenv().ok();
 
     // Load configuration first, then initialize logger with config settings
     let config = Arc::new(config::initialize_configuration());
@@ -201,11 +198,8 @@ fn display_ot_node_ascii_art() {
         env!("CARGO_PKG_VERSION")
     );
     tracing::info!("======================================================");
-    if let Ok(environment) = std::env::var("NODE_ENV") {
-        tracing::info!("Node is running in {} environment", environment);
-    } else {
-        tracing::error!("NODE_ENV environment variable not set!");
-    }
+    let environment = config::current_env();
+    tracing::info!("Node is running in {} environment", environment);
 }
 
 async fn initialize_dev_environment(blockchain_manager: &Arc<managers::BlockchainManager>) {

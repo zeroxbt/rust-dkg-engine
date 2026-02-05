@@ -6139,7 +6139,6 @@ dependencies = [
  "chrono",
  "clap",
  "dashmap",
- "dotenvy",
  "figment",
  "futures",
  "governor",
