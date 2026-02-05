@@ -12,7 +12,6 @@ pub(crate) mod utils;
 use std::collections::HashMap;
 
 use chains::evm::EvmChain;
-
 pub(crate) use chains::evm::{
     ContractLog, ContractName, Hub, KnowledgeCollectionStorage, ParametersStorage,
 };

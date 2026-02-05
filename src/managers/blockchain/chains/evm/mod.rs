@@ -27,11 +27,11 @@ mod multicall;
 mod provider;
 mod rpc;
 mod wallets;
-pub(crate) use gas::GasConfig;
 pub(crate) use contracts::{
     Hub, KnowledgeCollectionStorage, Multicall3, ParametersStorage, PermissionedNode,
     ShardingTableLib, ShardingTableLib::NodeInfo,
 };
+pub(crate) use gas::GasConfig;
 pub(crate) use provider::initialize_provider_with_wallet;
 pub(crate) use rpc::random_sampling::{NodeChallenge, ProofPeriodStatus};
 
