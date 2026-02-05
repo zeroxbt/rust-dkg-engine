@@ -511,14 +511,9 @@ async fn send_get_request_to_peer(
     visibility: Visibility,
 ) -> (PeerId, Result<bool, NetworkError>, std::time::Duration) {
     let start = Instant::now();
-    let addresses = handler
-        .network_manager
-        .get_peer_addresses(peer)
-        .await
-        .unwrap_or_default();
     let result = handler
         .network_manager
-        .send_get_request(peer, addresses, operation_id, request_data)
+        .send_get_request(peer, operation_id, request_data)
         .await;
     let elapsed = start.elapsed();
     let outcome = match result {

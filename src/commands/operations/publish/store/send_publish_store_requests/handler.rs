@@ -388,14 +388,9 @@ async fn send_store_request_to_peer(
     operation_id: Uuid,
     request_data: StoreRequestData,
 ) -> (PeerId, Result<StoreResponseData, NetworkError>) {
-    let addresses = handler
-        .network_manager
-        .get_peer_addresses(peer)
-        .await
-        .unwrap_or_default();
     let result = handler
         .network_manager
-        .send_store_request(peer, addresses, operation_id, request_data)
+        .send_store_request(peer, operation_id, request_data)
         .await;
     (peer, result)
 }

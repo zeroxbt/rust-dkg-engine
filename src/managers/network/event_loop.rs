@@ -5,6 +5,7 @@
 
 use libp2p::{
     Multiaddr, PeerId, Swarm, identify, kad, request_response,
+    multiaddr::Protocol,
     swarm::{NetworkBehaviour, SwarmEvent},
 };
 use tokio::sync::{mpsc, oneshot};
@@ -164,6 +165,22 @@ fn send_protocol_request<P, B>(
     pending.insert_sender(request_id, response_tx);
 }
 
+fn strip_p2p_protocol(addr: Multiaddr) -> Multiaddr {
+    addr.into_iter()
+        .filter(|proto| !matches!(proto, Protocol::P2p(_)))
+        .collect()
+}
+
+fn dial_peer_if_needed(swarm: &mut Swarm<NodeBehaviour>, peer: PeerId) {
+    if swarm.is_connected(&peer) {
+        tracing::trace!(%peer, "already connected to peer, skipping dial");
+    } else if let Err(e) = swarm.dial(peer) {
+        tracing::debug!(%peer, error = %e, "failed to dial peer");
+    } else {
+        tracing::debug!(%peer, "dialing peer discovered via DHT");
+    }
+}
+
 /// NetworkEventLoop owns the swarm and runs the event loop.
 ///
 /// This is created by `NetworkManager::connect()` and runs in its own task.
@@ -286,9 +303,13 @@ impl NetworkEventLoop {
                 NodeBehaviourEvent::Identify(identify::Event::Received {
                     peer_id, info, ..
                 }) => {
-                    handler
-                        .on_identify_received(peer_id, info.listen_addrs)
-                        .await;
+                    for addr in info.listen_addrs {
+                        let addr = strip_p2p_protocol(addr);
+                        self.swarm
+                            .behaviour_mut()
+                            .kad
+                            .add_address(&peer_id, addr);
+                    }
                 }
 
                 // Kademlia protocol
@@ -299,7 +320,7 @@ impl NetworkEventLoop {
                     Ok(kad::GetClosestPeersOk { key, peers }) => {
                         if let Ok(target) = PeerId::from_bytes(&key) {
                             if peers.iter().any(|p| p.peer_id == target) {
-                                handler.on_kad_peer_found(target).await;
+                                dial_peer_if_needed(&mut self.swarm, target);
                             } else {
                                 handler.on_kad_peer_not_found(target).await;
                             }
@@ -308,7 +329,7 @@ impl NetworkEventLoop {
                     Err(kad::GetClosestPeersError::Timeout { key, peers }) => {
                         if let Ok(target) = PeerId::from_bytes(&key) {
                             if peers.iter().any(|p| p.peer_id == target) {
-                                handler.on_kad_peer_found(target).await;
+                                dial_peer_if_needed(&mut self.swarm, target);
                             } else {
                                 handler.on_kad_peer_not_found(target).await;
                             }
@@ -340,50 +361,13 @@ impl NetworkEventLoop {
                     self.swarm.behaviour_mut().kad.get_closest_peers(peer);
                 }
             }
-            NetworkAction::DialPeer(peer) => {
-                if self.swarm.is_connected(&peer) {
-                    tracing::trace!(%peer, "already connected to peer, skipping dial");
-                } else if let Err(e) = self.swarm.dial(peer) {
-                    tracing::debug!(%peer, error = %e, "failed to dial peer");
-                }
-            }
             NetworkAction::GetConnectedPeers(response_tx) => {
                 let peers: Vec<PeerId> = self.swarm.connected_peers().copied().collect();
                 let _ = response_tx.send(peers);
             }
-            NetworkAction::GetPeerAddresses {
-                peer_id,
-                response_tx,
-            } => {
-                let addresses = self
-                    .swarm
-                    .behaviour_mut()
-                    .kad
-                    .kbucket(peer_id)
-                    .and_then(|bucket| {
-                        bucket
-                            .iter()
-                            .find(|entry| *entry.node.key.preimage() == peer_id)
-                            .map(|entry| entry.node.value.iter().cloned().collect())
-                    })
-                    .unwrap_or_default();
-                let _ = response_tx.send(addresses);
-            }
-            NetworkAction::AddKadAddresses {
-                peer_id,
-                listen_addrs,
-            } => {
-                for address in listen_addrs {
-                    self.swarm
-                        .behaviour_mut()
-                        .kad
-                        .add_address(&peer_id, address);
-                }
-            }
             // Protocol request/response actions
             NetworkAction::SendStoreRequest {
                 peer,
-                addresses: _,
                 operation_id,
                 request_data,
                 response_tx,
@@ -405,7 +389,6 @@ impl NetworkEventLoop {
             }
             NetworkAction::SendGetRequest {
                 peer,
-                addresses: _,
                 operation_id,
                 request_data,
                 response_tx,
@@ -427,7 +410,6 @@ impl NetworkEventLoop {
             }
             NetworkAction::SendFinalityRequest {
                 peer,
-                addresses: _,
                 operation_id,
                 request_data,
                 response_tx,
@@ -449,7 +431,6 @@ impl NetworkEventLoop {
             }
             NetworkAction::SendBatchGetRequest {
                 peer,
-                addresses: _,
                 operation_id,
                 request_data,
                 response_tx,

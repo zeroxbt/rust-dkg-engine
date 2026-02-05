@@ -272,15 +272,9 @@ impl ProvingCommandHandler {
         Option<Assertion>,
     ) {
         let start = Instant::now();
-        let addresses = self
-            .network_manager
-            .get_peer_addresses(peer)
-            .await
-            .unwrap_or_default();
-
         let result = self
             .network_manager
-            .send_get_request(peer, addresses, operation_id, request_data)
+            .send_get_request(peer, operation_id, request_data)
             .await;
 
         let elapsed = start.elapsed();

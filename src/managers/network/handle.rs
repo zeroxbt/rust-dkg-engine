@@ -3,7 +3,7 @@
 //! This is the public-facing API that callers use to interact with the network.
 //! It communicates with the NetworkEventLoop via an action channel.
 
-use libp2p::{Multiaddr, PeerId, identity, request_response};
+use libp2p::{PeerId, identity, request_response};
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 use uuid::Uuid;
@@ -76,46 +76,12 @@ impl NetworkManager {
         self.enqueue_action(NetworkAction::FindPeers(peers)).await
     }
 
-    /// Directly dial a peer to establish a connection.
-    /// The peer's addresses must already be known (e.g., from a previous DHT lookup).
-    pub(crate) async fn dial_peer(&self, peer: PeerId) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::DialPeer(peer)).await
-    }
-
     /// Get the list of currently connected peers.
     pub(crate) async fn connected_peers(&self) -> Result<Vec<PeerId>, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::GetConnectedPeers(tx))
             .await?;
         rx.await.map_err(|_| NetworkError::ResponseChannelClosed)
-    }
-
-    /// Get known addresses for a peer from the Kademlia routing table.
-    /// Returns an empty vector if the peer is not found.
-    pub(crate) async fn get_peer_addresses(
-        &self,
-        peer_id: PeerId,
-    ) -> Result<Vec<Multiaddr>, NetworkError> {
-        let (tx, rx) = oneshot::channel();
-        self.enqueue_action(NetworkAction::GetPeerAddresses {
-            peer_id,
-            response_tx: tx,
-        })
-        .await?;
-        rx.await.map_err(|_| NetworkError::ResponseChannelClosed)
-    }
-
-    /// Enqueue Kademlia address updates for a peer.
-    pub(crate) async fn add_kad_addresses(
-        &self,
-        peer_id: PeerId,
-        listen_addrs: Vec<Multiaddr>,
-    ) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::AddKadAddresses {
-            peer_id,
-            listen_addrs,
-        })
-        .await
     }
 
     // Protocol-specific send methods that send a request and await the response.
@@ -126,20 +92,18 @@ impl NetworkManager {
     /// Send a store request and await the response.
     #[instrument(
         name = "network_store",
-        skip(self, addresses, request_data),
+        skip(self, request_data),
         fields(peer_id = %peer, operation_id = %operation_id)
     )]
     pub(crate) async fn send_store_request(
         &self,
         peer: PeerId,
-        addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: StoreRequestData,
     ) -> Result<StoreResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::SendStoreRequest {
             peer,
-            addresses,
             operation_id,
             request_data,
             response_tx: tx,
@@ -162,14 +126,12 @@ impl NetworkManager {
     pub(crate) async fn send_get_request(
         &self,
         peer: PeerId,
-        addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: GetRequestData,
     ) -> Result<GetResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::SendGetRequest {
             peer,
-            addresses,
             operation_id,
             request_data,
             response_tx: tx,
@@ -192,14 +154,12 @@ impl NetworkManager {
     pub(crate) async fn send_finality_request(
         &self,
         peer: PeerId,
-        addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: FinalityRequestData,
     ) -> Result<FinalityResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::SendFinalityRequest {
             peer,
-            addresses,
             operation_id,
             request_data,
             response_tx: tx,
@@ -221,20 +181,18 @@ impl NetworkManager {
     /// Send a batch get request and await the response.
     #[instrument(
         name = "network_batch_get",
-        skip(self, addresses, request_data),
+        skip(self, request_data),
         fields(peer_id = %peer, operation_id = %operation_id)
     )]
     pub(crate) async fn send_batch_get_request(
         &self,
         peer: PeerId,
-        addresses: Vec<Multiaddr>,
         operation_id: Uuid,
         request_data: BatchGetRequestData,
     ) -> Result<BatchGetResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.enqueue_action(NetworkAction::SendBatchGetRequest {
             peer,
-            addresses,
             operation_id,
             request_data,
             response_tx: tx,

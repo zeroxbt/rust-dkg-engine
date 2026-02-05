@@ -226,9 +226,8 @@ async fn make_peer_request(
     nm: Arc<NetworkManager>,
 ) -> (PeerId, Result<BatchGetResponseData, NetworkError>, Duration) {
     let start = Instant::now();
-    let addresses = nm.get_peer_addresses(peer).await.unwrap_or_default();
     let result = nm
-        .send_batch_get_request(peer, addresses, uuid::Uuid::new_v4(), request_data)
+        .send_batch_get_request(peer, uuid::Uuid::new_v4(), request_data)
         .await;
     (peer, result, start.elapsed())
 }

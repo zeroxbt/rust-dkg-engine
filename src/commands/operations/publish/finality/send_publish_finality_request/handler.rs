@@ -341,16 +341,10 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             data.publish_operation_id.clone(),
             data.blockchain.clone(),
         );
-        let addresses = self
-            .network_manager
-            .get_peer_addresses(publisher_peer_id)
-            .await
-            .unwrap_or_default();
         let result = self
             .network_manager
             .send_finality_request(
                 publisher_peer_id,
-                addresses,
                 operation_id,
                 finality_request_data,
             )

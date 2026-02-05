@@ -181,23 +181,6 @@ impl NetworkEventHandler for RpcRouter {
     // Infrastructure events
     // ─────────────────────────────────────────────────────────────────────────
 
-    async fn on_identify_received(&self, peer_id: PeerId, listen_addrs: Vec<Multiaddr>) {
-        if let Err(e) = self
-            .network_manager
-            .add_kad_addresses(peer_id, listen_addrs)
-            .await
-        {
-            tracing::error!(%peer_id, %e, "failed to add kad addresses");
-        }
-    }
-
-    async fn on_kad_peer_found(&self, target: PeerId) {
-        tracing::debug!(%target, "DHT found peer, dialing");
-        if let Err(e) = self.network_manager.dial_peer(target).await {
-            tracing::debug!(%target, %e, "failed to dial peer");
-        }
-    }
-
     async fn on_kad_peer_not_found(&self, target: PeerId) {
         tracing::debug!(%target, "DHT lookup did not find target peer");
         self.peer_discovery_tracker.record_failure(target);

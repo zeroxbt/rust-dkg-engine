@@ -56,16 +56,6 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
     // Infrastructure events
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// Called when identify protocol receives info about a peer's listen addresses.
-    fn on_identify_received(
-        &self,
-        peer_id: PeerId,
-        listen_addrs: Vec<Multiaddr>,
-    ) -> impl std::future::Future<Output = ()> + Send;
-
-    /// Called when a Kademlia lookup finds the target peer.
-    fn on_kad_peer_found(&self, target: PeerId) -> impl std::future::Future<Output = ()> + Send;
-
     /// Called when a Kademlia lookup fails to find the target peer.
     fn on_kad_peer_not_found(&self, target: PeerId)
     -> impl std::future::Future<Output = ()> + Send;
