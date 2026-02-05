@@ -146,6 +146,12 @@ fn load_configuration() -> Result<Config, ConfigError> {
 
     // Extract configuration from files
     let mut config: Config = figment.extract().map_err(Box::new)?;
+    if config.environment != node_env {
+        return Err(ConfigError::UnknownEnvironment(format!(
+            "config environment '{}' does not match selected '{}'",
+            config.environment, node_env
+        )));
+    }
 
     // Resolve secrets from environment variables (env vars take precedence over config files)
     resolve_secrets(&mut config)?;

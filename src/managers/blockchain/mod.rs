@@ -27,7 +27,7 @@ pub(crate) type AssetStorageChangedFilter = Hub::AssetStorageChanged;
 pub(crate) type ParameterChangedFilter = ParametersStorage::ParameterChanged;
 pub(crate) type KnowledgeCollectionCreatedFilter =
     KnowledgeCollectionStorage::KnowledgeCollectionCreated;
-pub(crate) use alloy::primitives::{Address, B256, B256 as H256, U256};
+pub(crate) use alloy::primitives::{Address, B256 as H256, U256};
 
 // Re-export shared domain types from crate::types
 pub(crate) use crate::types::BlockchainId;

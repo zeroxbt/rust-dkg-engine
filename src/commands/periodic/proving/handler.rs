@@ -208,14 +208,12 @@ impl ProvingCommandHandler {
             }
         }
 
-        let mut success_count = 0u16;
         let mut failure_count = 0u16;
 
         // Process responses as they arrive
         while let Some((peer, outcome, elapsed, assertion)) = futures.next().await {
             match outcome {
                 Ok(true) => {
-                    success_count += 1;
                     self.peer_performance_tracker.record_latency(&peer, elapsed);
 
                     tracing::info!(
@@ -256,11 +254,7 @@ impl ProvingCommandHandler {
             }
         }
 
-        tracing::warn!(
-            success_count,
-            failure_count,
-            "Failed to fetch assertion from any peer"
-        );
+        tracing::warn!(failure_count, "Failed to fetch assertion from any peer");
         None
     }
 
