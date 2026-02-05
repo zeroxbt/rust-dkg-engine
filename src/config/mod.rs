@@ -99,6 +99,7 @@ pub(crate) fn is_dev_env() -> bool {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Config {
+    pub environment: String,
     pub app_data_path: PathBuf,
     pub managers: ManagersConfig,
     pub http_api: HttpApiConfig,
@@ -130,17 +131,17 @@ fn load_configuration() -> Result<Config, ConfigError> {
     tracing::info!("Loading configuration for environment: {}", node_env);
 
     // Build configuration with layered sources (priority: lowest to highest)
-    let mut figment = Figment::from(Toml::string(DEFAULTS_TOML)).select(&node_env);
+    let mut figment = Figment::from(Toml::string(DEFAULTS_TOML).nested()).select(&node_env);
 
     // User overrides from config.toml
     if Path::new("config.toml").exists() {
-        figment = figment.merge(Toml::file("config.toml"));
+        figment = figment.merge(Toml::file("config.toml").profile(&node_env));
     }
 
     // If custom config file is provided, merge it with highest priority
     if let Some(config_path) = custom_config_path {
         tracing::info!("Loading custom config file: {}", config_path);
-        figment = figment.merge(Toml::file(config_path));
+        figment = figment.merge(Toml::file(config_path).profile(&node_env));
     }
 
     // Extract configuration from files

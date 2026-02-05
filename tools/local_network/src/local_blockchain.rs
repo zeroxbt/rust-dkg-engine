@@ -8,6 +8,8 @@ use alloy::{
     sol,
 };
 
+use crate::launch::open_terminal_with_command;
+
 const HUB_CONTRACT_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const MULTICALL3_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
 const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";
@@ -198,12 +200,7 @@ impl LocalBlockchain {
             "cd {} && node {} {}",
             dkg_engine_dir_str, LOCAL_BLOCKCHAIN_SCRIPT, port
         );
-        std::process::Command::new("osascript")
-            .args([
-                "-e",
-                &format!("tell app \"Terminal\" to do script \"{}\"", command),
-            ])
-            .output()?;
+        open_terminal_with_command(&command);
 
         Ok(())
     }

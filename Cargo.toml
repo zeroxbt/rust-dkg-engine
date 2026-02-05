@@ -91,3 +91,7 @@ unnecessary_wraps = "warn"
 manual_let_else = "warn"
 dbg_macro = "warn"
 unwrap_used = "warn"
+
+[workspace]
+members = ["tools/local_network"]
+default-members = ["."]
