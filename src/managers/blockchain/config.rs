@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use super::gas::GasConfig;
+use super::chains::evm::GasConfig;
 use crate::{config::ConfigError, types::BlockchainId};
 
 /// Configuration for a blockchain network.
@@ -153,10 +153,6 @@ impl BlockchainConfig {
         &self.node_name
     }
 
-    pub(crate) fn gas_price_oracle_url(&self) -> Option<&str> {
-        self.gas_price_oracle_url.as_deref()
-    }
-
     pub(crate) fn operator_fee(&self) -> Option<u8> {
         self.operator_fee
     }
@@ -220,10 +216,7 @@ impl Blockchain {
 
     /// Creates the appropriate gas configuration based on blockchain type.
     pub(crate) fn gas_config(&self) -> GasConfig {
-        let oracle_url = self
-            .get_config()
-            .gas_price_oracle_url()
-            .map(|s| s.to_string());
+        let oracle_url = self.get_config().gas_price_oracle_url.clone();
         match self {
             Blockchain::Hardhat(_) => GasConfig::hardhat(),
             Blockchain::Gnosis(_) => GasConfig::gnosis(oracle_url),

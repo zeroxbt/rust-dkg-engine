@@ -9,7 +9,7 @@ use alloy::{
 use tokio::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::managers::blockchain::{
-    BlockchainConfig, BlockchainId, GasConfig, RpcRateLimiter,
+    BlockchainConfig, BlockchainId, RpcRateLimiter,
     chains::evm::{
         contracts::{Contracts, initialize_contracts},
         provider::{BlockchainProvider, initialize_provider},
@@ -27,6 +27,7 @@ mod multicall;
 mod provider;
 mod rpc;
 mod wallets;
+pub(crate) use gas::GasConfig;
 pub(crate) use contracts::{
     Hub, KnowledgeCollectionStorage, Multicall3, ParametersStorage, PermissionedNode,
     ShardingTableLib, ShardingTableLib::NodeInfo,
@@ -110,8 +111,7 @@ pub(crate) struct EvmChain {
     contracts: RwLock<Contracts>,
     identity_id: Option<u128>,
     gas_config: GasConfig,
-    native_token_decimals: u8,
-    native_token_ticker: &'static str,
+
     rpc_rate_limiter: RpcRateLimiter,
     tx_mutex: Mutex<()>,
     provider_refresh_mutex: Mutex<()>,
@@ -193,8 +193,6 @@ impl EvmChain {
             contracts: RwLock::new(contracts),
             identity_id: None,
             gas_config,
-            native_token_decimals,
-            native_token_ticker,
             rpc_rate_limiter,
             tx_mutex: Mutex::new(()),
             provider_refresh_mutex: Mutex::new(()),
@@ -229,20 +227,6 @@ impl EvmChain {
 
     pub(crate) fn identity_id(&self) -> Option<u128> {
         self.identity_id
-    }
-
-    pub(crate) fn gas_config(&self) -> &GasConfig {
-        &self.gas_config
-    }
-
-    /// Returns the number of decimal places for the native token.
-    pub(crate) fn native_token_decimals(&self) -> u8 {
-        self.native_token_decimals
-    }
-
-    /// Returns the native token ticker symbol.
-    pub(crate) fn native_token_ticker(&self) -> &'static str {
-        self.native_token_ticker
     }
 
     /// Execute an RPC call with rate limiting.

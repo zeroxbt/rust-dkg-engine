@@ -1,6 +1,11 @@
+use alloy::primitives::B256;
+
 use crate::{
-    managers::blockchain::{chains::evm::PermissionedNode, *},
-    types::AccessPolicy,
+    managers::{
+        BlockchainManager,
+        blockchain::{chains::evm::PermissionedNode, error::BlockchainError},
+    },
+    types::{AccessPolicy, BlockchainId},
 };
 
 impl BlockchainManager {

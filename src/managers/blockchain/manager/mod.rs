@@ -1,7 +1,7 @@
 mod claim_rewards;
 mod contracts;
+mod core;
 mod events;
-mod gas;
 mod identity;
 mod kc;
 mod paranet;
