@@ -25,6 +25,7 @@ use crate::{
             NetworkError, NetworkManager, PeerId,
             message::ResponseBody,
             messages::{BatchGetRequestData, BatchGetResponseData},
+            protocols::{BatchGetProtocol, ProtocolSpec},
         },
         repository::RepositoryManager,
         triple_store::{TokenIds, parse_metadata_from_triples},
@@ -214,7 +215,7 @@ async fn get_shard_peers(
         .filter(|peer_id| *peer_id != my_peer_id)
         .collect();
 
-    Ok(peers)
+    Ok(network_manager.filter_peers_by_protocol(peers, BatchGetProtocol::STREAM_PROTOCOL))
 }
 
 /// Helper function for making peer requests.

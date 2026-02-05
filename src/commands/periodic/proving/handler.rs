@@ -21,6 +21,7 @@ use crate::{
             NetworkError, NetworkManager,
             message::ResponseBody,
             messages::{GetRequestData, GetResponseData},
+            protocols::{GetProtocol, ProtocolSpec},
         },
         repository::{ChallengeState, RepositoryManager},
         triple_store::{
@@ -132,11 +133,14 @@ impl ProvingCommandHandler {
 
         // Filter out self and parse peer IDs
         let my_peer_id = *self.network_manager.peer_id();
-        shard_nodes
+        let peers = shard_nodes
             .iter()
             .filter_map(|record| record.peer_id.parse().ok())
             .filter(|peer_id| *peer_id != my_peer_id)
-            .collect()
+            .collect();
+
+        self.network_manager
+            .filter_peers_by_protocol(peers, GetProtocol::STREAM_PROTOCOL)
     }
 
     /// Fetch assertion from network peers.

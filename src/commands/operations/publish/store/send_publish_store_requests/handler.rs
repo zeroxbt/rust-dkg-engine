@@ -13,6 +13,7 @@ use crate::{
         network::{
             NetworkError, NetworkManager,
             messages::{StoreRequestData, StoreResponseData},
+            protocols::{ProtocolSpec, StoreProtocol},
         },
         repository::RepositoryManager,
         triple_store::Assertion,
@@ -165,6 +166,9 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             .filter_map(|record| record.peer_id.parse().ok())
             .filter(|peer_id| *peer_id != my_peer_id)
             .collect();
+        let remote_peers = self
+            .network_manager
+            .filter_peers_by_protocol(remote_peers, StoreProtocol::STREAM_PROTOCOL);
 
         // Total peers includes self if we're in the shard
         let total_peers = if self_in_shard {

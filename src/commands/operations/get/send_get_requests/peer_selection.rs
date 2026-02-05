@@ -2,7 +2,11 @@ use libp2p::PeerId;
 use uuid::Uuid;
 
 use super::handler::SendGetRequestsCommandHandler;
-use crate::{commands::command_executor::CommandExecutionResult, types::ParsedUal};
+use crate::{
+    commands::command_executor::CommandExecutionResult,
+    managers::network::protocols::{GetProtocol, ProtocolSpec},
+    types::ParsedUal,
+};
 
 impl SendGetRequestsCommandHandler {
     pub(crate) async fn load_shard_peers(
@@ -70,6 +74,8 @@ impl SendGetRequestsCommandHandler {
             all_shard_peers
         };
 
-        Ok(peers)
+        Ok(self
+            .network_manager
+            .filter_peers_by_protocol(peers, GetProtocol::STREAM_PROTOCOL))
     }
 }

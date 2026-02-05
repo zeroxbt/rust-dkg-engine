@@ -14,6 +14,7 @@ mod handle;
 mod handler;
 mod key_manager;
 pub(crate) mod message;
+mod peer_store;
 mod pending_requests;
 pub(crate) mod protocols;
 
@@ -31,5 +32,6 @@ pub(crate) use key_manager::KeyManager;
 pub(crate) use libp2p::{Multiaddr, PeerId, request_response};
 // Re-export message types
 pub(crate) use message::{RequestMessage, ResponseMessage};
+pub(crate) use peer_store::{PeerInfo, PeerStore};
 pub(crate) use pending_requests::PendingRequests;
 pub(crate) use protocols::JsCompatCodec;

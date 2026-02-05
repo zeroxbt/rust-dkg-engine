@@ -8,7 +8,12 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, H256, U256},
-        network::{NetworkManager, PeerId, message::ResponseBody, messages::FinalityRequestData},
+        network::{
+            NetworkManager, PeerId,
+            message::ResponseBody,
+            messages::FinalityRequestData,
+            protocols::{FinalityProtocol, ProtocolSpec},
+        },
         repository::RepositoryManager,
         triple_store::KnowledgeCollectionMetadata,
     },
@@ -336,6 +341,19 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             return CommandExecutionResult::Completed;
         }
 
+        if !self
+            .network_manager
+            .peer_supports_protocol(&publisher_peer_id, FinalityProtocol::STREAM_PROTOCOL)
+        {
+            tracing::warn!(
+                operation_id = %operation_id,
+                publish_operation_id = %publish_operation_id,
+                peer = %publisher_peer_id,
+                "Publisher does not advertise finality protocol; skipping request"
+            );
+            return CommandExecutionResult::Completed;
+        }
+
         let finality_request_data = FinalityRequestData::new(
             ual,
             data.publish_operation_id.clone(),
@@ -343,11 +361,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         );
         let result = self
             .network_manager
-            .send_finality_request(
-                publisher_peer_id,
-                operation_id,
-                finality_request_data,
-            )
+            .send_finality_request(publisher_peer_id, operation_id, finality_request_data)
             .await;
 
         match result {

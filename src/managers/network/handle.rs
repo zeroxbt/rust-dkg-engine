@@ -3,13 +3,15 @@
 //! This is the public-facing API that callers use to interact with the network.
 //! It communicates with the NetworkEventLoop via an action channel.
 
-use libp2p::{PeerId, identity, request_response};
+use std::sync::Arc;
+
+use libp2p::{PeerId, StreamProtocol, identity, request_response};
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 use uuid::Uuid;
 
 use super::{
-    NetworkError, NetworkManagerConfig, ResponseMessage,
+    NetworkError, NetworkManagerConfig, PeerInfo, PeerStore, ResponseMessage,
     actions::NetworkAction,
     behaviour::build_swarm,
     protocols::{
@@ -26,6 +28,7 @@ use super::{
 pub(crate) struct NetworkManager {
     action_tx: mpsc::Sender<NetworkAction>,
     peer_id: PeerId,
+    peer_store: Arc<PeerStore>,
 }
 
 impl NetworkManager {
@@ -46,13 +49,16 @@ impl NetworkManager {
     ) -> Result<(Self, super::event_loop::NetworkEventLoop), NetworkError> {
         let (swarm, local_peer_id) = build_swarm(config, key)?;
         let (action_tx, action_rx) = mpsc::channel(128);
+        let peer_store = Arc::new(PeerStore::new());
 
         let handle = Self {
             action_tx,
             peer_id: local_peer_id,
+            peer_store: Arc::clone(&peer_store),
         };
 
-        let event_loop = super::event_loop::NetworkEventLoop::new(swarm, action_rx, config.clone());
+        let event_loop =
+            super::event_loop::NetworkEventLoop::new(swarm, action_rx, config.clone(), peer_store);
 
         Ok((handle, event_loop))
     }
@@ -60,6 +66,36 @@ impl NetworkManager {
     /// Returns the peer ID of this node.
     pub(crate) fn peer_id(&self) -> &PeerId {
         &self.peer_id
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn peer_info(&self, peer_id: &PeerId) -> Option<PeerInfo> {
+        self.peer_store.get(peer_id)
+    }
+
+    pub(crate) fn peer_supports_protocol(&self, peer_id: &PeerId, protocol: &'static str) -> bool {
+        let protocol = StreamProtocol::new(protocol);
+        self.peer_store
+            .get(peer_id)
+            .map(|info| info.protocols.contains(&protocol))
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn filter_peers_by_protocol(
+        &self,
+        peers: Vec<PeerId>,
+        protocol: &'static str,
+    ) -> Vec<PeerId> {
+        let protocol = StreamProtocol::new(protocol);
+        peers
+            .into_iter()
+            .filter(|peer_id| {
+                self.peer_store
+                    .get(peer_id)
+                    .map(|info| info.protocols.contains(&protocol))
+                    .unwrap_or(false)
+            })
+            .collect()
     }
 
     async fn enqueue_action(&self, action: NetworkAction) -> Result<(), NetworkError> {

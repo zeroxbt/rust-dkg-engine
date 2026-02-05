@@ -3,17 +3,20 @@
 //! This is the internal implementation that handles all network events.
 //! It receives actions from NetworkManager handles and processes swarm events.
 
+use std::sync::Arc;
+
 use libp2p::{
-    Multiaddr, PeerId, Swarm, identify, kad, request_response,
+    Multiaddr, PeerId, Swarm, identify, kad,
     multiaddr::Protocol,
+    request_response,
     swarm::{NetworkBehaviour, SwarmEvent},
 };
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 use super::{
-    JsCompatCodec, NetworkError, NetworkEventHandler, NetworkManagerConfig, PendingRequests,
-    RequestMessage, ResponseMessage,
+    JsCompatCodec, NetworkError, NetworkEventHandler, NetworkManagerConfig, PeerStore,
+    PendingRequests, RequestMessage, ResponseMessage,
     actions::NetworkAction,
     behaviour::{NodeBehaviour, NodeBehaviourEvent},
     message::{RequestMessageHeader, RequestMessageType},
@@ -188,6 +191,7 @@ pub(crate) struct NetworkEventLoop {
     swarm: Swarm<NodeBehaviour>,
     action_rx: mpsc::Receiver<NetworkAction>,
     config: NetworkManagerConfig,
+    peer_store: Arc<PeerStore>,
     // Per-protocol pending request tracking
     pending_store: PendingRequests<StoreResponseData>,
     pending_get: PendingRequests<GetResponseData>,
@@ -201,11 +205,13 @@ impl NetworkEventLoop {
         swarm: Swarm<NodeBehaviour>,
         action_rx: mpsc::Receiver<NetworkAction>,
         config: NetworkManagerConfig,
+        peer_store: Arc<PeerStore>,
     ) -> Self {
         Self {
             swarm,
             action_rx,
             config,
+            peer_store,
             pending_store: PendingRequests::new(),
             pending_get: PendingRequests::new(),
             pending_finality: PendingRequests::new(),
@@ -303,12 +309,10 @@ impl NetworkEventLoop {
                 NodeBehaviourEvent::Identify(identify::Event::Received {
                     peer_id, info, ..
                 }) => {
+                    self.peer_store.record_identify(peer_id, &info);
                     for addr in info.listen_addrs {
                         let addr = strip_p2p_protocol(addr);
-                        self.swarm
-                            .behaviour_mut()
-                            .kad
-                            .add_address(&peer_id, addr);
+                        self.swarm.behaviour_mut().kad.add_address(&peer_id, addr);
                     }
                 }
 
