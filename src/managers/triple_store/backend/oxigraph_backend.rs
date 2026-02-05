@@ -69,6 +69,7 @@ impl TripleStoreBackend for OxigraphBackend {
         Ok(())
     }
 
+    #[cfg(test)]
     async fn delete_repository(&self) -> Result<()> {
         // Clear all data from the store
         self.store

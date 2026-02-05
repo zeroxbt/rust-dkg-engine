@@ -17,35 +17,15 @@ use tower::{Layer, Service};
 
 /// Configuration for HTTP API authentication.
 ///
-/// By default, only localhost (127.0.0.1 and ::1) is allowed to access the API.
-/// This matches the behavior of the JS implementation.
+/// The configured IP whitelist controls access to the API.
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct AuthConfig {
-    /// Whether authentication is enabled. Defaults to true.
-    #[serde(default = "default_enabled")]
+    /// Whether authentication is enabled.
     pub enabled: bool,
 
     /// List of IP addresses allowed to access the API.
-    /// Defaults to localhost only (127.0.0.1 and ::1).
-    #[serde(default = "default_ip_whitelist")]
     pub ip_whitelist: Vec<String>,
-}
-
-fn default_enabled() -> bool {
-    true
-}
-
-fn default_ip_whitelist() -> Vec<String> {
-    vec!["127.0.0.1".to_string(), "::1".to_string()]
-}
-
-impl Default for AuthConfig {
-    fn default() -> Self {
-        Self {
-            enabled: default_enabled(),
-            ip_whitelist: default_ip_whitelist(),
-        }
-    }
 }
 
 impl AuthConfig {
@@ -185,21 +165,30 @@ mod tests {
 
     #[test]
     fn test_default_whitelist_allows_localhost_ipv4() {
-        let config = AuthConfig::default();
+        let config = AuthConfig {
+            enabled: true,
+            ip_whitelist: vec!["127.0.0.1".to_string(), "::1".to_string()],
+        };
         let ip: IpAddr = "127.0.0.1".parse().unwrap();
         assert!(config.is_ip_allowed(&ip));
     }
 
     #[test]
     fn test_default_whitelist_allows_localhost_ipv6() {
-        let config = AuthConfig::default();
+        let config = AuthConfig {
+            enabled: true,
+            ip_whitelist: vec!["127.0.0.1".to_string(), "::1".to_string()],
+        };
         let ip: IpAddr = "::1".parse().unwrap();
         assert!(config.is_ip_allowed(&ip));
     }
 
     #[test]
     fn test_default_whitelist_rejects_external_ip() {
-        let config = AuthConfig::default();
+        let config = AuthConfig {
+            enabled: true,
+            ip_whitelist: vec!["127.0.0.1".to_string(), "::1".to_string()],
+        };
         let ip: IpAddr = "192.168.1.100".parse().unwrap();
         assert!(!config.is_ip_allowed(&ip));
     }
@@ -216,7 +205,10 @@ mod tests {
 
     #[test]
     fn test_enabled_auth_returns_layer() {
-        let config = AuthConfig::default();
+        let config = AuthConfig {
+            enabled: true,
+            ip_whitelist: vec!["127.0.0.1".to_string(), "::1".to_string()],
+        };
         assert!(config.build_layer().is_some());
     }
 

@@ -172,7 +172,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         } else {
             remote_peers.len() as u16
         };
-        tracing::Span::current().record("peer_count", &tracing::field::display(total_peers));
+        tracing::Span::current().record("peer_count", tracing::field::display(total_peers));
 
         tracing::debug!(
             operation_id = %operation_id,

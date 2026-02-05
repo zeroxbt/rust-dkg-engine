@@ -472,11 +472,11 @@ impl CommandHandler<BlockchainEventListenerCommandData> for BlockchainEventListe
         let blockchain = &data.blockchain_id;
         tracing::Span::current().record(
             "poll_interval_ms",
-            &tracing::field::display(self.poll_interval.as_millis()),
+            tracing::field::display(self.poll_interval.as_millis()),
         );
         tracing::Span::current().record(
             "max_blocks_to_sync",
-            &tracing::field::display(self.max_blocks_to_sync),
+            tracing::field::display(self.max_blocks_to_sync),
         );
 
         tracing::trace!(

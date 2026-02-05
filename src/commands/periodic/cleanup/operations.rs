@@ -19,8 +19,7 @@ pub(crate) async fn cleanup_operations(
         return Ok(0);
     }
 
-    let cutoff = Utc::now()
-        - chrono::Duration::seconds(i64::try_from(ttl.as_secs()).unwrap_or(0));
+    let cutoff = Utc::now() - chrono::Duration::seconds(i64::try_from(ttl.as_secs()).unwrap_or(0));
     let statuses = [OperationStatus::Completed, OperationStatus::Failed];
 
     let mut total_removed = 0usize;

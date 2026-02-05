@@ -6,8 +6,10 @@ use super::{
     proof_challenges::cleanup_proof_challenges,
 };
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
-    config::CleanupConfig,
+    commands::{
+        command_executor::CommandExecutionResult, command_registry::CommandHandler,
+        periodic::cleanup::CleanupConfig,
+    },
     context::Context,
     managers::repository::RepositoryManager,
     services::{OperationStatusService, PendingStorageService},

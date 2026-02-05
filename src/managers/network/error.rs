@@ -14,15 +14,6 @@ pub(crate) enum NetworkError {
     #[error("Peer ID I/O error: {0}")]
     PeerIdIo(#[from] std::io::Error),
 
-    /// Error parsing peer ID
-    #[error("Invalid peer ID parsed. Parsed: {parsed}")]
-    InvalidPeerId {
-        parsed: String,
-        #[source]
-        #[allow(unused)]
-        source: libp2p::identity::ParseError,
-    },
-
     /// Error parsing multiaddr
     #[error("Invalid multiaddress parsed. Parsed: {parsed}")]
     InvalidMultiaddr {

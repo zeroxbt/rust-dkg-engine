@@ -16,8 +16,8 @@ impl EvmChain {
             let provider = self.provider().await;
             provider.get_block_number().await
         })
-            .await
-            .map_err(BlockchainError::get_block_number)
+        .await
+        .map_err(BlockchainError::get_block_number)
     }
 
     /// Get the sender address of a transaction by its hash.

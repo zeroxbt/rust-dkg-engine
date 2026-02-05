@@ -6,26 +6,24 @@ use serde::Deserialize;
 pub(crate) const DKG_REPOSITORY: &str = "DKG";
 
 /// Backend type for the triple store
-#[derive(Debug, Deserialize, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum TripleStoreBackendType {
     /// Blazegraph HTTP-based backend (requires running Blazegraph server)
     Blazegraph,
     /// Oxigraph embedded Rust-native backend (faster, no external service needed)
-    #[default]
     Oxigraph,
 }
 
 /// Configuration for the Triple Store Manager
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct TripleStoreManagerConfig {
-    /// Backend type to use (default: "blazegraph")
-    #[serde(default)]
+    /// Backend type to use.
     pub backend: TripleStoreBackendType,
 
     /// Base URL of the triple store service (e.g., "http://localhost:9999")
     /// Required for Blazegraph, ignored for Oxigraph
-    #[serde(default)]
     pub url: String,
 
     /// Optional username for authentication (Blazegraph only)
@@ -35,72 +33,32 @@ pub(crate) struct TripleStoreManagerConfig {
     pub password: Option<String>,
 
     /// Maximum number of connection retries on startup (Blazegraph only)
-    #[serde(default = "default_connect_max_retries")]
     pub connect_max_retries: u32,
 
     /// Delay between connection retry attempts in milliseconds (Blazegraph only)
-    #[serde(default = "default_connect_retry_frequency_ms")]
     pub connect_retry_frequency_ms: u64,
 
     /// Timeout configuration for different operation types
-    #[serde(default)]
     pub timeouts: TimeoutConfig,
 
-    /// Maximum concurrent operations (default: 16).
+    /// Maximum concurrent operations.
     /// Limits how many triple store operations can run simultaneously.
     /// Useful to prevent overwhelming Blazegraph or causing resource contention.
-    #[serde(default = "default_max_concurrent_operations")]
     pub max_concurrent_operations: usize,
 }
 
 /// Timeout configuration for different SPARQL operations
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct TimeoutConfig {
     /// Timeout for CONSTRUCT/SELECT queries in milliseconds
-    #[serde(default = "default_query_timeout_ms")]
     pub query_ms: u64,
 
     /// Timeout for INSERT/UPDATE operations in milliseconds
-    #[serde(default = "default_insert_timeout_ms")]
     pub insert_ms: u64,
 
     /// Timeout for ASK queries in milliseconds
-    #[serde(default = "default_ask_timeout_ms")]
     pub ask_ms: u64,
-}
-
-impl Default for TimeoutConfig {
-    fn default() -> Self {
-        Self {
-            query_ms: default_query_timeout_ms(),
-            insert_ms: default_insert_timeout_ms(),
-            ask_ms: default_ask_timeout_ms(),
-        }
-    }
-}
-
-fn default_connect_max_retries() -> u32 {
-    10
-}
-
-fn default_connect_retry_frequency_ms() -> u64 {
-    10_000
-}
-
-fn default_query_timeout_ms() -> u64 {
-    60_000
-}
-
-fn default_insert_timeout_ms() -> u64 {
-    300_000
-}
-
-fn default_ask_timeout_ms() -> u64 {
-    10_000
-}
-
-fn default_max_concurrent_operations() -> usize {
-    16
 }
 
 impl TimeoutConfig {

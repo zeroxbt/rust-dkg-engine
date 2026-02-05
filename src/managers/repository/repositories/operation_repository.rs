@@ -47,15 +47,6 @@ impl OperationRepository {
         Ok(result)
     }
 
-    /// Get an operation record by its ID
-    pub(crate) async fn get(&self, operation_id: Uuid) -> Result<Option<Model>, RepositoryError> {
-        let record = Entity::find_by_id(operation_id.to_string())
-            .one(self.conn.as_ref())
-            .await?;
-
-        Ok(record)
-    }
-
     /// Get an operation record by its ID and name
     pub(crate) async fn get_by_id_and_name(
         &self,
@@ -147,10 +138,7 @@ impl OperationRepository {
     }
 
     /// Delete operations by ID. Returns rows affected.
-    pub(crate) async fn delete_by_ids(
-        &self,
-        ids: &[Uuid],
-    ) -> Result<u64, RepositoryError> {
+    pub(crate) async fn delete_by_ids(&self, ids: &[Uuid]) -> Result<u64, RepositoryError> {
         if ids.is_empty() {
             return Ok(0);
         }

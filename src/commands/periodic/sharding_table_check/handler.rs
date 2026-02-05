@@ -194,7 +194,7 @@ impl CommandHandler<ShardingTableCheckCommandData> for ShardingTableCheckCommand
         let blockchain_ids = self.blockchain_manager.get_blockchain_ids();
         tracing::Span::current().record(
             "blockchain_count",
-            &tracing::field::display(blockchain_ids.len()),
+            tracing::field::display(blockchain_ids.len()),
         );
 
         let futures = blockchain_ids

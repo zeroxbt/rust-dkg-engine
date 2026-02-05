@@ -31,8 +31,8 @@ use super::{
         blockchain_event_listener::{
             BlockchainEventListenerCommandData, BlockchainEventListenerCommandHandler,
         },
-        cleanup::{CleanupCommandData, CleanupCommandHandler},
         claim_rewards::{ClaimRewardsCommandData, ClaimRewardsCommandHandler},
+        cleanup::{CleanupCommandData, CleanupCommandHandler},
         dial_peers::{DialPeersCommandData, DialPeersCommandHandler},
         proving::{ProvingCommandData, ProvingCommandHandler},
         sharding_table_check::{ShardingTableCheckCommandData, ShardingTableCheckCommandHandler},
@@ -170,7 +170,7 @@ command_registry! {
 /// Default commands scheduled at startup. Keep this list explicit for clarity.
 pub(crate) fn default_command_requests(
     blockchain_ids: &[BlockchainId],
-    cleanup_config: &crate::config::CleanupConfig,
+    cleanup_config: &crate::commands::periodic::cleanup::CleanupConfig,
 ) -> Vec<CommandExecutionRequest> {
     let mut requests = vec![
         CommandExecutionRequest::new(Command::DialPeers(DialPeersCommandData)),

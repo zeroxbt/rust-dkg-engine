@@ -185,6 +185,7 @@ impl TripleStoreBackend for BlazegraphBackend {
         }
     }
 
+    #[cfg(test)]
     async fn delete_repository(&self) -> Result<()> {
         let url = format!("{}/{}", self.config.namespace_endpoint(), DKG_REPOSITORY);
 

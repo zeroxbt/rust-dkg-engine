@@ -1,3 +1,4 @@
+mod config;
 pub(crate) mod error;
 mod migrations;
 mod models;
@@ -6,6 +7,7 @@ mod types;
 
 use std::sync::Arc;
 
+pub(crate) use config::RepositoryManagerConfig;
 use error::RepositoryError;
 use repositories::{
     blockchain_repository::BlockchainRepository,
@@ -19,11 +21,9 @@ pub(crate) use repositories::{
 };
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
-use serde::Deserialize;
 pub(crate) use types::OperationStatus;
 
 use self::migrations::Migrator;
-use crate::config::ConfigError;
 
 pub(crate) struct RepositoryManager {
     shard_repository: ShardRepository,
@@ -104,68 +104,5 @@ impl RepositoryManager {
 
     pub(crate) fn proof_challenge_repository(&self) -> &ProofChallengeRepository {
         &self.proof_challenge_repository
-    }
-}
-
-/// Repository manager configuration for database connections.
-///
-/// **Secret handling**: Database password should be provided via environment variable
-/// (resolved at config load time):
-/// - `DB_PASSWORD` - database password (required)
-#[derive(Debug, Deserialize, Clone)]
-pub(crate) struct RepositoryManagerConfig {
-    user: String,
-    #[serde(default)]
-    password: Option<String>,
-    database: String,
-    host: String,
-    port: u16,
-    max_connections: u32,
-    min_connections: u32,
-}
-
-impl RepositoryManagerConfig {
-    /// Returns the database password.
-    /// This is guaranteed to be set after config initialization.
-    fn password(&self) -> &str {
-        self.password
-            .as_ref()
-            .expect("password should be set during config initialization")
-    }
-
-    /// Sets the database password (called during secret resolution).
-    pub(crate) fn set_password(&mut self, password: String) {
-        self.password = Some(password);
-    }
-
-    /// Ensures the database password is set.
-    pub(crate) fn ensure_password(&self) -> Result<(), ConfigError> {
-        if self.password.is_none() {
-            return Err(ConfigError::MissingSecret(
-                "DB_PASSWORD env var or password config required".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn root_connection_string(&self) -> String {
-        format!(
-            "mysql://{}:{}@{}:{}",
-            self.user,
-            self.password(),
-            self.host,
-            self.port
-        )
-    }
-
-    fn connection_string(&self) -> String {
-        format!(
-            "mysql://{}:{}@{}:{}/{}",
-            self.user,
-            self.password(),
-            self.host,
-            self.port,
-            self.database
-        )
     }
 }

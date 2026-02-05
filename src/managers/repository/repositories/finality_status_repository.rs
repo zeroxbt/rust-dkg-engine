@@ -104,10 +104,7 @@ impl FinalityStatusRepository {
     }
 
     /// Delete finality ack records by ID. Returns rows affected.
-    pub(crate) async fn delete_by_ids(
-        &self,
-        ids: &[i32],
-    ) -> Result<u64, RepositoryError> {
+    pub(crate) async fn delete_by_ids(&self, ids: &[i32]) -> Result<u64, RepositoryError> {
         if ids.is_empty() {
             return Ok(0);
         }

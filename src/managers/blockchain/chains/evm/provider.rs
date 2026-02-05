@@ -106,5 +106,5 @@ pub(crate) async fn initialize_provider(
 ) -> Result<BlockchainProvider, BlockchainError> {
     let wallet = wallet_from_private_key(config.evm_operational_wallet_private_key())?;
 
-    initialize_provider_with_wallet(&config.rpc_endpoints, wallet).await
+    initialize_provider_with_wallet(config.rpc_endpoints(), wallet).await
 }

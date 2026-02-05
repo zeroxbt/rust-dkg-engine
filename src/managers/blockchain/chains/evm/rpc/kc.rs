@@ -174,10 +174,7 @@ impl EvmChain {
                             contract_address
                         )))
                     })?;
-                kc_storage
-                    .getLatestKnowledgeCollectionId()
-                    .call()
-                    .await
+                kc_storage.getLatestKnowledgeCollectionId().call().await
             })
             .await
             .map_err(|e| {

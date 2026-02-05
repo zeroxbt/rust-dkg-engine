@@ -126,7 +126,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             .await;
         tracing::Span::current().record(
             "effective_visibility",
-            &tracing::field::debug(&effective_visibility),
+            tracing::field::debug(&effective_visibility),
         );
 
         tracing::debug!(

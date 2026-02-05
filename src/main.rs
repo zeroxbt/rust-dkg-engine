@@ -89,9 +89,10 @@ async fn main() {
     let (http_shutdown_tx, http_shutdown_rx) = oneshot::channel::<()>();
 
     // Spawn command executor task (executor is consumed, scheduler is borrowed)
-    let execute_commands_task = tokio::task::spawn(async move {
-        command_executor.run(&command_scheduler_for_executor).await
-    });
+    let execute_commands_task =
+        tokio::task::spawn(
+            async move { command_executor.run(&command_scheduler_for_executor).await },
+        );
 
     // Spawn network service event loop task with RPC router as the event handler
     let rpc_router = controllers.rpc_router;

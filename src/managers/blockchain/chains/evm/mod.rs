@@ -272,14 +272,14 @@ impl EvmChain {
                         return Err(err);
                     }
 
-                    if err.should_refresh_provider() {
-                        if let Err(refresh_err) = self.refresh_provider_and_contracts().await {
-                            tracing::error!(
-                                blockchain = %self.blockchain_id(),
-                                error = %refresh_err,
-                                "Failed to refresh provider after backend error"
-                            );
-                        }
+                    if err.should_refresh_provider()
+                        && let Err(refresh_err) = self.refresh_provider_and_contracts().await
+                    {
+                        tracing::error!(
+                            blockchain = %self.blockchain_id(),
+                            error = %refresh_err,
+                            "Failed to refresh provider after backend error"
+                        );
                     }
 
                     let delay = backoff_delay(&self.rpc_retry_policy, attempt, err.backoff_hint());
@@ -372,14 +372,14 @@ impl EvmChain {
                         return Err(err);
                     }
 
-                    if err.should_refresh_provider() {
-                        if let Err(refresh_err) = self.refresh_provider_and_contracts().await {
-                            tracing::error!(
-                                blockchain = %self.blockchain_id(),
-                                error = %refresh_err,
-                                "Failed to refresh provider after backend error"
-                            );
-                        }
+                    if err.should_refresh_provider()
+                        && let Err(refresh_err) = self.refresh_provider_and_contracts().await
+                    {
+                        tracing::error!(
+                            blockchain = %self.blockchain_id(),
+                            error = %refresh_err,
+                            "Failed to refresh provider after backend error"
+                        );
                     }
 
                     if bump_needed {
@@ -476,14 +476,14 @@ impl EvmChain {
                         return Err(err);
                     }
 
-                    if err.should_refresh_provider() {
-                        if let Err(refresh_err) = self.refresh_provider_and_contracts().await {
-                            tracing::error!(
-                                blockchain = %self.blockchain_id(),
-                                error = %refresh_err,
-                                "Failed to refresh provider after backend error"
-                            );
-                        }
+                    if err.should_refresh_provider()
+                        && let Err(refresh_err) = self.refresh_provider_and_contracts().await
+                    {
+                        tracing::error!(
+                            blockchain = %self.blockchain_id(),
+                            error = %refresh_err,
+                            "Failed to refresh provider after backend error"
+                        );
                     }
 
                     if bump_needed {

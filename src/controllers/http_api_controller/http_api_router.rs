@@ -29,19 +29,13 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct HttpApiConfig {
-    /// Whether the HTTP API server is enabled. Defaults to true.
-    #[serde(default = "default_enabled")]
+    /// Whether the HTTP API server is enabled.
     pub enabled: bool,
     pub port: u16,
-    #[serde(default)]
     pub rate_limiter: RateLimiterConfig,
-    #[serde(default)]
     pub auth: AuthConfig,
-}
-
-fn default_enabled() -> bool {
-    true
 }
 
 pub(crate) struct HttpApiRouter {

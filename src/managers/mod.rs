@@ -1,4 +1,5 @@
 pub(crate) mod blockchain;
+mod config;
 pub(crate) mod key_value_store;
 pub(crate) mod network;
 pub(crate) mod repository;
@@ -7,13 +8,14 @@ pub(crate) mod triple_store;
 use std::sync::Arc;
 
 pub(crate) use blockchain::BlockchainManager;
+pub(crate) use config::ManagersConfig;
 pub(crate) use key_value_store::KeyValueStoreManager;
 use libp2p::identity::Keypair;
 pub(crate) use network::{NetworkEventLoop, NetworkManager};
 pub(crate) use repository::RepositoryManager;
 pub(crate) use triple_store::TripleStoreManager;
 
-use crate::config::{AppPaths, ManagersConfig};
+use crate::config::AppPaths;
 
 /// Container for all initialized managers.
 pub(crate) struct Managers {

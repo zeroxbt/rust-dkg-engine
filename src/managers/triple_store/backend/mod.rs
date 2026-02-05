@@ -27,6 +27,7 @@ pub(crate) trait TripleStoreBackend: Send + Sync {
     /// Create the repository/namespace with appropriate settings
     async fn create_repository(&self) -> Result<()>;
 
+    #[cfg(test)]
     /// Delete the repository/namespace
     async fn delete_repository(&self) -> Result<()>;
 

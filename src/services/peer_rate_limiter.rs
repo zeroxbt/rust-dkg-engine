@@ -16,40 +16,16 @@ type PeerLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;
 /// Uses a token bucket algorithm where tokens are replenished at `requests_per_second` rate.
 /// Peers can burst up to `burst_size` requests before being rate limited.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct PeerRateLimiterConfig {
-    /// Whether rate limiting is enabled. Defaults to true.
-    #[serde(default = "default_enabled")]
+    /// Whether rate limiting is enabled.
     pub enabled: bool,
 
-    /// Number of requests allowed per second (token refill rate). Defaults to 10.
-    #[serde(default = "default_requests_per_second")]
+    /// Number of requests allowed per second (token refill rate).
     pub requests_per_second: u32,
 
-    /// Maximum burst capacity before throttling. Defaults to 20.
-    #[serde(default = "default_burst_size")]
+    /// Maximum burst capacity before throttling.
     pub burst_size: u32,
-}
-
-fn default_enabled() -> bool {
-    true
-}
-
-fn default_requests_per_second() -> u32 {
-    2
-}
-
-fn default_burst_size() -> u32 {
-    5
-}
-
-impl Default for PeerRateLimiterConfig {
-    fn default() -> Self {
-        Self {
-            enabled: default_enabled(),
-            requests_per_second: default_requests_per_second(),
-            burst_size: default_burst_size(),
-        }
-    }
 }
 
 /// Per-peer rate limiter for inbound network requests.

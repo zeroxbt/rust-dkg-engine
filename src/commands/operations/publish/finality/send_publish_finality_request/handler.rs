@@ -110,7 +110,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
     ) -> CommandExecutionResult {
         // Generate a new operation ID for the finality request
         let operation_id = Uuid::new_v4();
-        tracing::Span::current().record("operation_id", &tracing::field::display(operation_id));
+        tracing::Span::current().record("operation_id", tracing::field::display(operation_id));
         // Parse the operation ID from the raw string
         let publish_operation_id = match Uuid::parse_str(&data.publish_operation_id) {
             Ok(uuid) => uuid,

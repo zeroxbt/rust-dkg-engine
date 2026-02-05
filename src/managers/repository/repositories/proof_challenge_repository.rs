@@ -142,11 +142,7 @@ impl ProofChallengeRepository {
     }
 
     /// Find challenges older than cutoff (based on updated_at).
-    pub(crate) async fn find_expired(
-        &self,
-        cutoff: i64,
-        limit: u64,
-    ) -> Result<Vec<Model>> {
+    pub(crate) async fn find_expired(&self, cutoff: i64, limit: u64) -> Result<Vec<Model>> {
         if limit == 0 {
             return Ok(Vec::new());
         }
@@ -160,10 +156,7 @@ impl ProofChallengeRepository {
     }
 
     /// Delete challenges by composite key. Returns rows affected.
-    pub(crate) async fn delete_by_keys(
-        &self,
-        entries: &[Model],
-    ) -> Result<u64> {
+    pub(crate) async fn delete_by_keys(&self, entries: &[Model]) -> Result<u64> {
         if entries.is_empty() {
             return Ok(0);
         }

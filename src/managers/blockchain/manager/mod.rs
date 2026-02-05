@@ -1,5 +1,5 @@
-mod contracts;
 mod claim_rewards;
+mod contracts;
 mod events;
 mod gas;
 mod identity;

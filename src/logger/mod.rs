@@ -6,17 +6,18 @@
 //! - Environment variable override (RUST_LOG takes precedence)
 //! - Optional OpenTelemetry export to Grafana Tempo via OTLP
 
+mod config;
+
+pub(crate) use config::{LogFormat, LoggerConfig, TelemetryConfig};
 use opentelemetry::{KeyValue, trace::TracerProvider};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::config::{LogFormat, LoggerConfig, TelemetryConfig};
-
 /// Initialize the global logger with the given configuration.
 ///
 /// The `RUST_LOG` environment variable takes precedence over the config file setting.
-/// If neither is set, defaults to `rust_ot_node=info`.
+/// If it is not set, the config value is used.
 pub(crate) fn initialize(logger_config: &LoggerConfig, telemetry_config: &TelemetryConfig) {
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&logger_config.level));

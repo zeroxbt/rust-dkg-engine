@@ -9,9 +9,6 @@ pub(crate) enum BlockchainError {
     #[error("Contract error: {0}")]
     Contract(#[from] ContractError),
 
-    #[error("Failed to decode message")]
-    Decode,
-
     #[error("Invalid address: {address}")]
     InvalidAddress { address: String },
 
@@ -24,13 +21,6 @@ pub(crate) enum BlockchainError {
 
     #[error("RPC connection failed after trying {attempts} endpoint(s)")]
     RpcConnectionFailed { attempts: usize },
-
-    #[error("HTTP provider creation failed for {endpoint}")]
-    HttpProviderCreation {
-        endpoint: String,
-        #[source]
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
 
     #[error("Blockchain '{blockchain_id}' not found")]
     BlockchainNotFound { blockchain_id: String },
@@ -70,12 +60,6 @@ pub(crate) enum BlockchainError {
 
     #[error("Transaction receipt failed: {reason}")]
     ReceiptFailed { reason: String },
-
-    #[error("Contract reverted: {message}")]
-    Revert { message: String },
-
-    #[error("Contract panicked: {reason}")]
-    Panic { reason: &'static str },
 
     #[error("Hex decoding failed: {context}")]
     HexDecode {

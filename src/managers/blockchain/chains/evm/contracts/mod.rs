@@ -253,10 +253,10 @@ pub(crate) async fn initialize_contracts(
 ) -> Result<Contracts, BlockchainError> {
     let address: Address =
         config
-            .hub_contract_address
+            .hub_contract_address()
             .parse()
             .map_err(|_| BlockchainError::InvalidAddress {
-                address: config.hub_contract_address.clone(),
+                address: config.hub_contract_address().to_string(),
             })?;
     let hub = Hub::new(address, provider.clone());
 

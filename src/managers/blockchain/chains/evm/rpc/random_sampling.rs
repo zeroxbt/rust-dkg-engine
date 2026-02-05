@@ -17,8 +17,6 @@ pub(crate) struct NodeChallenge {
     pub knowledge_collection_storage_contract: Address,
     pub epoch: U256,
     pub active_proof_period_start_block: U256,
-    pub proofing_period_duration_in_blocks: U256,
-    pub solved: bool,
 }
 
 impl EvmChain {
@@ -96,8 +94,6 @@ impl EvmChain {
             knowledge_collection_storage_contract: result.knowledgeCollectionStorageContract,
             epoch: result.epoch,
             active_proof_period_start_block: result.activeProofPeriodStartBlock,
-            proofing_period_duration_in_blocks: result.proofingPeriodDurationInBlocks,
-            solved: result.solved,
         })
     }
 

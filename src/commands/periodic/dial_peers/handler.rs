@@ -119,7 +119,7 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
             delay: DIAL_PEERS_PERIOD,
         };
         let own_peer_id = *self.network_manager.peer_id();
-        tracing::Span::current().record("own_peer_id", &tracing::field::display(&own_peer_id));
+        tracing::Span::current().record("own_peer_id", tracing::field::display(&own_peer_id));
 
         // Get all peer IDs from shard table
         let all_peers = match self.get_shard_peer_ids().await {
@@ -132,7 +132,7 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
 
         let all_peers_set: HashSet<PeerId> = all_peers.iter().copied().collect();
         let total_peers = all_peers.len();
-        tracing::Span::current().record("total_peers", &tracing::field::display(total_peers));
+        tracing::Span::current().record("total_peers", tracing::field::display(total_peers));
 
         // Get currently connected peers
         let connected_peers = match self.get_connected_shard_peers(&all_peers_set).await {
@@ -148,9 +148,9 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
             self.filter_peers_for_discovery(all_peers, &own_peer_id, &connected_peers);
 
         tracing::Span::current()
-            .record("connected", &tracing::field::display(connected_peers.len()));
+            .record("connected", tracing::field::display(connected_peers.len()));
         tracing::Span::current()
-            .record("to_discover", &tracing::field::display(peers_to_find.len()));
+            .record("to_discover", tracing::field::display(peers_to_find.len()));
 
         if peers_to_find.is_empty() {
             tracing::debug!(

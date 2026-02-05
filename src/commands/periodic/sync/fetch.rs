@@ -369,7 +369,7 @@ async fn fetch_kc_batch_from_network(
                 }
 
                 peer_span.record("valid_kcs", valid_count);
-                peer_span.record("status", &tracing::field::display("ok"));
+                peer_span.record("status", tracing::field::display("ok"));
 
                 // Record peer latency for successful responses with valid data
                 if valid_count > 0 {

@@ -12,7 +12,7 @@ impl EvmChain {
     pub(crate) async fn get_identity_id(&self) -> Option<u128> {
         let evm_operational_address = self
             .config()
-            .evm_operational_wallet_address
+            .evm_operational_wallet_address()
             .parse::<Address>();
         let Ok(evm_operational_address) = evm_operational_address else {
             return None;
