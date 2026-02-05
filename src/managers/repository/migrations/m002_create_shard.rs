@@ -1,7 +1,7 @@
 use sea_orm_migration::{
     async_trait::async_trait,
     prelude::{DbErr, DeriveMigrationName, Iden, Index, MigrationTrait, SchemaManager, Table},
-    schema::{date_time, string},
+    schema::string,
     sea_query,
 };
 
@@ -10,11 +10,6 @@ enum Shard {
     Table,
     PeerId,
     BlockchainId,
-    Ask,
-    Stake,
-    LastSeen,
-    LastDialed,
-    Sha256,
 }
 
 #[derive(DeriveMigrationName)]
@@ -30,11 +25,6 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(string(Shard::PeerId))
                     .col(string(Shard::BlockchainId))
-                    .col(string(Shard::Ask))
-                    .col(string(Shard::Stake))
-                    .col(date_time(Shard::LastSeen).default("1970-01-01 00:00:00"))
-                    .col(date_time(Shard::LastDialed).default("1970-01-01 00:00:00"))
-                    .col(string(Shard::Sha256))
                     .primary_key(Index::create().col(Shard::PeerId).col(Shard::BlockchainId))
                     .to_owned(),
             )

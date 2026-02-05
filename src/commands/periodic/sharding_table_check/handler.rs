@@ -10,7 +10,6 @@ use crate::{
         blockchain::{
             BlockchainId, BlockchainManager,
             chains::evm::ShardingTableLib::NodeInfo,
-            utils::{from_wei, sha256_hex},
         },
         network::PeerId,
         repository::{RepositoryManager, ShardRecordInput},
@@ -166,16 +165,9 @@ impl ShardingTableCheckCommandHandler {
                 }
             };
 
-            let ask = from_wei(&node.ask.to_string());
-            let stake = from_wei(&node.stake.to_string());
-            let sha256 = sha256_hex(&peer_id.to_bytes());
-
             records.push(ShardRecordInput {
                 peer_id: peer_id.to_base58(),
                 blockchain_id: blockchain.to_string(),
-                ask,
-                stake,
-                sha256,
             });
         }
     }

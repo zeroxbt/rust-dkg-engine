@@ -14,9 +14,6 @@ use crate::managers::repository::{
 pub(crate) struct ShardRecordInput {
     pub peer_id: String,
     pub blockchain_id: String,
-    pub ask: String,
-    pub stake: String,
-    pub sha256: String,
 }
 
 pub(crate) struct ShardRepository {
@@ -92,9 +89,6 @@ impl ShardRepository {
                 .map(|record| ActiveModel {
                     peer_id: ActiveValue::Set(record.peer_id),
                     blockchain_id: ActiveValue::Set(record.blockchain_id),
-                    ask: ActiveValue::Set(record.ask),
-                    stake: ActiveValue::Set(record.stake),
-                    sha256: ActiveValue::Set(record.sha256),
                 })
                 .collect();
 

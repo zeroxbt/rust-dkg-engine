@@ -12,9 +12,6 @@ pub struct Model {
     pub peer_id: String,
     #[sea_orm(primary_key)]
     pub blockchain_id: String,
-    pub ask: String,
-    pub stake: String,
-    pub sha256: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
