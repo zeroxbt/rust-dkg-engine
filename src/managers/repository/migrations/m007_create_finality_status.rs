@@ -12,6 +12,7 @@ enum FinalityStatus {
     OperationId,
     Ual,
     PeerId,
+    UpdatedAt,
 }
 
 #[derive(DeriveMigrationName)]
@@ -64,6 +65,17 @@ impl MigrationTrait for Migration {
                     .col(FinalityStatus::Ual)
                     .col(FinalityStatus::PeerId)
                     .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        // Index for cleanup queries by updated_at
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_finality_status_updated_at")
+                    .table(FinalityStatus::Table)
+                    .col(FinalityStatus::UpdatedAt)
                     .to_owned(),
             )
             .await?;

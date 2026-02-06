@@ -43,14 +43,16 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Index for efficient querying of pending items
+        // Index for efficient querying of pending items per contract
         manager
             .create_index(
                 Index::create()
                     .name("idx_kc_sync_queue_pending")
                     .table(KcSyncQueue::Table)
                     .col(KcSyncQueue::BlockchainId)
+                    .col(KcSyncQueue::ContractAddress)
                     .col(KcSyncQueue::RetryCount)
+                    .col(KcSyncQueue::KcId)
                     .to_owned(),
             )
             .await

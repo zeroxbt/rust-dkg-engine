@@ -62,6 +62,18 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await
+            ?;
+
+        // Index for cleanup queries by updated_at
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_proof_challenge_updated_at")
+                    .table(ProofChallenge::Table)
+                    .col(ProofChallenge::UpdatedAt)
+                    .to_owned(),
+            )
+            .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {

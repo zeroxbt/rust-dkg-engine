@@ -29,6 +29,18 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await
+            ?;
+
+        // Index for efficient lookups by blockchain_id
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_shard_blockchain_id")
+                    .table(Shard::Table)
+                    .col(Shard::BlockchainId)
+                    .to_owned(),
+            )
+            .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {

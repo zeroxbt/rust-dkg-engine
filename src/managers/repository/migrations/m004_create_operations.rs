@@ -12,6 +12,7 @@ enum OperationStatus {
     OperationName,
     Status,
     ErrorMessage,
+    UpdatedAt,
 }
 
 #[derive(DeriveMigrationName)]
@@ -53,6 +54,18 @@ impl MigrationTrait for Migration {
                     .table(OperationStatus::Table)
                     .col(OperationStatus::OperationName)
                     .col(OperationStatus::Status)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Composite index for cleanup queries filtering by status and updated_at
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_operation_status_status_updated_at")
+                    .table(OperationStatus::Table)
+                    .col(OperationStatus::Status)
+                    .col(OperationStatus::UpdatedAt)
                     .to_owned(),
             )
             .await?;
