@@ -45,6 +45,7 @@ alloy = { version = "1.5.2", default-features = false, features = [
     "provider-http",
     "provider-ws",
     "reqwest",
+    "reqwest-rustls-tls",
     "rpc-client",
     "rpc-types",
     "signer-local",

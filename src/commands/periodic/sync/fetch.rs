@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use tracing::instrument;
 
 use super::{
-    NETWORK_FETCH_BATCH_SIZE,
+    MAX_ASSETS_PER_FETCH_BATCH, NETWORK_FETCH_BATCH_SIZE,
     types::{FetchStats, FetchedKc, KcToSync},
 };
 use crate::{
@@ -98,6 +98,26 @@ pub(crate) async fn fetch_task(
 
     // Sort peers by latency (fastest first)
     peer_performance_tracker.sort_by_latency(&mut peers);
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        const MAX_PEERS_TO_LOG: usize = 20;
+        let peer_latencies: Vec<String> = peers
+            .iter()
+            .take(MAX_PEERS_TO_LOG)
+            .map(|peer| {
+                let latency = peer_performance_tracker.get_average_latency(peer);
+                format!("{peer}:{latency}ms")
+            })
+            .collect();
+
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            peer_count = peers.len(),
+            displayed = peer_latencies.len(),
+            truncated = peers.len() > MAX_PEERS_TO_LOG,
+            peers = ?peer_latencies,
+            "Fetch: peer latency order"
+        );
+    }
 
     let min_required_peers = batch_get::MIN_PEERS;
     if peers.len() < min_required_peers {
@@ -136,8 +156,26 @@ pub(crate) async fn fetch_task(
         while accumulated.len() >= NETWORK_FETCH_BATCH_SIZE
             || (!accumulated.is_empty() && rx.is_empty())
         {
-            let batch_size = accumulated.len().min(batch_get::UAL_MAX_LIMIT);
-            let to_fetch: Vec<KcToSync> = accumulated.drain(..batch_size).collect();
+            let mut assets_total = 0u64;
+            let mut take = 0usize;
+            for kc in &accumulated {
+                if take >= batch_get::UAL_MAX_LIMIT {
+                    break;
+                }
+                let kc_assets = estimate_asset_count(&kc.token_ids);
+                if take > 0 && assets_total.saturating_add(kc_assets) > MAX_ASSETS_PER_FETCH_BATCH {
+                    break;
+                }
+                assets_total = assets_total.saturating_add(kc_assets);
+                take += 1;
+            }
+
+            if take == 0 && !accumulated.is_empty() {
+                take = 1;
+                assets_total = estimate_asset_count(&accumulated[0].token_ids);
+            }
+
+            let to_fetch: Vec<KcToSync> = accumulated.drain(..take).collect();
 
             let fetch_start = Instant::now();
             let (fetched, batch_failures) = fetch_kc_batch_from_network(
@@ -158,6 +196,7 @@ pub(crate) async fn fetch_task(
                 tracing::debug!(
                     blockchain_id = %blockchain_id,
                     batch_size = to_fetch.len(),
+                    assets_in_batch = assets_total,
                     fetched_count = fetched.len(),
                     failed_count = failures.len(),
                     fetch_ms = fetch_start.elapsed().as_millis() as u64,
@@ -183,6 +222,10 @@ pub(crate) async fn fetch_task(
     // Flush any remaining accumulated KCs
     if !accumulated.is_empty() {
         let fetch_start = Instant::now();
+        let assets_total: u64 = accumulated
+            .iter()
+            .map(|kc| estimate_asset_count(&kc.token_ids))
+            .sum();
         let (fetched, batch_failures) = fetch_kc_batch_from_network(
             &blockchain_id,
             &accumulated,
@@ -200,6 +243,7 @@ pub(crate) async fn fetch_task(
             tracing::debug!(
                 blockchain_id = %blockchain_id,
                 remaining = accumulated.len(),
+                assets_in_batch = assets_total,
                 fetched_count = fetched.len(),
                 final_failures = failures.len(),
                 fetch_ms = fetch_start.elapsed().as_millis() as u64,
@@ -218,6 +262,14 @@ pub(crate) async fn fetch_task(
     );
 
     FetchStats { failures }
+}
+
+fn estimate_asset_count(token_ids: &TokenIds) -> u64 {
+    let start = token_ids.start_token_id();
+    let end = token_ids.end_token_id();
+    let range = end.saturating_sub(start).saturating_add(1);
+    let burned = token_ids.burned().len() as u64;
+    range.saturating_sub(burned)
 }
 
 /// Get shard peers for the given blockchain, excluding self.
@@ -443,10 +495,8 @@ async fn fetch_kc_batch_from_network(
                 peer_span.record("valid_kcs", valid_count);
                 peer_span.record("status", tracing::field::display("ok"));
 
-                // Record peer latency for successful responses with valid data
-                if valid_count > 0 {
-                    peer_performance_tracker.record_latency(&peer, elapsed);
-                }
+                // Record latency for any successful response (even if no valid KCs)
+                peer_performance_tracker.record_latency(&peer, elapsed);
 
                 // Break early if we got everything - don't wait for remaining in-flight requests
                 if uals_still_needed.is_empty() {
@@ -456,6 +506,7 @@ async fn fetch_kc_batch_from_network(
             Ok(ResponseBody::Error(_)) => {
                 peer_span.record("valid_kcs", 0usize);
                 peer_span.record("status", tracing::field::display("nack"));
+                peer_performance_tracker.record_failure(&peer);
             }
             Err(e) => {
                 let status = e.to_string();

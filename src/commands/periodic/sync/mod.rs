@@ -48,5 +48,9 @@ pub(crate) const FILTER_BATCH_SIZE: usize = 100;
 /// This enables true pipeline overlap: fetch starts while filter is still processing.
 pub(crate) const NETWORK_FETCH_BATCH_SIZE: usize = 100;
 
+/// Maximum number of knowledge assets to include in a single network fetch batch.
+/// This limits payload size when KC sizes vary widely.
+pub(crate) const MAX_ASSETS_PER_FETCH_BATCH: u64 = 10_000;
+
 /// Channel buffer size (number of batches that can be buffered between stages)
 pub(crate) const PIPELINE_CHANNEL_BUFFER: usize = 6;
