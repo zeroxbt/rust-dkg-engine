@@ -56,9 +56,9 @@ pub(crate) async fn fetch_task(
     let mut total_received = 0usize;
 
     // Get shard peers once at the start, sorted by performance score
-    let mut peers =
+    let (mut peers, peer_stats) =
         match get_shard_peers(&blockchain_id, &network_manager, &repository_manager).await {
-            Ok(peers) => peers,
+            Ok(result) => result,
             Err(e) => {
                 tracing::error!(
                     blockchain_id = %blockchain_id,
@@ -74,8 +74,20 @@ pub(crate) async fn fetch_task(
         };
 
     if peers.is_empty() {
+        let connected_peers = network_manager
+            .connected_peers()
+            .await
+            .map(|peers| peers.len())
+            .unwrap_or(0);
         tracing::warn!(
             blockchain_id = %blockchain_id,
+            shard_records = peer_stats.shard_records,
+            parsed_peers = peer_stats.parsed_peers,
+            candidates = peer_stats.candidates,
+            identify_known = peer_stats.identify_known,
+            peers_with_addresses = peer_stats.peers_with_addresses,
+            protocol_supported = peer_stats.protocol_supported,
+            connected_peers,
             "Fetch: no peers available"
         );
         while let Some(batch) = rx.recv().await {
@@ -89,10 +101,22 @@ pub(crate) async fn fetch_task(
 
     let min_required_peers = batch_get::MIN_PEERS;
     if peers.len() < min_required_peers {
+        let connected_peers = network_manager
+            .connected_peers()
+            .await
+            .map(|peers| peers.len())
+            .unwrap_or(0);
         tracing::warn!(
             blockchain_id = %blockchain_id,
             found = peers.len(),
             required = min_required_peers,
+            shard_records = peer_stats.shard_records,
+            parsed_peers = peer_stats.parsed_peers,
+            candidates = peer_stats.candidates,
+            identify_known = peer_stats.identify_known,
+            peers_with_addresses = peer_stats.peers_with_addresses,
+            protocol_supported = peer_stats.protocol_supported,
+            connected_peers,
             "Fetch: not enough peers available"
         );
         while let Some(batch) = rx.recv().await {
@@ -201,7 +225,7 @@ async fn get_shard_peers(
     blockchain_id: &BlockchainId,
     network_manager: &NetworkManager,
     repository_manager: &RepositoryManager,
-) -> Result<Vec<PeerId>, String> {
+) -> Result<(Vec<PeerId>, PeerSelectionStats), String> {
     let shard_nodes = repository_manager
         .shard_repository()
         .get_all_peer_records(blockchain_id.as_str())
@@ -209,13 +233,61 @@ async fn get_shard_peers(
         .map_err(|e| format!("Failed to get shard nodes: {}", e))?;
 
     let my_peer_id = *network_manager.peer_id();
-    let peers: Vec<PeerId> = shard_nodes
+    let parsed_peers: Vec<PeerId> = shard_nodes
         .iter()
         .filter_map(|record| record.peer_id.parse().ok())
-        .filter(|peer_id| *peer_id != my_peer_id)
         .collect();
 
-    Ok(network_manager.filter_peers_by_protocol(peers, BatchGetProtocol::STREAM_PROTOCOL))
+    let candidates: Vec<PeerId> = parsed_peers
+        .iter()
+        .copied()
+        .filter(|peer_id| *peer_id != my_peer_id)
+        .collect();
+    let candidates_len = candidates.len();
+
+    let mut identify_known = 0usize;
+    let mut peers_with_addresses = 0usize;
+    let mut protocol_supported = 0usize;
+
+    for peer_id in &candidates {
+        if let Some(info) = network_manager.peer_info(peer_id) {
+            identify_known += 1;
+            if !info.listen_addrs.is_empty() {
+                peers_with_addresses += 1;
+            }
+            if info
+                .protocols
+                .iter()
+                .any(|p| p.as_ref() == BatchGetProtocol::STREAM_PROTOCOL)
+            {
+                protocol_supported += 1;
+            }
+        }
+    }
+
+    let filtered =
+        network_manager.filter_peers_by_protocol(candidates, BatchGetProtocol::STREAM_PROTOCOL);
+
+    let stats = PeerSelectionStats {
+        shard_records: shard_nodes.len(),
+        parsed_peers: parsed_peers.len(),
+        candidates: candidates_len,
+        identify_known,
+        peers_with_addresses,
+        protocol_supported,
+    };
+
+    Ok((filtered, stats))
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PeerSelectionStats {
+    shard_records: usize,
+    parsed_peers: usize,
+    candidates: usize,
+    identify_known: usize,
+    peers_with_addresses: usize,
+    protocol_supported: usize,
 }
 
 /// Helper function for making peer requests.

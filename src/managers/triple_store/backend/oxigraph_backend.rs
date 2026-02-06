@@ -5,6 +5,7 @@ use oxigraph::{
     sparql::{QueryResults, SparqlEvaluator},
     store::Store,
 };
+use serde_json::json;
 
 use super::TripleStoreBackend;
 use crate::managers::triple_store::error::{Result, TripleStoreError};
@@ -163,6 +164,78 @@ impl TripleStoreBackend for OxigraphBackend {
                 QueryResults::Boolean(value) => Ok(value),
                 _ => Err(TripleStoreError::Other(
                     "Expected ASK to return boolean result".to_string(),
+                )),
+            }
+        })
+        .await
+        .map_err(|e| TripleStoreError::Other(format!("Task join error: {}", e)))?
+    }
+
+    async fn select(&self, query: &str, _timeout: Duration) -> Result<String> {
+        // Parse the query
+        let prepared = SparqlEvaluator::new().parse_query(query).map_err(|e| {
+            TripleStoreError::InvalidQuery {
+                reason: format!("Failed to parse SPARQL SELECT: {}", e),
+            }
+        })?;
+
+        // Execute on blocking thread pool
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || {
+            let result = prepared
+                .on_store(&store)
+                .execute()
+                .map_err(|e| TripleStoreError::Other(format!("SPARQL SELECT failed: {}", e)))?;
+
+            match result {
+                QueryResults::Solutions(solutions) => {
+                    let vars: Vec<oxigraph::model::Variable> =
+                        solutions.variables().iter().cloned().collect();
+                    let var_names: Vec<String> =
+                        vars.iter().map(|v| v.as_str().to_string()).collect();
+
+                    let mut bindings = Vec::new();
+                    for solution in solutions {
+                        let solution = solution.map_err(|e| {
+                            TripleStoreError::Other(format!("Failed to read solution: {}", e))
+                        })?;
+
+                        let mut binding = serde_json::Map::new();
+                        for (var, var_name) in vars.iter().zip(var_names.iter()) {
+                            if let Some(term) = solution.get(var) {
+                                let (value_type, value) = if term.is_named_node() {
+                                    let raw = term.to_string();
+                                    let stripped = raw
+                                        .trim_start_matches('<')
+                                        .trim_end_matches('>')
+                                        .to_string();
+                                    ("uri", stripped)
+                                } else {
+                                    ("literal", term.to_string())
+                                };
+                                binding.insert(
+                                    var_name.clone(),
+                                    json!({
+                                        "type": value_type,
+                                        "value": value
+                                    }),
+                                );
+                            }
+                        }
+                        bindings.push(binding);
+                    }
+
+                    let json = json!({
+                        "head": { "vars": var_names },
+                        "results": { "bindings": bindings }
+                    });
+
+                    serde_json::to_string(&json).map_err(|e| {
+                        TripleStoreError::Other(format!("Failed to serialize results: {}", e))
+                    })
+                }
+                _ => Err(TripleStoreError::Other(
+                    "Expected SELECT to return solution results".to_string(),
                 )),
             }
         })

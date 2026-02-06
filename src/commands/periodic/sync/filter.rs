@@ -10,7 +10,6 @@
 
 use std::{sync::Arc, time::Instant};
 
-use futures::future::join_all;
 use tokio::sync::mpsc;
 use tracing::instrument;
 
@@ -200,26 +199,16 @@ async fn check_local_existence(
         })
         .collect();
 
-    // Check existence in parallel - triple store's internal semaphore provides backpressure
-    let existence_futures: Vec<_> = kc_uals
-        .iter()
-        .map(|(kc_id, ual)| {
-            let ts = triple_store_service;
-            let ual = ual.clone();
-            let kc_id = *kc_id;
-            async move {
-                let exists = ts.knowledge_collection_exists_by_ual(&ual).await;
-                (kc_id, ual, exists)
-            }
-        })
-        .collect();
-
-    let existence_results = join_all(existence_futures).await;
+    // Batch existence check to reduce per-KC SPARQL requests
+    let uals: Vec<String> = kc_uals.iter().map(|(_, ual)| ual.clone()).collect();
+    let existing = triple_store_service
+        .knowledge_collections_exist_by_uals(&uals)
+        .await;
 
     // Return only KCs that need syncing
-    existence_results
+    kc_uals
         .into_iter()
-        .filter_map(|(kc_id, ual, exists)| if exists { None } else { Some((kc_id, ual)) })
+        .filter_map(|(kc_id, ual)| if existing.contains(&ual) { None } else { Some((kc_id, ual)) })
         .collect()
 }
 

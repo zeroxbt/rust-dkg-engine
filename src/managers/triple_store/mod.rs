@@ -4,13 +4,14 @@ pub(crate) mod error;
 pub(crate) mod query;
 pub(crate) mod rdf;
 mod types;
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{collections::HashSet, path::Path, sync::Arc, time::Duration};
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 use chrono::{DateTime, SecondsFormat, Utc};
 pub(crate) use config::{DKG_REPOSITORY, TripleStoreBackendType, TripleStoreManagerConfig};
 use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
+use serde::Deserialize;
 pub(crate) use rdf::{extract_subject, group_nquads_by_subject, parse_metadata_from_triples};
 use tokio::sync::Semaphore;
 pub(crate) use types::{Assertion, GraphVisibility, KnowledgeAsset, TokenIds};
@@ -169,6 +170,16 @@ impl TripleStoreManager {
             .await
             .expect("semaphore closed");
         self.backend.ask(query, timeout).await
+    }
+
+    /// Execute a SPARQL SELECT with concurrency limiting
+    async fn backend_select(&self, query: &str, timeout: Duration) -> Result<String> {
+        let _permit = self
+            .concurrency_limiter
+            .acquire()
+            .await
+            .expect("semaphore closed");
+        self.backend.select(query, timeout).await
     }
 
     // ========== Knowledge Collection Operations ==========
@@ -513,6 +524,49 @@ impl TripleStoreManager {
             .await
     }
 
+    /// Check which knowledge collections exist by UAL (batched).
+    ///
+    /// Returns the subset of UALs that exist in the metadata graph.
+    pub(crate) async fn knowledge_collections_exist_by_uals(
+        &self,
+        kc_uals: &[String],
+    ) -> Result<HashSet<String>> {
+        const BATCH_SIZE: usize = 200;
+        let mut existing = HashSet::new();
+
+        if kc_uals.is_empty() {
+            return Ok(existing);
+        }
+
+        for chunk in kc_uals.chunks(BATCH_SIZE) {
+            let values: String = chunk
+                .iter()
+                .map(|ual| format!("<{}>", ual))
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            let query = format!(
+                r#"SELECT ?kc WHERE {{
+                    GRAPH <{metadata}> {{
+                        VALUES ?kc {{ {values} }}
+                        ?kc ?p ?o
+                    }}
+                }}"#,
+                metadata = named_graphs::METADATA,
+                values = values
+            );
+
+            let response = self
+                .backend_select(&query, self.config.timeouts.query_timeout())
+                .await?;
+
+            let selected = parse_select_values(&response, "kc")?;
+            existing.extend(selected);
+        }
+
+        Ok(existing)
+    }
+
     /// Get metadata for a knowledge collection from the metadata graph
     ///
     /// Returns N-Triples with metadata predicates (publishedBy, publishedAtBlock, etc.)
@@ -538,4 +592,37 @@ impl TripleStoreManager {
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string()
     }
+}
+
+// ========== SPARQL SELECT Parsing ==========
+
+#[derive(Deserialize)]
+struct SparqlSelectResponse {
+    results: SparqlSelectResults,
+}
+
+#[derive(Deserialize)]
+struct SparqlSelectResults {
+    bindings: Vec<std::collections::HashMap<String, SparqlSelectBinding>>,
+}
+
+#[derive(Deserialize)]
+struct SparqlSelectBinding {
+    value: String,
+}
+
+fn parse_select_values(json: &str, var: &str) -> Result<HashSet<String>> {
+    let response: SparqlSelectResponse =
+        serde_json::from_str(json).map_err(|e| TripleStoreError::ParseError {
+            reason: format!("Failed to parse SELECT response: {e}"),
+        })?;
+
+    let mut values = HashSet::new();
+    for binding in response.results.bindings {
+        if let Some(value) = binding.get(var) {
+            values.insert(value.value.clone());
+        }
+    }
+
+    Ok(values)
 }

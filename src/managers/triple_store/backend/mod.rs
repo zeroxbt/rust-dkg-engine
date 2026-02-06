@@ -45,4 +45,9 @@ pub(crate) trait TripleStoreBackend: Send + Sync {
     ///
     /// Returns true if the pattern exists, false otherwise
     async fn ask(&self, query: &str, timeout: Duration) -> Result<bool>;
+
+    /// Execute a SPARQL SELECT query
+    ///
+    /// Returns SPARQL results JSON as a string
+    async fn select(&self, query: &str, timeout: Duration) -> Result<String>;
 }

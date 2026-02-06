@@ -289,6 +289,32 @@ impl TripleStoreBackend for BlazegraphBackend {
             Err(TripleStoreError::Backend { status, message })
         }
     }
+
+    async fn select(&self, query: &str, timeout: Duration) -> Result<String> {
+        let url = self.config.sparql_endpoint();
+        let timeout_ms = timeout.as_millis();
+
+        let response = self
+            .auth_headers(self.client.post(&url))
+            .header("Content-Type", "application/sparql-query")
+            .header("Accept", "application/sparql-results+json")
+            .header("X-BIGDATA-MAX-QUERY-MILLIS", timeout_ms.to_string())
+            .timeout(timeout + Duration::from_secs(5))
+            .body(query.to_string())
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            Ok(response.text().await?)
+        } else {
+            let status = response.status().as_u16();
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            Err(TripleStoreError::Backend { status, message })
+        }
+    }
 }
 
 #[derive(Deserialize)]

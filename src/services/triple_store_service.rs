@@ -384,6 +384,19 @@ impl TripleStoreService {
             .unwrap_or(false)
     }
 
+    /// Check which knowledge collections exist by UAL (batched).
+    ///
+    /// Returns the subset of UALs that exist in the metadata graph.
+    pub(crate) async fn knowledge_collections_exist_by_uals(
+        &self,
+        kc_uals: &[String],
+    ) -> std::collections::HashSet<String> {
+        self.triple_store_manager
+            .knowledge_collections_exist_by_uals(kc_uals)
+            .await
+            .unwrap_or_default()
+    }
+
     /// Build knowledge assets from a dataset.
     ///
     /// This contains the DKG business logic:

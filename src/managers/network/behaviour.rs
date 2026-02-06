@@ -1,7 +1,6 @@
 //! Node behaviour and swarm building.
 
 use std::collections::HashSet;
-
 use libp2p::{
     Multiaddr, PeerId, StreamProtocol, Swarm, SwarmBuilder, identify, identity,
     kad::{self, BucketInserts, Config as KademliaConfig, Mode, store::MemoryStore},
@@ -63,7 +62,7 @@ pub(crate) struct NodeBehaviour {
 pub(crate) fn build_swarm(
     config: &NetworkManagerConfig,
     key: identity::Keypair,
-) -> Result<(Swarm<NodeBehaviour>, PeerId, Vec<PeerId>), NetworkError> {
+) -> Result<(Swarm<NodeBehaviour>, PeerId), NetworkError> {
     let public_key = key.public();
     let local_peer_id = PeerId::from(&public_key);
 
@@ -79,7 +78,7 @@ pub(crate) fn build_swarm(
     kad.set_mode(Some(Mode::Server));
 
     // Add bootstrap nodes to kad
-    let mut bootstrap_peers = Vec::new();
+    let mut bootstrap_addrs = Vec::new();
     let mut seen_bootstrap = HashSet::new();
     for bootstrap in &config.bootstrap {
         // Parse as a full multiaddr first
@@ -106,8 +105,8 @@ pub(crate) fn build_swarm(
                 received: bootstrap.clone(),
             })?;
 
-        if seen_bootstrap.insert(peer_id) {
-            bootstrap_peers.push(peer_id);
+        if !seen_bootstrap.insert(peer_id) {
+            continue;
         }
 
         // Build the address without the /p2p/ component for kad
@@ -117,6 +116,7 @@ pub(crate) fn build_swarm(
             .collect();
 
         kad.add_address(&peer_id, addr_without_peer);
+        bootstrap_addrs.push(full_addr);
     }
 
     // 2. Identify protocol
@@ -225,5 +225,17 @@ pub(crate) fn build_swarm(
         }
     }
 
-    Ok((swarm, local_peer_id, bootstrap_peers))
+    for addr in &bootstrap_addrs {
+        if let Err(err) = swarm.dial(addr.clone()) {
+            tracing::warn!(
+                address = %addr,
+                error = %err,
+                "Failed to dial bootstrap node"
+            );
+        } else {
+            tracing::info!(address = %addr, "Dialing bootstrap node");
+        }
+    }
+
+    Ok((swarm, local_peer_id))
 }

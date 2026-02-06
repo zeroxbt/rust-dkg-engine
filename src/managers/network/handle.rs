@@ -47,10 +47,9 @@ impl NetworkManager {
         config: &NetworkManagerConfig,
         key: identity::Keypair,
     ) -> Result<(Self, super::event_loop::NetworkEventLoop), NetworkError> {
-        let (swarm, local_peer_id, bootstrap_peers) = build_swarm(config, key)?;
+        let (swarm, local_peer_id) = build_swarm(config, key)?;
         let (action_tx, action_rx) = mpsc::channel(128);
         let peer_store = Arc::new(PeerStore::new());
-        peer_store.set_bootstrap_peers(bootstrap_peers);
 
         let handle = Self {
             action_tx,
@@ -99,9 +98,6 @@ impl NetworkManager {
             .collect()
     }
 
-    pub(crate) fn set_allowed_peers(&self, peers: Vec<PeerId>) {
-        self.peer_store.set_allowed_peers(peers);
-    }
 
     async fn enqueue_action(&self, action: NetworkAction) -> Result<(), NetworkError> {
         self.action_tx
