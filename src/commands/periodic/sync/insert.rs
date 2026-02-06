@@ -118,7 +118,7 @@ async fn insert_kcs_to_store(
     for (kc_id, ual, result) in insert_results {
         match result {
             Ok(triples_inserted) => {
-                tracing::debug!(
+                tracing::trace!(
                     blockchain_id = %blockchain_id,
                     contract = %contract_addr_str,
                     kc_id = kc_id,

@@ -365,7 +365,7 @@ impl TripleStoreManager {
             metadata_triples,
         );
 
-        tracing::debug!(
+        tracing::trace!(
             kc_ual = %kc_ual,
             query_length = insert_query.len(),
             "Built INSERT DATA query for knowledge collection"
@@ -374,7 +374,7 @@ impl TripleStoreManager {
         self.backend_update(&insert_query, self.config.timeouts.insert_timeout())
             .await?;
 
-        tracing::debug!(
+        tracing::trace!(
             kc_ual = %kc_ual,
             total_triples = total_triples,
             "Inserted knowledge collection"
