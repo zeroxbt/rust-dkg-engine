@@ -7,11 +7,8 @@ use crate::{
     context::Context,
     error::NodeError,
     managers::{
-        blockchain::{
-            BlockchainId, BlockchainManager,
-            chains::evm::ShardingTableLib::NodeInfo,
-        },
-        network::PeerId,
+        blockchain::{BlockchainId, BlockchainManager, chains::evm::ShardingTableLib::NodeInfo},
+        network::{NetworkManager, PeerId},
         repository::{RepositoryManager, ShardRecordInput},
     },
 };
@@ -23,6 +20,7 @@ const SHARDING_TABLE_PAGE_SIZE: u128 = 100;
 pub(crate) struct ShardingTableCheckCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     blockchain_manager: Arc<BlockchainManager>,
+    network_manager: Arc<NetworkManager>,
 }
 
 impl ShardingTableCheckCommandHandler {
@@ -30,13 +28,44 @@ impl ShardingTableCheckCommandHandler {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
+            network_manager: Arc::clone(context.network_manager()),
+        }
+    }
+
+    async fn refresh_allowed_peers(&self) {
+        match self
+            .repository_manager
+            .shard_repository()
+            .get_all_peer_ids()
+            .await
+        {
+            Ok(peer_ids) => {
+                let peers: Vec<PeerId> = peer_ids
+                    .into_iter()
+                    .filter_map(|peer_id| match peer_id.parse::<PeerId>() {
+                        Ok(peer_id) => Some(peer_id),
+                        Err(err) => {
+                            tracing::warn!(
+                                peer_id = %peer_id,
+                                error = %err,
+                                "Skipping invalid peer id while refreshing allowlist"
+                            );
+                            None
+                        }
+                    })
+                    .collect();
+                self.network_manager.set_allowed_peers(peers);
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "Failed to refresh shard allowlist");
+            }
         }
     }
 
     async fn sync_blockchain_sharding_table(
         &self,
         blockchain: &BlockchainId,
-    ) -> Result<(), NodeError> {
+    ) -> Result<bool, NodeError> {
         let sharding_table_length = self
             .blockchain_manager
             .get_sharding_table_length(blockchain)
@@ -49,11 +78,12 @@ impl ShardingTableCheckCommandHandler {
             .await?;
 
         if sharding_table_length == u128::from(local_count) {
-            return Ok(());
+            return Ok(false);
         }
 
         self.pull_blockchain_sharding_table(blockchain, sharding_table_length, local_count)
-            .await
+            .await?;
+        Ok(true)
     }
 
     async fn pull_blockchain_sharding_table(
@@ -194,6 +224,7 @@ impl CommandHandler<ShardingTableCheckCommandData> for ShardingTableCheckCommand
             .map(|blockchain| self.sync_blockchain_sharding_table(blockchain));
 
         let results = join_all(futures).await;
+        let mut refreshed_any = false;
 
         for (blockchain, result) in blockchain_ids.iter().zip(results) {
             if let Err(error) = result {
@@ -202,7 +233,15 @@ impl CommandHandler<ShardingTableCheckCommandData> for ShardingTableCheckCommand
                     error = %error,
                     "Error syncing sharding table"
                 );
+            } else if let Ok(refreshed) = result
+                && refreshed
+            {
+                refreshed_any = true;
             }
+        }
+
+        if refreshed_any {
+            self.refresh_allowed_peers().await;
         }
 
         CommandExecutionResult::Repeat {

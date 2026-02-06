@@ -1,5 +1,7 @@
 //! Node behaviour and swarm building.
 
+use std::collections::HashSet;
+
 use libp2p::{
     Multiaddr, PeerId, StreamProtocol, Swarm, SwarmBuilder, identify, identity,
     kad::{self, BucketInserts, Config as KademliaConfig, Mode, store::MemoryStore},
@@ -61,7 +63,7 @@ pub(crate) struct NodeBehaviour {
 pub(crate) fn build_swarm(
     config: &NetworkManagerConfig,
     key: identity::Keypair,
-) -> Result<(Swarm<NodeBehaviour>, PeerId), NetworkError> {
+) -> Result<(Swarm<NodeBehaviour>, PeerId, Vec<PeerId>), NetworkError> {
     let public_key = key.public();
     let local_peer_id = PeerId::from(&public_key);
 
@@ -77,6 +79,8 @@ pub(crate) fn build_swarm(
     kad.set_mode(Some(Mode::Server));
 
     // Add bootstrap nodes to kad
+    let mut bootstrap_peers = Vec::new();
+    let mut seen_bootstrap = HashSet::new();
     for bootstrap in &config.bootstrap {
         // Parse as a full multiaddr first
         let full_addr: Multiaddr =
@@ -101,6 +105,10 @@ pub(crate) fn build_swarm(
                 expected: "multiaddr with /p2p/<peer_id> component".to_string(),
                 received: bootstrap.clone(),
             })?;
+
+        if seen_bootstrap.insert(peer_id) {
+            bootstrap_peers.push(peer_id);
+        }
 
         // Build the address without the /p2p/ component for kad
         let addr_without_peer: Multiaddr = full_addr
@@ -217,5 +225,5 @@ pub(crate) fn build_swarm(
         }
     }
 
-    Ok((swarm, local_peer_id))
+    Ok((swarm, local_peer_id, bootstrap_peers))
 }
