@@ -98,7 +98,6 @@ impl NetworkManager {
             .collect()
     }
 
-
     async fn enqueue_action(&self, action: NetworkAction) -> Result<(), NetworkError> {
         self.action_tx
             .send(action)

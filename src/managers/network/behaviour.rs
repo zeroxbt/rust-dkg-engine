@@ -1,6 +1,7 @@
 //! Node behaviour and swarm building.
 
 use std::collections::HashSet;
+
 use libp2p::{
     Multiaddr, PeerId, StreamProtocol, Swarm, SwarmBuilder, identify, identity,
     kad::{self, BucketInserts, Config as KademliaConfig, Mode, store::MemoryStore},

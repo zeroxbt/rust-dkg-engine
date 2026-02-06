@@ -1,11 +1,6 @@
 use alloy::primitives::{U256, hex, keccak256};
 use sha2::{Digest, Sha256};
 
-pub(crate) fn from_wei(wei: &str) -> String {
-    let wei_value = U256::from_str_radix(wei, 10).unwrap_or(U256::ZERO);
-    alloy::primitives::utils::format_ether(wei_value)
-}
-
 pub(crate) fn to_hex_string(data: impl AsRef<[u8]>) -> String {
     hex::encode(data)
 }

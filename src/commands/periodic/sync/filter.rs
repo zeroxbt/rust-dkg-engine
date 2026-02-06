@@ -208,7 +208,13 @@ async fn check_local_existence(
     // Return only KCs that need syncing
     kc_uals
         .into_iter()
-        .filter_map(|(kc_id, ual)| if existing.contains(&ual) { None } else { Some((kc_id, ual)) })
+        .filter_map(|(kc_id, ual)| {
+            if existing.contains(&ual) {
+                None
+            } else {
+                Some((kc_id, ual))
+            }
+        })
         .collect()
 }
 

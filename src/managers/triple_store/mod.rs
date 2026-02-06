@@ -11,8 +11,8 @@ use chrono::{DateTime, SecondsFormat, Utc};
 pub(crate) use config::{DKG_REPOSITORY, TripleStoreBackendType, TripleStoreManagerConfig};
 use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
-use serde::Deserialize;
 pub(crate) use rdf::{extract_subject, group_nquads_by_subject, parse_metadata_from_triples};
+use serde::Deserialize;
 use tokio::sync::Semaphore;
 pub(crate) use types::{Assertion, GraphVisibility, KnowledgeAsset, TokenIds};
 
