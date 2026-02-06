@@ -37,7 +37,11 @@ pub(crate) fn clear_rust_node_data(data_folder: &str, preserve_network_key: bool
     match fs::remove_dir_all(data_path) {
         Ok(_) => println!("Cleared Rust node data folder: {}", data_path.display()),
         Err(e) => {
-            eprintln!("Failed to clear data folder '{}': {}", data_path.display(), e);
+            eprintln!(
+                "Failed to clear data folder '{}': {}",
+                data_path.display(),
+                e
+            );
             return;
         }
     }

@@ -61,8 +61,7 @@ impl MigrationTrait for Migration {
                     .col(ProofChallenge::CreatedAt)
                     .to_owned(),
             )
-            .await
-            ?;
+            .await?;
 
         // Index for cleanup queries by updated_at
         manager

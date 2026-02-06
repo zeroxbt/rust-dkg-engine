@@ -28,8 +28,7 @@ impl MigrationTrait for Migration {
                     .primary_key(Index::create().col(Shard::PeerId).col(Shard::BlockchainId))
                     .to_owned(),
             )
-            .await
-            ?;
+            .await?;
 
         // Index for efficient lookups by blockchain_id
         manager
