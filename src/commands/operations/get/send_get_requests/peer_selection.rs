@@ -15,38 +15,19 @@ impl SendGetRequestsCommandHandler {
         parsed_ual: &ParsedUal,
         paranet_ual: Option<&str>,
     ) -> Result<Vec<PeerId>, CommandExecutionResult> {
-        // Get shard nodes for the blockchain
-        let shard_nodes = match self
-            .repository_manager
-            .shard_repository()
-            .get_all_peer_records(parsed_ual.blockchain.as_str())
-            .await
-        {
-            Ok(nodes) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    shard_nodes_count = nodes.len(),
-                    "Loaded shard nodes from repository"
-                );
-                nodes
-            }
-            Err(e) => {
-                let error_message = format!("Failed to get shard nodes: {}", e);
-                tracing::error!(operation_id = %operation_id, error = %e, "Failed to get shard nodes");
-                self.get_operation_status_service
-                    .mark_failed(operation_id, error_message)
-                    .await;
-                return Err(CommandExecutionResult::Completed);
-            }
-        };
+        // Get shard peers that support the GET protocol, excluding self
+        let my_peer_id = self.network_manager.peer_id();
+        let all_shard_peers = self.peer_service.select_shard_peers(
+            &parsed_ual.blockchain,
+            GetProtocol::STREAM_PROTOCOL,
+            Some(my_peer_id),
+        );
 
-        // Filter out self and parse peer IDs
-        let my_peer_id = *self.network_manager.peer_id();
-        let all_shard_peers: Vec<PeerId> = shard_nodes
-            .iter()
-            .filter_map(|record| record.peer_id.parse().ok())
-            .filter(|peer_id| *peer_id != my_peer_id)
-            .collect();
+        tracing::debug!(
+            operation_id = %operation_id,
+            shard_nodes_count = all_shard_peers.len(),
+            "Loaded shard peers from peer service"
+        );
 
         // Apply paranet filtering if paranet_ual is provided
         let peers: Vec<PeerId> = if let Some(paranet_ual) = paranet_ual {
@@ -74,8 +55,6 @@ impl SendGetRequestsCommandHandler {
             all_shard_peers
         };
 
-        Ok(self
-            .network_manager
-            .filter_peers_by_protocol(peers, GetProtocol::STREAM_PROTOCOL))
+        Ok(peers)
     }
 }

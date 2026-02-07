@@ -1,9 +1,7 @@
 pub(crate) mod file_service;
 pub(crate) mod get_validation_service;
 pub(crate) mod operation_status;
-pub(crate) mod peer_discovery_tracker;
-pub(crate) mod peer_performance_tracker;
-pub(crate) mod peer_rate_limiter;
+pub(crate) mod peer;
 pub(crate) mod pending_storage_service;
 pub(crate) mod response_channels;
 pub(crate) mod triple_store_service;
@@ -12,9 +10,7 @@ use std::sync::Arc;
 
 pub(crate) use get_validation_service::GetValidationService;
 pub(crate) use operation_status::OperationStatusService;
-pub(crate) use peer_discovery_tracker::PeerDiscoveryTracker;
-pub(crate) use peer_performance_tracker::PeerPerformanceTracker;
-pub(crate) use peer_rate_limiter::{PeerRateLimiter, PeerRateLimiterConfig};
+pub(crate) use peer::{PeerRateLimiter, PeerRateLimiterConfig, PeerService};
 pub(crate) use pending_storage_service::PendingStorageService;
 pub(crate) use response_channels::ResponseChannels;
 pub(crate) use triple_store_service::TripleStoreService;
@@ -60,8 +56,7 @@ pub(crate) struct Services {
     pub get_validation: Arc<GetValidationService>,
 
     // Infrastructure services
-    pub peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
-    pub peer_performance_tracker: Arc<PeerPerformanceTracker>,
+    pub peer_service: Arc<PeerService>,
     pub peer_rate_limiter: Arc<PeerRateLimiter>,
 
     // Response channels for all protocols
@@ -109,8 +104,7 @@ pub(crate) fn initialize(
     let get_validation = Arc::new(GetValidationService::new(Arc::clone(&managers.blockchain)));
 
     // Infrastructure services
-    let peer_discovery_tracker = Arc::new(PeerDiscoveryTracker::new());
-    let peer_performance_tracker = Arc::new(PeerPerformanceTracker::new());
+    let peer_service = Arc::new(PeerService::new());
     let peer_rate_limiter = Arc::new(PeerRateLimiter::new(rate_limiter_config));
 
     // Response channels
@@ -122,8 +116,7 @@ pub(crate) fn initialize(
         pending_storage,
         triple_store,
         get_validation,
-        peer_discovery_tracker,
-        peer_performance_tracker,
+        peer_service,
         peer_rate_limiter,
         response_channels,
     }

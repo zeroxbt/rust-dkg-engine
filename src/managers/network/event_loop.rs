@@ -3,7 +3,7 @@
 //! This is the internal implementation that handles all network events.
 //! It receives actions from NetworkManager handles and processes swarm events.
 
-use std::sync::Arc;
+use std::time::Instant;
 
 use libp2p::{
     Multiaddr, PeerId, Swarm, identify, kad,
@@ -11,12 +11,13 @@ use libp2p::{
     request_response,
     swarm::{NetworkBehaviour, SwarmEvent},
 };
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use uuid::Uuid;
 
 use super::{
-    JsCompatCodec, NetworkError, NetworkEventHandler, NetworkManagerConfig, PeerStore,
-    PendingRequests, RequestMessage, ResponseMessage,
+    IdentifyInfo, JsCompatCodec, NetworkError, NetworkEventHandler, NetworkManagerConfig,
+    PeerEvent, PendingRequests, RequestContext, RequestMessage, RequestOutcome, RequestOutcomeKind,
+    ResponseMessage,
     actions::NetworkAction,
     behaviour::{NodeBehaviour, NodeBehaviourEvent},
     message::{RequestMessageHeader, RequestMessageType},
@@ -32,6 +33,7 @@ async fn handle_protocol_event<P, H>(
     event: request_response::Event<RequestMessage<P::RequestData>, ResponseMessage<P::Ack>>,
     pending: &mut PendingRequests<ProtocolResponse<P>>,
     handler: &H,
+    peer_event_tx: &broadcast::Sender<PeerEvent>,
 ) where
     P: ProtocolSpec,
     H: NetworkEventHandler + ProtocolHandler<P>,
@@ -42,7 +44,19 @@ async fn handle_protocol_event<P, H>(
                 response,
                 request_id,
             } => {
-                pending.complete_success(request_id, response.data);
+                let outcome_kind = match &response.data {
+                    super::message::ResponseBody::Ack(_) => RequestOutcomeKind::Success,
+                    super::message::ResponseBody::Error(_) => RequestOutcomeKind::ResponseError,
+                };
+                if let Some(context) = pending.complete_success(request_id, response.data) {
+                    let outcome = RequestOutcome {
+                        peer_id: context.peer_id,
+                        protocol: context.protocol,
+                        outcome: outcome_kind,
+                        elapsed: context.started_at.elapsed(),
+                    };
+                    let _ = peer_event_tx.send(PeerEvent::RequestOutcome(outcome));
+                }
             }
             request_response::Message::Request {
                 request, channel, ..
@@ -57,7 +71,16 @@ async fn handle_protocol_event<P, H>(
             ..
         } => {
             tracing::warn!(%peer, ?request_id, ?error, "{} request failed", P::NAME);
-            pending.complete_failure(request_id, NetworkError::from(&error));
+            if let Some(context) = pending.complete_failure(request_id, NetworkError::from(&error))
+            {
+                let outcome = RequestOutcome {
+                    peer_id: context.peer_id,
+                    protocol: context.protocol,
+                    outcome: RequestOutcomeKind::Failure,
+                    elapsed: context.started_at.elapsed(),
+                };
+                let _ = peer_event_tx.send(PeerEvent::RequestOutcome(outcome));
+            }
         }
         request_response::Event::InboundFailure {
             peer,
@@ -164,11 +187,20 @@ fn send_protocol_request<P, B>(
         header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
         data: request_data,
     };
+    let started_at = Instant::now();
     let request_id = behaviour_accessor(swarm.behaviour_mut()).send_request(&peer, message);
-    pending.insert_sender(request_id, response_tx);
+    pending.insert_sender(
+        request_id,
+        response_tx,
+        RequestContext {
+            peer_id: peer,
+            protocol: P::NAME,
+            started_at,
+        },
+    );
 }
 
-fn strip_p2p_protocol(addr: Multiaddr) -> Multiaddr {
+fn strip_p2p_protocol(addr: &Multiaddr) -> Multiaddr {
     addr.into_iter()
         .filter(|proto| !matches!(proto, Protocol::P2p(_)))
         .collect()
@@ -191,7 +223,7 @@ pub(crate) struct NetworkEventLoop {
     swarm: Swarm<NodeBehaviour>,
     action_rx: mpsc::Receiver<NetworkAction>,
     config: NetworkManagerConfig,
-    peer_store: Arc<PeerStore>,
+    peer_event_tx: broadcast::Sender<PeerEvent>,
     // Per-protocol pending request tracking
     pending_store: PendingRequests<StoreResponseData>,
     pending_get: PendingRequests<GetResponseData>,
@@ -205,13 +237,13 @@ impl NetworkEventLoop {
         swarm: Swarm<NodeBehaviour>,
         action_rx: mpsc::Receiver<NetworkAction>,
         config: NetworkManagerConfig,
-        peer_store: Arc<PeerStore>,
+        peer_event_tx: broadcast::Sender<PeerEvent>,
     ) -> Self {
         Self {
             swarm,
             action_rx,
             config,
-            peer_store,
+            peer_event_tx,
             pending_store: PendingRequests::new(),
             pending_get: PendingRequests::new(),
             pending_finality: PendingRequests::new(),
@@ -281,18 +313,25 @@ impl NetworkEventLoop {
                         inner,
                         &mut self.pending_store,
                         handler,
+                        &self.peer_event_tx,
                     )
                     .await;
                 }
                 NodeBehaviourEvent::Get(inner) => {
-                    handle_protocol_event::<GetProtocol, _>(inner, &mut self.pending_get, handler)
-                        .await;
+                    handle_protocol_event::<GetProtocol, _>(
+                        inner,
+                        &mut self.pending_get,
+                        handler,
+                        &self.peer_event_tx,
+                    )
+                    .await;
                 }
                 NodeBehaviourEvent::Finality(inner) => {
                     handle_protocol_event::<FinalityProtocol, _>(
                         inner,
                         &mut self.pending_finality,
                         handler,
+                        &self.peer_event_tx,
                     )
                     .await;
                 }
@@ -301,6 +340,7 @@ impl NetworkEventLoop {
                         inner,
                         &mut self.pending_batch_get,
                         handler,
+                        &self.peer_event_tx,
                     )
                     .await;
                 }
@@ -309,11 +349,18 @@ impl NetworkEventLoop {
                 NodeBehaviourEvent::Identify(identify::Event::Received {
                     peer_id, info, ..
                 }) => {
-                    self.peer_store.record_identify(peer_id, &info);
-                    for addr in info.listen_addrs {
+                    let identify_info = IdentifyInfo {
+                        protocols: info.protocols,
+                        listen_addrs: info.listen_addrs,
+                    };
+                    for addr in identify_info.listen_addrs.iter() {
                         let addr = strip_p2p_protocol(addr);
                         self.swarm.behaviour_mut().kad.add_address(&peer_id, addr);
                     }
+                    let _ = self.peer_event_tx.send(PeerEvent::IdentifyReceived {
+                        peer_id,
+                        info: identify_info,
+                    });
                 }
 
                 // Kademlia protocol
@@ -324,18 +371,32 @@ impl NetworkEventLoop {
                     Ok(kad::GetClosestPeersOk { key, peers }) => {
                         if let Ok(target) = PeerId::from_bytes(&key) {
                             if peers.iter().any(|p| p.peer_id == target) {
+                                let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
+                                    target,
+                                    found: true,
+                                });
                                 dial_peer_if_needed(&mut self.swarm, target);
                             } else {
-                                handler.on_kad_peer_not_found(target).await;
+                                let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
+                                    target,
+                                    found: false,
+                                });
                             }
                         }
                     }
                     Err(kad::GetClosestPeersError::Timeout { key, peers }) => {
                         if let Ok(target) = PeerId::from_bytes(&key) {
                             if peers.iter().any(|p| p.peer_id == target) {
+                                let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
+                                    target,
+                                    found: true,
+                                });
                                 dial_peer_if_needed(&mut self.swarm, target);
                             } else {
-                                handler.on_kad_peer_not_found(target).await;
+                                let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
+                                    target,
+                                    found: false,
+                                });
                             }
                         }
                     }
@@ -345,13 +406,12 @@ impl NetworkEventLoop {
             },
 
             SwarmEvent::NewListenAddr { address, .. } => {
-                handler.on_new_listen_addr(address);
+                tracing::info!("Listening on {}", address);
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                handler.on_connection_established(peer_id).await;
-            }
-            SwarmEvent::ConnectionClosed { peer_id, .. } => {
-                handler.on_connection_closed(peer_id).await;
+                let _ = self
+                    .peer_event_tx
+                    .send(PeerEvent::ConnectionEstablished { peer_id });
             }
             _ => {}
         }

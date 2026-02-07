@@ -506,24 +506,6 @@ impl TripleStoreManager {
             .await
     }
 
-    /// Check if a knowledge collection exists by checking for metadata in the metadata graph.
-    ///
-    /// This is a fast existence check that only requires the KC UAL (no token range needed).
-    /// Returns true if any metadata triple exists for the given KC UAL.
-    pub(crate) async fn knowledge_collection_exists_by_ual(&self, kc_ual: &str) -> Result<bool> {
-        let query = format!(
-            r#"ASK {{
-                GRAPH <{metadata}> {{
-                    <{kc_ual}> ?p ?o
-                }}
-            }}"#,
-            metadata = named_graphs::METADATA,
-        );
-
-        self.backend_ask(&query, self.config.timeouts.ask_timeout())
-            .await
-    }
-
     /// Check which knowledge collections exist by UAL (batched).
     ///
     /// Returns the subset of UALs that exist in the metadata graph.

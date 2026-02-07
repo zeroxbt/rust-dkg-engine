@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
 use futures::{StreamExt, stream::FuturesUnordered};
 use libp2p::PeerId;
@@ -11,12 +11,11 @@ use crate::{
     managers::{
         blockchain::BlockchainManager,
         network::{NetworkError, NetworkManager, messages::GetRequestData},
-        repository::RepositoryManager,
         triple_store::{Assertion, TokenIds},
     },
     operations::{GetOperationResult, protocols},
     services::{
-        GetValidationService, PeerPerformanceTracker, TripleStoreService,
+        GetValidationService, PeerService, TripleStoreService,
         operation_status::OperationStatusService as GenericOperationService,
     },
     types::{ParsedUal, Visibility, parse_ual},
@@ -53,11 +52,10 @@ impl SendGetRequestsCommandData {
 pub(crate) struct SendGetRequestsCommandHandler {
     pub(super) blockchain_manager: Arc<BlockchainManager>,
     pub(super) triple_store_service: Arc<TripleStoreService>,
-    pub(super) repository_manager: Arc<RepositoryManager>,
     pub(super) network_manager: Arc<NetworkManager>,
     pub(super) get_operation_status_service: Arc<GenericOperationService<GetOperationResult>>,
     pub(super) get_validation_service: Arc<GetValidationService>,
-    pub(super) peer_performance_tracker: Arc<PeerPerformanceTracker>,
+    pub(super) peer_service: Arc<PeerService>,
 }
 
 impl SendGetRequestsCommandHandler {
@@ -65,11 +63,10 @@ impl SendGetRequestsCommandHandler {
         Self {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             triple_store_service: Arc::clone(context.triple_store_service()),
-            repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
             get_operation_status_service: Arc::clone(context.get_operation_status_service()),
             get_validation_service: Arc::clone(context.get_validation_service()),
-            peer_performance_tracker: Arc::clone(context.peer_performance_tracker()),
+            peer_service: Arc::clone(context.peer_service()),
         }
     }
 }
@@ -359,7 +356,7 @@ impl SendGetRequestsCommandHandler {
         };
         tracing::Span::current().record("peer_count", tracing::field::display(peers.len()));
 
-        self.peer_performance_tracker.sort_by_latency(&mut peers);
+        self.peer_service.sort_by_latency(&mut peers);
 
         let min_required_peers =
             protocols::get::MIN_PEERS.max(protocols::get::MIN_ACK_RESPONSES as usize);
@@ -419,11 +416,10 @@ impl SendGetRequestsCommandHandler {
                 }
             }
 
-            while let Some((peer, outcome, elapsed)) = futures.next().await {
+            while let Some((peer, outcome)) = futures.next().await {
                 match outcome {
                     Ok(true) => {
                         success_count += 1;
-                        self.peer_performance_tracker.record_latency(&peer, elapsed);
                     }
                     Ok(false) => {
                         failure_count += 1;
@@ -435,7 +431,6 @@ impl SendGetRequestsCommandHandler {
                     }
                     Err(e) => {
                         failure_count += 1;
-                        self.peer_performance_tracker.record_failure(&peer);
                         tracing::debug!(
                             operation_id = %operation_id,
                             peer = %peer,
@@ -509,13 +504,11 @@ async fn send_get_request_to_peer(
     request_data: GetRequestData,
     parsed_ual: ParsedUal,
     visibility: Visibility,
-) -> (PeerId, Result<bool, NetworkError>, std::time::Duration) {
-    let start = Instant::now();
+) -> (PeerId, Result<bool, NetworkError>) {
     let result = handler
         .network_manager
         .send_get_request(peer, operation_id, request_data)
         .await;
-    let elapsed = start.elapsed();
     let outcome = match result {
         Ok(response) => {
             let is_valid = handler
@@ -531,5 +524,5 @@ async fn send_get_request_to_peer(
         }
         Err(e) => Err(e),
     };
-    (peer, outcome, elapsed)
+    (peer, outcome)
 }

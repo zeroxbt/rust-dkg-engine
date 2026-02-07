@@ -17,7 +17,7 @@ use crate::{
         repository::RepositoryManager,
         triple_store::KnowledgeCollectionMetadata,
     },
-    services::{TripleStoreService, pending_storage_service::PendingStorageService},
+    services::{TripleStoreService, pending_storage_service::PendingStorageService, PeerService},
     types::derive_ual,
     utils::validation,
 };
@@ -76,6 +76,7 @@ impl SendPublishFinalityRequestCommandData {
 pub(crate) struct SendPublishFinalityRequestCommandHandler {
     pub(super) repository_manager: Arc<RepositoryManager>,
     pub(super) network_manager: Arc<NetworkManager>,
+    peer_service: Arc<PeerService>,
     blockchain_manager: Arc<BlockchainManager>,
     pending_storage_service: Arc<PendingStorageService>,
     triple_store_service: Arc<TripleStoreService>,
@@ -86,6 +87,7 @@ impl SendPublishFinalityRequestCommandHandler {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
+            peer_service: Arc::clone(context.peer_service()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
             triple_store_service: Arc::clone(context.triple_store_service()),
@@ -342,7 +344,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         }
 
         if !self
-            .network_manager
+            .peer_service
             .peer_supports_protocol(&publisher_peer_id, FinalityProtocol::STREAM_PROTOCOL)
         {
             tracing::warn!(

@@ -18,7 +18,7 @@ pub(crate) struct FinalityProtocol;
 impl ProtocolSpec for FinalityProtocol {
     const NAME: &'static str = "Finality";
     const STREAM_PROTOCOL: &'static str = "/finality/1.0.0";
-    const TIMEOUT: Duration = Duration::from_secs(60);
+    const TIMEOUT: Duration = Duration::from_secs(10);
 
     type RequestData = FinalityRequestData;
     type Ack = FinalityAck;

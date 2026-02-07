@@ -14,9 +14,9 @@ mod handle;
 mod handler;
 mod key_manager;
 pub(crate) mod message;
-mod peer_store;
 mod pending_requests;
 pub(crate) mod protocols;
+mod request_outcome;
 
 // Keep messages module for backwards compatibility during transition
 // TODO: Remove this module after all imports are updated
@@ -29,9 +29,9 @@ pub(crate) use handle::NetworkManager;
 pub(crate) use handler::NetworkEventHandler;
 pub(crate) use key_manager::KeyManager;
 // Re-export libp2p types for application use
-pub(crate) use libp2p::{Multiaddr, PeerId, request_response};
+pub(crate) use libp2p::{PeerId, request_response};
 // Re-export message types
 pub(crate) use message::{RequestMessage, ResponseMessage};
-pub(crate) use peer_store::{PeerInfo, PeerStore};
-pub(crate) use pending_requests::PendingRequests;
+pub(crate) use pending_requests::{PendingRequests, RequestContext};
 pub(crate) use protocols::JsCompatCodec;
+pub(crate) use request_outcome::{IdentifyInfo, PeerEvent, RequestOutcome, RequestOutcomeKind};

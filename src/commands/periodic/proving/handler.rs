@@ -30,7 +30,7 @@ use crate::{
         },
     },
     operations::protocols,
-    services::{GetValidationService, PeerPerformanceTracker, TripleStoreService},
+    services::{GetValidationService, PeerService, TripleStoreService},
     types::{BlockchainId, ParsedUal, Visibility, derive_ual},
     utils::validation,
 };
@@ -52,7 +52,7 @@ pub(crate) struct ProvingCommandHandler {
     triple_store_service: Arc<TripleStoreService>,
     network_manager: Arc<NetworkManager>,
     get_validation_service: Arc<GetValidationService>,
-    peer_performance_tracker: Arc<PeerPerformanceTracker>,
+    peer_service: Arc<PeerService>,
 }
 
 impl ProvingCommandHandler {
@@ -63,21 +63,15 @@ impl ProvingCommandHandler {
             triple_store_service: Arc::clone(context.triple_store_service()),
             network_manager: Arc::clone(context.network_manager()),
             get_validation_service: Arc::clone(context.get_validation_service()),
-            peer_performance_tracker: Arc::clone(context.peer_performance_tracker()),
+            peer_service: Arc::clone(context.peer_service()),
         }
     }
 
     /// Check if node is part of the shard for this blockchain.
-    async fn is_in_shard(&self, blockchain_id: &BlockchainId) -> bool {
-        let peer_id = self.network_manager.peer_id().to_string();
-
-        self.repository_manager
-            .shard_repository()
-            .get_peer_record(blockchain_id.as_str(), &peer_id)
-            .await
-            .ok()
-            .flatten()
-            .is_some()
+    fn is_in_shard(&self, blockchain_id: &BlockchainId) -> bool {
+        let peer_id = self.network_manager.peer_id();
+        self.peer_service
+            .is_peer_in_shard(blockchain_id, peer_id)
     }
 
     /// Get the identity ID for this blockchain.
@@ -117,30 +111,13 @@ impl ProvingCommandHandler {
     }
 
     /// Load shard peers for the given blockchain.
-    async fn load_shard_peers(&self, blockchain_id: &BlockchainId) -> Vec<PeerId> {
-        let shard_nodes = match self
-            .repository_manager
-            .shard_repository()
-            .get_all_peer_records(blockchain_id.as_str())
-            .await
-        {
-            Ok(nodes) => nodes,
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to get shard nodes");
-                return Vec::new();
-            }
-        };
-
-        // Filter out self and parse peer IDs
-        let my_peer_id = *self.network_manager.peer_id();
-        let peers = shard_nodes
-            .iter()
-            .filter_map(|record| record.peer_id.parse().ok())
-            .filter(|peer_id| *peer_id != my_peer_id)
-            .collect();
-
-        self.network_manager
-            .filter_peers_by_protocol(peers, GetProtocol::STREAM_PROTOCOL)
+    fn load_shard_peers(&self, blockchain_id: &BlockchainId) -> Vec<PeerId> {
+        let my_peer_id = self.network_manager.peer_id();
+        self.peer_service.select_shard_peers(
+            blockchain_id,
+            GetProtocol::STREAM_PROTOCOL,
+            Some(my_peer_id),
+        )
     }
 
     /// Fetch assertion from network peers.
@@ -163,7 +140,7 @@ impl ProvingCommandHandler {
         parsed_ual: &ParsedUal,
         token_ids: TokenIds,
     ) -> Option<Assertion> {
-        let mut peers = self.load_shard_peers(&parsed_ual.blockchain).await;
+        let mut peers = self.load_shard_peers(&parsed_ual.blockchain);
 
         if peers.is_empty() {
             tracing::warn!("No peers available in shard");
@@ -173,7 +150,7 @@ impl ProvingCommandHandler {
         tracing::Span::current().record("peer_count", tracing::field::display(peers.len()));
 
         // Sort by latency (best performers first)
-        self.peer_performance_tracker.sort_by_latency(&mut peers);
+        self.peer_service.sort_by_latency(&mut peers);
 
         tracing::debug!(
             total_peers = peers.len(),
@@ -218,8 +195,6 @@ impl ProvingCommandHandler {
         while let Some((peer, outcome, elapsed, assertion)) = futures.next().await {
             match outcome {
                 Ok(true) => {
-                    self.peer_performance_tracker.record_latency(&peer, elapsed);
-
                     tracing::info!(
                         peer = %peer,
                         elapsed_ms = elapsed.as_millis(),
@@ -238,7 +213,6 @@ impl ProvingCommandHandler {
                 }
                 Err(e) => {
                     failure_count += 1;
-                    self.peer_performance_tracker.record_failure(&peer);
                     tracing::debug!(
                         peer = %peer,
                         error = %e,
@@ -337,7 +311,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
     )]
     async fn execute(&self, data: &ProvingCommandData) -> CommandExecutionResult {
         // 1. Check if we're in the shard
-        if !self.is_in_shard(&data.blockchain_id).await {
+        if !self.is_in_shard(&data.blockchain_id) {
             tracing::debug!("Node not in shard, skipping proving");
             return CommandExecutionResult::Repeat {
                 delay: PROVING_PERIOD,

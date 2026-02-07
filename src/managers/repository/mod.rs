@@ -13,12 +13,10 @@ use repositories::{
     blockchain_repository::BlockchainRepository,
     finality_status_repository::FinalityStatusRepository, kc_sync_repository::KcSyncRepository,
     operation_repository::OperationRepository,
-    proof_challenge_repository::ProofChallengeRepository, shard_repository::ShardRepository,
+    proof_challenge_repository::ProofChallengeRepository,
     triples_insert_count_repository::TriplesInsertCountRepository,
 };
-pub(crate) use repositories::{
-    proof_challenge_repository::ChallengeState, shard_repository::ShardRecordInput,
-};
+pub(crate) use repositories::proof_challenge_repository::ChallengeState;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 pub(crate) use types::OperationStatus;
@@ -26,7 +24,6 @@ pub(crate) use types::OperationStatus;
 use self::migrations::Migrator;
 
 pub(crate) struct RepositoryManager {
-    shard_repository: ShardRepository,
     blockchain_repository: BlockchainRepository,
     operation_repository: OperationRepository,
     finality_status_repository: FinalityStatusRepository,
@@ -68,7 +65,6 @@ impl RepositoryManager {
         Migrator::up(conn.as_ref(), None).await?;
 
         Ok(RepositoryManager {
-            shard_repository: ShardRepository::new(Arc::clone(&conn)),
             blockchain_repository: BlockchainRepository::new(Arc::clone(&conn)),
             operation_repository: OperationRepository::new(Arc::clone(&conn)),
             finality_status_repository: FinalityStatusRepository::new(Arc::clone(&conn)),
@@ -76,10 +72,6 @@ impl RepositoryManager {
             kc_sync_repository: KcSyncRepository::new(Arc::clone(&conn)),
             proof_challenge_repository: ProofChallengeRepository::new(Arc::clone(&conn)),
         })
-    }
-
-    pub(crate) fn shard_repository(&self) -> &ShardRepository {
-        &self.shard_repository
     }
 
     pub(crate) fn blockchain_repository(&self) -> &BlockchainRepository {

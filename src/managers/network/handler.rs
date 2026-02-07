@@ -1,5 +1,5 @@
 use super::{
-    Multiaddr, PeerId,
+    PeerId,
     message::{RequestMessage, ResponseMessage},
     messages::{
         BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
@@ -52,24 +52,5 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
         peer: PeerId,
     ) -> impl std::future::Future<Output = ()> + Send;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Infrastructure events
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /// Called when a Kademlia lookup fails to find the target peer.
-    fn on_kad_peer_not_found(&self, target: PeerId)
-    -> impl std::future::Future<Output = ()> + Send;
-
-    /// Called when a new connection is established with a peer.
-    fn on_connection_established(
-        &self,
-        peer_id: PeerId,
-    ) -> impl std::future::Future<Output = ()> + Send;
-
-    /// Called when a connection with a peer is closed.
-    fn on_connection_closed(&self, peer_id: PeerId)
-    -> impl std::future::Future<Output = ()> + Send;
-
-    /// Called when this node starts listening on a new address.
-    fn on_new_listen_addr(&self, address: Multiaddr);
+    // Infrastructure events are emitted via PeerEvent and handled by observers.
 }

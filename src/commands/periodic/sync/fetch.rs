@@ -27,27 +27,31 @@ use crate::{
             messages::{BatchGetRequestData, BatchGetResponseData},
             protocols::{BatchGetProtocol, ProtocolSpec},
         },
-        repository::RepositoryManager,
         triple_store::{TokenIds, parse_metadata_from_triples},
     },
     operations::protocols::batch_get,
-    services::{GetValidationService, PeerPerformanceTracker},
+    services::{GetValidationService, PeerService},
     types::{ParsedUal, Visibility, parse_ual},
 };
 
 /// Fetch task: receives filtered KCs, fetches from network, sends to insert stage.
 #[instrument(
     name = "sync_fetch",
-    skip(rx, network_manager, repository_manager, get_validation_service, peer_performance_tracker, tx),
+    skip(
+        rx,
+        network_manager,
+        get_validation_service,
+        peer_service,
+        tx
+    ),
     fields(blockchain_id = %blockchain_id)
 )]
 pub(crate) async fn fetch_task(
     mut rx: mpsc::Receiver<Vec<KcToSync>>,
     blockchain_id: BlockchainId,
     network_manager: Arc<NetworkManager>,
-    repository_manager: Arc<RepositoryManager>,
     get_validation_service: Arc<GetValidationService>,
-    peer_performance_tracker: Arc<PeerPerformanceTracker>,
+    peer_service: Arc<PeerService>,
     tx: mpsc::Sender<Vec<FetchedKc>>,
 ) -> FetchStats {
     let task_start = Instant::now();
@@ -56,38 +60,15 @@ pub(crate) async fn fetch_task(
     let mut total_received = 0usize;
 
     // Get shard peers once at the start, sorted by performance score
-    let (mut peers, peer_stats) =
-        match get_shard_peers(&blockchain_id, &network_manager, &repository_manager).await {
-            Ok(result) => result,
-            Err(e) => {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    error = %e,
-                    "Fetch: failed to get shard peers"
-                );
-                // Drain receiver and mark all as failed
-                while let Some(batch) = rx.recv().await {
-                    failures.extend(batch.iter().map(|kc| kc.kc_id));
-                }
-                return FetchStats { failures };
-            }
-        };
+    let (mut peers, peer_stats) = get_shard_peers(&blockchain_id, &network_manager, &peer_service);
 
     if peers.is_empty() {
-        let connected_peers = network_manager
-            .connected_peers()
-            .await
-            .map(|peers| peers.len())
-            .unwrap_or(0);
+        let identified = peer_service.identified_shard_peer_count(&blockchain_id);
         tracing::warn!(
             blockchain_id = %blockchain_id,
-            shard_records = peer_stats.shard_records,
-            parsed_peers = peer_stats.parsed_peers,
-            candidates = peer_stats.candidates,
-            identify_known = peer_stats.identify_known,
-            peers_with_addresses = peer_stats.peers_with_addresses,
-            protocol_supported = peer_stats.protocol_supported,
-            connected_peers,
+            shard_members = peer_stats.shard_members,
+            identified,
+            usable = peer_stats.usable,
             "Fetch: no peers available"
         );
         while let Some(batch) = rx.recv().await {
@@ -97,14 +78,14 @@ pub(crate) async fn fetch_task(
     }
 
     // Sort peers by latency (fastest first)
-    peer_performance_tracker.sort_by_latency(&mut peers);
+    peer_service.sort_by_latency(&mut peers);
     if tracing::enabled!(tracing::Level::DEBUG) {
         const MAX_PEERS_TO_LOG: usize = 20;
         let peer_latencies: Vec<String> = peers
             .iter()
             .take(MAX_PEERS_TO_LOG)
             .map(|peer| {
-                let latency = peer_performance_tracker.get_average_latency(peer);
+                let latency = peer_service.get_average_latency(peer);
                 format!("{peer}:{latency}ms")
             })
             .collect();
@@ -121,22 +102,14 @@ pub(crate) async fn fetch_task(
 
     let min_required_peers = batch_get::MIN_PEERS;
     if peers.len() < min_required_peers {
-        let connected_peers = network_manager
-            .connected_peers()
-            .await
-            .map(|peers| peers.len())
-            .unwrap_or(0);
+        let identified = peer_service.identified_shard_peer_count(&blockchain_id);
         tracing::warn!(
             blockchain_id = %blockchain_id,
             found = peers.len(),
             required = min_required_peers,
-            shard_records = peer_stats.shard_records,
-            parsed_peers = peer_stats.parsed_peers,
-            candidates = peer_stats.candidates,
-            identify_known = peer_stats.identify_known,
-            peers_with_addresses = peer_stats.peers_with_addresses,
-            protocol_supported = peer_stats.protocol_supported,
-            connected_peers,
+            shard_members = peer_stats.shard_members,
+            identified,
+            usable = peer_stats.usable,
             "Fetch: not enough peers available"
         );
         while let Some(batch) = rx.recv().await {
@@ -184,7 +157,6 @@ pub(crate) async fn fetch_task(
                 &peers,
                 &network_manager,
                 &get_validation_service,
-                &peer_performance_tracker,
             )
             .await;
 
@@ -232,7 +204,6 @@ pub(crate) async fn fetch_task(
             &peers,
             &network_manager,
             get_validation_service.as_ref(),
-            peer_performance_tracker.as_ref(),
         )
         .await;
 
@@ -273,73 +244,40 @@ fn estimate_asset_count(token_ids: &TokenIds) -> u64 {
 }
 
 /// Get shard peers for the given blockchain, excluding self.
-async fn get_shard_peers(
+fn get_shard_peers(
     blockchain_id: &BlockchainId,
     network_manager: &NetworkManager,
-    repository_manager: &RepositoryManager,
-) -> Result<(Vec<PeerId>, PeerSelectionStats), String> {
-    let shard_nodes = repository_manager
-        .shard_repository()
-        .get_all_peer_records(blockchain_id.as_str())
-        .await
-        .map_err(|e| format!("Failed to get shard nodes: {}", e))?;
+    peer_service: &PeerService,
+) -> (
+    std::vec::Vec<libp2p::PeerId>,
+    crate::commands::periodic::sync::fetch::PeerSelectionStats,
+) {
+    let my_peer_id = network_manager.peer_id();
 
-    let my_peer_id = *network_manager.peer_id();
-    let parsed_peers: Vec<PeerId> = shard_nodes
-        .iter()
-        .filter_map(|record| record.peer_id.parse().ok())
-        .collect();
+    // Get shard peers that support BatchGetProtocol, excluding self
+    let peers = peer_service.select_shard_peers(
+        blockchain_id,
+        BatchGetProtocol::STREAM_PROTOCOL,
+        Some(my_peer_id),
+    );
 
-    let candidates: Vec<PeerId> = parsed_peers
-        .iter()
-        .copied()
-        .filter(|peer_id| *peer_id != my_peer_id)
-        .collect();
-    let candidates_len = candidates.len();
-
-    let mut identify_known = 0usize;
-    let mut peers_with_addresses = 0usize;
-    let mut protocol_supported = 0usize;
-
-    for peer_id in &candidates {
-        if let Some(info) = network_manager.peer_info(peer_id) {
-            identify_known += 1;
-            if !info.listen_addrs.is_empty() {
-                peers_with_addresses += 1;
-            }
-            if info
-                .protocols
-                .iter()
-                .any(|p| p.as_ref() == BatchGetProtocol::STREAM_PROTOCOL)
-            {
-                protocol_supported += 1;
-            }
-        }
-    }
-
-    let filtered =
-        network_manager.filter_peers_by_protocol(candidates, BatchGetProtocol::STREAM_PROTOCOL);
+    // Stats: total in shard vs usable (have identify + support protocol)
+    let shard_peer_count = peer_service.shard_peer_count(blockchain_id);
 
     let stats = PeerSelectionStats {
-        shard_records: shard_nodes.len(),
-        parsed_peers: parsed_peers.len(),
-        candidates: candidates_len,
-        identify_known,
-        peers_with_addresses,
-        protocol_supported,
+        shard_members: shard_peer_count,
+        usable: peers.len(),
     };
 
-    Ok((filtered, stats))
+    (peers, stats)
 }
 
 #[derive(Clone, Copy, Debug)]
 struct PeerSelectionStats {
-    shard_records: usize,
-    parsed_peers: usize,
-    candidates: usize,
-    identify_known: usize,
-    peers_with_addresses: usize,
-    protocol_supported: usize,
+    /// Total peers in shard (including self)
+    shard_members: usize,
+    /// Peers that passed all filters (have identify, support protocol, not self)
+    usable: usize,
 }
 
 /// Helper function for making peer requests.
@@ -365,7 +303,7 @@ async fn make_peer_request(
 /// Peers should be pre-sorted by performance score (best first).
 #[instrument(
     name = "sync_fetch_batch",
-    skip(kcs, peers, network_manager, get_validation_service, peer_performance_tracker),
+    skip(kcs, peers, network_manager, get_validation_service),
     fields(
         blockchain_id = %blockchain_id,
         kc_count = kcs.len(),
@@ -380,7 +318,6 @@ async fn fetch_kc_batch_from_network(
     peers: &[PeerId],
     network_manager: &Arc<NetworkManager>,
     get_validation_service: &GetValidationService,
-    peer_performance_tracker: &PeerPerformanceTracker,
 ) -> (Vec<FetchedKc>, Vec<u64>) {
     let mut fetched: Vec<FetchedKc> = Vec::new();
     let mut uals_still_needed: HashSet<String> = kcs.iter().map(|kc| kc.ual.clone()).collect();
@@ -495,9 +432,6 @@ async fn fetch_kc_batch_from_network(
                 peer_span.record("valid_kcs", valid_count);
                 peer_span.record("status", tracing::field::display("ok"));
 
-                // Record latency for any successful response (even if no valid KCs)
-                peer_performance_tracker.record_latency(&peer, elapsed);
-
                 // Break early if we got everything - don't wait for remaining in-flight requests
                 if uals_still_needed.is_empty() {
                     break;
@@ -506,13 +440,11 @@ async fn fetch_kc_batch_from_network(
             Ok(ResponseBody::Error(_)) => {
                 peer_span.record("valid_kcs", 0usize);
                 peer_span.record("status", tracing::field::display("nack"));
-                peer_performance_tracker.record_failure(&peer);
             }
             Err(e) => {
                 let status = e.to_string();
                 peer_span.record("valid_kcs", 0usize);
                 peer_span.record("status", tracing::field::display(&status));
-                peer_performance_tracker.record_failure(&peer);
             }
         }
 

@@ -23,8 +23,7 @@ use crate::{
         blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
         repository::RepositoryManager,
     },
-    operations::protocols::batch_get,
-    services::{GetValidationService, PeerPerformanceTracker, TripleStoreService},
+    services::{GetValidationService, PeerService, TripleStoreService},
 };
 
 pub(crate) struct SyncCommandHandler {
@@ -33,7 +32,7 @@ pub(crate) struct SyncCommandHandler {
     triple_store_service: Arc<TripleStoreService>,
     network_manager: Arc<crate::managers::network::NetworkManager>,
     get_validation_service: Arc<GetValidationService>,
-    peer_performance_tracker: Arc<PeerPerformanceTracker>,
+    peer_service: Arc<PeerService>,
 }
 
 impl SyncCommandHandler {
@@ -44,7 +43,7 @@ impl SyncCommandHandler {
             triple_store_service: Arc::clone(context.triple_store_service()),
             network_manager: Arc::clone(context.network_manager()),
             get_validation_service: Arc::clone(context.get_validation_service()),
-            peer_performance_tracker: Arc::clone(context.peer_performance_tracker()),
+            peer_service: Arc::clone(context.peer_service()),
         }
     }
 
@@ -215,18 +214,16 @@ impl SyncCommandHandler {
         let fetch_handle = {
             let blockchain_id = blockchain_id.clone();
             let network_manager = Arc::clone(&self.network_manager);
-            let repository_manager = Arc::clone(&self.repository_manager);
             let get_validation_service = Arc::clone(&self.get_validation_service);
-            let peer_performance_tracker = Arc::clone(&self.peer_performance_tracker);
+            let peer_service = Arc::clone(&self.peer_service);
             tokio::spawn(
                 async move {
                     fetch_task(
                         filter_rx,
                         blockchain_id,
                         network_manager,
-                        repository_manager,
                         get_validation_service,
-                        peer_performance_tracker,
+                        peer_service,
                         fetch_tx,
                     )
                     .await
@@ -448,27 +445,18 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
         fields(blockchain_id = %data.blockchain_id)
     )]
     async fn execute(&self, data: &SyncCommandData) -> CommandExecutionResult {
-        // Check if we have enough connected peers before attempting sync
-        let connected_peers = match self.network_manager.connected_peers().await {
-            Ok(peers) => peers,
-            Err(e) => {
-                tracing::warn!(
-                    blockchain_id = %data.blockchain_id,
-                    error = %e,
-                    "Failed to get connected peers, retrying later"
-                );
-                return CommandExecutionResult::Repeat {
-                    delay: SYNC_NO_PEERS_RETRY_DELAY,
-                };
-            }
-        };
+        // Check if we have identified enough shard peers before attempting sync
+        let total_shard_peers = self.peer_service.shard_peer_count(&data.blockchain_id);
+        let identified_peers = self.peer_service.identified_shard_peer_count(&data.blockchain_id);
+        let min_required = (total_shard_peers / 2).max(1);
 
-        if connected_peers.len() < batch_get::CONCURRENT_PEERS {
+        if identified_peers < min_required {
             tracing::debug!(
                 blockchain_id = %data.blockchain_id,
-                connected = connected_peers.len(),
-                required = batch_get::CONCURRENT_PEERS,
-                "Not enough peers connected yet, retrying later"
+                identified = identified_peers,
+                total = total_shard_peers,
+                required = min_required,
+                "Not enough shard peers identified yet, retrying later"
             );
             return CommandExecutionResult::Repeat {
                 delay: SYNC_NO_PEERS_RETRY_DELAY,
@@ -477,7 +465,8 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
 
         tracing::debug!(
             blockchain_id = %data.blockchain_id,
-            connected_peers = connected_peers.len(),
+            identified_peers,
+            total_shard_peers,
             "Starting sync cycle"
         );
 

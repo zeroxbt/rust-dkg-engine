@@ -10,10 +10,9 @@ use crate::{
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
         network::{NetworkManager, messages::StoreAck},
-        repository::RepositoryManager,
         triple_store::Assertion,
     },
-    services::{ResponseChannels, pending_storage_service::PendingStorageService},
+    services::{PeerService, ResponseChannels, pending_storage_service::PendingStorageService},
     utils::validation,
 };
 
@@ -47,9 +46,9 @@ impl HandlePublishStoreRequestCommandData {
 }
 
 pub(crate) struct HandlePublishStoreRequestCommandHandler {
-    repository_manager: Arc<RepositoryManager>,
     pub(super) network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
+    peer_service: Arc<PeerService>,
     response_channels: Arc<ResponseChannels<StoreAck>>,
     pending_storage_service: Arc<PendingStorageService>,
 }
@@ -57,9 +56,9 @@ pub(crate) struct HandlePublishStoreRequestCommandHandler {
 impl HandlePublishStoreRequestCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
-            repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
+            peer_service: Arc::clone(context.peer_service()),
             response_channels: Arc::clone(context.store_response_channels()),
             pending_storage_service: Arc::clone(context.pending_storage_service()),
         }
@@ -100,49 +99,30 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             );
             return CommandExecutionResult::Completed;
         };
-        match self
-            .repository_manager
-            .shard_repository()
-            .get_peer_record(blockchain.as_str(), &remote_peer_id.to_base58())
-            .await
+
+        // Validate that the remote peer is in our shard
+        if self
+            .peer_service
+            .is_peer_in_shard(blockchain, remote_peer_id)
         {
-            Ok(Some(_record)) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    remote_peer_id = %remote_peer_id,
-                    "Remote peer validated against shard repository"
-                );
-            }
-            invalid_result => {
-                let error_message = match &invalid_result {
-                    Err(e) => format!(
-                        "Failed to get remote peer: {remote_peer_id} in shard_repository for operation: {operation_id}. Error: {e}"
-                    ),
-                    Ok(None) => format!(
-                        "Remote peer {} not found in shard repository for blockchain: {}, operation: {operation_id}",
-                        remote_peer_id,
-                        blockchain.as_str()
-                    ),
-                    _ => format!(
-                        "Invalid shard on blockchain: {}, operation: {operation_id}",
-                        blockchain.as_str()
-                    ),
-                };
+            tracing::debug!(
+                operation_id = %operation_id,
+                remote_peer_id = %remote_peer_id,
+                "Remote peer validated against peer service"
+            );
+        } else {
+            tracing::warn!(
+                operation_id = %operation_id,
+                remote_peer_id = %remote_peer_id,
+                blockchain = %blockchain,
+                "Remote peer not found in shard - sending NACK"
+            );
 
-                tracing::warn!(
-                    operation_id = %operation_id,
-                    remote_peer_id = %remote_peer_id,
-                    blockchain = %blockchain,
-                    error = %error_message,
-                    "Peer validation failed - sending NACK"
-                );
+            self.send_nack(channel, operation_id, "Invalid neighbourhood")
+                .await;
 
-                self.send_nack(channel, operation_id, "Invalid neighbourhood")
-                    .await;
-
-                return CommandExecutionResult::Completed;
-            }
-        };
+            return CommandExecutionResult::Completed;
+        }
 
         let computed_dataset_root = validation::calculate_merkle_root(&dataset.public);
 

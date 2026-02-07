@@ -5,47 +5,24 @@ use libp2p::PeerId;
 use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
-    managers::{network::NetworkManager, repository::RepositoryManager},
-    services::PeerDiscoveryTracker,
+    managers::network::NetworkManager,
+    services::PeerService,
 };
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
 const CONCURRENT_PEER_DIALS: usize = 20;
 
 pub(crate) struct DialPeersCommandHandler {
-    repository_manager: Arc<RepositoryManager>,
     network_manager: Arc<NetworkManager>,
-    peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
+    peer_service: Arc<PeerService>,
 }
 
 impl DialPeersCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
-            repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
-            peer_discovery_tracker: Arc::clone(context.peer_discovery_tracker()),
+            peer_service: Arc::clone(context.peer_service()),
         }
-    }
-
-    /// Fetches peer IDs from the shard table and parses them.
-    async fn get_shard_peer_ids(&self) -> Result<Vec<PeerId>, String> {
-        let peer_id_strings = self
-            .repository_manager
-            .shard_repository()
-            .get_all_peer_ids()
-            .await
-            .map_err(|e| format!("failed to fetch peer ids from shard table: {}", e))?;
-
-        Ok(peer_id_strings
-            .into_iter()
-            .filter_map(|s| match s.parse::<PeerId>() {
-                Ok(peer_id) => Some(peer_id),
-                Err(e) => {
-                    tracing::warn!(%s, error = %e, "invalid peer id in shard table");
-                    None
-                }
-            })
-            .collect())
     }
 
     /// Returns currently connected peers that are in the shard table.
@@ -85,11 +62,11 @@ impl DialPeersCommandHandler {
 
     /// Returns true if peer should be attempted (not in backoff).
     fn check_backoff(&self, peer_id: &PeerId) -> bool {
-        if self.peer_discovery_tracker.should_attempt(peer_id) {
+        if self.peer_service.should_attempt_discovery(peer_id) {
             return true;
         }
 
-        if let Some(backoff) = self.peer_discovery_tracker.get_backoff(peer_id) {
+        if let Some(backoff) = self.peer_service.discovery_backoff(peer_id) {
             tracing::trace!(
                 %peer_id,
                 backoff_secs = backoff.as_secs(),
@@ -111,6 +88,7 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
             own_peer_id = tracing::field::Empty,
             total_peers = tracing::field::Empty,
             connected = tracing::field::Empty,
+            in_backoff = tracing::field::Empty,
             to_discover = tracing::field::Empty,
         )
     )]
@@ -122,13 +100,7 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
         tracing::Span::current().record("own_peer_id", tracing::field::display(&own_peer_id));
 
         // Get all peer IDs from shard table
-        let all_peers = match self.get_shard_peer_ids().await {
-            Ok(peers) => peers,
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to load shard peer IDs");
-                return repeat();
-            }
-        };
+        let all_peers = self.peer_service.get_all_shard_peer_ids();
 
         let all_peers_set: HashSet<PeerId> = all_peers.iter().copied().collect();
         let total_peers = all_peers.len();
@@ -147,23 +119,40 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
         let peers_to_find =
             self.filter_peers_for_discovery(all_peers, &own_peer_id, &connected_peers);
 
-        tracing::Span::current()
-            .record("connected", tracing::field::display(connected_peers.len()));
-        tracing::Span::current()
-            .record("to_discover", tracing::field::display(peers_to_find.len()));
+        // Count disconnected peers in backoff (total - self - connected - to_discover)
+        let in_backoff = total_peers
+            .saturating_sub(1) // self
+            .saturating_sub(connected_peers.len())
+            .saturating_sub(peers_to_find.len());
+
+        let span = tracing::Span::current();
+        span.record("connected", tracing::field::display(connected_peers.len()));
+        span.record("in_backoff", tracing::field::display(in_backoff));
+        span.record("to_discover", tracing::field::display(peers_to_find.len()));
 
         if peers_to_find.is_empty() {
-            tracing::debug!(
-                total_peers,
-                connected = connected_peers.len(),
-                "all shard table peers are connected"
-            );
+            if in_backoff > 0 {
+                tracing::debug!(
+                    total_peers,
+                    connected = connected_peers.len(),
+                    in_backoff,
+                    "no peers to discover, {} disconnected peers in backoff",
+                    in_backoff,
+                );
+            } else {
+                tracing::debug!(
+                    total_peers,
+                    connected = connected_peers.len(),
+                    "all shard peers are connected"
+                );
+            }
             return repeat();
         }
 
         tracing::debug!(
             to_discover = peers_to_find.len(),
             connected = connected_peers.len(),
+            in_backoff,
             "discovering disconnected peers via DHT"
         );
 

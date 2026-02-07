@@ -10,7 +10,7 @@ use crate::{
         publish_store_rpc_controller::PublishStoreRpcController,
     },
     managers::network::{
-        Multiaddr, NetworkEventHandler, NetworkManager, PeerId,
+        NetworkEventHandler, NetworkManager, PeerId,
         message::{
             RequestMessage, ResponseBody, ResponseMessage, ResponseMessageHeader,
             ResponseMessageType,
@@ -21,7 +21,7 @@ use crate::{
         },
         request_response::ResponseChannel,
     },
-    services::{PeerDiscoveryTracker, PeerRateLimiter},
+    services::PeerRateLimiter,
 };
 
 pub(crate) struct RpcRouter {
@@ -30,7 +30,6 @@ pub(crate) struct RpcRouter {
     get_controller: Arc<GetRpcController>,
     finality_controller: Arc<PublishFinalityRpcController>,
     batch_get_controller: Arc<BatchGetRpcController>,
-    peer_discovery_tracker: Arc<PeerDiscoveryTracker>,
     peer_rate_limiter: Arc<PeerRateLimiter>,
 }
 
@@ -42,7 +41,6 @@ impl RpcRouter {
             get_controller: Arc::new(GetRpcController::new(Arc::clone(&context))),
             finality_controller: Arc::new(PublishFinalityRpcController::new(Arc::clone(&context))),
             batch_get_controller: Arc::new(BatchGetRpcController::new(Arc::clone(&context))),
-            peer_discovery_tracker: Arc::clone(context.peer_discovery_tracker()),
             peer_rate_limiter: Arc::clone(context.peer_rate_limiter()),
         }
     }
@@ -175,26 +173,5 @@ impl NetworkEventHandler for RpcRouter {
         self.batch_get_controller
             .handle_request(request, channel, peer)
             .await;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Infrastructure events
-    // ─────────────────────────────────────────────────────────────────────────
-
-    async fn on_kad_peer_not_found(&self, target: PeerId) {
-        tracing::debug!(%target, "DHT lookup did not find target peer");
-        self.peer_discovery_tracker.record_failure(target);
-    }
-
-    async fn on_connection_established(&self, peer_id: PeerId) {
-        self.peer_discovery_tracker.record_success(&peer_id);
-    }
-
-    async fn on_connection_closed(&self, _peer_id: PeerId) {
-        // Could track disconnections if needed
-    }
-
-    fn on_new_listen_addr(&self, address: Multiaddr) {
-        tracing::info!("Listening on {}", address);
     }
 }

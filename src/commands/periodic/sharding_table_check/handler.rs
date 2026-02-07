@@ -7,26 +7,191 @@ use crate::{
     commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
     context::Context,
     error::NodeError,
-    managers::{
-        blockchain::{BlockchainId, BlockchainManager, chains::evm::ShardingTableLib::NodeInfo},
-        repository::{RepositoryManager, ShardRecordInput},
-    },
+    managers::blockchain::{BlockchainId, BlockchainManager, chains::evm::ShardingTableLib::NodeInfo},
+    services::PeerService,
 };
 
 /// Interval between sharding table synchronization checks (10 seconds)
 const SHARDING_TABLE_CHECK_PERIOD: Duration = Duration::from_secs(10);
 const SHARDING_TABLE_PAGE_SIZE: u128 = 100;
 
+/// Retry configuration for startup seeding
+const SEED_MAX_RETRIES: u32 = 5;
+const SEED_INITIAL_BACKOFF: Duration = Duration::from_secs(2);
+const SEED_MAX_BACKOFF: Duration = Duration::from_secs(30);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Startup seeding
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Seed the peer registry with sharding tables from all blockchains.
+/// Call this at startup before commands begin processing.
+///
+/// Retries with exponential backoff on failure. Panics if any blockchain
+/// fails after all retries - the node cannot operate without shard data.
+pub(crate) async fn seed_sharding_tables(
+    blockchain_manager: &BlockchainManager,
+    peer_service: &PeerService,
+) {
+    let blockchain_ids = blockchain_manager.get_blockchain_ids();
+
+    for blockchain in blockchain_ids {
+        seed_blockchain_with_retry(blockchain_manager, peer_service, blockchain).await;
+    }
+}
+
+async fn seed_blockchain_with_retry(
+    blockchain_manager: &BlockchainManager,
+    peer_service: &PeerService,
+    blockchain: &BlockchainId,
+) {
+    let mut backoff = SEED_INITIAL_BACKOFF;
+
+    for attempt in 1..=SEED_MAX_RETRIES {
+        match pull_sharding_table(blockchain_manager, peer_service, blockchain).await {
+            Ok(count) => {
+                tracing::info!(
+                    blockchain = %blockchain,
+                    peer_count = count,
+                    "Seeded sharding table"
+                );
+                return;
+            }
+            Err(error) => {
+                if attempt == SEED_MAX_RETRIES {
+                    panic!(
+                        "Failed to seed sharding table for {} after {} attempts: {}. \
+                         Node cannot operate without shard data.",
+                        blockchain, SEED_MAX_RETRIES, error
+                    );
+                }
+
+                tracing::warn!(
+                    blockchain = %blockchain,
+                    attempt = attempt,
+                    max_attempts = SEED_MAX_RETRIES,
+                    error = %error,
+                    backoff_secs = backoff.as_secs(),
+                    "Failed to seed sharding table, retrying..."
+                );
+
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(SEED_MAX_BACKOFF);
+            }
+        }
+    }
+}
+
+/// Pull the full sharding table for a blockchain and update the peer registry.
+/// Returns the number of peers loaded.
+async fn pull_sharding_table(
+    blockchain_manager: &BlockchainManager,
+    peer_service: &PeerService,
+    blockchain: &BlockchainId,
+) -> Result<usize, NodeError> {
+    let sharding_table_length = blockchain_manager
+        .get_sharding_table_length(blockchain)
+        .await?;
+
+    if sharding_table_length == 0 {
+        peer_service.set_shard_membership(blockchain, &[]);
+        return Ok(0);
+    }
+
+    let mut starting_identity_id = blockchain_manager
+        .get_sharding_table_head(blockchain)
+        .await?;
+    let mut page_index = 0usize;
+    let mut peer_ids: Vec<PeerId> = Vec::new();
+    let mut total_nodes_processed: u128 = 0;
+
+    while total_nodes_processed < sharding_table_length {
+        let remaining = sharding_table_length - total_nodes_processed;
+        let slice_start = if page_index == 0 { 0 } else { 1 };
+        let nodes_to_fetch = remaining
+            .saturating_add(slice_start as u128)
+            .min(SHARDING_TABLE_PAGE_SIZE);
+
+        let nodes = blockchain_manager
+            .get_sharding_table_page(blockchain, starting_identity_id, nodes_to_fetch)
+            .await?;
+
+        if nodes.is_empty() {
+            break;
+        }
+
+        let nodes_in_page = nodes.len().saturating_sub(slice_start) as u128;
+        collect_peer_ids(blockchain, &nodes, slice_start, &mut peer_ids);
+        total_nodes_processed += nodes_in_page;
+
+        let last_node = nodes.last().expect("non-empty nodes");
+        if last_node.identityId == 0 || last_node.identityId == starting_identity_id {
+            break;
+        }
+
+        starting_identity_id = last_node.identityId.to();
+        page_index += 1;
+    }
+
+    peer_service.set_shard_membership(blockchain, &peer_ids);
+
+    Ok(peer_ids.len())
+}
+
+fn collect_peer_ids(
+    blockchain: &BlockchainId,
+    nodes: &[NodeInfo],
+    slice_start: usize,
+    peer_ids: &mut Vec<PeerId>,
+) {
+    for node in nodes.iter().skip(slice_start) {
+        if node.nodeId.is_empty() {
+            break;
+        }
+
+        let peer_id_str = match std::str::from_utf8(&node.nodeId) {
+            Ok(s) => s,
+            Err(err) => {
+                tracing::warn!(
+                    blockchain = %blockchain,
+                    error = %err,
+                    "Skipping sharding table node with invalid UTF-8 node id"
+                );
+                continue;
+            }
+        };
+
+        let peer_id: PeerId = match peer_id_str.parse() {
+            Ok(peer_id) => peer_id,
+            Err(err) => {
+                tracing::warn!(
+                    blockchain = %blockchain,
+                    error = %err,
+                    peer_id_str = %peer_id_str,
+                    "Skipping sharding table node with invalid peer id"
+                );
+                continue;
+            }
+        };
+
+        peer_ids.push(peer_id);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Command handler
+// ─────────────────────────────────────────────────────────────────────────────
+
 pub(crate) struct ShardingTableCheckCommandHandler {
-    repository_manager: Arc<RepositoryManager>,
     blockchain_manager: Arc<BlockchainManager>,
+    peer_service: Arc<PeerService>,
 }
 
 impl ShardingTableCheckCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
-            repository_manager: Arc::clone(context.repository_manager()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
+            peer_service: Arc::clone(context.peer_service()),
         }
     }
 
@@ -39,27 +204,13 @@ impl ShardingTableCheckCommandHandler {
             .get_sharding_table_length(blockchain)
             .await?;
 
-        let local_count = self
-            .repository_manager
-            .shard_repository()
-            .get_peers_count(blockchain.as_str())
-            .await?;
+        let local_count = self.peer_service.shard_peer_count(blockchain);
 
-        if sharding_table_length == u128::from(local_count) {
+        // Skip if counts match (optimization to avoid fetching unchanged data)
+        if sharding_table_length == local_count as u128 {
             return Ok(false);
         }
 
-        self.pull_blockchain_sharding_table(blockchain, sharding_table_length, local_count)
-            .await?;
-        Ok(true)
-    }
-
-    async fn pull_blockchain_sharding_table(
-        &self,
-        blockchain: &BlockchainId,
-        sharding_table_length: u128,
-        local_count: u64,
-    ) -> Result<(), NodeError> {
         tracing::debug!(
             blockchain = %blockchain,
             chain_length = sharding_table_length,
@@ -67,107 +218,8 @@ impl ShardingTableCheckCommandHandler {
             "Refreshing local sharding table"
         );
 
-        if sharding_table_length == 0 {
-            self.repository_manager
-                .shard_repository()
-                .replace_sharding_table(blockchain.as_str(), Vec::new())
-                .await?;
-            return Ok(());
-        }
-
-        let mut starting_identity_id = self
-            .blockchain_manager
-            .get_sharding_table_head(blockchain)
-            .await?;
-        let mut page_index = 0usize;
-        let mut records = Vec::new();
-        let mut total_nodes_processed: u128 = 0;
-
-        while total_nodes_processed < sharding_table_length {
-            // Only request as many nodes as we need (remaining nodes, capped by page size)
-            let remaining = sharding_table_length - total_nodes_processed;
-            let slice_start = if page_index == 0 { 0 } else { 1 };
-            // Add 1 to account for the overlapping node when slice_start == 1
-            let nodes_to_fetch = remaining
-                .saturating_add(slice_start as u128)
-                .min(SHARDING_TABLE_PAGE_SIZE);
-
-            let nodes = self
-                .blockchain_manager
-                .get_sharding_table_page(blockchain, starting_identity_id, nodes_to_fetch)
-                .await?;
-
-            if nodes.is_empty() {
-                break;
-            }
-
-            let nodes_in_page = nodes.len().saturating_sub(slice_start) as u128;
-            self.append_shard_records(blockchain, &nodes, slice_start, &mut records);
-            total_nodes_processed += nodes_in_page;
-
-            // Check if we've reached the end of the linked list
-            let last_node = nodes.last().expect("non-empty nodes");
-            if last_node.identityId == 0 || last_node.identityId == starting_identity_id {
-                break;
-            }
-
-            starting_identity_id = last_node.identityId.to();
-            page_index += 1;
-        }
-
-        self.repository_manager
-            .shard_repository()
-            .replace_sharding_table(blockchain.as_str(), records)
-            .await?;
-
-        Ok(())
-    }
-
-    fn append_shard_records(
-        &self,
-        blockchain: &BlockchainId,
-        nodes: &[NodeInfo],
-        slice_start: usize,
-        records: &mut Vec<ShardRecordInput>,
-    ) {
-        for node in nodes.iter().skip(slice_start) {
-            // Empty nodeId indicates end of the linked list (padding in fixed-size page response)
-            if node.nodeId.is_empty() {
-                break;
-            }
-
-            // The node_id is stored on-chain as UTF-8 bytes of the base58 peer ID string,
-            // so we need to convert to string first, then parse as PeerId
-            let peer_id_str = match std::str::from_utf8(&node.nodeId) {
-                Ok(s) => s,
-                Err(err) => {
-                    tracing::warn!(
-                        blockchain = %blockchain,
-                        error = %err,
-                        "Skipping sharding table node with invalid UTF-8 node id"
-                    );
-                    continue;
-                }
-            };
-
-            let peer_id: PeerId = match peer_id_str.parse() {
-                Ok(peer_id) => peer_id,
-                Err(err) => {
-                    tracing::warn!(
-                        blockchain = %blockchain,
-                        error = %err,
-                        peer_id_str = %peer_id_str,
-                        "Skipping sharding table node with invalid peer id"
-                    );
-                    continue;
-                }
-            };
-
-            records.push(ShardRecordInput {
-                peer_id: peer_id.to_base58(),
-                blockchain_id: blockchain.to_string(),
-            });
-        }
+        pull_sharding_table(&self.blockchain_manager, &self.peer_service, blockchain).await?;
+        Ok(true)
     }
 }
 

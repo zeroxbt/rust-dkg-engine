@@ -6,9 +6,12 @@ use sea_orm::{
     QuerySelect,
 };
 
-use crate::managers::repository::{
-    error::Result,
-    models::proof_challenge::{ActiveModel, Column, Entity, Model},
+use crate::{
+    managers::repository::{
+        error::Result,
+        models::proof_challenge::{ActiveModel, Column, Entity, Model},
+    },
+    types::BlockchainId,
 };
 
 /// Challenge state for the proofing workflow.

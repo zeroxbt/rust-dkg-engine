@@ -4,5 +4,4 @@ pub(crate) mod kc_sync_progress;
 pub(crate) mod kc_sync_queue;
 pub(crate) mod operations;
 pub(crate) mod proof_challenge;
-pub(crate) mod shard;
 pub(crate) mod triples_insert_count;

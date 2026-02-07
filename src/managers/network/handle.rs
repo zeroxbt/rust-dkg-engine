@@ -3,15 +3,13 @@
 //! This is the public-facing API that callers use to interact with the network.
 //! It communicates with the NetworkEventLoop via an action channel.
 
-use std::sync::Arc;
-
-use libp2p::{PeerId, StreamProtocol, identity, request_response};
-use tokio::sync::{mpsc, oneshot};
+use libp2p::{PeerId, identity, request_response};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::instrument;
 use uuid::Uuid;
 
 use super::{
-    NetworkError, NetworkManagerConfig, PeerInfo, PeerStore, ResponseMessage,
+    NetworkError, NetworkManagerConfig, ResponseMessage,
     actions::NetworkAction,
     behaviour::build_swarm,
     protocols::{
@@ -28,7 +26,7 @@ use super::{
 pub(crate) struct NetworkManager {
     action_tx: mpsc::Sender<NetworkAction>,
     peer_id: PeerId,
-    peer_store: Arc<PeerStore>,
+    peer_event_tx: broadcast::Sender<super::PeerEvent>,
 }
 
 impl NetworkManager {
@@ -49,16 +47,20 @@ impl NetworkManager {
     ) -> Result<(Self, super::event_loop::NetworkEventLoop), NetworkError> {
         let (swarm, local_peer_id) = build_swarm(config, key)?;
         let (action_tx, action_rx) = mpsc::channel(128);
-        let peer_store = Arc::new(PeerStore::new());
+        let (peer_event_tx, _) = broadcast::channel(1024);
 
         let handle = Self {
             action_tx,
             peer_id: local_peer_id,
-            peer_store: Arc::clone(&peer_store),
+            peer_event_tx: peer_event_tx.clone(),
         };
 
-        let event_loop =
-            super::event_loop::NetworkEventLoop::new(swarm, action_rx, config.clone(), peer_store);
+        let event_loop = super::event_loop::NetworkEventLoop::new(
+            swarm,
+            action_rx,
+            config.clone(),
+            peer_event_tx,
+        );
 
         Ok((handle, event_loop))
     }
@@ -68,34 +70,8 @@ impl NetworkManager {
         &self.peer_id
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn peer_info(&self, peer_id: &PeerId) -> Option<PeerInfo> {
-        self.peer_store.get(peer_id)
-    }
-
-    pub(crate) fn peer_supports_protocol(&self, peer_id: &PeerId, protocol: &'static str) -> bool {
-        let protocol = StreamProtocol::new(protocol);
-        self.peer_store
-            .get(peer_id)
-            .map(|info| info.protocols.contains(&protocol))
-            .unwrap_or(false)
-    }
-
-    pub(crate) fn filter_peers_by_protocol(
-        &self,
-        peers: Vec<PeerId>,
-        protocol: &'static str,
-    ) -> Vec<PeerId> {
-        let protocol = StreamProtocol::new(protocol);
-        peers
-            .into_iter()
-            .filter(|peer_id| {
-                self.peer_store
-                    .get(peer_id)
-                    .map(|info| info.protocols.contains(&protocol))
-                    .unwrap_or(false)
-            })
-            .collect()
+    pub(crate) fn subscribe_peer_events(&self) -> broadcast::Receiver<super::PeerEvent> {
+        self.peer_event_tx.subscribe()
     }
 
     async fn enqueue_action(&self, action: NetworkAction) -> Result<(), NetworkError> {

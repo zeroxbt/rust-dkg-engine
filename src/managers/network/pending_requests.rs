@@ -2,11 +2,24 @@
 //!
 //! Tracks outbound requests and their oneshot channels for response delivery.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
+use libp2p::PeerId;
 use tokio::sync::oneshot;
 
 use super::{error::NetworkError, request_response::OutboundRequestId};
+
+/// Metadata captured when a request is sent, used for outcome tracking.
+pub(crate) struct RequestContext {
+    pub(crate) peer_id: PeerId,
+    pub(crate) protocol: &'static str,
+    pub(crate) started_at: Instant,
+}
+
+struct PendingRequest<T> {
+    sender: oneshot::Sender<Result<T, NetworkError>>,
+    context: RequestContext,
+}
 
 /// Tracks pending outbound requests and their oneshot channels for response delivery.
 ///
@@ -20,8 +33,8 @@ use super::{error::NetworkError, request_response::OutboundRequestId};
 /// This is designed for single-threaded access within the NetworkService event loop.
 /// All methods take `&mut self` and use a plain `HashMap`.
 pub(crate) struct PendingRequests<T> {
-    /// Maps request_id -> oneshot sender for delivering responses
-    pending: HashMap<OutboundRequestId, oneshot::Sender<Result<T, NetworkError>>>,
+    /// Maps request_id -> pending request details (sender + context)
+    pending: HashMap<OutboundRequestId, PendingRequest<T>>,
 }
 
 impl<T> PendingRequests<T>
@@ -34,7 +47,7 @@ where
         }
     }
 
-    /// Register a pending request with a pre-created sender.
+    /// Register a pending request with a pre-created sender and context.
     ///
     /// This is the preferred method - the caller creates the channel and passes the sender,
     /// keeping the receiver to await the response. This avoids nested channel indirection.
@@ -42,50 +55,59 @@ where
         &mut self,
         request_id: OutboundRequestId,
         sender: oneshot::Sender<Result<T, NetworkError>>,
+        context: RequestContext,
     ) {
-        self.pending.insert(request_id, sender);
+        self.pending.insert(
+            request_id,
+            PendingRequest {
+                sender,
+                context,
+            },
+        );
         tracing::trace!(?request_id, "Registered pending request");
     }
 
     /// Complete a pending request with a successful response.
     ///
     /// Called by the network event handler when a response arrives.
-    /// Returns true if the request was found and completed, false if it was
-    /// already completed or timed out.
-    pub(crate) fn complete_success(&mut self, request_id: OutboundRequestId, response: T) -> bool {
-        if let Some(sender) = self.pending.remove(&request_id) {
-            let _ = sender.send(Ok(response));
+    /// Returns the request context if found, otherwise None.
+    pub(crate) fn complete_success(
+        &mut self,
+        request_id: OutboundRequestId,
+        response: T,
+    ) -> Option<RequestContext> {
+        if let Some(pending) = self.pending.remove(&request_id) {
+            let _ = pending.sender.send(Ok(response));
             tracing::trace!(?request_id, "Completed pending request with success");
-            true
+            Some(pending.context)
         } else {
             tracing::debug!(
                 ?request_id,
                 "No pending request found (already completed or timed out)"
             );
-            false
+            None
         }
     }
 
     /// Complete a pending request with a failure.
     ///
     /// Called by the network event handler when a timeout or dial failure occurs.
-    /// Returns true if the request was found and completed, false if it was
-    /// already completed.
+    /// Returns the request context if found, otherwise None.
     pub(crate) fn complete_failure(
         &mut self,
         request_id: OutboundRequestId,
         error: NetworkError,
-    ) -> bool {
-        if let Some(sender) = self.pending.remove(&request_id) {
-            let _ = sender.send(Err(error));
+    ) -> Option<RequestContext> {
+        if let Some(pending) = self.pending.remove(&request_id) {
+            let _ = pending.sender.send(Err(error));
             tracing::trace!(?request_id, "Completed pending request with failure");
-            true
+            Some(pending.context)
         } else {
             tracing::debug!(
                 ?request_id,
                 "No pending request found for failure (already completed)"
             );
-            false
+            None
         }
     }
 }

@@ -7,8 +7,8 @@ use crate::{
         network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
     services::{
-        GetValidationService, PeerDiscoveryTracker, PeerPerformanceTracker, PeerRateLimiter,
-        ResponseChannels, Services, TripleStoreService,
+        GetValidationService, PeerRateLimiter, PeerService, ResponseChannels,
+        Services, TripleStoreService,
     },
 };
 
@@ -61,12 +61,8 @@ impl Context {
         &self.services.pending_storage
     }
 
-    pub(crate) fn peer_discovery_tracker(&self) -> &Arc<PeerDiscoveryTracker> {
-        &self.services.peer_discovery_tracker
-    }
-
-    pub(crate) fn peer_performance_tracker(&self) -> &Arc<PeerPerformanceTracker> {
-        &self.services.peer_performance_tracker
+    pub(crate) fn peer_service(&self) -> &Arc<PeerService> {
+        &self.services.peer_service
     }
 
     pub(crate) fn peer_rate_limiter(&self) -> &Arc<PeerRateLimiter> {

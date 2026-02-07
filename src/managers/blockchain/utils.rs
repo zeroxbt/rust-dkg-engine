@@ -1,4 +1,4 @@
-use alloy::primitives::{U256, hex, keccak256};
+use alloy::primitives::{hex, keccak256};
 use sha2::{Digest, Sha256};
 
 pub(crate) fn to_hex_string(data: impl AsRef<[u8]>) -> String {

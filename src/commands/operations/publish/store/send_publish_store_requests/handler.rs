@@ -15,13 +15,13 @@ use crate::{
             messages::{StoreRequestData, StoreResponseData},
             protocols::{ProtocolSpec, StoreProtocol},
         },
-        repository::RepositoryManager,
         triple_store::Assertion,
     },
     operations::{PublishStoreOperationResult, protocols},
     services::{
         operation_status::OperationStatusService as GenericOperationService,
         pending_storage_service::PendingStorageService,
+        PeerService,
     },
 };
 
@@ -55,8 +55,8 @@ impl SendPublishStoreRequestsCommandData {
 }
 
 pub(crate) struct SendPublishStoreRequestsCommandHandler {
-    pub(super) repository_manager: Arc<RepositoryManager>,
     pub(super) network_manager: Arc<NetworkManager>,
+    pub(super) peer_service: Arc<PeerService>,
     pub(super) blockchain_manager: Arc<BlockchainManager>,
     pub(super) publish_store_operation_status_service:
         Arc<GenericOperationService<PublishStoreOperationResult>>,
@@ -66,8 +66,8 @@ pub(crate) struct SendPublishStoreRequestsCommandHandler {
 impl SendPublishStoreRequestsCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
-            repository_manager: Arc::clone(context.repository_manager()),
             network_manager: Arc::clone(context.network_manager()),
+            peer_service: Arc::clone(context.peer_service()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             publish_store_operation_status_service: Arc::clone(
                 context.publish_store_operation_status_service(),
@@ -122,53 +122,26 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
 
         let min_ack_responses = default_min.max(chain_min).max(user_min);
 
-        let shard_nodes = match self
-            .repository_manager
-            .shard_repository()
-            .get_all_peer_records(blockchain.as_str())
-            .await
-        {
-            Ok(shard_nodes) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    shard_nodes_count = shard_nodes.len(),
-                    "Retrieved shard nodes from repository"
-                );
-                shard_nodes
-            }
-            Err(e) => {
-                let error_message = format!(
-                    "Failed to get shard nodes from repository for operation: {operation_id}. Error: {e}"
-                );
-                tracing::error!(
-                    operation_id = %operation_id,
-                    error = %e,
-                    "Failed to get shard nodes"
-                );
-
-                self.publish_store_operation_status_service
-                    .mark_failed(operation_id, error_message)
-                    .await;
-                return CommandExecutionResult::Completed;
-            }
-        };
-
         let my_peer_id = *self.network_manager.peer_id();
 
         // Check if we are in the shard nodes (publisher node)
-        let self_in_shard = shard_nodes
-            .iter()
-            .any(|node| node.peer_id.parse::<PeerId>().ok() == Some(my_peer_id));
+        let self_in_shard = self
+            .peer_service
+            .is_peer_in_shard(blockchain, &my_peer_id);
 
-        // Parse peer IDs and filter out self
-        let remote_peers: Vec<PeerId> = shard_nodes
-            .iter()
-            .filter_map(|record| record.peer_id.parse().ok())
-            .filter(|peer_id| *peer_id != my_peer_id)
-            .collect();
-        let remote_peers = self
-            .network_manager
-            .filter_peers_by_protocol(remote_peers, StoreProtocol::STREAM_PROTOCOL);
+        // Get remote peers that support the store protocol, excluding self
+        let remote_peers = self.peer_service.select_shard_peers(
+            blockchain,
+            StoreProtocol::STREAM_PROTOCOL,
+            Some(&my_peer_id),
+        );
+
+        tracing::debug!(
+            operation_id = %operation_id,
+            remote_peers_count = remote_peers.len(),
+            self_in_shard = self_in_shard,
+            "Retrieved shard peers from peer service"
+        );
 
         // Total peers includes self if we're in the shard
         let total_peers = if self_in_shard {
