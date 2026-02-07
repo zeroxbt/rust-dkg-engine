@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use dashmap::{DashMap, mapref::entry::Entry};
+use dashmap::DashMap;
 use libp2p::{Multiaddr, PeerId, StreamProtocol};
 
 use crate::{managers::network::IdentifyInfo, types::BlockchainId};
@@ -90,18 +90,12 @@ impl PeerRegistry {
     // ─────────────────────────────────────────────────────────────────────────────
 
     pub(crate) fn update_identify(&self, peer_id: PeerId, info: IdentifyInfo) {
-        let record = IdentifyRecord {
-            protocols: info.protocols,
-            listen_addrs: info.listen_addrs,
-        };
-
-        self.peers
-            .entry(peer_id)
-            .and_modify(|peer| peer.identify = Some(record.clone()))
-            .or_insert_with(|| PeerRecord {
-                identify: Some(record),
-                ..PeerRecord::default()
+        if let Some(mut peer) = self.peers.get_mut(&peer_id) {
+            peer.identify = Some(IdentifyRecord {
+                protocols: info.protocols,
+                listen_addrs: info.listen_addrs,
             });
+        }
     }
 
     pub(crate) fn peer_supports_protocol(&self, peer_id: &PeerId, protocol: &'static str) -> bool {
@@ -237,34 +231,17 @@ impl PeerRegistry {
 
     /// Record a successful request with its latency.
     pub(crate) fn record_latency(&self, peer_id: PeerId, latency: Duration) {
-        let latency_ms = latency.as_millis() as u64;
-        match self.peers.entry(peer_id) {
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().performance.record(latency_ms);
-            }
-            Entry::Vacant(entry) => {
-                let mut record = PeerRecord::default();
-                record.performance.record(latency_ms);
-                entry.insert(record);
-            }
+        if let Some(mut peer) = self.peers.get_mut(&peer_id) {
+            peer.performance.record(latency.as_millis() as u64);
         }
     }
 
     /// Record a failed request (timeout, dial failure, etc.).
     /// Failures are recorded as high latency to naturally sort failing peers last.
     pub(crate) fn record_request_failure(&self, peer_id: PeerId) {
-        match self.peers.entry(peer_id) {
-            Entry::Occupied(mut entry) => {
-                let peer = entry.get_mut();
-                peer.performance.record(FAILURE_LATENCY_MS);
-                peer.last_failure_at = Some(Instant::now());
-            }
-            Entry::Vacant(entry) => {
-                let mut record = PeerRecord::default();
-                record.performance.record(FAILURE_LATENCY_MS);
-                record.last_failure_at = Some(Instant::now());
-                entry.insert(record);
-            }
+        if let Some(mut peer) = self.peers.get_mut(&peer_id) {
+            peer.performance.record(FAILURE_LATENCY_MS);
+            peer.last_failure_at = Some(Instant::now());
         }
     }
 
@@ -313,28 +290,18 @@ impl PeerRegistry {
 
     /// Record a failed discovery attempt for a peer.
     pub(crate) fn record_discovery_failure(&self, peer_id: PeerId) {
-        self.peers
-            .entry(peer_id)
-            .and_modify(|peer| {
-                peer.discovery_failure_count = peer.discovery_failure_count.saturating_add(1);
-                peer.last_discovery_attempt = Some(Instant::now());
-            })
-            .or_insert_with(|| PeerRecord {
-                discovery_failure_count: 1,
-                last_discovery_attempt: Some(Instant::now()),
-                ..PeerRecord::default()
-            });
+        if let Some(mut peer) = self.peers.get_mut(&peer_id) {
+            peer.discovery_failure_count = peer.discovery_failure_count.saturating_add(1);
+            peer.last_discovery_attempt = Some(Instant::now());
+        }
     }
 
     /// Record a successful connection - resets failure tracking.
     pub(crate) fn record_discovery_success(&self, peer_id: PeerId) {
-        self.peers
-            .entry(peer_id)
-            .and_modify(|peer| {
-                peer.discovery_failure_count = 0;
-                peer.last_discovery_attempt = None;
-            })
-            .or_default();
+        if let Some(mut peer) = self.peers.get_mut(&peer_id) {
+            peer.discovery_failure_count = 0;
+            peer.last_discovery_attempt = None;
+        }
     }
 
     /// Get the current backoff delay for a peer (for logging).
@@ -371,6 +338,14 @@ impl Default for PeerRegistry {
 mod tests {
     use super::*;
 
+    const TEST_BLOCKCHAIN: &str = "test:chain";
+
+    /// Helper: register a peer in the registry via shard membership.
+    fn register_peer(registry: &PeerRegistry, peer: PeerId) {
+        let blockchain = BlockchainId::from(TEST_BLOCKCHAIN.to_string());
+        registry.set_shard_membership(&blockchain, &[peer]);
+    }
+
     #[test]
     fn test_unknown_peer_gets_default_latency() {
         let registry = PeerRegistry::new();
@@ -382,6 +357,7 @@ mod tests {
     fn test_record_latency() {
         let registry = PeerRegistry::new();
         let peer = PeerId::random();
+        register_peer(&registry, peer);
 
         registry.record_latency(peer, Duration::from_millis(100));
         assert_eq!(registry.get_average_latency(&peer), 100);
@@ -391,9 +367,20 @@ mod tests {
     }
 
     #[test]
+    fn test_latency_ignored_for_unknown_peer() {
+        let registry = PeerRegistry::new();
+        let peer = PeerId::random();
+
+        registry.record_latency(peer, Duration::from_millis(100));
+        // Peer was never registered, so the latency was silently dropped
+        assert_eq!(registry.get_average_latency(&peer), DEFAULT_LATENCY_MS);
+    }
+
+    #[test]
     fn test_failure_records_high_latency() {
         let registry = PeerRegistry::new();
         let peer = PeerId::random();
+        register_peer(&registry, peer);
 
         registry.record_request_failure(peer);
         assert_eq!(registry.get_average_latency(&peer), FAILURE_LATENCY_MS);
@@ -403,6 +390,7 @@ mod tests {
     fn test_mixed_success_and_failure() {
         let registry = PeerRegistry::new();
         let peer = PeerId::random();
+        register_peer(&registry, peer);
 
         registry.record_latency(peer, Duration::from_millis(1000));
         registry.record_request_failure(peer);
@@ -413,6 +401,7 @@ mod tests {
     fn test_ring_buffer_overwrites_old_entries() {
         let registry = PeerRegistry::new();
         let peer = PeerId::random();
+        register_peer(&registry, peer);
 
         for _ in 0..20 {
             registry.record_latency(peer, Duration::from_millis(100));
@@ -439,6 +428,10 @@ mod tests {
         let failing_peer = PeerId::random();
         let unknown_peer = PeerId::random();
 
+        register_peer(&registry, fast_peer);
+        register_peer(&registry, slow_peer);
+        register_peer(&registry, failing_peer);
+
         registry.record_latency(fast_peer, Duration::from_millis(500));
         registry.record_latency(fast_peer, Duration::from_millis(500));
 
@@ -461,8 +454,9 @@ mod tests {
     fn test_discovery_backoff() {
         let registry = PeerRegistry::new();
         let peer = PeerId::random();
+        register_peer(&registry, peer);
 
-        // Unknown peer - should attempt
+        // Known peer with no failures - should attempt
         assert!(registry.should_attempt_discovery(&peer));
 
         // After failure - should not attempt (backoff active)

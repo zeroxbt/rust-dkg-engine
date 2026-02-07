@@ -69,7 +69,7 @@ impl PeerAddressStore {
 
             let value: Vec<String> = addrs.iter().map(|a| a.to_string()).collect();
 
-            if let Err(e) = self.table.store(peer_id.to_bytes().as_slice(), &value) {
+            if let Err(e) = self.table.store(peer_id.to_string().as_bytes(), &value) {
                 tracing::warn!(
                     peer_id = %peer_id,
                     error = %e,

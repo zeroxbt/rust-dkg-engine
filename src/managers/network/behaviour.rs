@@ -79,7 +79,6 @@ pub(crate) fn build_swarm(
     kad.set_mode(Some(Mode::Server));
 
     // Add bootstrap nodes to kad
-    let mut bootstrap_addrs = Vec::new();
     let mut seen_bootstrap = HashSet::new();
     for bootstrap in &config.bootstrap {
         // Parse as a full multiaddr first
@@ -117,7 +116,6 @@ pub(crate) fn build_swarm(
             .collect();
 
         kad.add_address(&peer_id, addr_without_peer);
-        bootstrap_addrs.push(full_addr);
     }
 
     // 2. Identify protocol
@@ -223,18 +221,6 @@ pub(crate) fn build_swarm(
                     "invalid external_ip format, must be a valid IPv4 address"
                 );
             }
-        }
-    }
-
-    for addr in &bootstrap_addrs {
-        if let Err(err) = swarm.dial(addr.clone()) {
-            tracing::warn!(
-                address = %addr,
-                error = %err,
-                "Failed to dial bootstrap node"
-            );
-        } else {
-            tracing::info!(address = %addr, "Dialing bootstrap node");
         }
     }
 

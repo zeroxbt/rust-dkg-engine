@@ -275,11 +275,57 @@ impl NetworkEventLoop {
         Ok(())
     }
 
+    fn run_bootstrap(&mut self) {
+        if self.config.bootstrap.is_empty() {
+            tracing::info!("No bootstrap nodes configured");
+        } else {
+            for bootstrap in &self.config.bootstrap {
+                match bootstrap.parse::<Multiaddr>() {
+                    Ok(addr) => {
+                        if let Err(err) = self.swarm.dial(addr.clone()) {
+                            tracing::warn!(
+                                address = %addr,
+                                error = %err,
+                                "Failed to dial bootstrap node"
+                            );
+                        } else {
+                            tracing::info!(address = %addr, "Dialing bootstrap node");
+                        }
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            address = %bootstrap,
+                            error = %err,
+                            "Invalid bootstrap multiaddr"
+                        );
+                    }
+                }
+            }
+        }
+
+        let has_known_peers = self.swarm.behaviour_mut().kad.kbuckets().next().is_some();
+        if !has_known_peers {
+            tracing::debug!("Kademlia bootstrap skipped: no known peers");
+            return;
+        }
+
+        match self.swarm.behaviour_mut().kad.bootstrap() {
+            Ok(query_id) => {
+                tracing::info!(?query_id, "Started Kademlia bootstrap");
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "Failed to start Kademlia bootstrap");
+            }
+        }
+    }
+
     /// Runs the network event loop, processing swarm events and actions.
     ///
     /// This method consumes self and runs until the action channel is closed.
     pub(crate) async fn run<H: NetworkEventHandler>(mut self, handler: &H) {
         use libp2p::futures::StreamExt;
+
+        self.run_bootstrap();
 
         loop {
             tokio::select! {
