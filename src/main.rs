@@ -14,8 +14,7 @@ mod utils;
 use std::sync::Arc;
 
 use commands::{
-    command_executor::{CommandExecutor, CommandScheduler},
-    command_registry::default_command_requests,
+    executor::CommandExecutor, registry::default_command_requests, scheduler::CommandScheduler,
     seed_sharding_tables,
 };
 use context::Context;

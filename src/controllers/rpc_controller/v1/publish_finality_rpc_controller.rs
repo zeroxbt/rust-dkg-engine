@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use crate::{
     commands::{
-        command_executor::{CommandExecutionRequest, CommandScheduler},
-        command_registry::Command,
+        executor::CommandExecutionRequest,
         operations::publish::finality::handle_publish_finality_request::HandlePublishFinalityRequestCommandData,
+        registry::Command, scheduler::CommandScheduler,
     },
     context::Context,
     controllers::rpc_controller::messages::{FinalityAck, FinalityRequestData},

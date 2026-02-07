@@ -6,7 +6,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
@@ -19,9 +19,8 @@ use crate::{
     },
     operations::{PublishStoreOperationResult, protocols},
     services::{
-        operation_status::OperationStatusService as GenericOperationService,
+        PeerService, operation_status::OperationStatusService as GenericOperationService,
         pending_storage_service::PendingStorageService,
-        PeerService,
     },
 };
 
@@ -125,9 +124,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         let my_peer_id = *self.network_manager.peer_id();
 
         // Check if we are in the shard nodes (publisher node)
-        let self_in_shard = self
-            .peer_service
-            .is_peer_in_shard(blockchain, &my_peer_id);
+        let self_in_shard = self.peer_service.is_peer_in_shard(blockchain, &my_peer_id);
 
         // Get remote peers that support the store protocol, excluding self
         let remote_peers = self.peer_service.select_shard_peers(

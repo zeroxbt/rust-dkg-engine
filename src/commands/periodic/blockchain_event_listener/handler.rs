@@ -7,9 +7,10 @@ use super::blockchain_event_spec::{
 };
 use crate::{
     commands::{
-        command_executor::{CommandExecutionRequest, CommandExecutionResult, CommandScheduler},
-        command_registry::{Command, CommandHandler},
+        executor::{CommandExecutionRequest, CommandExecutionResult},
         operations::publish::finality::send_publish_finality_request::SendPublishFinalityRequestCommandData,
+        registry::{Command, CommandHandler},
+        scheduler::CommandScheduler,
     },
     config,
     context::Context,

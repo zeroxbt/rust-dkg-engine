@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use crate::{
-    commands::command_executor::CommandScheduler,
+    commands::scheduler::CommandScheduler,
     managers::{
         Managers,
         network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
     services::{
-        GetValidationService, PeerRateLimiter, PeerService, ResponseChannels,
-        Services, TripleStoreService,
+        GetValidationService, PeerRateLimiter, PeerService, ResponseChannels, Services,
+        TripleStoreService,
     },
 };
 

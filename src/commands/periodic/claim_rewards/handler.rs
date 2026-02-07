@@ -5,7 +5,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 
 use super::{CLAIM_REWARDS_BATCH_SIZE, CLAIM_REWARDS_INTERVAL};
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     managers::blockchain::BlockchainManager,
     types::BlockchainId,

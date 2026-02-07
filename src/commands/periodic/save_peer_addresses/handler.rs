@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     services::{PeerService, peer::PeerAddressStore},
 };

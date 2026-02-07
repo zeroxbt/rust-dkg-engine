@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use super::handler::SendGetRequestsCommandHandler;
 use crate::{
-    commands::command_executor::CommandExecutionResult,
+    commands::executor::CommandExecutionResult,
     managers::network::protocols::{GetProtocol, ProtocolSpec},
     types::ParsedUal,
 };

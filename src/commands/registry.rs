@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::{
-    command_executor::CommandExecutionRequest,
+    executor::CommandExecutionRequest,
     operations::{
         get::{
             handle_get_request::{HandleGetRequestCommandData, HandleGetRequestCommandHandler},
@@ -35,16 +35,14 @@ use super::{
         cleanup::{CleanupCommandData, CleanupCommandHandler},
         dial_peers::{DialPeersCommandData, DialPeersCommandHandler},
         proving::{ProvingCommandData, ProvingCommandHandler},
-        save_peer_addresses::{
-            SavePeerAddressesCommandData, SavePeerAddressesCommandHandler,
-        },
+        save_peer_addresses::{SavePeerAddressesCommandData, SavePeerAddressesCommandHandler},
         sharding_table_check::{ShardingTableCheckCommandData, ShardingTableCheckCommandHandler},
         sync::{SyncCommandData, SyncCommandHandler},
     },
 };
 use crate::{
     commands::{
-        command_executor::CommandExecutionResult,
+        executor::CommandExecutionResult,
         operations::batch_get::handle_batch_get_request::{
             HandleBatchGetRequestCommandData, HandleBatchGetRequestCommandHandler,
         },

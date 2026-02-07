@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use crate::{
     commands::{
-        command_executor::{CommandExecutionRequest, CommandScheduler},
-        command_registry::Command,
-        operations::get::handle_get_request::HandleGetRequestCommandData,
+        executor::CommandExecutionRequest,
+        operations::get::handle_get_request::HandleGetRequestCommandData, registry::Command,
+        scheduler::CommandScheduler,
     },
     context::Context,
     controllers::rpc_controller::messages::{GetAck, GetRequestData},

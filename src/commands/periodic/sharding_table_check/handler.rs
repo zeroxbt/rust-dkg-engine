@@ -4,10 +4,12 @@ use futures::future::join_all;
 use libp2p::PeerId;
 
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     error::NodeError,
-    managers::blockchain::{BlockchainId, BlockchainManager, chains::evm::ShardingTableLib::NodeInfo},
+    managers::blockchain::{
+        BlockchainId, BlockchainManager, chains::evm::ShardingTableLib::NodeInfo,
+    },
     services::PeerService,
 };
 

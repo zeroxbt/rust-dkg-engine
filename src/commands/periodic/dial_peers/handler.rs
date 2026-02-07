@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 use libp2p::PeerId;
 
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     managers::network::NetworkManager,
     services::PeerService,

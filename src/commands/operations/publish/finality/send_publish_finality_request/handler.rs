@@ -4,7 +4,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, H256, U256},
@@ -17,7 +17,7 @@ use crate::{
         repository::RepositoryManager,
         triple_store::KnowledgeCollectionMetadata,
     },
-    services::{TripleStoreService, pending_storage_service::PendingStorageService, PeerService},
+    services::{PeerService, TripleStoreService, pending_storage_service::PendingStorageService},
     types::derive_ual,
     utils::validation,
 };

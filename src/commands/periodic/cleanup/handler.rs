@@ -7,8 +7,8 @@ use super::{
 };
 use crate::{
     commands::{
-        command_executor::CommandExecutionResult, command_registry::CommandHandler,
-        periodic::cleanup::CleanupConfig,
+        executor::CommandExecutionResult, periodic::cleanup::CleanupConfig,
+        registry::CommandHandler,
     },
     context::Context,
     managers::repository::RepositoryManager,

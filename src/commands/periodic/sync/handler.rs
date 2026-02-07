@@ -17,7 +17,7 @@ use super::{
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
@@ -447,7 +447,9 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
     async fn execute(&self, data: &SyncCommandData) -> CommandExecutionResult {
         // Check if we have identified enough shard peers before attempting sync
         let total_shard_peers = self.peer_service.shard_peer_count(&data.blockchain_id);
-        let identified_peers = self.peer_service.identified_shard_peer_count(&data.blockchain_id);
+        let identified_peers = self
+            .peer_service
+            .identified_shard_peer_count(&data.blockchain_id);
         let min_required = (total_shard_peers / 2).max(1);
 
         if identified_peers < min_required {

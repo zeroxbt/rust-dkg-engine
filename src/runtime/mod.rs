@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::{select, signal::unix::SignalKind};
 
 use crate::{
-    commands::command_executor::{CommandExecutor, CommandScheduler},
+    commands::{executor::CommandExecutor, scheduler::CommandScheduler},
     context::Context,
     controllers::{
         http_api_controller::http_api_router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,

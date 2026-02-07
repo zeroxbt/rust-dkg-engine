@@ -6,7 +6,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     managers::{
         blockchain::BlockchainManager,

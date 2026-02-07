@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
-    commands::{command_executor::CommandExecutionResult, command_registry::CommandHandler},
+    commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     managers::{
         blockchain::BlockchainManager,
@@ -70,8 +70,7 @@ impl ProvingCommandHandler {
     /// Check if node is part of the shard for this blockchain.
     fn is_in_shard(&self, blockchain_id: &BlockchainId) -> bool {
         let peer_id = self.network_manager.peer_id();
-        self.peer_service
-            .is_peer_in_shard(blockchain_id, peer_id)
+        self.peer_service.is_peer_in_shard(blockchain_id, peer_id)
     }
 
     /// Get the identity ID for this blockchain.
