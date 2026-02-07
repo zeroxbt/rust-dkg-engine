@@ -3,7 +3,7 @@
 //! This is the public-facing API that callers use to interact with the network.
 //! It communicates with the NetworkEventLoop via an action channel.
 
-use libp2p::{PeerId, identity, request_response};
+use libp2p::{Multiaddr, PeerId, identity, request_response};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::instrument;
 use uuid::Uuid;
@@ -86,6 +86,16 @@ impl NetworkManager {
     /// their addresses through the DHT and add them to the routing table.
     pub(crate) async fn find_peers(&self, peers: Vec<PeerId>) -> Result<(), NetworkError> {
         self.enqueue_action(NetworkAction::FindPeers(peers)).await
+    }
+
+    /// Add known addresses for peers to the Kademlia routing table.
+    /// Used at startup to inject persisted peer addresses.
+    pub(crate) async fn add_addresses(
+        &self,
+        addresses: Vec<(PeerId, Vec<Multiaddr>)>,
+    ) -> Result<(), NetworkError> {
+        self.enqueue_action(NetworkAction::AddAddresses { addresses })
+            .await
     }
 
     /// Get the list of currently connected peers.

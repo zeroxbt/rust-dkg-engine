@@ -5,15 +5,14 @@ use std::{path::Path, sync::Arc};
 pub(crate) use error::KeyValueStoreError;
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Serialize, de::DeserializeOwned};
-use uuid::Uuid;
 
 /// Table definition type alias for string table names.
 type TableDef = TableDefinition<'static, &'static [u8], &'static [u8]>;
 
-/// A typed table handle for a specific data type.
+/// A table handle with byte keys and JSON-serialized values.
 ///
-/// This provides type-safe access to a table in the key-value store,
-/// with automatic serialization/deserialization of values.
+/// Keys are raw `&[u8]` — callers handle their own type conversions.
+/// Values are automatically serialized/deserialized as JSON.
 pub(crate) struct Table<V> {
     db: Arc<Database>,
     table_def: TableDef,
@@ -29,30 +28,26 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         }
     }
 
-    /// Store a value with a UUID key.
-    pub(crate) fn store(&self, key: Uuid, value: &V) -> Result<(), KeyValueStoreError> {
-        let key_bytes = key.as_bytes();
+    /// Store a value with a key.
+    pub(crate) fn store(&self, key: &[u8], value: &V) -> Result<(), KeyValueStoreError> {
         let value_bytes = serde_json::to_vec(value)?;
 
         let write_txn = self.db.begin_write()?;
         {
             let mut table = write_txn.open_table(self.table_def)?;
-            table.insert(key_bytes.as_slice(), value_bytes.as_slice())?;
+            table.insert(key, value_bytes.as_slice())?;
         }
         write_txn.commit()?;
 
-        tracing::trace!(key = %key, "Stored value in table");
         Ok(())
     }
 
-    /// Get a value by UUID key.
-    pub(crate) fn get(&self, key: Uuid) -> Result<Option<V>, KeyValueStoreError> {
-        let key_bytes = key.as_bytes();
-
+    /// Get a value by key.
+    pub(crate) fn get(&self, key: &[u8]) -> Result<Option<V>, KeyValueStoreError> {
         let read_txn = self.db.begin_read()?;
         let table = read_txn.open_table(self.table_def)?;
 
-        match table.get(key_bytes.as_slice())? {
+        match table.get(key)? {
             Some(value) => {
                 let result: V = serde_json::from_slice(value.value())?;
                 Ok(Some(result))
@@ -61,20 +56,14 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         }
     }
 
-    /// Remove a value by UUID key. Returns true if the key existed.
-    pub(crate) fn remove(&self, key: Uuid) -> Result<bool, KeyValueStoreError> {
-        let key_bytes = key.as_bytes();
-
+    /// Remove a value by key. Returns true if the key existed.
+    pub(crate) fn remove(&self, key: &[u8]) -> Result<bool, KeyValueStoreError> {
         let write_txn = self.db.begin_write()?;
         let removed = {
             let mut table = write_txn.open_table(self.table_def)?;
-            table.remove(key_bytes.as_slice())?.is_some()
+            table.remove(key)?.is_some()
         };
         write_txn.commit()?;
-
-        if removed {
-            tracing::trace!(key = %key, "Removed value from table");
-        }
 
         Ok(removed)
     }
@@ -83,21 +72,19 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
     /// If the key doesn't exist, creates a new entry using the default value.
     pub(crate) fn update<F>(
         &self,
-        key: Uuid,
+        key: &[u8],
         default: V,
         update_fn: F,
     ) -> Result<(), KeyValueStoreError>
     where
         F: FnOnce(&mut V),
     {
-        let key_bytes = key.as_bytes();
-
         let write_txn = self.db.begin_write()?;
         {
             let mut table = write_txn.open_table(self.table_def)?;
 
             // Read existing value or use default
-            let mut value: V = match table.get(key_bytes.as_slice())? {
+            let mut value: V = match table.get(key)? {
                 Some(existing) => {
                     let bytes: &[u8] = existing.value();
                     serde_json::from_slice(bytes)?
@@ -110,11 +97,10 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
 
             // Write back
             let value_bytes = serde_json::to_vec(&value)?;
-            table.insert(key_bytes.as_slice(), value_bytes.as_slice())?;
+            table.insert(key, value_bytes.as_slice())?;
         }
         write_txn.commit()?;
 
-        tracing::trace!(key = %key, "Updated value in table");
         Ok(())
     }
 
@@ -126,7 +112,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         &self,
         limit: usize,
         mut predicate: F,
-    ) -> Result<Vec<Uuid>, KeyValueStoreError>
+    ) -> Result<Vec<Vec<u8>>, KeyValueStoreError>
     where
         F: FnMut(&V) -> bool,
     {
@@ -140,14 +126,10 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
 
         for entry in table.iter()? {
             let (key, value) = entry?;
-            let key_bytes = key.value();
-            let value_bytes = value.value();
-
-            let uuid = Uuid::from_slice(key_bytes).map_err(|_| KeyValueStoreError::InvalidUuid)?;
-            let decoded: V = serde_json::from_slice(value_bytes)?;
+            let decoded: V = serde_json::from_slice(value.value())?;
 
             if predicate(&decoded) {
-                keys.push(uuid);
+                keys.push(key.value().to_vec());
                 if keys.len() >= limit {
                     break;
                 }
@@ -156,12 +138,45 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
 
         Ok(keys)
     }
+
+    /// Get all key-value pairs from the table.
+    pub(crate) fn get_all(&self) -> Result<Vec<(Vec<u8>, V)>, KeyValueStoreError> {
+        let read_txn = self.db.begin_read()?;
+        let table = read_txn.open_table(self.table_def)?;
+        let mut results = Vec::new();
+
+        for entry in table.iter()? {
+            let (key, value) = entry?;
+            let decoded: V = serde_json::from_slice(value.value())?;
+            results.push((key.value().to_vec(), decoded));
+        }
+
+        Ok(results)
+    }
+
+    /// Remove all entries from the table.
+    pub(crate) fn clear(&self) -> Result<(), KeyValueStoreError> {
+        let write_txn = self.db.begin_write()?;
+        {
+            let mut table = write_txn.open_table(self.table_def)?;
+            // Collect keys first to avoid borrow issues
+            let keys: Vec<Vec<u8>> = table
+                .iter()?
+                .filter_map(|entry| entry.ok().map(|(k, _)| k.value().to_vec()))
+                .collect();
+            for key in keys {
+                table.remove(key.as_slice())?;
+            }
+        }
+        write_txn.commit()?;
+        Ok(())
+    }
 }
 
 /// Key-Value Store Manager
 ///
 /// Provides access to typed tables backed by redb.
-/// Each table stores values keyed by UUID, with automatic JSON serialization.
+/// Each table stores values with automatic JSON serialization.
 pub(crate) struct KeyValueStoreManager {
     db: Arc<Database>,
 }
@@ -185,15 +200,8 @@ impl KeyValueStoreManager {
     /// Get a typed table handle.
     ///
     /// The table is created if it doesn't exist.
-    /// The type parameter V determines the value type stored in the table.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let manager = KeyValueStoreManager::connect("data.redb")?;
-    /// let results_table: Table<MyResult> = manager.table("operation_results")?;
-    /// results_table.store(uuid, &my_result)?;
-    /// ```
+    /// The type parameter V determines the value type (JSON-serialized).
+    /// Keys are raw bytes (`&[u8]`).
     pub(crate) fn table<V: Serialize + DeserializeOwned>(
         &self,
         name: &'static str,
@@ -215,19 +223,23 @@ impl KeyValueStoreManager {
 mod tests {
     #![allow(clippy::unwrap_used)]
 
+    use std::sync::atomic::{AtomicU64, Ordering};
+
     use serde::Deserialize;
     use tempfile::TempDir;
 
     use super::*;
 
-    /// Check if a key exists.
-    fn exists(table: &Table<TestData>, key: Uuid) -> Result<bool, KeyValueStoreError> {
-        let key_bytes = key.as_bytes();
+    fn unique_key() -> Vec<u8> {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        format!("key_{}", COUNTER.fetch_add(1, Ordering::Relaxed)).into_bytes()
+    }
 
+    /// Check if a key exists.
+    fn exists(table: &Table<TestData>, key: &[u8]) -> Result<bool, KeyValueStoreError> {
         let read_txn = table.db.begin_read()?;
         let table = read_txn.open_table(table.table_def)?;
-
-        Ok(table.get(key_bytes.as_slice())?.is_some())
+        Ok(table.get(key)?.is_some())
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -244,15 +256,15 @@ mod tests {
 
         let table: Table<TestData> = manager.table("test_table").unwrap();
 
-        let key = Uuid::new_v4();
+        let key = unique_key();
         let data = TestData {
             name: "test".to_string(),
             count: 42,
         };
 
-        table.store(key, &data).unwrap();
+        table.store(&key, &data).unwrap();
 
-        let retrieved = table.get(key).unwrap();
+        let retrieved = table.get(&key).unwrap();
         assert_eq!(retrieved, Some(data));
     }
 
@@ -264,8 +276,8 @@ mod tests {
 
         let table: Table<TestData> = manager.table("test_table").unwrap();
 
-        let key = Uuid::new_v4();
-        let result = table.get(key).unwrap();
+        let key = unique_key();
+        let result = table.get(&key).unwrap();
         assert!(result.is_none());
     }
 
@@ -277,21 +289,21 @@ mod tests {
 
         let table: Table<TestData> = manager.table("test_table").unwrap();
 
-        let key = Uuid::new_v4();
+        let key = unique_key();
         let data = TestData {
             name: "test".to_string(),
             count: 1,
         };
 
-        table.store(key, &data).unwrap();
-        assert!(exists(&table, key).unwrap());
+        table.store(&key, &data).unwrap();
+        assert!(exists(&table, &key).unwrap());
 
-        let removed = table.remove(key).unwrap();
+        let removed = table.remove(&key).unwrap();
         assert!(removed);
-        assert!(!exists(&table, key).unwrap());
+        assert!(!exists(&table, &key).unwrap());
 
         // Removing again should return false
-        let removed_again = table.remove(key).unwrap();
+        let removed_again = table.remove(&key).unwrap();
         assert!(!removed_again);
     }
 
@@ -303,12 +315,12 @@ mod tests {
 
         let table: Table<TestData> = manager.table("test_table").unwrap();
 
-        let key = Uuid::new_v4();
+        let key = unique_key();
 
         // Store initial value
         table
             .store(
-                key,
+                &key,
                 &TestData {
                     name: "initial".to_string(),
                     count: 1,
@@ -319,7 +331,7 @@ mod tests {
         // Update
         table
             .update(
-                key,
+                &key,
                 TestData {
                     name: "default".to_string(),
                     count: 0,
@@ -330,7 +342,7 @@ mod tests {
             )
             .unwrap();
 
-        let retrieved = table.get(key).unwrap().unwrap();
+        let retrieved = table.get(&key).unwrap().unwrap();
         assert_eq!(retrieved.name, "initial"); // Name unchanged
         assert_eq!(retrieved.count, 2); // Count incremented
     }
@@ -343,12 +355,12 @@ mod tests {
 
         let table: Table<TestData> = manager.table("test_table").unwrap();
 
-        let key = Uuid::new_v4();
+        let key = unique_key();
 
         // Update non-existent key (should create from default)
         table
             .update(
-                key,
+                &key,
                 TestData {
                     name: "default".to_string(),
                     count: 0,
@@ -359,7 +371,7 @@ mod tests {
             )
             .unwrap();
 
-        let retrieved = table.get(key).unwrap().unwrap();
+        let retrieved = table.get(&key).unwrap().unwrap();
         assert_eq!(retrieved.name, "default");
         assert_eq!(retrieved.count, 42);
     }
@@ -373,21 +385,59 @@ mod tests {
         let table1: Table<TestData> = manager.table("table1").unwrap();
         let table2: Table<String> = manager.table("table2").unwrap();
 
-        let key = Uuid::new_v4();
+        let key = unique_key();
 
         table1
             .store(
-                key,
+                &key,
                 &TestData {
                     name: "test".to_string(),
                     count: 1,
                 },
             )
             .unwrap();
-        table2.store(key, &"hello".to_string()).unwrap();
+        table2.store(&key, &"hello".to_string()).unwrap();
 
         // Both tables should have independent data
-        assert!(table1.get(key).unwrap().is_some());
-        assert_eq!(table2.get(key).unwrap(), Some("hello".to_string()));
+        assert!(table1.get(&key).unwrap().is_some());
+        assert_eq!(table2.get(&key).unwrap(), Some("hello".to_string()));
+    }
+
+    #[test]
+    fn test_get_all() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.redb");
+        let manager = KeyValueStoreManager::connect(&db_path).unwrap();
+
+        let table: Table<u32> = manager.table("test_get_all").unwrap();
+
+        table.store(b"a", &1).unwrap();
+        table.store(b"b", &2).unwrap();
+        table.store(b"c", &3).unwrap();
+
+        let all = table.get_all().unwrap();
+        assert_eq!(all.len(), 3);
+
+        let map: std::collections::HashMap<Vec<u8>, u32> = all.into_iter().collect();
+        assert_eq!(map.get(b"a".as_slice()), Some(&1));
+        assert_eq!(map.get(b"b".as_slice()), Some(&2));
+        assert_eq!(map.get(b"c".as_slice()), Some(&3));
+    }
+
+    #[test]
+    fn test_clear() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.redb");
+        let manager = KeyValueStoreManager::connect(&db_path).unwrap();
+
+        let table: Table<u32> = manager.table("test_clear").unwrap();
+
+        table.store(b"a", &1).unwrap();
+        table.store(b"b", &2).unwrap();
+
+        table.clear().unwrap();
+
+        let all = table.get_all().unwrap();
+        assert!(all.is_empty());
     }
 }

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     time::{Duration, Instant},
 };
 
@@ -134,8 +134,8 @@ impl PeerRegistry {
         }
 
         for mut entry in self.peers.iter_mut() {
-            if entry.shard_membership.contains(&blockchain_id) && !new_set.contains(entry.key()) {
-                entry.shard_membership.remove(&blockchain_id);
+            if entry.shard_membership.contains(blockchain_id) && !new_set.contains(entry.key()) {
+                entry.shard_membership.remove(blockchain_id);
             }
         }
     }
@@ -211,6 +211,23 @@ impl PeerRegistry {
             .iter()
             .filter(|entry| !entry.shard_membership.is_empty())
             .map(|entry| *entry.key())
+            .collect()
+    }
+
+    /// Get all known peer addresses from identify info.
+    /// Returns peers that have identify info with non-empty listen addresses.
+    pub(crate) fn get_all_addresses(&self) -> HashMap<PeerId, Vec<Multiaddr>> {
+        self.peers
+            .iter()
+            .filter_map(|entry| {
+                entry.identify.as_ref().and_then(|id| {
+                    if id.listen_addrs.is_empty() {
+                        None
+                    } else {
+                        Some((*entry.key(), id.listen_addrs.clone()))
+                    }
+                })
+            })
             .collect()
     }
 

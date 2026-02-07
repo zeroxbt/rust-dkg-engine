@@ -1,6 +1,6 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use libp2p::PeerId;
+use libp2p::{Multiaddr, PeerId};
 use tokio::sync::broadcast;
 
 use super::registry::PeerRegistry;
@@ -84,6 +84,11 @@ impl PeerService {
     /// Get all unique peer IDs across all shards.
     pub(crate) fn get_all_shard_peer_ids(&self) -> Vec<PeerId> {
         self.registry.get_all_shard_peer_ids()
+    }
+
+    /// Get all known peer addresses from identify info.
+    pub(crate) fn get_all_addresses(&self) -> HashMap<PeerId, Vec<Multiaddr>> {
+        self.registry.get_all_addresses()
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

@@ -429,6 +429,24 @@ impl NetworkEventLoop {
                 let peers: Vec<PeerId> = self.swarm.connected_peers().copied().collect();
                 let _ = response_tx.send(peers);
             }
+            NetworkAction::AddAddresses { addresses } => {
+                let mut total_addrs = 0usize;
+                for (peer_id, addrs) in &addresses {
+                    for addr in addrs {
+                        let addr = strip_p2p_protocol(addr);
+                        self.swarm
+                            .behaviour_mut()
+                            .kad
+                            .add_address(peer_id, addr);
+                        total_addrs += 1;
+                    }
+                }
+                tracing::info!(
+                    peers = addresses.len(),
+                    addresses = total_addrs,
+                    "Added persisted peer addresses to Kademlia"
+                );
+            }
             // Protocol request/response actions
             NetworkAction::SendStoreRequest {
                 peer,

@@ -35,6 +35,9 @@ use super::{
         cleanup::{CleanupCommandData, CleanupCommandHandler},
         dial_peers::{DialPeersCommandData, DialPeersCommandHandler},
         proving::{ProvingCommandData, ProvingCommandHandler},
+        save_peer_addresses::{
+            SavePeerAddressesCommandData, SavePeerAddressesCommandHandler,
+        },
         sharding_table_check::{ShardingTableCheckCommandData, ShardingTableCheckCommandHandler},
         sync::{SyncCommandData, SyncCommandHandler},
     },
@@ -164,6 +167,10 @@ command_registry! {
     claim_rewards: ClaimRewards => {
         data: ClaimRewardsCommandData,
         handler: ClaimRewardsCommandHandler
+    },
+    save_peer_addresses: SavePeerAddresses => {
+        data: SavePeerAddressesCommandData,
+        handler: SavePeerAddressesCommandHandler
     }
 }
 
@@ -178,6 +185,7 @@ pub(crate) fn default_command_requests(
             cleanup_config.clone(),
         ))),
         CommandExecutionRequest::new(Command::ShardingTableCheck(ShardingTableCheckCommandData)),
+        CommandExecutionRequest::new(Command::SavePeerAddresses(SavePeerAddressesCommandData)),
     ];
 
     // Schedule one blockchain event listener and one sync command per blockchain

@@ -97,7 +97,7 @@ impl PendingStorageService {
             publisher_peer_id.to_owned(),
         );
 
-        self.table.store(operation_id, &data)?;
+        self.table.store(operation_id.as_bytes(), &data)?;
 
         tracing::debug!(
             operation_id = %operation_id,
@@ -114,7 +114,7 @@ impl PendingStorageService {
         &self,
         operation_id: Uuid,
     ) -> Result<PendingStorageData, PendingStorageError> {
-        match self.table.get(operation_id)? {
+        match self.table.get(operation_id.as_bytes())? {
             Some(data) => {
                 tracing::debug!(
                     operation_id = %operation_id,
@@ -134,7 +134,7 @@ impl PendingStorageService {
 
     /// Remove a dataset from pending storage (after finality is confirmed).
     pub(crate) fn remove(&self, operation_id: Uuid) -> Result<bool, PendingStorageError> {
-        let removed = self.table.remove(operation_id)?;
+        let removed = self.table.remove(operation_id.as_bytes())?;
 
         if removed {
             tracing::trace!(
@@ -162,7 +162,7 @@ impl PendingStorageService {
 
         let mut removed = 0usize;
         for key in keys {
-            if self.table.remove(key)? {
+            if self.table.remove(&key)? {
                 removed += 1;
             }
         }

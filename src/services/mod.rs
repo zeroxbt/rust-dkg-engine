@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 pub(crate) use get_validation_service::GetValidationService;
 pub(crate) use operation_status::OperationStatusService;
-pub(crate) use peer::{PeerRateLimiter, PeerRateLimiterConfig, PeerService};
+pub(crate) use peer::{PeerAddressStore, PeerRateLimiter, PeerRateLimiterConfig, PeerService};
 pub(crate) use pending_storage_service::PendingStorageService;
 pub(crate) use response_channels::ResponseChannels;
 pub(crate) use triple_store_service::TripleStoreService;
@@ -58,6 +58,7 @@ pub(crate) struct Services {
     // Infrastructure services
     pub peer_service: Arc<PeerService>,
     pub peer_rate_limiter: Arc<PeerRateLimiter>,
+    pub peer_address_store: Arc<PeerAddressStore>,
 
     // Response channels for all protocols
     pub response_channels: ResponseChannelsSet,
@@ -106,6 +107,10 @@ pub(crate) fn initialize(
     // Infrastructure services
     let peer_service = Arc::new(PeerService::new());
     let peer_rate_limiter = Arc::new(PeerRateLimiter::new(rate_limiter_config));
+    let peer_address_store = Arc::new(
+        PeerAddressStore::new(&managers.key_value_store)
+            .expect("Failed to create peer address store"),
+    );
 
     // Response channels
     let response_channels = ResponseChannelsSet::new();
@@ -118,6 +123,7 @@ pub(crate) fn initialize(
         get_validation,
         peer_service,
         peer_rate_limiter,
+        peer_address_store,
         response_channels,
     }
 }

@@ -68,6 +68,20 @@ async fn main() {
     // Seed peer registry with sharding tables before commands start
     seed_sharding_tables(&managers.blockchain, &services.peer_service).await;
 
+    // Load persisted peer addresses and inject into Kademlia routing table.
+    // This must happen after sharding table seeding so dial_peers knows who to connect to.
+    let persisted_addresses = services.peer_address_store.load_all();
+    if !persisted_addresses.is_empty() {
+        let addresses: Vec<_> = persisted_addresses.into_iter().collect();
+        tracing::info!(
+            peers = addresses.len(),
+            "Loading persisted peer addresses into Kademlia"
+        );
+        if let Err(e) = managers.network.add_addresses(addresses).await {
+            tracing::warn!(error = %e, "Failed to inject persisted peer addresses");
+        }
+    }
+
     // Clone scheduler for the executor before moving into context
     let command_scheduler_for_executor = command_scheduler.clone();
 

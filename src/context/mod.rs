@@ -69,6 +69,10 @@ impl Context {
         &self.services.peer_rate_limiter
     }
 
+    pub(crate) fn peer_address_store(&self) -> &Arc<crate::services::PeerAddressStore> {
+        &self.services.peer_address_store
+    }
+
     // Response channel accessors
     pub(crate) fn store_response_channels(&self) -> &Arc<ResponseChannels<StoreAck>> {
         &self.services.response_channels.store

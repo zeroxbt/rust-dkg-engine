@@ -189,8 +189,7 @@ impl TripleStoreBackend for OxigraphBackend {
 
             match result {
                 QueryResults::Solutions(solutions) => {
-                    let vars: Vec<oxigraph::model::Variable> =
-                        solutions.variables().iter().cloned().collect();
+                    let vars: Vec<oxigraph::model::Variable> = solutions.variables().to_vec();
                     let var_names: Vec<String> =
                         vars.iter().map(|v| v.as_str().to_string()).collect();
 

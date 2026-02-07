@@ -65,7 +65,7 @@ where
         operation_id: Uuid,
         result: &R,
     ) -> Result<(), ResultStoreError> {
-        self.result_table.store(operation_id, result)?;
+        self.result_table.store(operation_id.as_bytes(), result)?;
         tracing::debug!(
             operation_id = %operation_id,
             "[{}] Result stored",
@@ -76,12 +76,12 @@ where
 
     /// Remove a result from the key-value store.
     pub(crate) fn remove_result(&self, operation_id: Uuid) -> Result<bool, ResultStoreError> {
-        Ok(self.result_table.remove(operation_id)?)
+        Ok(self.result_table.remove(operation_id.as_bytes())?)
     }
 
     /// Get a cached operation result from the key-value store.
     pub(crate) fn get_result(&self, operation_id: Uuid) -> Result<Option<R>, ResultStoreError> {
-        Ok(self.result_table.get(operation_id)?)
+        Ok(self.result_table.get(operation_id.as_bytes())?)
     }
 
     /// Update a result in the key-value store using a closure.
@@ -96,7 +96,8 @@ where
     where
         F: FnOnce(&mut R),
     {
-        self.result_table.update(operation_id, default, update_fn)?;
+        self.result_table
+            .update(operation_id.as_bytes(), default, update_fn)?;
         tracing::trace!(
             operation_id = %operation_id,
             "[{}] Result updated",
@@ -130,7 +131,7 @@ where
             .update(operation_id, Some(OperationStatus::Failed), Some(reason))
             .await;
 
-        let _ = self.result_table.remove(operation_id);
+        let _ = self.result_table.remove(operation_id.as_bytes());
 
         match result {
             Ok(_) => {

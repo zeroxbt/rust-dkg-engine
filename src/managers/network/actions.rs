@@ -1,6 +1,6 @@
 //! Network action commands sent to the swarm event loop.
 
-use libp2p::{PeerId, request_response};
+use libp2p::{Multiaddr, PeerId, request_response};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -22,6 +22,10 @@ pub(crate) enum NetworkAction {
     FindPeers(Vec<PeerId>),
     /// Get the list of currently connected peers.
     GetConnectedPeers(oneshot::Sender<Vec<PeerId>>),
+    /// Add known addresses for peers to the Kademlia routing table.
+    AddAddresses {
+        addresses: Vec<(PeerId, Vec<Multiaddr>)>,
+    },
     // Protocol-specific request actions
     // The response_tx is stored in PendingRequests and used to deliver the response directly
     SendStoreRequest {

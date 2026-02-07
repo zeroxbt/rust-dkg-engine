@@ -23,9 +23,6 @@ pub(crate) enum KeyValueStoreError {
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
-    #[error("Invalid UUID key in key-value store")]
-    InvalidUuid,
-
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }
