@@ -100,10 +100,9 @@ impl PeerRegistry {
             .and_modify(|peer| {
                 peer.identify = Some(identify.clone());
             })
-            .or_insert_with(|| {
-                let mut record = PeerRecord::default();
-                record.identify = Some(identify);
-                record
+            .or_insert_with(|| PeerRecord {
+                identify: Some(identify),
+                ..Default::default()
             });
     }
 
