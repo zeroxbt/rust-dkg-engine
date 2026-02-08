@@ -5,6 +5,7 @@ use crate::{
         blockchain::BlockchainManager,
         triple_store::{
             group_triples_by_subject,
+            rdf::extract_quoted_string,
             query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
         },
     },
@@ -12,21 +13,37 @@ use crate::{
     utils::validation,
 };
 
-/// Service for validating get operation responses.
+/// Service for validating assertion responses.
 ///
 /// Validates that:
 /// 1. Public assertion merkle root matches on-chain value
 /// 2. Private assertion merkle root (if present) matches the value in public triples
-pub(crate) struct GetValidationService {
+pub(crate) struct AssertionValidationService {
     blockchain_manager: Arc<BlockchainManager>,
 }
 
-impl GetValidationService {
+impl AssertionValidationService {
     pub(crate) fn new(blockchain_manager: Arc<BlockchainManager>) -> Self {
         Self { blockchain_manager }
     }
 
-    /// Validate a get response (local or network).
+    fn should_skip_validation(
+        assertion: &Assertion,
+        parsed_ual: &ParsedUal,
+        visibility: Visibility,
+    ) -> bool {
+        // For single KA, skip validation (like JS)
+        if parsed_ual.knowledge_asset_id.is_some() {
+            return true;
+        }
+
+        // If only private content is requested and there's no public, skip validation
+        assertion.public.is_empty()
+            && assertion.private.is_some()
+            && visibility == Visibility::Private
+    }
+
+    /// Validate a response with assertions (local or network).
     ///
     /// Follows the same logic as JS validateResponse:
     /// - For single KA: skip validation (return true)
@@ -40,16 +57,7 @@ impl GetValidationService {
         parsed_ual: &ParsedUal,
         visibility: Visibility,
     ) -> bool {
-        // For single KA, skip validation (like JS)
-        if parsed_ual.knowledge_asset_id.is_some() {
-            return true;
-        }
-
-        // If only private content is requested and there's no public, skip validation
-        if assertion.public.is_empty()
-            && assertion.private.is_some()
-            && visibility == Visibility::Private
-        {
+        if Self::should_skip_validation(assertion, parsed_ual, visibility) {
             return true;
         }
 
@@ -102,16 +110,7 @@ impl GetValidationService {
         visibility: Visibility,
         merkle_root: Option<&str>,
     ) -> bool {
-        // For single KA, skip validation (like JS)
-        if parsed_ual.knowledge_asset_id.is_some() {
-            return true;
-        }
-
-        // If only private content is requested and there's no public, skip validation
-        if assertion.public.is_empty()
-            && assertion.private.is_some()
-            && visibility == Visibility::Private
-        {
+        if Self::should_skip_validation(assertion, parsed_ual, visibility) {
             return true;
         }
 
@@ -215,36 +214,7 @@ impl GetValidationService {
         public_triples: &[String],
         parsed_ual: &ParsedUal,
     ) -> Result<bool, String> {
-        // Separate private-hash triples from regular public triples
-        let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
-
-        let mut filtered_public: Vec<&str> = Vec::new();
-        let mut private_hash_triples: Vec<&str> = Vec::new();
-
-        for triple in public_triples {
-            if triple.starts_with(&private_hash_prefix) {
-                private_hash_triples.push(triple);
-            } else {
-                filtered_public.push(triple);
-            }
-        }
-
-        // Group by subject, then append private-hash groups
-        let mut grouped = group_triples_by_subject(&filtered_public);
-        grouped.extend(group_triples_by_subject(&private_hash_triples));
-
-        // Sort each group and flatten
-        let sorted_flat: Vec<String> = grouped
-            .iter()
-            .flat_map(|group| {
-                let mut sorted_group: Vec<&str> = group.to_vec();
-                sorted_group.sort();
-                sorted_group.into_iter().map(String::from)
-            })
-            .collect();
-
-        // Calculate merkle root
-        let calculated_root = validation::calculate_merkle_root(&sorted_flat);
+        let calculated_root = Self::calculate_public_merkle_root(public_triples);
 
         // Get on-chain merkle root
         let on_chain_root = self
@@ -321,20 +291,12 @@ impl GetValidationService {
 ///
 /// Expected format: `<subject> <https://ontology.origintrail.io/dkg/1.0#privateMerkleRoot> "0x..." .`
 fn extract_private_merkle_root(triple: &str) -> Option<String> {
-    // The object is typically the third space-separated part, quoted
-    // Format: <s> <p> "value" .
-    let parts: Vec<&str> = triple.split(' ').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-
-    // Object is parts[2], remove quotes
-    let object = parts[2];
-    let value = object.trim_matches('"');
+    // Extract the quoted object literal (handles typed literals too).
+    let value = extract_quoted_string(triple)?;
 
     // Should start with 0x for a merkle root
     if value.starts_with("0x") {
-        Some(value.to_string())
+        Some(value)
     } else {
         None
     }
@@ -368,6 +330,13 @@ mod tests {
         let triple = r#"<subject> <predicate> "not-a-merkle-root" ."#;
         let root = extract_private_merkle_root(triple);
         assert_eq!(root, None);
+    }
+
+    #[test]
+    fn test_extract_private_merkle_root_typed_literal() {
+        let triple = r#"<subject> <https://ontology.origintrail.io/dkg/1.0#privateMerkleRoot> "0xabc"^^<http://www.w3.org/2001/XMLSchema#string> ."#;
+        let root = extract_private_merkle_root(triple);
+        assert_eq!(root, Some("0xabc".to_string()));
     }
 
     #[test]

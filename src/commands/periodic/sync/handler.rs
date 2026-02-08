@@ -23,7 +23,7 @@ use crate::{
         blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
         repository::RepositoryManager,
     },
-    services::{GetValidationService, PeerService, TripleStoreService},
+    services::{AssertionValidationService, PeerService, TripleStoreService},
 };
 
 pub(crate) struct SyncCommandHandler {
@@ -31,7 +31,7 @@ pub(crate) struct SyncCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     triple_store_service: Arc<TripleStoreService>,
     network_manager: Arc<crate::managers::network::NetworkManager>,
-    get_validation_service: Arc<GetValidationService>,
+    assertion_validation_service: Arc<AssertionValidationService>,
     peer_service: Arc<PeerService>,
 }
 
@@ -42,7 +42,7 @@ impl SyncCommandHandler {
             repository_manager: Arc::clone(context.repository_manager()),
             triple_store_service: Arc::clone(context.triple_store_service()),
             network_manager: Arc::clone(context.network_manager()),
-            get_validation_service: Arc::clone(context.get_validation_service()),
+            assertion_validation_service: Arc::clone(context.assertion_validation_service()),
             peer_service: Arc::clone(context.peer_service()),
         }
     }
@@ -214,7 +214,7 @@ impl SyncCommandHandler {
         let fetch_handle = {
             let blockchain_id = blockchain_id.clone();
             let network_manager = Arc::clone(&self.network_manager);
-            let get_validation_service = Arc::clone(&self.get_validation_service);
+            let assertion_validation_service = Arc::clone(&self.assertion_validation_service);
             let peer_service = Arc::clone(&self.peer_service);
             tokio::spawn(
                 async move {
@@ -222,7 +222,7 @@ impl SyncCommandHandler {
                         filter_rx,
                         blockchain_id,
                         network_manager,
-                        get_validation_service,
+                        assertion_validation_service,
                         peer_service,
                         fetch_tx,
                     )

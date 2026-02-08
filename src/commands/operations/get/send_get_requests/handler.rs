@@ -14,7 +14,7 @@ use crate::{
     },
     operations::{GetOperation, GetOperationResult},
     services::{
-        GetValidationService, PeerService, TripleStoreService,
+        AssertionValidationService, PeerService, TripleStoreService,
         operation_status::OperationStatusService as GenericOperationService,
     },
     types::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual},
@@ -56,7 +56,7 @@ pub(crate) struct SendGetRequestsCommandHandler {
     pub(super) triple_store_service: Arc<TripleStoreService>,
     pub(super) network_manager: Arc<NetworkManager>,
     pub(super) get_operation_status_service: Arc<GenericOperationService<GetOperation>>,
-    pub(super) get_validation_service: Arc<GetValidationService>,
+    pub(super) assertion_validation_service: Arc<AssertionValidationService>,
     pub(super) peer_service: Arc<PeerService>,
 }
 
@@ -67,7 +67,7 @@ impl SendGetRequestsCommandHandler {
             triple_store_service: Arc::clone(context.triple_store_service()),
             network_manager: Arc::clone(context.network_manager()),
             get_operation_status_service: Arc::clone(context.get_operation_status_service()),
-            get_validation_service: Arc::clone(context.get_validation_service()),
+            assertion_validation_service: Arc::clone(context.assertion_validation_service()),
             peer_service: Arc::clone(context.peer_service()),
         }
     }
@@ -262,7 +262,7 @@ impl SendGetRequestsCommandHandler {
                 );
 
                 let is_valid = self
-                    .get_validation_service
+                    .assertion_validation_service
                     .validate_response(&result.assertion, parsed_ual, visibility)
                     .await;
 

@@ -1,4 +1,4 @@
-pub(crate) mod get_validation_service;
+pub(crate) mod assertion_validation_service;
 pub(crate) mod operation_status;
 pub(crate) mod peer;
 pub(crate) mod response_channels;
@@ -6,7 +6,7 @@ pub(crate) mod triple_store_service;
 
 use std::sync::Arc;
 
-pub(crate) use get_validation_service::GetValidationService;
+pub(crate) use assertion_validation_service::AssertionValidationService;
 pub(crate) use operation_status::OperationStatusService;
 pub(crate) use peer::{PeerAddressStore, PeerService};
 pub(crate) use response_channels::ResponseChannels;
@@ -49,7 +49,7 @@ pub(crate) struct Services {
     pub triple_store: Arc<TripleStoreService>,
 
     // Validation services
-    pub get_validation: Arc<GetValidationService>,
+    pub assertion_validation: Arc<AssertionValidationService>,
 
     // Infrastructure services
     pub peer_service: Arc<PeerService>,
@@ -87,7 +87,7 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
     let triple_store = Arc::new(TripleStoreService::new(Arc::clone(&managers.triple_store)));
 
     // Validation services
-    let get_validation = Arc::new(GetValidationService::new(Arc::clone(&managers.blockchain)));
+    let assertion_validation = Arc::new(AssertionValidationService::new(Arc::clone(&managers.blockchain)));
 
     // Infrastructure services
     let peer_service = Arc::new(PeerService::new());
@@ -105,7 +105,7 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
         publish_store_operation,
         get_operation,
         triple_store,
-        get_validation,
+        assertion_validation,
         peer_service,
         peer_address_store,
         response_channels,

@@ -26,7 +26,7 @@ impl SendGetRequestsCommandHandler {
                 let metadata = &ack.metadata;
                 // Validate the assertion
                 let is_valid = self
-                    .get_validation_service
+                    .assertion_validation_service
                     .validate_response(assertion, parsed_ual, visibility)
                     .await;
 

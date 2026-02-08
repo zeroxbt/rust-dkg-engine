@@ -29,7 +29,7 @@ use crate::{
         repository::{ChallengeState, RepositoryManager},
         triple_store::{group_triples_by_subject, query::subjects::PRIVATE_HASH_SUBJECT_PREFIX},
     },
-    services::{GetValidationService, PeerService, TripleStoreService},
+    services::{AssertionValidationService, PeerService, TripleStoreService},
     types::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual},
     utils::validation,
 };
@@ -50,7 +50,7 @@ pub(crate) struct ProvingCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     triple_store_service: Arc<TripleStoreService>,
     network_manager: Arc<NetworkManager>,
-    get_validation_service: Arc<GetValidationService>,
+    assertion_validation_service: Arc<AssertionValidationService>,
     peer_service: Arc<PeerService>,
 }
 
@@ -61,7 +61,7 @@ impl ProvingCommandHandler {
             repository_manager: Arc::clone(context.repository_manager()),
             triple_store_service: Arc::clone(context.triple_store_service()),
             network_manager: Arc::clone(context.network_manager()),
-            get_validation_service: Arc::clone(context.get_validation_service()),
+            assertion_validation_service: Arc::clone(context.assertion_validation_service()),
             peer_service: Arc::clone(context.peer_service()),
         }
     }
@@ -280,7 +280,7 @@ impl ProvingCommandHandler {
 
                 // Validate the assertion using the same service as GET command
                 let is_valid = self
-                    .get_validation_service
+                    .assertion_validation_service
                     .validate_response(assertion, parsed_ual, visibility)
                     .await;
 
@@ -582,7 +582,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
             Ok(Some(result)) if result.assertion.has_data() => {
                 // Validate local data
                 let is_valid = self
-                    .get_validation_service
+                    .assertion_validation_service
                     .validate_response(&result.assertion, &parsed_ual, Visibility::Public)
                     .await;
 

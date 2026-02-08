@@ -30,7 +30,7 @@ use crate::{
         },
         triple_store::parse_metadata_from_triples,
     },
-    services::{GetValidationService, PeerService},
+    services::{AssertionValidationService, PeerService},
     types::{ParsedUal, TokenIds, Visibility, parse_ual},
 };
 
@@ -43,7 +43,7 @@ pub(crate) const CONCURRENT_PEERS: usize = 3;
     skip(
         rx,
         network_manager,
-        get_validation_service,
+        assertion_validation_service,
         peer_service,
         tx
     ),
@@ -53,7 +53,7 @@ pub(crate) async fn fetch_task(
     mut rx: mpsc::Receiver<Vec<KcToSync>>,
     blockchain_id: BlockchainId,
     network_manager: Arc<NetworkManager>,
-    get_validation_service: Arc<GetValidationService>,
+    assertion_validation_service: Arc<AssertionValidationService>,
     peer_service: Arc<PeerService>,
     tx: mpsc::Sender<Vec<FetchedKc>>,
 ) -> FetchStats {
@@ -159,7 +159,7 @@ pub(crate) async fn fetch_task(
                 &to_fetch,
                 &peers,
                 &network_manager,
-                &get_validation_service,
+                &assertion_validation_service,
             )
             .await;
 
@@ -206,7 +206,7 @@ pub(crate) async fn fetch_task(
             &accumulated,
             &peers,
             &network_manager,
-            get_validation_service.as_ref(),
+            assertion_validation_service.as_ref(),
         )
         .await;
 
@@ -306,7 +306,7 @@ async fn make_peer_request(
 /// Peers should be pre-sorted by performance score (best first).
 #[instrument(
     name = "sync_fetch_batch",
-    skip(kcs, peers, network_manager, get_validation_service),
+    skip(kcs, peers, network_manager, assertion_validation_service),
     fields(
         blockchain_id = %blockchain_id,
         kc_count = kcs.len(),
@@ -320,7 +320,7 @@ async fn fetch_kc_batch_from_network(
     kcs: &[KcToSync],
     peers: &[PeerId],
     network_manager: &Arc<NetworkManager>,
-    get_validation_service: &GetValidationService,
+    assertion_validation_service: &AssertionValidationService,
 ) -> (Vec<FetchedKc>, Vec<u64>) {
     let mut fetched: Vec<FetchedKc> = Vec::new();
     let mut uals_still_needed: HashSet<String> = kcs.iter().map(|kc| kc.ual.clone()).collect();
@@ -408,7 +408,7 @@ async fn fetch_kc_batch_from_network(
                         (parsed_uals.get(ual), ual_to_kc.get(ual.as_str()))
                     {
                         // Use pre-fetched merkle root from filter stage (no RPC call needed)
-                        let is_valid = get_validation_service.validate_response_with_root(
+                        let is_valid = assertion_validation_service.validate_response_with_root(
                             assertion,
                             parsed_ual,
                             Visibility::All,

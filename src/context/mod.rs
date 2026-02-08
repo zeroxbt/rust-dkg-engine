@@ -6,7 +6,7 @@ use crate::{
         Managers,
         network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
-    services::{GetValidationService, PeerService, ResponseChannels, Services, TripleStoreService},
+    services::{AssertionValidationService, PeerService, ResponseChannels, Services, TripleStoreService},
 };
 
 pub(crate) struct Context {
@@ -54,8 +54,8 @@ impl Context {
         &self.services.triple_store
     }
 
-    pub(crate) fn get_validation_service(&self) -> &Arc<GetValidationService> {
-        &self.services.get_validation
+    pub(crate) fn assertion_validation_service(&self) -> &Arc<AssertionValidationService> {
+        &self.services.assertion_validation
     }
 
     pub(crate) fn peer_service(&self) -> &Arc<PeerService> {
