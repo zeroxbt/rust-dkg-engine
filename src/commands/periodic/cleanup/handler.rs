@@ -1,9 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
 use super::{
-    finality_acks::cleanup_finality_acks, kc_sync_queue::cleanup_kc_sync_queue,
-    operations::cleanup_operations, pending_storage::cleanup_pending_storage,
-    proof_challenges::cleanup_proof_challenges,
+    finality_acks::cleanup_finality_acks, operations::cleanup_operations,
+    pending_storage::cleanup_pending_storage, proof_challenges::cleanup_proof_challenges,
 };
 use crate::{
     commands::{
@@ -120,24 +119,6 @@ impl CommandHandler<CleanupCommandData> for CleanupCommandHandler {
                     }
                 }
                 Err(e) => tracing::warn!(error = %e, "Failed to clean proof challenge records"),
-            }
-        }
-
-        if data.config.kc_sync_queue.ttl_secs > 0 {
-            match cleanup_kc_sync_queue(
-                &self.repository_manager,
-                Duration::from_secs(data.config.kc_sync_queue.ttl_secs),
-                data.config.kc_sync_queue.max_retries,
-                data.config.kc_sync_queue.batch_size,
-            )
-            .await
-            {
-                Ok(removed) => {
-                    if removed > 0 {
-                        tracing::info!(removed, "Cleaned up KC sync queue entries");
-                    }
-                }
-                Err(e) => tracing::warn!(error = %e, "Failed to clean KC sync queue entries"),
             }
         }
 

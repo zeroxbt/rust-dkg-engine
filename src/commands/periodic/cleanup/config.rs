@@ -10,7 +10,6 @@ pub(crate) struct CleanupConfig {
     pub pending_storage: PendingStorageCleanupConfig,
     pub finality_acks: FinalityAcksCleanupConfig,
     pub proof_challenges: ProofChallengesCleanupConfig,
-    pub kc_sync_queue: KcSyncQueueCleanupConfig,
 }
 
 /// Cleanup config for operation status + result cache.
@@ -42,14 +41,5 @@ pub(crate) struct FinalityAcksCleanupConfig {
 #[serde(deny_unknown_fields)]
 pub(crate) struct ProofChallengesCleanupConfig {
     pub ttl_secs: u64,
-    pub batch_size: usize,
-}
-
-/// Cleanup config for KC sync queue.
-#[derive(Debug, Deserialize, Clone)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct KcSyncQueueCleanupConfig {
-    pub ttl_secs: u64,
-    pub max_retries: u32,
     pub batch_size: usize,
 }

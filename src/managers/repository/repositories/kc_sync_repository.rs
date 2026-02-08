@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveValue, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 
 use crate::managers::repository::{
@@ -199,52 +198,5 @@ impl KcSyncRepository {
         }
 
         Ok(())
-    }
-
-    /// Find stale queue entries based on retry count or age.
-    pub(crate) async fn find_stale_entries(
-        &self,
-        max_retries: u32,
-        created_before: i64,
-        limit: u64,
-    ) -> Result<Vec<QueueModel>> {
-        if limit == 0 {
-            return Ok(Vec::new());
-        }
-
-        let condition = Condition::any()
-            .add(QueueColumn::RetryCount.gte(max_retries))
-            .add(QueueColumn::CreatedAt.lt(created_before));
-
-        Ok(QueueEntity::find()
-            .filter(condition)
-            .order_by_asc(QueueColumn::CreatedAt)
-            .limit(limit)
-            .all(self.conn.as_ref())
-            .await?)
-    }
-
-    /// Delete queue entries by composite key. Returns rows affected.
-    pub(crate) async fn delete_entries(&self, entries: &[QueueModel]) -> Result<u64> {
-        if entries.is_empty() {
-            return Ok(0);
-        }
-
-        let mut condition = Condition::any();
-        for entry in entries {
-            condition = condition.add(
-                Condition::all()
-                    .add(QueueColumn::BlockchainId.eq(entry.blockchain_id.clone()))
-                    .add(QueueColumn::ContractAddress.eq(entry.contract_address.clone()))
-                    .add(QueueColumn::KcId.eq(entry.kc_id)),
-            );
-        }
-
-        let result = QueueEntity::delete_many()
-            .filter(condition)
-            .exec(self.conn.as_ref())
-            .await?;
-
-        Ok(result.rows_affected)
     }
 }
