@@ -19,6 +19,7 @@ use super::{
     types::{FetchStats, FetchedKc, KcToSync},
 };
 use crate::{
+    commands::operations::batch_get::handle_batch_get_request::UAL_MAX_LIMIT,
     managers::{
         blockchain::BlockchainId,
         network::{
@@ -29,10 +30,12 @@ use crate::{
         },
         triple_store::parse_metadata_from_triples,
     },
-    operations::protocols::batch_get,
     services::{GetValidationService, PeerService},
     types::{ParsedUal, TokenIds, Visibility, parse_ual},
 };
+
+/// Maximum number of in-flight peer requests for this operation.
+pub(crate) const CONCURRENT_PEERS: usize = 3;
 
 /// Fetch task: receives filtered KCs, fetches from network, sends to insert stage.
 #[instrument(
@@ -132,7 +135,7 @@ pub(crate) async fn fetch_task(
             let mut assets_total = 0u64;
             let mut take = 0usize;
             for kc in &accumulated {
-                if take >= batch_get::UAL_MAX_LIMIT {
+                if take >= UAL_MAX_LIMIT {
                     break;
                 }
                 let kc_assets = estimate_asset_count(&kc.token_ids);
@@ -364,7 +367,7 @@ async fn fetch_kc_batch_from_network(
     let initial_request = build_request(&uals_still_needed);
 
     // Start initial batch of concurrent requests
-    for _ in 0..batch_get::CONCURRENT_PEERS {
+    for _ in 0..CONCURRENT_PEERS {
         if let Some(&peer) = peers_iter.next() {
             futures.push(make_peer_request(
                 peer,

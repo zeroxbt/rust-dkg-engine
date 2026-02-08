@@ -13,7 +13,10 @@ use uuid::Uuid;
 
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
+    commands::{
+        executor::CommandExecutionResult, operations::get::send_get_requests::CONCURRENT_PEERS,
+        registry::CommandHandler,
+    },
     context::Context,
     managers::{
         blockchain::BlockchainManager,
@@ -26,7 +29,6 @@ use crate::{
         repository::{ChallengeState, RepositoryManager},
         triple_store::{group_triples_by_subject, query::subjects::PRIVATE_HASH_SUBJECT_PREFIX},
     },
-    operations::protocols,
     services::{GetValidationService, PeerService, TripleStoreService},
     types::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual},
     utils::validation,
@@ -171,7 +173,7 @@ impl ProvingCommandHandler {
         // Concurrent request pattern (same as GET command)
         let mut futures = FuturesUnordered::new();
         let mut peers_iter = peers.iter().cloned();
-        let limit = protocols::get::CONCURRENT_PEERS.max(1).min(peers.len());
+        let limit = CONCURRENT_PEERS.max(1).min(peers.len());
 
         // Start initial batch of concurrent requests
         for _ in 0..limit {

@@ -8,10 +8,12 @@ use crate::{
     commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     managers::network::{NetworkManager, messages::BatchGetAck},
-    operations::protocols::batch_get,
     services::{ResponseChannels, TripleStoreService},
     types::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual},
 };
+
+/// Maximum number of UALs allowed in a single batch get request.
+pub(crate) const UAL_MAX_LIMIT: usize = 1000;
 
 /// Command data for handling incoming batch get requests.
 #[derive(Clone)]
@@ -88,12 +90,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         };
 
         // Apply UAL limit
-        let uals: Vec<String> = data
-            .uals
-            .iter()
-            .take(batch_get::UAL_MAX_LIMIT)
-            .cloned()
-            .collect();
+        let uals: Vec<String> = data.uals.iter().take(UAL_MAX_LIMIT).cloned().collect();
         tracing::Span::current().record("ual_count", tracing::field::display(uals.len()));
 
         // Parse UALs and pair with token IDs

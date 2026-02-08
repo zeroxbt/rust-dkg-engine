@@ -25,8 +25,6 @@ use std::time::Duration;
 // Re-export public types
 pub(crate) use handler::{SyncCommandData, SyncCommandHandler};
 
-use crate::operations::protocols::batch_get;
-
 /// Interval between sync cycles when there's pending work (catching up)
 pub(crate) const SYNC_PERIOD_CATCHING_UP: Duration = Duration::from_secs(0);
 
@@ -37,7 +35,7 @@ pub(crate) const SYNC_PERIOD_IDLE: Duration = Duration::from_secs(30);
 pub(crate) const MAX_RETRY_ATTEMPTS: u32 = 2;
 
 /// Maximum new KCs to process per contract per sync cycle
-pub(crate) const MAX_NEW_KCS_PER_CONTRACT: u64 = batch_get::UAL_MAX_LIMIT as u64;
+pub(crate) const MAX_NEW_KCS_PER_CONTRACT: u64 = 1000;
 
 /// Batch size for filter task (KCs per batch sent through channel)
 /// Aligned with MULTICALL_CHUNK_SIZE (100) for optimal RPC batching.

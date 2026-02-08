@@ -17,10 +17,13 @@ use crate::{
             protocols::{ProtocolSpec, StoreProtocol},
         },
     },
-    operations::{PublishStoreOperation, PublishStoreOperationResult, protocols},
+    operations::{PublishStoreOperation, PublishStoreOperationResult},
     services::{PeerService, operation_status::OperationStatusService as GenericOperationService},
     types::Assertion,
 };
+
+/// Maximum number of in-flight peer requests for this operation.
+pub(crate) const CONCURRENT_PEERS: usize = usize::MAX;
 
 /// Command data for sending publish store requests to network nodes.
 /// Dataset is passed inline instead of being retrieved from storage.
@@ -276,9 +279,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         if !reached_threshold && !remote_peers.is_empty() {
             let mut futures = FuturesUnordered::new();
             let mut peers_iter = remote_peers.iter().cloned();
-            let limit = protocols::publish_store::CONCURRENT_PEERS
-                .max(1)
-                .min(remote_peers.len());
+            let limit = CONCURRENT_PEERS.max(1).min(remote_peers.len());
 
             for _ in 0..limit {
                 if let Some(peer) = peers_iter.next() {
