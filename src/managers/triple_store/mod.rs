@@ -18,6 +18,9 @@ pub(crate) use types::{Assertion, GraphVisibility, KnowledgeAsset, TokenIds};
 
 pub(crate) use crate::types::KnowledgeCollectionMetadata;
 
+#[cfg(test)]
+mod tests;
+
 /// Triple Store Manager
 ///
 /// Provides high-level operations for managing RDF data in the DKG triple store.
@@ -573,6 +576,21 @@ impl TripleStoreManager {
             .unwrap_or(DateTime::UNIX_EPOCH)
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string()
+    }
+}
+
+#[cfg(test)]
+impl TripleStoreManager {
+    pub(crate) fn from_backend_for_tests(
+        backend: Box<dyn TripleStoreBackend>,
+        config: TripleStoreManagerConfig,
+    ) -> Self {
+        let concurrency_limiter = Arc::new(Semaphore::new(config.max_concurrent_operations));
+        Self {
+            backend,
+            config,
+            concurrency_limiter,
+        }
     }
 }
 

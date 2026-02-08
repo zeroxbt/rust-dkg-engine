@@ -4,14 +4,13 @@
 //!
 //! These tests require a running Blazegraph instance for Blazegraph tests.
 //! Start it with: `docker run -d -p 9999:9999 blazegraph/blazegraph:2.1.5`
-//!
-//! Oxigraph tests run with an in-memory backend and don't require external services.
 
-use std::time::Duration;
+use tempfile::TempDir;
 
 use crate::managers::triple_store::{
     TripleStoreBackendType, TripleStoreManager, TripleStoreManagerConfig, config::TimeoutConfig,
 };
+use crate::types::KnowledgeAsset;
 
 fn blazegraph_config() -> TripleStoreManagerConfig {
     TripleStoreManagerConfig {
@@ -31,15 +30,15 @@ fn blazegraph_config() -> TripleStoreManagerConfig {
     }
 }
 
-/* async fn cleanup_repository(manager: &TripleStoreManager) {
-    // Try to delete the test repository, ignore errors
-    let _ = manager.update_raw("DROP ALL", None).await;
-} */
-
 #[tokio::test]
-async fn test_blazegraph_health_check() {
+async fn test_blazegraph_insert_and_query() {
+    if !super::require_blazegraph() {
+        return;
+    }
+
     let config = blazegraph_config();
-    let manager = match TripleStoreManager::connect(&config).await {
+    let temp_dir = TempDir::new().unwrap();
+    let manager = match TripleStoreManager::connect(&config, temp_dir.path()).await {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Skipping test - Blazegraph not available: {e}");
@@ -47,38 +46,22 @@ async fn test_blazegraph_health_check() {
         }
     };
 
-    let healthy = manager.health_check().await.unwrap();
-    assert!(healthy);
-}
+    let kc_ual = "did:dkg:test/1";
+    let ka = KnowledgeAsset::new(
+        format!("{}/1", kc_ual),
+        vec![
+            "<http://example.org/s1> <http://example.org/p1> \"object1\" .".to_string(),
+        ],
+    );
 
-#[tokio::test]
-async fn test_oxigraph_in_memory() {
-    // Create an in-memory Oxigraph backend
-    let manager = TripleStoreManager::in_memory().unwrap();
+    manager
+        .insert_knowledge_collection(kc_ual, &[ka], &None)
+        .await
+        .unwrap();
 
-    // Health check should pass
-    let healthy = manager.health_check().await.unwrap();
-    assert!(healthy);
-}
-
-#[tokio::test]
-async fn test_oxigraph_insert() {
-    let manager = TripleStoreManager::in_memory().unwrap();
-
-    // Insert some test data
-    let result = manager
-        .update_raw(
-            r#"
-            INSERT DATA {
-                GRAPH <did:dkg:test/1/public> {
-                    <http://example.org/s1> <http://example.org/p1> "object1" .
-                    <http://example.org/s2> <http://example.org/p2> "object2" .
-                }
-            }
-            "#,
-            Some(Duration::from_secs(10)),
-        )
-        .await;
-
-    assert!(result.is_ok(), "Insert should succeed");
+    let existing = manager
+        .knowledge_collections_exist_by_uals(&[kc_ual.to_string()])
+        .await
+        .unwrap();
+    assert!(existing.contains(kc_ual));
 }
