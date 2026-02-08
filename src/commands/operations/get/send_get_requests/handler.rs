@@ -281,30 +281,18 @@ impl SendGetRequestsCommandHandler {
 
                     if let Err(e) = self
                         .get_operation_status_service
-                        .store_result(operation_id, &get_result)
-                    {
-                        let error_message = format!("Failed to store local result: {}", e);
-                        tracing::error!(
-                            operation_id = %operation_id,
-                            error = %e,
-                            "Failed to store local result"
-                        );
-                        self.get_operation_status_service
-                            .mark_failed(operation_id, error_message)
-                            .await;
-                        return Err(CommandExecutionResult::Completed);
-                    }
-
-                    if let Err(e) = self
-                        .get_operation_status_service
-                        .mark_completed(operation_id)
+                        .complete_with_result(operation_id, &get_result)
                         .await
                     {
                         tracing::error!(
                             operation_id = %operation_id,
                             error = %e,
-                            "Failed to mark operation as completed"
+                            "Failed to complete operation with local result"
                         );
+                        self.get_operation_status_service
+                            .mark_failed(operation_id, e.to_string())
+                            .await;
+                        return Err(CommandExecutionResult::Completed);
                     }
 
                     Ok(LocalQueryOutcome::Completed)
@@ -392,10 +380,7 @@ impl SendGetRequestsCommandHandler {
             data.paranet_ual.clone(),
         );
 
-        let mut success_count: u16 = 0;
         let mut failure_count: u16 = 0;
-        let min_ack_required = protocols::get::MIN_ACK_RESPONSES;
-        let mut reached_threshold = false;
 
         if !peers.is_empty() {
             let mut futures = FuturesUnordered::new();
@@ -417,10 +402,33 @@ impl SendGetRequestsCommandHandler {
 
             while let Some((peer, outcome)) = futures.next().await {
                 match outcome {
-                    Ok(true) => {
-                        success_count += 1;
+                    Ok(Some(get_result)) => {
+                        tracing::info!(
+                            operation_id = %operation_id,
+                            source = "network",
+                            success_count = 1,
+                            failure_count = failure_count,
+                            "Get operation completed"
+                        );
+
+                        if let Err(e) = self
+                            .get_operation_status_service
+                            .complete_with_result(operation_id, &get_result)
+                            .await
+                        {
+                            tracing::error!(
+                                operation_id = %operation_id,
+                                error = %e,
+                                "Failed to complete operation with network result"
+                            );
+                            self.get_operation_status_service
+                                .mark_failed(operation_id, e.to_string())
+                                .await;
+                        }
+
+                        return CommandExecutionResult::Completed;
                     }
-                    Ok(false) => {
+                    Ok(None) => {
                         failure_count += 1;
                         tracing::debug!(
                             operation_id = %operation_id,
@@ -439,11 +447,6 @@ impl SendGetRequestsCommandHandler {
                     }
                 }
 
-                if success_count >= min_ack_required {
-                    reached_threshold = true;
-                    break;
-                }
-
                 if let Some(peer) = peers_iter.next() {
                     futures.push(send_get_request_to_peer(
                         self,
@@ -457,35 +460,9 @@ impl SendGetRequestsCommandHandler {
             }
         }
 
-        if reached_threshold {
-            tracing::info!(
-                operation_id = %operation_id,
-                source = "network",
-                success_count = success_count,
-                failure_count = failure_count,
-                "Get operation completed"
-            );
-
-            if let Err(e) = self
-                .get_operation_status_service
-                .mark_completed(operation_id)
-                .await
-            {
-                tracing::error!(
-                    operation_id = %operation_id,
-                    error = %e,
-                    "Failed to mark operation as completed"
-                );
-            }
-
-            return CommandExecutionResult::Completed;
-        }
-
         let error_message = format!(
-            "Failed to get data from network. Success: {}, Failed: {}, Required: {}",
-            success_count,
-            failure_count,
-            protocols::get::MIN_ACK_RESPONSES
+            "Failed to get data from network. Success: 0, Failed: {}, Required: 1",
+            failure_count
         );
         tracing::warn!(operation_id = %operation_id, %error_message, "Get operation failed");
         self.get_operation_status_service
@@ -503,23 +480,17 @@ async fn send_get_request_to_peer(
     request_data: GetRequestData,
     parsed_ual: ParsedUal,
     visibility: Visibility,
-) -> (PeerId, Result<bool, NetworkError>) {
+) -> (PeerId, Result<Option<GetOperationResult>, NetworkError>) {
     let result = handler
         .network_manager
         .send_get_request(peer, operation_id, request_data)
         .await;
     let outcome = match result {
         Ok(response) => {
-            let is_valid = handler
-                .validate_and_store_response(
-                    operation_id,
-                    &peer,
-                    &response,
-                    &parsed_ual,
-                    visibility,
-                )
+            let get_result = handler
+                .validate_response(operation_id, &peer, &response, &parsed_ual, visibility)
                 .await;
-            Ok(is_valid)
+            Ok(get_result)
         }
         Err(e) => Err(e),
     };

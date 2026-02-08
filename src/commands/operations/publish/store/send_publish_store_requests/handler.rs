@@ -332,14 +332,17 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
 
             if let Err(e) = self
                 .publish_store_operation_status_service
-                .mark_completed(operation_id)
+                .complete(operation_id)
                 .await
             {
                 tracing::error!(
                     operation_id = %operation_id,
                     error = %e,
-                    "Failed to mark operation as completed"
+                    "Failed to complete operation"
                 );
+                self.publish_store_operation_status_service
+                    .mark_failed(operation_id, e.to_string())
+                    .await;
             }
 
             return CommandExecutionResult::Completed;

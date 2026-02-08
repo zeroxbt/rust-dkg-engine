@@ -9,17 +9,17 @@ use crate::{
 };
 
 impl SendGetRequestsCommandHandler {
-    /// Validate a get response and store the result if valid.
+    /// Validate a get response and return the result if valid.
     ///
-    /// Returns true if the response is valid and was stored successfully.
-    pub(crate) async fn validate_and_store_response(
+    /// Returns a result if the response is valid.
+    pub(crate) async fn validate_response(
         &self,
         operation_id: Uuid,
         peer: &PeerId,
         response: &GetResponseData,
         parsed_ual: &ParsedUal,
         visibility: Visibility,
-    ) -> bool {
+    ) -> Option<GetOperationResult> {
         match response {
             ResponseBody::Ack(ack) => {
                 let assertion = &ack.assertion;
@@ -36,39 +36,23 @@ impl SendGetRequestsCommandHandler {
                         peer = %peer,
                         "Response validation failed"
                     );
-                    return false;
+                    return None;
                 }
 
-                // Build and store the result
+                // Build the result
                 let get_result = GetOperationResult::new(
                     Assertion::new(assertion.public.clone(), assertion.private.clone()),
                     metadata.clone(),
                 );
 
-                match self
-                    .get_operation_status_service
-                    .store_result(operation_id, &get_result)
-                {
-                    Ok(()) => {
-                        tracing::debug!(
-                            operation_id = %operation_id,
-                            peer = %peer,
-                            public_count = assertion.public.len(),
-                            has_private = assertion.private.is_some(),
-                            "Response validated and stored"
-                        );
-                        true
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            operation_id = %operation_id,
-                            peer = %peer,
-                            error = %e,
-                            "Failed to store result"
-                        );
-                        false
-                    }
-                }
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    peer = %peer,
+                    public_count = assertion.public.len(),
+                    has_private = assertion.private.is_some(),
+                    "Response validated"
+                );
+                Some(get_result)
             }
             ResponseBody::Error(err) => {
                 tracing::debug!(
@@ -77,7 +61,7 @@ impl SendGetRequestsCommandHandler {
                     error = %err.error_message,
                     "Peer returned error response"
                 );
-                false
+                None
             }
         }
     }

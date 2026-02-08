@@ -105,9 +105,32 @@ where
         Ok(())
     }
 
+    /// Complete an operation with a stored result.
+    ///
+    /// This ensures the result is persisted before the status is marked as completed.
+    pub(crate) async fn complete_with_result(
+        &self,
+        operation_id: Uuid,
+        result: &R,
+    ) -> Result<(), NodeError> {
+        self.store_result(operation_id, result)?;
+        self.mark_completed(operation_id).await?;
+        Ok(())
+    }
+
+    /// Mark an operation as completed, ensuring a result exists first.
+    pub(crate) async fn complete(&self, operation_id: Uuid) -> Result<(), NodeError> {
+        if self.get_result(operation_id)?.is_none() {
+            return Err(NodeError::Other(
+                "operation result missing for completion".to_string(),
+            ));
+        }
+        self.mark_completed(operation_id).await
+    }
+
     /// Mark an operation as completed.
     /// Caller should store the result first via `store_result` before calling this.
-    pub(crate) async fn mark_completed(&self, operation_id: Uuid) -> Result<(), NodeError> {
+    async fn mark_completed(&self, operation_id: Uuid) -> Result<(), NodeError> {
         self.repository
             .operation_repository()
             .update_status(operation_id, OperationStatus::Completed)
