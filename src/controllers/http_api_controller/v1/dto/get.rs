@@ -4,8 +4,7 @@ use validator_derive::Validate;
 
 use crate::{
     controllers::http_api_controller::validators::{validate_optional_ual, validate_ual_format},
-    managers::triple_store::Assertion,
-    types::Visibility,
+    types::{Assertion, Visibility},
 };
 
 #[derive(serde::Deserialize, Debug, Validate)]

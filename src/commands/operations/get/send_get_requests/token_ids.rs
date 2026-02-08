@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use super::handler::SendGetRequestsCommandHandler;
-use crate::{managers::triple_store::TokenIds, types::ParsedUal};
+use crate::types::{ParsedUal, TokenIds};
 
 impl SendGetRequestsCommandHandler {
     pub(crate) async fn resolve_token_ids(

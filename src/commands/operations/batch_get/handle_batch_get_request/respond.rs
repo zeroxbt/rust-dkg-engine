@@ -4,15 +4,13 @@ use uuid::Uuid;
 
 use crate::{
     commands::operations::batch_get::handle_batch_get_request::HandleBatchGetRequestCommandHandler,
-    managers::{
-        network::{
-            ResponseMessage,
-            message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
-            messages::BatchGetAck,
-            request_response::ResponseChannel,
-        },
-        triple_store::Assertion,
+    managers::network::{
+        ResponseMessage,
+        message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
+        messages::BatchGetAck,
+        request_response::ResponseChannel,
     },
+    types::Assertion,
 };
 
 impl HandleBatchGetRequestCommandHandler {

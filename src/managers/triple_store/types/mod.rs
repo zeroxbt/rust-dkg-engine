@@ -1,5 +1,3 @@
-pub(crate) use crate::types::{Assertion, KnowledgeAsset, TokenIds};
-
 /// Visibility for triple store graph operations.
 ///
 /// Unlike `Visibility` (application level, includes `All`), this enum

@@ -24,14 +24,11 @@ use crate::{
             protocols::{GetProtocol, ProtocolSpec},
         },
         repository::{ChallengeState, RepositoryManager},
-        triple_store::{
-            Assertion, TokenIds, group_triples_by_subject,
-            query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
-        },
+        triple_store::{group_triples_by_subject, query::subjects::PRIVATE_HASH_SUBJECT_PREFIX},
     },
     operations::protocols,
     services::{GetValidationService, PeerService, TripleStoreService},
-    types::{BlockchainId, ParsedUal, Visibility, derive_ual},
+    types::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual},
     utils::validation,
 };
 

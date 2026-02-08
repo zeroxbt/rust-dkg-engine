@@ -3,7 +3,7 @@ mod config;
 pub(crate) mod error;
 pub(crate) mod query;
 pub(crate) mod rdf;
-mod types;
+pub(crate) mod types;
 use std::{collections::HashSet, path::Path, sync::Arc, time::Duration};
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
@@ -14,9 +14,9 @@ use query::{named_graphs, predicates};
 pub(crate) use rdf::{extract_subject, group_triples_by_subject, parse_metadata_from_triples};
 use serde::Deserialize;
 use tokio::sync::Semaphore;
-pub(crate) use types::{Assertion, GraphVisibility, KnowledgeAsset, TokenIds};
+pub(crate) use types::GraphVisibility;
 
-pub(crate) use crate::types::KnowledgeCollectionMetadata;
+use crate::types::{KnowledgeAsset, KnowledgeCollectionMetadata};
 
 #[cfg(test)]
 mod tests;
@@ -207,7 +207,7 @@ impl TripleStoreManager {
     pub(crate) async fn insert_knowledge_collection(
         &self,
         kc_ual: &str,
-        knowledge_assets: &[types::KnowledgeAsset],
+        knowledge_assets: &[KnowledgeAsset],
         metadata: &Option<KnowledgeCollectionMetadata>,
     ) -> Result<usize> {
         let mut total_triples = 0;

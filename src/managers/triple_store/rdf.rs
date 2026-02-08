@@ -2,7 +2,8 @@
 
 use std::collections::HashMap;
 
-use super::{KnowledgeCollectionMetadata, query::predicates};
+use super::query::predicates;
+use crate::types::KnowledgeCollectionMetadata;
 
 /// Extracts the subject from an RDF line (N-Triples/N-Quads).
 ///

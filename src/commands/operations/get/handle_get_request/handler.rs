@@ -10,10 +10,9 @@ use crate::{
     managers::{
         blockchain::BlockchainManager,
         network::{NetworkManager, messages::GetAck},
-        triple_store::TokenIds,
     },
     services::{ResponseChannels, TripleStoreService},
-    types::parse_ual,
+    types::{TokenIds, parse_ual},
 };
 
 /// Command data for handling incoming get requests.

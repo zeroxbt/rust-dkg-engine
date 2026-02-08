@@ -10,18 +10,16 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
+        key_value_store::{PublishTmpDataset, PublishTmpDatasetStore},
         network::{
             NetworkError, NetworkManager,
             messages::{StoreRequestData, StoreResponseData},
             protocols::{ProtocolSpec, StoreProtocol},
         },
-        triple_store::Assertion,
     },
     operations::{PublishStoreOperationResult, protocols},
-    managers::key_value_store::{PendingStorageData, PendingStorageStore},
-    services::{
-        PeerService, operation_status::OperationStatusService as GenericOperationService,
-    },
+    services::{PeerService, operation_status::OperationStatusService as GenericOperationService},
+    types::Assertion,
 };
 
 /// Command data for sending publish store requests to network nodes.
@@ -59,7 +57,7 @@ pub(crate) struct SendPublishStoreRequestsCommandHandler {
     pub(super) blockchain_manager: Arc<BlockchainManager>,
     pub(super) publish_store_operation_status_service:
         Arc<GenericOperationService<PublishStoreOperationResult>>,
-    pub(super) pending_storage_store: Arc<PendingStorageStore>,
+    pub(super) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 }
 
 impl SendPublishStoreRequestsCommandHandler {
@@ -71,11 +69,11 @@ impl SendPublishStoreRequestsCommandHandler {
             publish_store_operation_status_service: Arc::clone(
                 context.publish_store_operation_status_service(),
             ),
-            pending_storage_store: Arc::new(
+            publish_tmp_dataset_store: Arc::new(
                 context
                     .key_value_store_manager()
-                    .pending_storage_store()
-                    .expect("Failed to create pending storage store"),
+                    .publish_tmp_dataset_store()
+                    .expect("Failed to create publish tmp dataset store"),
             ),
         }
     }
@@ -215,16 +213,16 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             }
         }
 
-        let pending = PendingStorageData::new(
+        let pending = PublishTmpDataset::new(
             dataset_root.to_owned(),
             dataset.clone(),
             my_peer_id.to_base58(),
         );
-        if let Err(e) = self.pending_storage_store.store(operation_id, &pending) {
+        if let Err(e) = self.publish_tmp_dataset_store.store(operation_id, &pending) {
             tracing::error!(
                 operation_id = %operation_id,
                 error = %e,
-                "Failed to store dataset in pending storage"
+                "Failed to store dataset in publish tmp dataset store"
             );
             self.publish_store_operation_status_service
                 .mark_failed(operation_id, format!("Failed to store dataset: {}", e))

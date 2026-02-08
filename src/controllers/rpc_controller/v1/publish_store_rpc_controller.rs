@@ -8,15 +8,13 @@ use crate::{
     },
     context::Context,
     controllers::rpc_controller::messages::{StoreAck, StoreRequestData},
-    managers::{
-        network::{
-            PeerId,
-            message::{RequestMessage, ResponseMessage},
-            request_response,
-        },
-        triple_store::Assertion,
+    managers::network::{
+        PeerId,
+        message::{RequestMessage, ResponseMessage},
+        request_response,
     },
     services::ResponseChannels,
+    types::Assertion,
 };
 
 pub(crate) struct PublishStoreRpcController {

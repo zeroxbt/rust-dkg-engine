@@ -2,15 +2,13 @@ use uuid::Uuid;
 
 use crate::{
     commands::operations::get::handle_get_request::HandleGetRequestCommandHandler,
-    managers::{
-        network::{
-            ResponseMessage,
-            message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
-            messages::GetAck,
-            request_response::ResponseChannel,
-        },
-        triple_store::Assertion,
+    managers::network::{
+        ResponseMessage,
+        message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
+        messages::GetAck,
+        request_response::ResponseChannel,
     },
+    types::Assertion,
 };
 
 impl HandleGetRequestCommandHandler {

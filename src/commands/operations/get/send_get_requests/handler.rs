@@ -11,14 +11,13 @@ use crate::{
     managers::{
         blockchain::BlockchainManager,
         network::{NetworkError, NetworkManager, messages::GetRequestData},
-        triple_store::{Assertion, TokenIds},
     },
     operations::{GetOperationResult, protocols},
     services::{
         GetValidationService, PeerService, TripleStoreService,
         operation_status::OperationStatusService as GenericOperationService,
     },
-    types::{ParsedUal, Visibility, parse_ual},
+    types::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual},
 };
 
 /// Command data for sending get requests to network nodes.

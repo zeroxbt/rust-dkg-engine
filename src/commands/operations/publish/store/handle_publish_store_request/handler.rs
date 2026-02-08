@@ -9,11 +9,11 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
-        key_value_store::{PendingStorageData, PendingStorageStore},
+        key_value_store::{PublishTmpDataset, PublishTmpDatasetStore},
         network::{NetworkManager, messages::StoreAck},
-        triple_store::Assertion,
     },
     services::{PeerService, ResponseChannels},
+    types::Assertion,
     utils::validation,
 };
 
@@ -51,7 +51,7 @@ pub(crate) struct HandlePublishStoreRequestCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     peer_service: Arc<PeerService>,
     response_channels: Arc<ResponseChannels<StoreAck>>,
-    pending_storage_store: Arc<PendingStorageStore>,
+    publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 }
 
 impl HandlePublishStoreRequestCommandHandler {
@@ -61,11 +61,11 @@ impl HandlePublishStoreRequestCommandHandler {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             peer_service: Arc::clone(context.peer_service()),
             response_channels: Arc::clone(context.store_response_channels()),
-            pending_storage_store: Arc::new(
+            publish_tmp_dataset_store: Arc::new(
                 context
                     .key_value_store_manager()
-                    .pending_storage_store()
-                    .expect("Failed to create pending storage store"),
+                    .publish_tmp_dataset_store()
+                    .expect("Failed to create publish tmp dataset store"),
             ),
         }
     }
@@ -208,16 +208,16 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             }
         };
 
-        let pending = PendingStorageData::new(
+        let pending = PublishTmpDataset::new(
             dataset_root.to_owned(),
             dataset.clone(),
             remote_peer_id.to_base58(),
         );
-        if let Err(e) = self.pending_storage_store.store(operation_id, &pending) {
+        if let Err(e) = self.publish_tmp_dataset_store.store(operation_id, &pending) {
             tracing::error!(
                 operation_id = %operation_id,
                 error = %e,
-                "Failed to store dataset in pending storage - sending NACK"
+                "Failed to store dataset in publish tmp dataset store - sending NACK"
             );
             self.send_nack(
                 channel,

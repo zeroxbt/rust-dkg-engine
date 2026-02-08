@@ -5,11 +5,12 @@ use tracing::instrument;
 
 use crate::{
     managers::triple_store::{
-        Assertion, GraphVisibility, KnowledgeAsset, KnowledgeCollectionMetadata, TokenIds,
-        TripleStoreManager, error::TripleStoreError, extract_subject, group_triples_by_subject,
-        query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
+        GraphVisibility, TripleStoreManager, error::TripleStoreError, extract_subject,
+        group_triples_by_subject, query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
     },
-    types::{ParsedUal, Visibility},
+    types::{
+        Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility,
+    },
 };
 
 /// Result of querying assertion data from the triple store.

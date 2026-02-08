@@ -18,15 +18,12 @@ use super::{
     types::{FilterStats, KcToSync},
 };
 use crate::{
-    managers::{
-        blockchain::{
-            Address, BlockchainId, BlockchainManager,
-            multicall::{MulticallBatch, MulticallRequest, encoders},
-        },
-        triple_store::TokenIds,
+    managers::blockchain::{
+        Address, BlockchainId, BlockchainManager,
+        multicall::{MulticallBatch, MulticallRequest, encoders},
     },
     services::TripleStoreService,
-    types::derive_ual,
+    types::{TokenIds, derive_ual},
 };
 
 /// Filter task: processes pending KCs in batches, checking local existence first,

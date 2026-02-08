@@ -1,6 +1,5 @@
 //! Shared types for the sync pipeline stages.
-
-use crate::managers::triple_store::{Assertion, KnowledgeCollectionMetadata, TokenIds};
+use crate::types::{Assertion, KnowledgeCollectionMetadata, TokenIds};
 
 /// KC that needs to be fetched from the network (output of filter stage)
 #[derive(Clone)]

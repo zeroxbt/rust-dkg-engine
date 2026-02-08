@@ -7,13 +7,10 @@ use uuid::Uuid;
 use crate::{
     commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
-    managers::{
-        network::{NetworkManager, messages::BatchGetAck},
-        triple_store::{Assertion, TokenIds},
-    },
+    managers::network::{NetworkManager, messages::BatchGetAck},
     operations::protocols::batch_get,
     services::{ResponseChannels, TripleStoreService},
-    types::{ParsedUal, Visibility, parse_ual},
+    types::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual},
 };
 
 /// Command data for handling incoming batch get requests.

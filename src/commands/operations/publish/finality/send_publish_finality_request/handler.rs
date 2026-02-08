@@ -8,7 +8,7 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, H256, U256},
-        key_value_store::PendingStorageStore,
+        key_value_store::PublishTmpDatasetStore,
         network::{
             NetworkManager, PeerId,
             message::ResponseBody,
@@ -16,10 +16,9 @@ use crate::{
             protocols::{FinalityProtocol, ProtocolSpec},
         },
         repository::RepositoryManager,
-        triple_store::KnowledgeCollectionMetadata,
     },
     services::{PeerService, TripleStoreService},
-    types::derive_ual,
+    types::{KnowledgeCollectionMetadata, derive_ual},
     utils::validation,
 };
 
@@ -79,7 +78,7 @@ pub(crate) struct SendPublishFinalityRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
     peer_service: Arc<PeerService>,
     blockchain_manager: Arc<BlockchainManager>,
-    pending_storage_store: Arc<PendingStorageStore>,
+    publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
     triple_store_service: Arc<TripleStoreService>,
 }
 
@@ -90,11 +89,11 @@ impl SendPublishFinalityRequestCommandHandler {
             network_manager: Arc::clone(context.network_manager()),
             peer_service: Arc::clone(context.peer_service()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
-            pending_storage_store: Arc::new(
+            publish_tmp_dataset_store: Arc::new(
                 context
                     .key_value_store_manager()
-                    .pending_storage_store()
-                    .expect("Failed to create pending storage store"),
+                    .publish_tmp_dataset_store()
+                    .expect("Failed to create publish tmp dataset store"),
             ),
             triple_store_service: Arc::clone(context.triple_store_service()),
         }
@@ -146,17 +145,17 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             return CommandExecutionResult::Completed;
         };
 
-        // Retrieve cached dataset from pending storage
+        // Retrieve cached dataset from publish tmp dataset store
         // This will fail if this node doesn't have the dataset locally
         // (e.g., KC was published by another node, node was offline, or wasn't contacted during
         // publish)
-        let pending_data = match self.pending_storage_store.get(publish_operation_id) {
+        let pending_data = match self.publish_tmp_dataset_store.get(publish_operation_id) {
             Ok(Some(data)) => data,
             Ok(None) => {
                 tracing::debug!(
                     operation_id = %operation_id,
                     publish_operation_id = %publish_operation_id,
-                    "Dataset not in pending storage, skipping finality"
+                    "Dataset not in publish tmp dataset store, skipping finality"
                 );
                 return CommandExecutionResult::Completed;
             }
@@ -165,7 +164,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                     operation_id = %operation_id,
                     publish_operation_id = %publish_operation_id,
                     error = %e,
-                    "Failed to read pending storage, skipping finality"
+                    "Failed to read publish tmp dataset store, skipping finality"
                 );
                 return CommandExecutionResult::Completed;
             }
@@ -284,13 +283,13 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             }
         };
 
-        // Remove from pending storage now that insertion succeeded
-        if let Err(e) = self.pending_storage_store.remove(publish_operation_id) {
+        // Remove from publish tmp dataset store now that insertion succeeded
+        if let Err(e) = self.publish_tmp_dataset_store.remove(publish_operation_id) {
             tracing::warn!(
                 operation_id = %operation_id,
                 publish_operation_id = %publish_operation_id,
                 error = %e,
-                "Failed to remove dataset from pending storage"
+                "Failed to remove dataset from publish tmp dataset store"
             );
         }
 

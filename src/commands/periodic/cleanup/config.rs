@@ -7,7 +7,7 @@ pub(crate) struct CleanupConfig {
     pub enabled: bool,
     pub interval_secs: u64,
     pub operations: OperationsCleanupConfig,
-    pub pending_storage: PendingStorageCleanupConfig,
+    pub publish_tmp_dataset: PublishTmpDatasetCleanupConfig,
     pub finality_acks: FinalityAcksCleanupConfig,
     pub proof_challenges: ProofChallengesCleanupConfig,
 }
@@ -20,10 +20,10 @@ pub(crate) struct OperationsCleanupConfig {
     pub batch_size: usize,
 }
 
-/// Cleanup config for pending storage (redb).
+/// Cleanup config for publish tmp dataset store (redb).
 #[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PendingStorageCleanupConfig {
+pub(crate) struct PublishTmpDatasetCleanupConfig {
     pub ttl_secs: u64,
     pub batch_size: usize,
 }

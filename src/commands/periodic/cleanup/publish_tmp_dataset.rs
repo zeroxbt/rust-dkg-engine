@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use crate::managers::key_value_store::PendingStorageStore;
+use crate::managers::key_value_store::PublishTmpDatasetStore;
 
-pub(crate) fn cleanup_pending_storage(
-    pending_storage: &PendingStorageStore,
+pub(crate) fn cleanup_publish_tmp_datasets(
+    publish_tmp_dataset: &PublishTmpDatasetStore,
     ttl: Duration,
     batch_size: usize,
 ) -> Result<usize, String> {
@@ -14,7 +14,7 @@ pub(crate) fn cleanup_pending_storage(
     let mut total_removed = 0usize;
 
     loop {
-        let removed = pending_storage
+        let removed = publish_tmp_dataset
             .remove_expired(ttl, batch_size)
             .map_err(|e| e.to_string())?;
 

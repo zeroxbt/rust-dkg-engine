@@ -5,7 +5,7 @@ use validator_derive::Validate;
 
 use crate::{
     controllers::http_api_controller::validators::validate_blockchain_id_format,
-    managers::{blockchain::BlockchainId, triple_store::Assertion},
+    managers::blockchain::BlockchainId, types::Assertion,
 };
 
 /// Validates BlockchainId format at the DTO level.

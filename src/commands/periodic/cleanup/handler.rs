@@ -2,7 +2,8 @@ use std::{sync::Arc, time::Duration};
 
 use super::{
     finality_acks::cleanup_finality_acks, operations::cleanup_operations,
-    pending_storage::cleanup_pending_storage, proof_challenges::cleanup_proof_challenges,
+    proof_challenges::cleanup_proof_challenges,
+    publish_tmp_dataset::cleanup_publish_tmp_datasets,
 };
 use crate::{
     commands::{
@@ -11,7 +12,7 @@ use crate::{
     },
     context::Context,
     managers::{
-        key_value_store::PendingStorageStore,
+        key_value_store::PublishTmpDatasetStore,
         repository::RepositoryManager,
     },
     services::OperationStatusService,
@@ -30,7 +31,7 @@ impl CleanupCommandData {
 
 pub(crate) struct CleanupCommandHandler {
     repository_manager: Arc<RepositoryManager>,
-    pending_storage_store: Arc<PendingStorageStore>,
+    publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
     publish_operation_results:
         Arc<OperationStatusService<crate::operations::PublishStoreOperationResult>>,
     get_operation_results: Arc<OperationStatusService<crate::operations::GetOperationResult>>,
@@ -40,11 +41,11 @@ impl CleanupCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
-            pending_storage_store: Arc::new(
+            publish_tmp_dataset_store: Arc::new(
                 context
                     .key_value_store_manager()
-                    .pending_storage_store()
-                    .expect("Failed to create pending storage store"),
+                    .publish_tmp_dataset_store()
+                    .expect("Failed to create publish tmp dataset store"),
             ),
             publish_operation_results: Arc::clone(context.publish_store_operation_status_service()),
             get_operation_results: Arc::clone(context.get_operation_status_service()),
@@ -81,18 +82,18 @@ impl CommandHandler<CleanupCommandData> for CleanupCommandHandler {
             }
         }
 
-        if data.config.pending_storage.ttl_secs > 0 {
-            match cleanup_pending_storage(
-                &self.pending_storage_store,
-                Duration::from_secs(data.config.pending_storage.ttl_secs),
-                data.config.pending_storage.batch_size,
+        if data.config.publish_tmp_dataset.ttl_secs > 0 {
+            match cleanup_publish_tmp_datasets(
+                &self.publish_tmp_dataset_store,
+                Duration::from_secs(data.config.publish_tmp_dataset.ttl_secs),
+                data.config.publish_tmp_dataset.batch_size,
             ) {
                 Ok(removed) => {
                     if removed > 0 {
-                        tracing::info!(removed, "Cleaned up pending storage entries");
+                        tracing::info!(removed, "Cleaned up publish tmp dataset entries");
                     }
                 }
-                Err(e) => tracing::warn!(error = %e, "Failed to clean pending storage entries"),
+                Err(e) => tracing::warn!(error = %e, "Failed to clean publish tmp dataset entries"),
             }
         }
 

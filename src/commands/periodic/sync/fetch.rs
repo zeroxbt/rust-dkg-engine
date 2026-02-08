@@ -27,11 +27,11 @@ use crate::{
             messages::{BatchGetRequestData, BatchGetResponseData},
             protocols::{BatchGetProtocol, ProtocolSpec},
         },
-        triple_store::{TokenIds, parse_metadata_from_triples},
+        triple_store::parse_metadata_from_triples,
     },
     operations::protocols::batch_get,
     services::{GetValidationService, PeerService},
-    types::{ParsedUal, Visibility, parse_ual},
+    types::{ParsedUal, TokenIds, Visibility, parse_ual},
 };
 
 /// Fetch task: receives filtered KCs, fetches from network, sends to insert stage.

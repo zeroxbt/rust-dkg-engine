@@ -3,12 +3,9 @@ use uuid::Uuid;
 
 use super::handler::SendGetRequestsCommandHandler;
 use crate::{
-    managers::{
-        network::{message::ResponseBody, messages::GetResponseData},
-        triple_store::Assertion,
-    },
+    managers::network::{message::ResponseBody, messages::GetResponseData},
     operations::GetOperationResult,
-    types::{ParsedUal, Visibility},
+    types::{Assertion, ParsedUal, Visibility},
 };
 
 impl SendGetRequestsCommandHandler {

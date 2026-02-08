@@ -5,7 +5,8 @@ use std::{path::Path, sync::Arc};
 
 pub(crate) use error::KeyValueStoreError;
 pub(crate) use stores::{
-    OperationResultStore, PeerAddressStore, PendingStorageData, PendingStorageStore, ResultStoreError,
+    OperationResultStore, PeerAddressStore, PublishTmpDataset, PublishTmpDatasetStore,
+    ResultStoreError,
 };
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Serialize, de::DeserializeOwned};
@@ -222,8 +223,10 @@ impl KeyValueStoreManager {
         Ok(Table::new(Arc::clone(&self.db), table_def))
     }
 
-    pub(crate) fn pending_storage_store(&self) -> Result<PendingStorageStore, KeyValueStoreError> {
-        PendingStorageStore::new(self)
+    pub(crate) fn publish_tmp_dataset_store(
+        &self,
+    ) -> Result<PublishTmpDatasetStore, KeyValueStoreError> {
+        PublishTmpDatasetStore::new(self)
     }
 
     pub(crate) fn peer_address_store(&self) -> Result<PeerAddressStore, KeyValueStoreError> {

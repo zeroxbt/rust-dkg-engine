@@ -4,11 +4,11 @@ use crate::{
     managers::{
         blockchain::BlockchainManager,
         triple_store::{
-            Assertion, group_triples_by_subject,
+            group_triples_by_subject,
             query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
         },
     },
-    types::{ParsedUal, Visibility},
+    types::{Assertion, ParsedUal, Visibility},
     utils::validation,
 };
 

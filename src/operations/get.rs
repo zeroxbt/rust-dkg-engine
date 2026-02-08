@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::managers::triple_store::Assertion;
+use crate::types::Assertion;
 
 /// Result stored after successful Get operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]

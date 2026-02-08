@@ -4,16 +4,16 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::managers::{
-    key_value_store::{KeyValueStoreError, KeyValueStoreManager, Table},
-    triple_store::Assertion,
+use crate::{
+    managers::key_value_store::{KeyValueStoreError, KeyValueStoreManager, Table},
+    types::Assertion,
 };
 
-/// Table name for pending storage data.
-const TABLE_NAME: &str = "pending_storage";
+/// Table name for publish temporary datasets.
+const TABLE_NAME: &str = "publish_tmp_dataset";
 
 #[derive(Serialize, Deserialize, Clone)]
-pub(crate) struct PendingStorageData {
+pub(crate) struct PublishTmpDataset {
     dataset_root: String,
     dataset: Assertion,
     publisher_peer_id: String,
@@ -21,7 +21,7 @@ pub(crate) struct PendingStorageData {
     stored_at: i64,
 }
 
-impl PendingStorageData {
+impl PublishTmpDataset {
     pub(crate) fn new(dataset_root: String, dataset: Assertion, publisher_peer_id: String) -> Self {
         Self {
             dataset_root,
@@ -52,12 +52,12 @@ fn default_stored_at() -> i64 {
     0
 }
 
-/// Store for pending datasets awaiting finality confirmation.
-pub(crate) struct PendingStorageStore {
-    table: Table<PendingStorageData>,
+/// Store for publish temporary datasets awaiting finality confirmation.
+pub(crate) struct PublishTmpDatasetStore {
+    table: Table<PublishTmpDataset>,
 }
 
-impl PendingStorageStore {
+impl PublishTmpDatasetStore {
     pub(crate) fn new(kv_store_manager: &KeyValueStoreManager) -> Result<Self, KeyValueStoreError> {
         let table = kv_store_manager.table(TABLE_NAME)?;
         Ok(Self { table })
@@ -66,7 +66,7 @@ impl PendingStorageStore {
     pub(crate) fn store(
         &self,
         operation_id: Uuid,
-        data: &PendingStorageData,
+        data: &PublishTmpDataset,
     ) -> Result<(), KeyValueStoreError> {
         self.table.store(operation_id.as_bytes(), data)
     }
@@ -74,7 +74,7 @@ impl PendingStorageStore {
     pub(crate) fn get(
         &self,
         operation_id: Uuid,
-    ) -> Result<Option<PendingStorageData>, KeyValueStoreError> {
+    ) -> Result<Option<PublishTmpDataset>, KeyValueStoreError> {
         self.table.get(operation_id.as_bytes())
     }
 
