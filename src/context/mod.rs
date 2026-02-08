@@ -6,7 +6,8 @@ use crate::{
         Managers,
         network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
-    services::{AssertionValidationService, PeerService, ResponseChannels, Services, TripleStoreService},
+    services::{AssertionValidationService, PeerService, Services, TripleStoreService},
+    state::ResponseChannels,
 };
 
 pub(crate) struct Context {

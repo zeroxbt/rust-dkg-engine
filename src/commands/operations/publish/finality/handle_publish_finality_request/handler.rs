@@ -11,7 +11,7 @@ use crate::{
         network::{NetworkManager, messages::FinalityAck},
         repository::RepositoryManager,
     },
-    services::ResponseChannels,
+    state::ResponseChannels,
 };
 
 /// Command data for handling incoming publish finality requests from storage nodes.

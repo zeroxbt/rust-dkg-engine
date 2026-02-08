@@ -1,16 +1,14 @@
-pub(crate) mod assertion_validation_service;
+pub(crate) mod assertion_validation;
 pub(crate) mod operation_status;
 pub(crate) mod peer;
-pub(crate) mod response_channels;
-pub(crate) mod triple_store_service;
+pub(crate) mod triple_store;
 
 use std::sync::Arc;
 
-pub(crate) use assertion_validation_service::AssertionValidationService;
+pub(crate) use assertion_validation::AssertionValidationService;
 pub(crate) use operation_status::OperationStatusService;
 pub(crate) use peer::{PeerAddressStore, PeerService};
-pub(crate) use response_channels::ResponseChannels;
-pub(crate) use triple_store_service::TripleStoreService;
+pub(crate) use triple_store::TripleStoreService;
 
 use crate::{
     managers::{
@@ -18,6 +16,7 @@ use crate::{
         network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
     operations::{GetOperation, PublishStoreOperation},
+    state::ResponseChannels,
 };
 
 /// Response channels for all protocol types.
@@ -87,7 +86,9 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
     let triple_store = Arc::new(TripleStoreService::new(Arc::clone(&managers.triple_store)));
 
     // Validation services
-    let assertion_validation = Arc::new(AssertionValidationService::new(Arc::clone(&managers.blockchain)));
+    let assertion_validation = Arc::new(AssertionValidationService::new(Arc::clone(
+        &managers.blockchain,
+    )));
 
     // Infrastructure services
     let peer_service = Arc::new(PeerService::new());

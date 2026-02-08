@@ -6,7 +6,7 @@ use crate::{
     commands::{executor::CommandExecutor, scheduler::CommandScheduler},
     context::Context,
     controllers::{
-        http_api_controller::http_api_router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
+        http_api_controller::router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
     },
     logger,
     managers::network::NetworkEventLoop,

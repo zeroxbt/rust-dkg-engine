@@ -8,7 +8,8 @@ use crate::{
     commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     managers::network::{NetworkManager, messages::BatchGetAck},
-    services::{ResponseChannels, TripleStoreService},
+    services::TripleStoreService,
+    state::ResponseChannels,
     types::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual},
 };
 

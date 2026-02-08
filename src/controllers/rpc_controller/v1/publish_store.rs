@@ -13,7 +13,7 @@ use crate::{
         messages::{StoreAck, StoreRequestData},
         request_response,
     },
-    services::ResponseChannels,
+    state::ResponseChannels,
     types::Assertion,
 };
 

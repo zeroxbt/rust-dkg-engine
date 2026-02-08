@@ -45,11 +45,7 @@ where
     pub(crate) async fn create_operation(&self, operation_id: Uuid) -> Result<(), NodeError> {
         self.repository
             .operation_repository()
-            .create(
-                operation_id,
-                K::NAME,
-                OperationStatus::InProgress,
-            )
+            .create(operation_id, K::NAME, OperationStatus::InProgress)
             .await?;
 
         tracing::debug!(
@@ -67,9 +63,7 @@ where
         operation_id: Uuid,
         result: K::Result,
     ) -> Result<(), ResultStoreError> {
-        self.result_store
-            .store_result(operation_id, result)
-            .await?;
+        self.result_store.store_result(operation_id, result).await?;
         tracing::debug!(
             operation_id = %operation_id,
             "[{}] Result stored",
@@ -79,10 +73,7 @@ where
     }
 
     /// Remove a result from the key-value store.
-    pub(crate) async fn remove_result(
-        &self,
-        operation_id: Uuid,
-    ) -> Result<bool, ResultStoreError> {
+    pub(crate) async fn remove_result(&self, operation_id: Uuid) -> Result<bool, ResultStoreError> {
         self.result_store.remove_result(operation_id).await
     }
 
@@ -182,5 +173,4 @@ where
             }
         }
     }
-
 }

@@ -14,7 +14,7 @@ use thiserror::Error;
 
 use crate::{
     commands::periodic::cleanup::CleanupConfig,
-    controllers::{http_api_controller::http_api_router::HttpApiConfig, rpc_controller::RpcConfig},
+    controllers::{http_api_controller::router::HttpApiConfig, rpc_controller::RpcConfig},
     logger::{LoggerConfig, TelemetryConfig},
     managers::ManagersConfig,
 };

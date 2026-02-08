@@ -3,12 +3,13 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use libp2p::{Multiaddr, PeerId};
 use tokio::sync::broadcast;
 
-use super::registry::PeerRegistry;
+pub(crate) use crate::managers::key_value_store::PeerAddressStore;
 use crate::{
     managers::network::{
         PeerEvent, RequestOutcomeKind,
         protocols::{BatchGetProtocol, GetProtocol, ProtocolSpec},
     },
+    state::PeerRegistry,
     types::BlockchainId,
 };
 

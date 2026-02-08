@@ -13,7 +13,7 @@ use crate::{
         messages::{BatchGetAck, BatchGetRequestData},
         request_response,
     },
-    services::ResponseChannels,
+    state::ResponseChannels,
 };
 
 pub(crate) struct BatchGetRpcController {

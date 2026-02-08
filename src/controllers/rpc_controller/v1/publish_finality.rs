@@ -13,7 +13,7 @@ use crate::{
         messages::{FinalityAck, FinalityRequestData},
         request_response,
     },
-    services::ResponseChannels,
+    state::ResponseChannels,
 };
 
 pub(crate) struct PublishFinalityRpcController {

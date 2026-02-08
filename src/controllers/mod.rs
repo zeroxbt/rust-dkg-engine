@@ -3,7 +3,7 @@ pub(crate) mod rpc_controller;
 
 use std::sync::Arc;
 
-pub(crate) use http_api_controller::http_api_router::{HttpApiConfig, HttpApiRouter};
+pub(crate) use http_api_controller::router::{HttpApiConfig, HttpApiRouter};
 pub(crate) use rpc_controller::rpc_router::RpcRouter;
 
 use crate::{context::Context, controllers::rpc_controller::config::RpcConfig};

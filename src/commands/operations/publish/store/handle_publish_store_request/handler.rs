@@ -12,7 +12,8 @@ use crate::{
         key_value_store::{PublishTmpDataset, PublishTmpDatasetStore},
         network::{NetworkManager, messages::StoreAck},
     },
-    services::{PeerService, ResponseChannels},
+    services::PeerService,
+    state::ResponseChannels,
     types::Assertion,
     utils::validation,
 };

@@ -17,16 +17,12 @@ use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLaye
 use super::{
     middleware::{AuthConfig, RateLimiterConfig},
     v1::{
-        info_http_api_controller::InfoHttpApiController,
-        operation_result_http_api_controller::OperationResultHttpApiController,
-        publish_finality_http_api_controller::PublishFinalityStatusHttpApiController,
-        publish_store_http_api_controller::PublishStoreHttpApiController,
+        info::InfoHttpApiController, operation_result::OperationResultHttpApiController,
+        publish_finality::PublishFinalityStatusHttpApiController,
+        publish_store::PublishStoreHttpApiController,
     },
 };
-use crate::{
-    context::Context,
-    controllers::http_api_controller::v1::get_http_api_controller::GetHttpApiController,
-};
+use crate::{context::Context, controllers::http_api_controller::v1::get::GetHttpApiController};
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

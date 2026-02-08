@@ -11,7 +11,8 @@ use crate::{
         blockchain::BlockchainManager,
         network::{NetworkManager, messages::GetAck},
     },
-    services::{ResponseChannels, TripleStoreService},
+    services::TripleStoreService,
+    state::ResponseChannels,
     types::{TokenIds, parse_ual},
 };
 

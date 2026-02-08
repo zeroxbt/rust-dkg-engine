@@ -13,7 +13,7 @@ use crate::{
         messages::{GetAck, GetRequestData},
         request_response,
     },
-    services::ResponseChannels,
+    state::ResponseChannels,
 };
 
 pub(crate) struct GetRpcController {

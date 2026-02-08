@@ -6,9 +6,8 @@ use super::{PeerRateLimiter, RpcConfig};
 use crate::{
     context::Context,
     controllers::rpc_controller::v1::{
-        batch_get_rpc_controller::BatchGetRpcController, get_rpc_controller::GetRpcController,
-        publish_finality_rpc_controller::PublishFinalityRpcController,
-        publish_store_rpc_controller::PublishStoreRpcController,
+        batch_get::BatchGetRpcController, get::GetRpcController,
+        publish_finality::PublishFinalityRpcController, publish_store::PublishStoreRpcController,
     },
     managers::network::{
         NetworkEventHandler, NetworkManager, PeerId,

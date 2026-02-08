@@ -1,4 +1,4 @@
-pub(crate) mod http_api_router;
 pub(crate) mod middleware;
+pub(crate) mod router;
 mod v1;
 pub(crate) mod validators;
