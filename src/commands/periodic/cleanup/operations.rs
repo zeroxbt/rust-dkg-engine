@@ -5,13 +5,14 @@ use uuid::Uuid;
 
 use crate::{
     managers::repository::{OperationStatus, RepositoryManager},
+    operations::{GetOperation, PublishStoreOperation},
     services::OperationStatusService,
 };
 
 pub(crate) async fn cleanup_operations(
     repository: &RepositoryManager,
-    publish_store_results: &OperationStatusService<crate::operations::PublishStoreOperationResult>,
-    get_results: &OperationStatusService<crate::operations::GetOperationResult>,
+    publish_store_results: &OperationStatusService<PublishStoreOperation>,
+    get_results: &OperationStatusService<GetOperation>,
     ttl: Duration,
     batch_size: usize,
 ) -> Result<usize, String> {
@@ -54,8 +55,8 @@ pub(crate) async fn cleanup_operations(
 }
 
 fn remove_results(
-    publish_store_results: &OperationStatusService<crate::operations::PublishStoreOperationResult>,
-    get_results: &OperationStatusService<crate::operations::GetOperationResult>,
+    publish_store_results: &OperationStatusService<PublishStoreOperation>,
+    get_results: &OperationStatusService<GetOperation>,
     ids: &[Uuid],
 ) {
     for id in ids {

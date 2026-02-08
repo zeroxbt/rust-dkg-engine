@@ -15,7 +15,7 @@ use crate::{
         operation_result::{OperationResultErrorResponse, OperationResultResponse, SignatureData},
     },
     managers::repository::OperationStatus,
-    operations::{PublishStoreOperationResult, protocols},
+    operations::{GetOperation, OperationKind, PublishStoreOperation, PublishStoreOperationResult},
 };
 
 pub(crate) struct OperationResultHttpApiController;
@@ -42,7 +42,7 @@ impl OperationResultHttpApiController {
         let operation_record = match context
             .repository_manager()
             .operation_repository()
-            .get_by_id_and_name(operation_uuid, protocols::publish_store::NAME)
+            .get_by_id_and_name(operation_uuid, PublishStoreOperation::NAME)
             .await
         {
             Ok(Some(record)) => record,
@@ -190,7 +190,7 @@ impl OperationResultHttpApiController {
         let operation_record = match context
             .repository_manager()
             .operation_repository()
-            .get_by_id_and_name(operation_uuid, protocols::get::NAME)
+            .get_by_id_and_name(operation_uuid, GetOperation::NAME)
             .await
         {
             Ok(Some(record)) => record,

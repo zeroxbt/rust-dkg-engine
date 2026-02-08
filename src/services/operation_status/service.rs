@@ -9,32 +9,35 @@ use crate::{
         key_value_store::{KeyValueStoreManager, OperationResultStore, ResultStoreError},
         repository::{OperationStatus, RepositoryManager},
     },
+    operations::OperationKind,
 };
 
 /// Operation status service used for HTTP polling.
 ///
 /// Stores a lightweight status record in SQL and the typed result in redb.
-pub(crate) struct OperationStatusService<R> {
+pub(crate) struct OperationStatusService<K: OperationKind> {
     repository: Arc<RepositoryManager>,
-    result_store: OperationResultStore<R>,
-    operation_name: &'static str,
+    result_store: OperationResultStore<K::Result>,
+    _marker: std::marker::PhantomData<K>,
 }
 
-impl<R> OperationStatusService<R>
+impl<K> OperationStatusService<K>
 where
-    R: Serialize + DeserializeOwned + Send + Sync + 'static,
+    K: OperationKind,
+    K::Result: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
+    const MISSING_RESULT_ERROR: &'static str = "operation result missing for completion";
+
     /// Create a new operation status service.
     pub(crate) fn new(
         repository: Arc<RepositoryManager>,
         kv_store_manager: &KeyValueStoreManager,
-        operation_name: &'static str,
     ) -> Result<Self, ResultStoreError> {
         let result_store = kv_store_manager.operation_result_store()?;
         Ok(Self {
             repository,
             result_store,
-            operation_name,
+            _marker: std::marker::PhantomData,
         })
     }
 
@@ -44,7 +47,7 @@ where
             .operation_repository()
             .create(
                 operation_id,
-                self.operation_name,
+                K::NAME,
                 OperationStatus::InProgress,
             )
             .await?;
@@ -52,7 +55,7 @@ where
         tracing::debug!(
             operation_id = %operation_id,
             "[{}] Operation record created ",
-            self.operation_name
+            K::NAME
         );
 
         Ok(())
@@ -62,13 +65,13 @@ where
     pub(crate) fn store_result(
         &self,
         operation_id: Uuid,
-        result: &R,
+        result: &K::Result,
     ) -> Result<(), ResultStoreError> {
         self.result_store.store_result(operation_id, result)?;
         tracing::debug!(
             operation_id = %operation_id,
             "[{}] Result stored",
-            self.operation_name
+            K::NAME
         );
         Ok(())
     }
@@ -79,7 +82,10 @@ where
     }
 
     /// Get a cached operation result from the key-value store.
-    pub(crate) fn get_result(&self, operation_id: Uuid) -> Result<Option<R>, ResultStoreError> {
+    pub(crate) fn get_result(
+        &self,
+        operation_id: Uuid,
+    ) -> Result<Option<K::Result>, ResultStoreError> {
         self.result_store.get_result(operation_id)
     }
 
@@ -89,18 +95,18 @@ where
     pub(crate) fn update_result<F>(
         &self,
         operation_id: Uuid,
-        default: R,
+        default: K::Result,
         update_fn: F,
     ) -> Result<(), ResultStoreError>
     where
-        F: FnOnce(&mut R),
+        F: FnOnce(&mut K::Result),
     {
         self.result_store
             .update_result(operation_id, default, update_fn)?;
         tracing::trace!(
             operation_id = %operation_id,
             "[{}] Result updated",
-            self.operation_name
+            K::NAME
         );
         Ok(())
     }
@@ -111,7 +117,7 @@ where
     pub(crate) async fn complete_with_result(
         &self,
         operation_id: Uuid,
-        result: &R,
+        result: &K::Result,
     ) -> Result<(), NodeError> {
         self.store_result(operation_id, result)?;
         self.mark_completed(operation_id).await?;
@@ -121,9 +127,7 @@ where
     /// Mark an operation as completed, ensuring a result exists first.
     pub(crate) async fn complete(&self, operation_id: Uuid) -> Result<(), NodeError> {
         if self.get_result(operation_id)?.is_none() {
-            return Err(NodeError::Other(
-                "operation result missing for completion".to_string(),
-            ));
+            return Err(NodeError::Other(Self::MISSING_RESULT_ERROR.to_string()));
         }
         self.mark_completed(operation_id).await
     }
@@ -139,7 +143,7 @@ where
         tracing::info!(
             operation_id = %operation_id,
             "[{}] Operation marked as completed",
-            self.operation_name
+            K::NAME
         );
 
         Ok(())
@@ -160,7 +164,7 @@ where
                 tracing::warn!(
                     operation_id = %operation_id,
                     "[{}] Operation failed",
-                    self.operation_name
+                    K::NAME
                 );
             }
             Err(e) => {
@@ -172,4 +176,5 @@ where
             }
         }
     }
+
 }

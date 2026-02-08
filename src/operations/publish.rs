@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+
+use crate::operations::OperationKind;
 /// Signature data stored after Publish store operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PublishStoreSignatureData {
@@ -42,4 +44,11 @@ impl PublishStoreOperationResult {
             network_signatures,
         }
     }
+}
+
+pub(crate) struct PublishStoreOperation;
+
+impl OperationKind for PublishStoreOperation {
+    const NAME: &'static str = "publish";
+    type Result = PublishStoreOperationResult;
 }

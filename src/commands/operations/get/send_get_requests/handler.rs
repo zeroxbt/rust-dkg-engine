@@ -12,7 +12,7 @@ use crate::{
         blockchain::BlockchainManager,
         network::{NetworkError, NetworkManager, messages::GetRequestData},
     },
-    operations::{GetOperationResult, protocols},
+    operations::{GetOperation, GetOperationResult, protocols},
     services::{
         GetValidationService, PeerService, TripleStoreService,
         operation_status::OperationStatusService as GenericOperationService,
@@ -52,7 +52,7 @@ pub(crate) struct SendGetRequestsCommandHandler {
     pub(super) blockchain_manager: Arc<BlockchainManager>,
     pub(super) triple_store_service: Arc<TripleStoreService>,
     pub(super) network_manager: Arc<NetworkManager>,
-    pub(super) get_operation_status_service: Arc<GenericOperationService<GetOperationResult>>,
+    pub(super) get_operation_status_service: Arc<GenericOperationService<GetOperation>>,
     pub(super) get_validation_service: Arc<GetValidationService>,
     pub(super) peer_service: Arc<PeerService>,
 }
@@ -323,7 +323,6 @@ impl SendGetRequestsCommandHandler {
             operation_id = %operation_id,
             has_paranet = data.paranet_ual.is_some(),
             peer_count = tracing::field::Empty,
-            min_ack = protocols::get::MIN_ACK_RESPONSES,
         )
     )]
     async fn network_query_phase(
@@ -345,8 +344,7 @@ impl SendGetRequestsCommandHandler {
 
         self.peer_service.sort_by_latency(&mut peers);
 
-        let min_required_peers =
-            protocols::get::MIN_PEERS.max(protocols::get::MIN_ACK_RESPONSES as usize);
+        let min_required_peers = 1;
         let total_peers = peers.len();
 
         tracing::debug!(

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::types::Assertion;
+use crate::{operations::OperationKind, types::Assertion};
 
 /// Result stored after successful Get operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,4 +20,11 @@ impl GetOperationResult {
             metadata,
         }
     }
+}
+
+pub(crate) struct GetOperation;
+
+impl OperationKind for GetOperation {
+    const NAME: &'static str = "get";
+    type Result = GetOperationResult;
 }

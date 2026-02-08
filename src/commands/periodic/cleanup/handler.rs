@@ -15,6 +15,7 @@ use crate::{
         key_value_store::PublishTmpDatasetStore,
         repository::RepositoryManager,
     },
+    operations::{GetOperation, PublishStoreOperation},
     services::OperationStatusService,
 };
 
@@ -32,9 +33,8 @@ impl CleanupCommandData {
 pub(crate) struct CleanupCommandHandler {
     repository_manager: Arc<RepositoryManager>,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
-    publish_operation_results:
-        Arc<OperationStatusService<crate::operations::PublishStoreOperationResult>>,
-    get_operation_results: Arc<OperationStatusService<crate::operations::GetOperationResult>>,
+    publish_operation_results: Arc<OperationStatusService<PublishStoreOperation>>,
+    get_operation_results: Arc<OperationStatusService<GetOperation>>,
 }
 
 impl CleanupCommandHandler {

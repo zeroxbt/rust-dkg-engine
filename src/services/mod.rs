@@ -17,7 +17,7 @@ use crate::{
         Managers,
         network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
-    operations::{GetOperationResult, PublishStoreOperationResult, protocols},
+    operations::{GetOperation, PublishStoreOperation},
 };
 
 /// Response channels for all protocol types.
@@ -42,8 +42,8 @@ impl ResponseChannelsSet {
 /// Container for all initialized services.
 pub(crate) struct Services {
     // Operation status services (publish = store phase only, not finality)
-    pub publish_store_operation: Arc<OperationStatusService<PublishStoreOperationResult>>,
-    pub get_operation: Arc<OperationStatusService<GetOperationResult>>,
+    pub publish_store_operation: Arc<OperationStatusService<PublishStoreOperation>>,
+    pub get_operation: Arc<OperationStatusService<GetOperation>>,
 
     // Storage services
     pub triple_store: Arc<TripleStoreService>,
@@ -68,19 +68,17 @@ pub(crate) struct Services {
 pub(crate) fn initialize(managers: &Managers) -> Services {
     // Operation status services
     let publish_store_operation = Arc::new(
-        OperationStatusService::<PublishStoreOperationResult>::new(
+        OperationStatusService::<PublishStoreOperation>::new(
             Arc::clone(&managers.repository),
             &managers.key_value_store,
-            protocols::publish_store::NAME,
         )
         .expect("Failed to create publish store operation service"),
     );
 
     let get_operation = Arc::new(
-        OperationStatusService::<GetOperationResult>::new(
+        OperationStatusService::<GetOperation>::new(
             Arc::clone(&managers.repository),
             &managers.key_value_store,
-            protocols::get::NAME,
         )
         .expect("Failed to create get operation service"),
     );

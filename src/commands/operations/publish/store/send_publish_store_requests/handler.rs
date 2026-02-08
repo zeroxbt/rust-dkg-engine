@@ -17,7 +17,7 @@ use crate::{
             protocols::{ProtocolSpec, StoreProtocol},
         },
     },
-    operations::{PublishStoreOperationResult, protocols},
+    operations::{PublishStoreOperation, PublishStoreOperationResult, protocols},
     services::{PeerService, operation_status::OperationStatusService as GenericOperationService},
     types::Assertion,
 };
@@ -56,7 +56,7 @@ pub(crate) struct SendPublishStoreRequestsCommandHandler {
     pub(super) peer_service: Arc<PeerService>,
     pub(super) blockchain_manager: Arc<BlockchainManager>,
     pub(super) publish_store_operation_status_service:
-        Arc<GenericOperationService<PublishStoreOperationResult>>,
+        Arc<GenericOperationService<PublishStoreOperation>>,
     pub(super) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 }
 
@@ -102,8 +102,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         let dataset_root = &data.dataset_root;
         let dataset = &data.dataset;
 
-        // Determine effective min_ack_responses using max(default, chain_min, user_provided)
-        let default_min = protocols::publish_store::MIN_ACK_RESPONSES as u8;
+        // Determine effective min_ack_responses using max(chain_min, user_provided)
         let user_min = data.min_ack_responses;
         let chain_min = match self
             .blockchain_manager
@@ -122,7 +121,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             }
         };
 
-        let min_ack_responses = default_min.max(chain_min).max(user_min);
+        let min_ack_responses = chain_min.max(user_min);
 
         let my_peer_id = *self.network_manager.peer_id();
 
@@ -161,8 +160,8 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         );
 
         let min_ack_required = min_ack_responses as u16;
-        let min_required_peers = protocols::publish_store::MIN_PEERS.max(min_ack_required as usize);
-        if (total_peers as usize) < min_required_peers {
+        let min_required_peers = min_ack_required;
+        if total_peers < min_required_peers {
             let error_message = format!(
                 "Unable to find enough nodes for operation: {operation_id}. Minimum number of nodes required: {min_required_peers}"
             );

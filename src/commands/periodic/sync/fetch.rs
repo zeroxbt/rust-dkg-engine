@@ -100,7 +100,7 @@ pub(crate) async fn fetch_task(
         );
     }
 
-    let min_required_peers = batch_get::MIN_PEERS;
+    let min_required_peers = 1;
     if peers.len() < min_required_peers {
         let identified = peer_service.identified_shard_peer_count(&blockchain_id);
         tracing::warn!(
