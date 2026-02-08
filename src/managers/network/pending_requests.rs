@@ -57,13 +57,8 @@ where
         sender: oneshot::Sender<Result<T, NetworkError>>,
         context: RequestContext,
     ) {
-        self.pending.insert(
-            request_id,
-            PendingRequest {
-                sender,
-                context,
-            },
-        );
+        self.pending
+            .insert(request_id, PendingRequest { sender, context });
         tracing::trace!(?request_id, "Registered pending request");
     }
 

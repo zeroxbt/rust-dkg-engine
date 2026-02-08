@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 pub(crate) use config::RepositoryManagerConfig;
 use error::RepositoryError;
+pub(crate) use repositories::proof_challenge_repository::ChallengeState;
 use repositories::{
     blockchain_repository::BlockchainRepository,
     finality_status_repository::FinalityStatusRepository, kc_sync_repository::KcSyncRepository,
@@ -16,7 +17,6 @@ use repositories::{
     proof_challenge_repository::ProofChallengeRepository,
     triples_insert_count_repository::TriplesInsertCountRepository,
 };
-pub(crate) use repositories::proof_challenge_repository::ChallengeState;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;
 pub(crate) use types::OperationStatus;

@@ -12,11 +12,13 @@ use std::{
 use async_trait::async_trait;
 use tempfile::TempDir;
 
-use crate::managers::triple_store::{
-    GraphVisibility, TripleStoreBackendType, TripleStoreBackend, TripleStoreManager,
-    TripleStoreManagerConfig, config::TimeoutConfig, query::predicates,
+use crate::{
+    managers::triple_store::{
+        GraphVisibility, TripleStoreBackend, TripleStoreBackendType, TripleStoreManager,
+        TripleStoreManagerConfig, config::TimeoutConfig, query::predicates,
+    },
+    types::{KnowledgeAsset, KnowledgeCollectionMetadata},
 };
-use crate::types::{KnowledgeAsset, KnowledgeCollectionMetadata};
 
 #[derive(Clone, Copy)]
 enum TestBackendKind {
@@ -98,9 +100,7 @@ async fn insert_and_query_knowledge_collection() {
     let kc_ual = "did:dkg:kc/test";
     let mut ka1 = KnowledgeAsset::new(
         format!("{}/1", kc_ual),
-        vec![
-            "<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string(),
-        ],
+        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
     );
     ka1.set_private_triples(vec![
         "<http://example.org/s1> <http://example.org/p2> \"secret\" .".to_string(),
@@ -108,9 +108,7 @@ async fn insert_and_query_knowledge_collection() {
 
     let ka2 = KnowledgeAsset::new(
         format!("{}/2", kc_ual),
-        vec![
-            "<http://example.org/s2> <http://example.org/p1> \"o2\" .".to_string(),
-        ],
+        vec!["<http://example.org/s2> <http://example.org/p1> \"o2\" .".to_string()],
     );
 
     let metadata = KnowledgeCollectionMetadata::new(
@@ -140,16 +138,14 @@ async fn insert_and_query_knowledge_collection() {
         .get_knowledge_asset_named_graph(ka1.ual(), GraphVisibility::Public)
         .await
         .unwrap();
-    assert!(ka1_public_triples.iter().any(|line| line.contains("\"o1\"")));
+    assert!(
+        ka1_public_triples
+            .iter()
+            .any(|line| line.contains("\"o1\""))
+    );
 
     let kc_public_triples = manager
-        .get_knowledge_collection_named_graphs(
-            kc_ual,
-            1,
-            2,
-            &[2],
-            GraphVisibility::Public,
-        )
+        .get_knowledge_collection_named_graphs(kc_ual, 1, 2, &[2], GraphVisibility::Public)
         .await
         .unwrap();
     assert!(kc_public_triples.iter().any(|line| line.contains("\"o1\"")));
@@ -210,9 +206,7 @@ async fn private_named_graph_only_contains_private_triples() {
     let kc_ual = "did:dkg:kc/private-only";
     let mut ka = KnowledgeAsset::new(
         format!("{}/1", kc_ual),
-        vec![
-            "<http://example.org/s1> <http://example.org/p1> \"public\" .".to_string(),
-        ],
+        vec!["<http://example.org/s1> <http://example.org/p1> \"public\" .".to_string()],
     );
     ka.set_private_triples(vec![
         "<http://example.org/s1> <http://example.org/p2> \"private\" .".to_string(),
@@ -228,8 +222,16 @@ async fn private_named_graph_only_contains_private_triples() {
         .await
         .unwrap();
 
-    assert!(private_triples.iter().any(|line| line.contains("\"private\"")));
-    assert!(!private_triples.iter().any(|line| line.contains("\"public\"")));
+    assert!(
+        private_triples
+            .iter()
+            .any(|line| line.contains("\"private\""))
+    );
+    assert!(
+        !private_triples
+            .iter()
+            .any(|line| line.contains("\"public\""))
+    );
 }
 
 #[tokio::test]
@@ -239,9 +241,7 @@ async fn get_metadata_without_metadata_is_empty() {
     let kc_ual = "did:dkg:kc/metadata-empty";
     let ka = KnowledgeAsset::new(
         format!("{}/1", kc_ual),
-        vec![
-            "<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string(),
-        ],
+        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
     );
 
     manager
@@ -271,9 +271,7 @@ async fn oxigraph_persists_across_reopen() {
     let kc_ual = "did:dkg:kc/persist";
     let ka = KnowledgeAsset::new(
         format!("{}/1", kc_ual),
-        vec![
-            "<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string(),
-        ],
+        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
     );
 
     let manager = TripleStoreManager::connect(&config, temp_dir.path())
@@ -303,9 +301,7 @@ async fn metadata_contains_expected_values() {
     let kc_ual = "did:dkg:kc/metadata-values";
     let ka = KnowledgeAsset::new(
         format!("{}/1", kc_ual),
-        vec![
-            "<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string(),
-        ],
+        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
     );
     let meta = KnowledgeCollectionMetadata::new(
         "0xabc".to_string(),
@@ -333,9 +329,7 @@ async fn public_queries_do_not_return_private_triples() {
     let kc_ual = "did:dkg:kc/private-filter";
     let mut ka = KnowledgeAsset::new(
         format!("{}/1", kc_ual),
-        vec![
-            "<http://example.org/s1> <http://example.org/p1> \"public\" .".to_string(),
-        ],
+        vec!["<http://example.org/s1> <http://example.org/p1> \"public\" .".to_string()],
     );
     ka.set_private_triples(vec![
         "<http://example.org/s1> <http://example.org/p2> \"private\" .".to_string(),
@@ -347,18 +341,20 @@ async fn public_queries_do_not_return_private_triples() {
         .unwrap();
 
     let public_triples = manager
-        .get_knowledge_collection_named_graphs(
-            kc_ual,
-            1,
-            1,
-            &[],
-            GraphVisibility::Public,
-        )
+        .get_knowledge_collection_named_graphs(kc_ual, 1, 1, &[], GraphVisibility::Public)
         .await
         .unwrap();
 
-    assert!(public_triples.iter().any(|line| line.contains("\"public\"")));
-    assert!(!public_triples.iter().any(|line| line.contains("\"private\"")));
+    assert!(
+        public_triples
+            .iter()
+            .any(|line| line.contains("\"public\""))
+    );
+    assert!(
+        !public_triples
+            .iter()
+            .any(|line| line.contains("\"private\""))
+    );
 }
 
 struct TimeoutBackend;
@@ -391,9 +387,11 @@ impl TripleStoreBackend for TimeoutBackend {
         _query: &str,
         _timeout: Duration,
     ) -> crate::managers::triple_store::error::Result<()> {
-        Err(crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
-            attempts: 1,
-        })
+        Err(
+            crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
+                attempts: 1,
+            },
+        )
     }
 
     async fn construct(
@@ -401,9 +399,11 @@ impl TripleStoreBackend for TimeoutBackend {
         _query: &str,
         _timeout: Duration,
     ) -> crate::managers::triple_store::error::Result<String> {
-        Err(crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
-            attempts: 1,
-        })
+        Err(
+            crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
+                attempts: 1,
+            },
+        )
     }
 
     async fn ask(
@@ -411,9 +411,11 @@ impl TripleStoreBackend for TimeoutBackend {
         _query: &str,
         _timeout: Duration,
     ) -> crate::managers::triple_store::error::Result<bool> {
-        Err(crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
-            attempts: 1,
-        })
+        Err(
+            crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
+                attempts: 1,
+            },
+        )
     }
 
     async fn select(
@@ -421,9 +423,11 @@ impl TripleStoreBackend for TimeoutBackend {
         _query: &str,
         _timeout: Duration,
     ) -> crate::managers::triple_store::error::Result<String> {
-        Err(crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
-            attempts: 1,
-        })
+        Err(
+            crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
+                attempts: 1,
+            },
+        )
     }
 }
 
@@ -432,9 +436,7 @@ async fn backend_error_propagates_from_operations() {
     let config = test_config_for_backend(TestBackendKind::Oxigraph, 1);
     let manager = TripleStoreManager::from_backend_for_tests(Box::new(TimeoutBackend), config);
 
-    let result = manager
-        .get_metadata("did:dkg:kc/fail")
-        .await;
+    let result = manager.get_metadata("did:dkg:kc/fail").await;
     assert!(result.is_err());
 }
 #[tokio::test]
@@ -444,9 +446,7 @@ async fn knowledge_collections_exist_batches_over_200() {
     let kc_ual = "did:dkg:kc/batch";
     let ka = KnowledgeAsset::new(
         format!("{}/1", kc_ual),
-        vec![
-            "<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string(),
-        ],
+        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
     );
 
     manager
@@ -491,13 +491,7 @@ async fn pagination_across_multiple_pages() {
         .unwrap();
 
     let triples = manager
-        .get_knowledge_collection_named_graphs(
-            kc_ual,
-            1,
-            60,
-            &[],
-            GraphVisibility::Public,
-        )
+        .get_knowledge_collection_named_graphs(kc_ual, 1, 60, &[], GraphVisibility::Public)
         .await
         .unwrap();
 
@@ -536,13 +530,7 @@ async fn get_named_graphs_all_burned_returns_empty() {
 
     let burned = vec![1, 2, 3];
     let triples = manager
-        .get_knowledge_collection_named_graphs(
-            kc_ual,
-            1,
-            3,
-            &burned,
-            GraphVisibility::Public,
-        )
+        .get_knowledge_collection_named_graphs(kc_ual, 1, 3, &burned, GraphVisibility::Public)
         .await
         .unwrap();
 
@@ -572,11 +560,7 @@ struct TestBackend {
 }
 
 impl TestBackend {
-    fn new(
-        hold: Duration,
-        current: Arc<AtomicUsize>,
-        max_observed: Arc<AtomicUsize>,
-    ) -> Self {
+    fn new(hold: Duration, current: Arc<AtomicUsize>, max_observed: Arc<AtomicUsize>) -> Self {
         Self {
             current,
             max_observed,
@@ -719,7 +703,11 @@ async fn knowledge_collections_exist_invalid_select_returns_error() {
 async fn concurrency_limiter_serializes_updates() {
     let current = Arc::new(AtomicUsize::new(0));
     let max_observed = Arc::new(AtomicUsize::new(0));
-    let backend = TestBackend::new(Duration::from_millis(50), Arc::clone(&current), Arc::clone(&max_observed));
+    let backend = TestBackend::new(
+        Duration::from_millis(50),
+        Arc::clone(&current),
+        Arc::clone(&max_observed),
+    );
 
     let config = test_config_for_backend(TestBackendKind::Oxigraph, 1);
     let manager = TripleStoreManager::from_backend_for_tests(Box::new(backend), config);

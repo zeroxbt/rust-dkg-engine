@@ -7,10 +7,12 @@
 
 use tempfile::TempDir;
 
-use crate::managers::triple_store::{
-    TripleStoreBackendType, TripleStoreManager, TripleStoreManagerConfig, config::TimeoutConfig,
+use crate::{
+    managers::triple_store::{
+        TripleStoreBackendType, TripleStoreManager, TripleStoreManagerConfig, config::TimeoutConfig,
+    },
+    types::KnowledgeAsset,
 };
-use crate::types::KnowledgeAsset;
 
 fn blazegraph_config() -> TripleStoreManagerConfig {
     TripleStoreManagerConfig {
@@ -49,9 +51,7 @@ async fn test_blazegraph_insert_and_query() {
     let kc_ual = "did:dkg:test/1";
     let ka = KnowledgeAsset::new(
         format!("{}/1", kc_ual),
-        vec![
-            "<http://example.org/s1> <http://example.org/p1> \"object1\" .".to_string(),
-        ],
+        vec!["<http://example.org/s1> <http://example.org/p1> \"object1\" .".to_string()],
     );
 
     manager

@@ -480,10 +480,7 @@ impl NetworkEventLoop {
                 for (peer_id, addrs) in &addresses {
                     for addr in addrs {
                         let addr = strip_p2p_protocol(addr);
-                        self.swarm
-                            .behaviour_mut()
-                            .kad
-                            .add_address(peer_id, addr);
+                        self.swarm.behaviour_mut().kad.add_address(peer_id, addr);
                         total_addrs += 1;
                     }
                 }
