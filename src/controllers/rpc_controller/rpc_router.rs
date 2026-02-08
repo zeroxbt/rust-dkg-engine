@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
+use super::{PeerRateLimiter, RpcConfig};
 use crate::{
     context::Context,
     controllers::rpc_controller::v1::{
@@ -21,7 +22,6 @@ use crate::{
         },
         request_response::ResponseChannel,
     },
-    services::PeerRateLimiter,
 };
 
 pub(crate) struct RpcRouter {
@@ -34,14 +34,14 @@ pub(crate) struct RpcRouter {
 }
 
 impl RpcRouter {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>, config: &RpcConfig) -> Self {
         RpcRouter {
             network_manager: Arc::clone(context.network_manager()),
             store_controller: Arc::new(PublishStoreRpcController::new(Arc::clone(&context))),
             get_controller: Arc::new(GetRpcController::new(Arc::clone(&context))),
             finality_controller: Arc::new(PublishFinalityRpcController::new(Arc::clone(&context))),
             batch_get_controller: Arc::new(BatchGetRpcController::new(Arc::clone(&context))),
-            peer_rate_limiter: Arc::clone(context.peer_rate_limiter()),
+            peer_rate_limiter: Arc::new(PeerRateLimiter::new(config.rate_limiter.clone())),
         }
     }
 

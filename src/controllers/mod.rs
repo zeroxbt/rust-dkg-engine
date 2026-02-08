@@ -6,7 +6,7 @@ use std::sync::Arc;
 pub(crate) use http_api_controller::http_api_router::{HttpApiConfig, HttpApiRouter};
 pub(crate) use rpc_controller::rpc_router::RpcRouter;
 
-use crate::context::Context;
+use crate::{context::Context, controllers::rpc_controller::config::RpcConfig};
 
 /// Container for all initialized controllers.
 pub(crate) struct Controllers {
@@ -15,7 +15,11 @@ pub(crate) struct Controllers {
 }
 
 /// Initialize all controllers.
-pub(crate) fn initialize(http_api_config: &HttpApiConfig, context: &Arc<Context>) -> Controllers {
+pub(crate) fn initialize(
+    http_api_config: &HttpApiConfig,
+    rpc_config: &RpcConfig,
+    context: &Arc<Context>,
+) -> Controllers {
     let http_router = if http_api_config.enabled {
         tracing::info!("HTTP API enabled on port {}", http_api_config.port);
         Some(HttpApiRouter::new(http_api_config, context))
@@ -24,7 +28,7 @@ pub(crate) fn initialize(http_api_config: &HttpApiConfig, context: &Arc<Context>
         None
     };
 
-    let rpc_router = RpcRouter::new(Arc::clone(context));
+    let rpc_router = RpcRouter::new(Arc::clone(context), rpc_config);
 
     Controllers {
         http_router,

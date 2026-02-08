@@ -62,7 +62,7 @@ async fn main() {
         initialize_dev_environment(&managers.blockchain).await;
     }
 
-    let services = services::initialize(&managers, config.managers.network.rate_limiter.clone());
+    let services = services::initialize(&managers);
 
     // Seed peer registry with sharding tables before commands start
     seed_sharding_tables(&managers.blockchain, &services.peer_service).await;
@@ -98,7 +98,7 @@ async fn main() {
         command_scheduler_for_executor.schedule(request).await;
     }
 
-    let controllers = controllers::initialize(&config.http_api, &context);
+    let controllers = controllers::initialize(&config.http_api, &config.rpc, &context);
 
     runtime::run(
         context,

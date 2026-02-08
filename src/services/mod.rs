@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 pub(crate) use get_validation_service::GetValidationService;
 pub(crate) use operation_status::OperationStatusService;
-pub(crate) use peer::{PeerAddressStore, PeerRateLimiter, PeerRateLimiterConfig, PeerService};
+pub(crate) use peer::{PeerAddressStore, PeerService};
 pub(crate) use pending_storage_service::PendingStorageService;
 pub(crate) use response_channels::ResponseChannels;
 pub(crate) use triple_store_service::TripleStoreService;
@@ -57,7 +57,6 @@ pub(crate) struct Services {
 
     // Infrastructure services
     pub peer_service: Arc<PeerService>,
-    pub peer_rate_limiter: Arc<PeerRateLimiter>,
     pub peer_address_store: Arc<PeerAddressStore>,
 
     // Response channels for all protocols
@@ -70,10 +69,7 @@ pub(crate) struct Services {
 /// - Managers: lowest level, self-contained infrastructure
 /// - Services: business logic layer, depends only on Managers
 /// - Controllers/Commands: highest level, depends on both via Context
-pub(crate) fn initialize(
-    managers: &Managers,
-    rate_limiter_config: PeerRateLimiterConfig,
-) -> Services {
+pub(crate) fn initialize(managers: &Managers) -> Services {
     // Operation status services
     let publish_store_operation = Arc::new(
         OperationStatusService::<PublishStoreOperationResult>::new(
@@ -106,7 +102,6 @@ pub(crate) fn initialize(
 
     // Infrastructure services
     let peer_service = Arc::new(PeerService::new());
-    let peer_rate_limiter = Arc::new(PeerRateLimiter::new(rate_limiter_config));
     let peer_address_store = Arc::new(
         PeerAddressStore::new(&managers.key_value_store)
             .expect("Failed to create peer address store"),
@@ -122,7 +117,6 @@ pub(crate) fn initialize(
         triple_store,
         get_validation,
         peer_service,
-        peer_rate_limiter,
         peer_address_store,
         response_channels,
     }

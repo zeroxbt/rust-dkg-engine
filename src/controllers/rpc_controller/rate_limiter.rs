@@ -28,7 +28,7 @@ pub(crate) struct PeerRateLimiterConfig {
     pub burst_size: u32,
 }
 
-/// Per-peer rate limiter for inbound network requests.
+/// Per-peer rate limiter for inbound RPC requests.
 ///
 /// Each peer gets its own token bucket, shared across all protocols.
 /// This prevents any single peer from overwhelming the node with requests.

@@ -6,10 +6,7 @@ use crate::{
         Managers,
         network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
-    services::{
-        GetValidationService, PeerRateLimiter, PeerService, ResponseChannels, Services,
-        TripleStoreService,
-    },
+    services::{GetValidationService, PeerService, ResponseChannels, Services, TripleStoreService},
 };
 
 pub(crate) struct Context {
@@ -63,10 +60,6 @@ impl Context {
 
     pub(crate) fn peer_service(&self) -> &Arc<PeerService> {
         &self.services.peer_service
-    }
-
-    pub(crate) fn peer_rate_limiter(&self) -> &Arc<PeerRateLimiter> {
-        &self.services.peer_rate_limiter
     }
 
     pub(crate) fn peer_address_store(&self) -> &Arc<crate::services::PeerAddressStore> {

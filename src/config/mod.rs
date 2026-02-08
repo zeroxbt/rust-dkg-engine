@@ -15,6 +15,7 @@ use thiserror::Error;
 use crate::{
     commands::periodic::cleanup::CleanupConfig,
     controllers::http_api_controller::http_api_router::HttpApiConfig,
+    controllers::rpc_controller::RpcConfig,
     logger::{LoggerConfig, TelemetryConfig},
     managers::ManagersConfig,
 };
@@ -103,6 +104,7 @@ pub(crate) struct Config {
     pub app_data_path: PathBuf,
     pub managers: ManagersConfig,
     pub http_api: HttpApiConfig,
+    pub rpc: RpcConfig,
     pub cleanup: CleanupConfig,
     pub logger: LoggerConfig,
     pub telemetry: TelemetryConfig,

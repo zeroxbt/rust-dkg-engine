@@ -4,8 +4,6 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::services::PeerRateLimiterConfig;
-
 /// Configuration for the network manager.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -18,8 +16,6 @@ pub(crate) struct NetworkManagerConfig {
     pub external_ip: Option<String>,
     /// How long to keep idle connections open (in seconds).
     pub idle_connection_timeout_secs: u64,
-    /// Per-peer rate limiting configuration for inbound requests.
-    pub rate_limiter: PeerRateLimiterConfig,
 }
 
 impl NetworkManagerConfig {
