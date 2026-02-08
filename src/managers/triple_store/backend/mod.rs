@@ -38,7 +38,7 @@ pub(crate) trait TripleStoreBackend: Send + Sync {
 
     /// Execute a SPARQL CONSTRUCT query
     ///
-    /// Returns N-Quads/N-Triples serialized RDF
+    /// Returns RDF lines (N-Triples/N-Quads)
     async fn construct(&self, query: &str, timeout: Duration) -> Result<String>;
 
     /// Execute a SPARQL ASK query

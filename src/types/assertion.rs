@@ -15,7 +15,7 @@ fn validate_public_non_empty(public: &[String]) -> Result<(), ValidationError> {
 /// An assertion containing public and optional private triples.
 ///
 /// This is the core data structure for knowledge assets in the DKG,
-/// containing the N-Quads/N-Triples representation of RDF data.
+/// containing RDF lines (N-Triples/N-Quads) for public and private data.
 #[derive(Debug, Serialize, Deserialize, Clone, Default, Validate)]
 pub(crate) struct Assertion {
     /// Public triples (required, at least one triple)

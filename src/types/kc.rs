@@ -47,9 +47,9 @@ impl KnowledgeCollectionMetadata {
 pub(crate) struct KnowledgeAsset {
     /// The UAL (Universal Asset Locator) for this knowledge asset
     pub ual: String,
-    /// Public triples (N-Quads format)
+    /// Public RDF lines (N-Triples/N-Quads)
     pub public_triples: Vec<String>,
-    /// Private triples (N-Quads format), if any
+    /// Private RDF lines (N-Triples/N-Quads), if any
     pub private_triples: Option<Vec<String>>,
 }
 

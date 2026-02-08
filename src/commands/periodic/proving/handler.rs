@@ -25,7 +25,7 @@ use crate::{
         },
         repository::{ChallengeState, RepositoryManager},
         triple_store::{
-            Assertion, TokenIds, group_nquads_by_subject,
+            Assertion, TokenIds, group_triples_by_subject,
             query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
         },
     },
@@ -95,8 +95,8 @@ impl ProvingCommandHandler {
         }
 
         // Group by subject, then append private-hash groups
-        let mut grouped = group_nquads_by_subject(&filtered_public);
-        grouped.extend(group_nquads_by_subject(&private_hash_triples));
+        let mut grouped = group_triples_by_subject(&filtered_public);
+        grouped.extend(group_triples_by_subject(&private_hash_triples));
 
         // Sort each group and flatten
         grouped

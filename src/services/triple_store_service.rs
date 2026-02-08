@@ -6,7 +6,7 @@ use tracing::instrument;
 use crate::{
     managers::triple_store::{
         Assertion, GraphVisibility, KnowledgeAsset, KnowledgeCollectionMetadata, TokenIds,
-        TripleStoreManager, error::TripleStoreError, extract_subject, group_nquads_by_subject,
+        TripleStoreManager, error::TripleStoreError, extract_subject, group_triples_by_subject,
         query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
     },
     types::{ParsedUal, Visibility},
@@ -225,8 +225,8 @@ impl TripleStoreService {
 
     /// Query metadata for a knowledge collection.
     async fn query_metadata(&self, kc_ual: &str) -> Result<Option<Vec<String>>, TripleStoreError> {
-        let metadata_nquads = self.triple_store_manager.get_metadata(kc_ual).await?;
-        let metadata: Vec<String> = metadata_nquads
+        let metadata_lines = self.triple_store_manager.get_metadata(kc_ual).await?;
+        let metadata: Vec<String> = metadata_lines
             .lines()
             .filter(|line| !line.trim().is_empty())
             .map(String::from)
@@ -407,8 +407,8 @@ impl TripleStoreService {
         }
 
         // Group public triples by subject, then append private-hash groups
-        let mut public_ka_triples_grouped = group_nquads_by_subject(&filtered_public);
-        public_ka_triples_grouped.extend(group_nquads_by_subject(&private_hash_triples));
+        let mut public_ka_triples_grouped = group_triples_by_subject(&filtered_public);
+        public_ka_triples_grouped.extend(group_triples_by_subject(&private_hash_triples));
 
         // Generate UALs for each public knowledge asset: {kc_ual}/1, {kc_ual}/2, ...
         let public_ka_uals: Vec<String> = (0..public_ka_triples_grouped.len())
@@ -429,7 +429,7 @@ impl TripleStoreService {
             && !private_triples.is_empty()
         {
             let private_refs: Vec<&str> = private_triples.iter().map(|s| s.as_str()).collect();
-            let private_ka_triples_grouped = group_nquads_by_subject(&private_refs);
+            let private_ka_triples_grouped = group_triples_by_subject(&private_refs);
 
             // Build a map from public subject -> index for matching
             let public_subject_map: HashMap<&str, usize> = public_ka_triples_grouped

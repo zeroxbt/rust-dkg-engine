@@ -4,7 +4,7 @@ use crate::{
     managers::{
         blockchain::BlockchainManager,
         triple_store::{
-            Assertion, group_nquads_by_subject,
+            Assertion, group_triples_by_subject,
             query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
         },
     },
@@ -185,8 +185,8 @@ impl GetValidationService {
         }
 
         // Group by subject, then append private-hash groups
-        let mut grouped = group_nquads_by_subject(&filtered_public);
-        grouped.extend(group_nquads_by_subject(&private_hash_triples));
+        let mut grouped = group_triples_by_subject(&filtered_public);
+        grouped.extend(group_triples_by_subject(&private_hash_triples));
 
         // Sort each group and flatten
         let sorted_flat: Vec<String> = grouped
@@ -230,8 +230,8 @@ impl GetValidationService {
         }
 
         // Group by subject, then append private-hash groups
-        let mut grouped = group_nquads_by_subject(&filtered_public);
-        grouped.extend(group_nquads_by_subject(&private_hash_triples));
+        let mut grouped = group_triples_by_subject(&filtered_public);
+        grouped.extend(group_triples_by_subject(&private_hash_triples));
 
         // Sort each group and flatten
         let sorted_flat: Vec<String> = grouped

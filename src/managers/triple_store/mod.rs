@@ -11,7 +11,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 pub(crate) use config::{DKG_REPOSITORY, TripleStoreBackendType, TripleStoreManagerConfig};
 use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
-pub(crate) use rdf::{extract_subject, group_nquads_by_subject, parse_metadata_from_triples};
+pub(crate) use rdf::{extract_subject, group_triples_by_subject, parse_metadata_from_triples};
 use serde::Deserialize;
 use tokio::sync::Semaphore;
 pub(crate) use types::{Assertion, GraphVisibility, KnowledgeAsset, TokenIds};
@@ -392,7 +392,7 @@ impl TripleStoreManager {
     ///
     /// This queries the actual named graph `{ual}/public` or `{ual}/private`.
     ///
-    /// Returns N-Triples as lines.
+    /// Returns RDF lines (N-Triples/N-Quads).
     pub(crate) async fn get_knowledge_asset_named_graph(
         &self,
         ual: &str,
@@ -410,11 +410,11 @@ impl TripleStoreManager {
                 }}"#
         );
 
-        let nquads = self
+        let rdf_lines = self
             .backend_construct(&query, self.config.timeouts.query_timeout())
             .await?;
 
-        Ok(nquads
+        Ok(rdf_lines
             .lines()
             .filter(|line| !line.trim().is_empty())
             .map(String::from)
@@ -425,7 +425,7 @@ impl TripleStoreManager {
     ///
     /// Uses VALUES clause for efficient querying with pagination to handle
     /// large collections (matching JS implementation which uses MAX_TOKEN_ID_PER_GET_PAGE = 50).
-    /// Returns N-Triples as lines for the specified visibility.
+    /// Returns RDF lines (N-Triples/N-Quads) for the specified visibility.
     pub(crate) async fn get_knowledge_collection_named_graphs(
         &self,
         kc_ual: &str,
@@ -471,12 +471,12 @@ impl TripleStoreManager {
                     named_graphs.join("\n        ")
                 );
 
-                let nquads = self
+                let rdf_lines = self
                     .backend_construct(&query, self.config.timeouts.query_timeout())
                     .await?;
 
                 all_triples.extend(
-                    nquads
+                    rdf_lines
                         .lines()
                         .filter(|line| !line.trim().is_empty())
                         .map(String::from),

@@ -1,10 +1,10 @@
-//! RDF utilities for N-Quad parsing and manipulation.
+//! RDF utilities for line-based triples (N-Triples/N-Quads).
 
 use std::collections::HashMap;
 
 use super::{KnowledgeCollectionMetadata, query::predicates};
 
-/// Extracts the subject from an N-Quad triple.
+/// Extracts the subject from an RDF line (N-Triples/N-Quads).
 ///
 /// Assumes the triple starts with `<subject>` (IRI) or `_:` (blank node).
 ///
@@ -33,7 +33,7 @@ pub(crate) fn extract_subject(triple: &str) -> Option<&str> {
     }
 }
 
-/// Groups N-Quads by their subject, sorted alphabetically by subject.
+/// Groups RDF lines by their subject, sorted alphabetically by subject.
 ///
 /// Each group contains all triples that share the same subject.
 /// Groups are sorted alphabetically by subject key to match the JS implementation
@@ -42,7 +42,7 @@ pub(crate) fn extract_subject(triple: &str) -> Option<&str> {
 /// # Examples
 ///
 /// ```
-/// use triple_store::rdf::group_nquads_by_subject;
+/// use triple_store::rdf::group_triples_by_subject;
 ///
 /// let triples = vec![
 ///     r#"<http://example.org/s2> <http://example.org/p1> "v3" ."#,
@@ -50,13 +50,13 @@ pub(crate) fn extract_subject(triple: &str) -> Option<&str> {
 ///     r#"<http://example.org/s1> <http://example.org/p2> "v2" ."#,
 /// ];
 ///
-/// let groups = group_nquads_by_subject(&triples);
+/// let groups = group_triples_by_subject(&triples);
 /// assert_eq!(groups.len(), 2);
 /// // Groups are sorted: s1 comes before s2
 /// assert_eq!(groups[0].len(), 2); // s1 has 2 triples
 /// assert_eq!(groups[1].len(), 1); // s2 has 1 triple
 /// ```
-pub(crate) fn group_nquads_by_subject<'a>(triples: &[&'a str]) -> Vec<Vec<&'a str>> {
+pub(crate) fn group_triples_by_subject<'a>(triples: &[&'a str]) -> Vec<Vec<&'a str>> {
     let mut groups: Vec<Vec<&'a str>> = Vec::new();
     let mut subject_to_index: HashMap<&str, usize> = HashMap::new();
 
@@ -241,14 +241,14 @@ mod tests {
     }
 
     #[test]
-    fn test_group_nquads_by_subject_simple() {
+    fn test_group_triples_by_subject_simple() {
         let triples = vec![
             r#"<http://example.org/subject1> <http://example.org/predicate1> "value1" ."#,
             r#"<http://example.org/subject1> <http://example.org/predicate2> "value2" ."#,
             r#"<http://example.org/subject2> <http://example.org/predicate1> "value3" ."#,
         ];
 
-        let groups = group_nquads_by_subject(&triples);
+        let groups = group_triples_by_subject(&triples);
 
         assert_eq!(groups.len(), 2);
         assert_eq!(groups[0].len(), 2); // subject1 has 2 triples
@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn test_group_nquads_sorted_alphabetically() {
+    fn test_group_triples_sorted_alphabetically() {
         // Triples arrive in non-alphabetical order: person/1, person/2, organization/1
         // After sorting: organization/1, person/1, person/2
         let triples = vec![
@@ -270,7 +270,7 @@ mod tests {
             r#"<http://example.org/person/1> <http://schema.org/worksFor> <http://example.org/organization/1> ."#,
         ];
 
-        let groups = group_nquads_by_subject(&triples);
+        let groups = group_triples_by_subject(&triples);
 
         // Should have 3 groups, sorted alphabetically by subject
         assert_eq!(groups.len(), 3);
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn test_group_nquads_sorting_matches_js() {
+    fn test_group_triples_sorting_matches_js() {
         // Test that sorting matches JS behavior: alphabetical by subject key
         // Input order: z, a, m -> Output order: a, m, z
         let triples = vec![
@@ -300,7 +300,7 @@ mod tests {
             r#"<http://example.org/m> <http://example.org/p> "m" ."#,
         ];
 
-        let groups = group_nquads_by_subject(&triples);
+        let groups = group_triples_by_subject(&triples);
 
         assert_eq!(groups.len(), 3);
         assert!(groups[0][0].contains("/a>"));
