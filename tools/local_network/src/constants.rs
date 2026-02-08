@@ -8,7 +8,7 @@ pub(crate) const HARDHAT_PORT: u16 = 8545;
 pub(crate) const HARDHAT_BLOCKCHAIN_ID: &str = "hardhat1:31337";
 pub(crate) const BOOTSTRAP_NODE_INDEX: usize = 0;
 pub(crate) const BOOTSTRAP_KEY_PATH: &str = "network/private_key";
-pub(crate) const BINARY_NAME: &str = "rust-ot-node";
+pub(crate) const BINARY_NAME: &str = "rust-dkg-engine";
 
 pub(crate) const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";
 pub(crate) const PUBLIC_KEYS_PATH: &str = "./tools/local_network/src/public_keys.json";

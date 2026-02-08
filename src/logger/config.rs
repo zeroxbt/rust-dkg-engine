@@ -5,7 +5,7 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields)]
 pub(crate) struct LoggerConfig {
     /// Log level filter (e.g., "info", "debug", "trace", or module-specific like
-    /// "rust_ot_node=debug,network=trace")
+    /// "rust_dkg_engine=debug,network=trace")
     pub level: String,
     /// Output format: "pretty" for human-readable, "json" for structured JSON logs
     pub format: LogFormat,

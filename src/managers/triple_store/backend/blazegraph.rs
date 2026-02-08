@@ -140,7 +140,7 @@ impl TripleStoreBackend for BlazegraphBackend {
         let name = DKG_REPOSITORY;
 
         // Blazegraph namespace configuration properties (Java properties format)
-        // These settings match the JS ot-node implementation exactly
+        // These settings match the JS dkg-engine implementation exactly
         let properties = format!(
             "com.bigdata.rdf.sail.truthMaintenance=false\n\
              com.bigdata.namespace.{name}.spo.com.bigdata.btree.BTree.branchingFactor=1024\n\

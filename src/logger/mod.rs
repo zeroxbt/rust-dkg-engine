@@ -95,7 +95,7 @@ fn initialize_with_otel(
     // Set as global provider so shutdown works
     opentelemetry::global::set_tracer_provider(provider.clone());
 
-    let tracer = provider.tracer("rust-ot-node");
+    let tracer = provider.tracer("rust-dkg-engine");
 
     match logger_config.format {
         LogFormat::Pretty => {

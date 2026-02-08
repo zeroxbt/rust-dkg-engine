@@ -1,5 +1,5 @@
 [package]
-name = "rust-ot-node"
+name = "rust-dkg-engine"
 version = "0.1.0"
 rust-version = "1.92.0"
 edition = "2024"

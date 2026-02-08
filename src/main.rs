@@ -34,7 +34,7 @@ async fn main() {
     let config = Arc::new(config::initialize_configuration());
     logger::initialize(&config.logger, &config.telemetry);
 
-    display_ot_node_ascii_art();
+    display_rust_dkg_engine_ascii_art();
 
     // Derive all filesystem paths from the root data directory
     let paths = AppPaths::from_root(config.app_data_path.clone());
@@ -112,17 +112,17 @@ async fn main() {
     .await;
 }
 
-fn display_ot_node_ascii_art() {
-    tracing::info!(" ██████╗ ████████╗███╗   ██╗ ██████╗ ██████╗ ███████╗");
-    tracing::info!("██╔═══██╗╚══██╔══╝████╗  ██║██╔═══██╗██╔══██╗██╔════╝");
-    tracing::info!("██║   ██║   ██║   ██╔██╗ ██║██║   ██║██║  ██║█████╗");
-    tracing::info!("██║   ██║   ██║   ██║╚██╗██║██║   ██║██║  ██║██╔══╝");
-    tracing::info!("╚██████╔╝   ██║   ██║ ╚████║╚██████╔╝██████╔╝███████╗");
-    tracing::info!(" ╚═════╝    ╚═╝   ╚═╝  ╚═══╝ ╚═════╝ ╚═════╝ ╚══════╝");
+fn display_rust_dkg_engine_ascii_art() {
+    tracing::info!("██████╗ ██╗  ██╗ ██████╗     ██╗   ██╗ █████╗ ");
+    tracing::info!("██╔══██╗██║ ██╔╝██╔════╝     ██║   ██║██╔══██╗");
+    tracing::info!("██║  ██║█████╔╝ ██║  ███╗    ██║   ██║╚█████╔╝");
+    tracing::info!("██║  ██║██╔═██╗ ██║   ██║    ╚██╗ ██╔╝██╔══██╗");
+    tracing::info!("██████╔╝██║  ██╗╚██████╔╝     ╚████╔╝ ╚█████╔╝");
+    tracing::info!("╚═════╝ ╚═╝  ╚═╝ ╚═════╝       ╚═══╝   ╚════╝ ");
 
     tracing::info!("======================================================");
     tracing::info!(
-        "             OriginTrail Node v{}",
+        "             Rust DKG Engine v{}",
         env!("CARGO_PKG_VERSION")
     );
     tracing::info!("======================================================");
