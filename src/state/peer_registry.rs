@@ -90,12 +90,21 @@ impl PeerRegistry {
     // ─────────────────────────────────────────────────────────────────────────────
 
     pub(crate) fn update_identify(&self, peer_id: PeerId, info: IdentifyInfo) {
-        if let Some(mut peer) = self.peers.get_mut(&peer_id) {
-            peer.identify = Some(IdentifyRecord {
-                protocols: info.protocols,
-                listen_addrs: info.listen_addrs,
+        let identify = IdentifyRecord {
+            protocols: info.protocols,
+            listen_addrs: info.listen_addrs,
+        };
+
+        self.peers
+            .entry(peer_id)
+            .and_modify(|peer| {
+                peer.identify = Some(identify.clone());
+            })
+            .or_insert_with(|| {
+                let mut record = PeerRecord::default();
+                record.identify = Some(identify);
+                record
             });
-        }
     }
 
     pub(crate) fn peer_supports_protocol(&self, peer_id: &PeerId, protocol: &'static str) -> bool {
