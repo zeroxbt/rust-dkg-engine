@@ -5,8 +5,8 @@ use crate::{
         blockchain::BlockchainManager,
         triple_store::{
             group_triples_by_subject,
-            rdf::extract_quoted_string,
             query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
+            rdf::extract_quoted_string,
         },
     },
     types::{Assertion, ParsedUal, Visibility},

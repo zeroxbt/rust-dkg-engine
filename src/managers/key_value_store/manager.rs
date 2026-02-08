@@ -1,14 +1,14 @@
 use std::{path::Path, sync::Arc};
 
 use redb::{Database, TableDefinition};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::Semaphore;
 
 use super::{
-    stores::{OperationResultStore, PeerAddressStore, PublishTmpDatasetStore, ResultStoreError},
     KeyValueStoreError, KeyValueStoreManagerConfig,
+    stores::{OperationResultStore, PeerAddressStore, PublishTmpDatasetStore, ResultStoreError},
+    table::{Table, TableDef},
 };
-use super::table::{Table, TableDef};
 
 /// Key-Value Store Manager
 ///

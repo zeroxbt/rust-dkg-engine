@@ -28,9 +28,7 @@ impl<R> OperationResultStore<R>
 where
     R: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
-    pub(crate) fn new(
-        kv_store_manager: &KeyValueStoreManager,
-    ) -> Result<Self, ResultStoreError> {
+    pub(crate) fn new(kv_store_manager: &KeyValueStoreManager) -> Result<Self, ResultStoreError> {
         let table = kv_store_manager.table(TABLE_NAME)?;
         Ok(Self { table })
     }
@@ -49,30 +47,18 @@ where
         Ok(())
     }
 
-    pub(crate) async fn remove_result(
-        &self,
-        operation_id: Uuid,
-    ) -> Result<bool, ResultStoreError>
+    pub(crate) async fn remove_result(&self, operation_id: Uuid) -> Result<bool, ResultStoreError>
     where
         R: Send + 'static,
     {
-        Ok(self
-            .table
-            .remove(operation_id.as_bytes().to_vec())
-            .await?)
+        Ok(self.table.remove(operation_id.as_bytes().to_vec()).await?)
     }
 
-    pub(crate) async fn get_result(
-        &self,
-        operation_id: Uuid,
-    ) -> Result<Option<R>, ResultStoreError>
+    pub(crate) async fn get_result(&self, operation_id: Uuid) -> Result<Option<R>, ResultStoreError>
     where
         R: Send + 'static,
     {
-        Ok(self
-            .table
-            .get(operation_id.as_bytes().to_vec())
-            .await?)
+        Ok(self.table.get(operation_id.as_bytes().to_vec()).await?)
     }
 
     pub(crate) async fn update_result<F>(

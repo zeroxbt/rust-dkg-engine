@@ -77,15 +77,11 @@ impl PublishTmpDatasetStore {
         &self,
         operation_id: Uuid,
     ) -> Result<Option<PublishTmpDataset>, KeyValueStoreError> {
-        self.table
-            .get(operation_id.as_bytes().to_vec())
-            .await
+        self.table.get(operation_id.as_bytes().to_vec()).await
     }
 
     pub(crate) async fn remove(&self, operation_id: Uuid) -> Result<bool, KeyValueStoreError> {
-        self.table
-            .remove(operation_id.as_bytes().to_vec())
-            .await
+        self.table.remove(operation_id.as_bytes().to_vec()).await
     }
 
     pub(crate) async fn remove_expired(

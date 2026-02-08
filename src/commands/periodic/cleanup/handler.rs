@@ -2,8 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use super::{
     finality_acks::cleanup_finality_acks, operations::cleanup_operations,
-    proof_challenges::cleanup_proof_challenges,
-    publish_tmp_dataset::cleanup_publish_tmp_datasets,
+    proof_challenges::cleanup_proof_challenges, publish_tmp_dataset::cleanup_publish_tmp_datasets,
 };
 use crate::{
     commands::{
@@ -11,10 +10,7 @@ use crate::{
         registry::CommandHandler,
     },
     context::Context,
-    managers::{
-        key_value_store::PublishTmpDatasetStore,
-        repository::RepositoryManager,
-    },
+    managers::{key_value_store::PublishTmpDatasetStore, repository::RepositoryManager},
     operations::{GetOperation, PublishStoreOperation},
     services::OperationStatusService,
 };
