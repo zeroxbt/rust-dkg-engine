@@ -2,6 +2,12 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub(crate) enum KeyValueStoreError {
+    #[error("Semaphore closed")]
+    SemaphoreClosed,
+
+    #[error("Task join error: {0}")]
+    Join(#[from] tokio::task::JoinError),
+
     #[error("Database error: {0}")]
     Database(#[from] redb::Error),
 

@@ -87,7 +87,9 @@ impl CommandHandler<CleanupCommandData> for CleanupCommandHandler {
                 &self.publish_tmp_dataset_store,
                 Duration::from_secs(data.config.publish_tmp_dataset.ttl_secs),
                 data.config.publish_tmp_dataset.batch_size,
-            ) {
+            )
+            .await
+            {
                 Ok(removed) => {
                     if removed > 0 {
                         tracing::info!(removed, "Cleaned up publish tmp dataset entries");

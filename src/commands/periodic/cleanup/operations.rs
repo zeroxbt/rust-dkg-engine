@@ -36,7 +36,7 @@ pub(crate) async fn cleanup_operations(
             break;
         }
 
-        remove_results(publish_store_results, get_results, &ids);
+        remove_results(publish_store_results, get_results, &ids).await;
 
         let removed_rows = repository
             .operation_repository()
@@ -54,20 +54,20 @@ pub(crate) async fn cleanup_operations(
     Ok(total_removed)
 }
 
-fn remove_results(
+async fn remove_results(
     publish_store_results: &OperationStatusService<PublishStoreOperation>,
     get_results: &OperationStatusService<GetOperation>,
     ids: &[Uuid],
 ) {
     for id in ids {
-        if let Err(e) = publish_store_results.remove_result(*id) {
+        if let Err(e) = publish_store_results.remove_result(*id).await {
             tracing::warn!(
                 operation_id = %id,
                 error = %e,
                 "Failed to remove cached publish operation result"
             );
         }
-        if let Err(e) = get_results.remove_result(*id) {
+        if let Err(e) = get_results.remove_result(*id).await {
             tracing::warn!(
                 operation_id = %id,
                 error = %e,

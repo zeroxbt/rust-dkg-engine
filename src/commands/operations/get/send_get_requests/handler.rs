@@ -281,7 +281,7 @@ impl SendGetRequestsCommandHandler {
 
                     if let Err(e) = self
                         .get_operation_status_service
-                        .complete_with_result(operation_id, &get_result)
+                        .complete_with_result(operation_id, get_result)
                         .await
                     {
                         tracing::error!(
@@ -411,7 +411,7 @@ impl SendGetRequestsCommandHandler {
 
                         if let Err(e) = self
                             .get_operation_status_service
-                            .complete_with_result(operation_id, &get_result)
+                            .complete_with_result(operation_id, get_result)
                             .await
                         {
                             tracing::error!(

@@ -62,7 +62,8 @@ pub(crate) async fn initialize(
     );
 
     let key_value_store = Arc::new(
-        KeyValueStoreManager::connect(&paths.key_value_store)
+        KeyValueStoreManager::connect(&paths.key_value_store, &config.key_value_store)
+            .await
             .expect("Failed to initialize key-value store manager"),
     );
 

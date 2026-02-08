@@ -76,26 +76,6 @@ pub(crate) struct BlockchainConfig {
 }
 
 impl BlockchainConfig {
-    #[cfg(test)]
-    pub(crate) fn test_config(chain_type: &str, chain_id: u64) -> Self {
-        Self {
-            blockchain_id: BlockchainId::from(format!("{}:{}", chain_type, chain_id)),
-            evm_operational_wallet_private_key: None,
-            evm_operational_wallet_address: String::new(),
-            evm_management_wallet_address: String::new(),
-            evm_management_wallet_private_key: None,
-            hub_contract_address: String::new(),
-            rpc_endpoints: vec![],
-            node_name: String::new(),
-            gas_price_oracle_url: None,
-            operator_fee: None,
-            substrate_rpc_endpoints: None,
-            max_rpc_requests_per_second: None,
-            tx_confirmations: 1,
-            tx_receipt_timeout_ms: 300_000,
-        }
-    }
-
     pub(crate) fn blockchain_id(&self) -> &BlockchainId {
         &self.blockchain_id
     }

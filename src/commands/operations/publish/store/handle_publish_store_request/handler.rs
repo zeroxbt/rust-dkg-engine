@@ -213,7 +213,11 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             dataset.clone(),
             remote_peer_id.to_base58(),
         );
-        if let Err(e) = self.publish_tmp_dataset_store.store(operation_id, &pending) {
+        if let Err(e) = self
+            .publish_tmp_dataset_store
+            .store(operation_id, pending)
+            .await
+        {
             tracing::error!(
                 operation_id = %operation_id,
                 error = %e,

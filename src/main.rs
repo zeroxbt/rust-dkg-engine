@@ -69,7 +69,7 @@ async fn main() {
 
     // Load persisted peer addresses and inject into Kademlia routing table.
     // This must happen after sharding table seeding so dial_peers knows who to connect to.
-    let persisted_addresses = services.peer_address_store.load_all();
+    let persisted_addresses = services.peer_address_store.load_all().await;
     if !persisted_addresses.is_empty() {
         let addresses: Vec<_> = persisted_addresses.into_iter().collect();
         tracing::info!(

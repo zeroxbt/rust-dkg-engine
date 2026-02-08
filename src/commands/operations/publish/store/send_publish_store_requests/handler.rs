@@ -189,13 +189,17 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         {
             Ok(sig) => {
                 // Store publisher signature to result storage immediately
-                if let Err(e) = self.publish_store_operation_status_service.update_result(
-                    operation_id,
-                    PublishStoreOperationResult::new(None, Vec::new()),
-                    |result| {
-                        result.publisher_signature = Some(sig);
-                    },
-                ) {
+                if let Err(e) = self
+                    .publish_store_operation_status_service
+                    .update_result(
+                        operation_id,
+                        PublishStoreOperationResult::new(None, Vec::new()),
+                        |result| {
+                            result.publisher_signature = Some(sig);
+                        },
+                    )
+                    .await
+                {
                     tracing::warn!(
                         operation_id = %operation_id,
                         error = %e,
@@ -217,7 +221,11 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             dataset.clone(),
             my_peer_id.to_base58(),
         );
-        if let Err(e) = self.publish_tmp_dataset_store.store(operation_id, &pending) {
+        if let Err(e) = self
+            .publish_tmp_dataset_store
+            .store(operation_id, pending)
+            .await
+        {
             tracing::error!(
                 operation_id = %operation_id,
                 error = %e,
@@ -286,7 +294,9 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             while let Some((peer, result)) = futures.next().await {
                 match result {
                     Ok(response) => {
-                        let is_valid = self.process_store_response(operation_id, &peer, &response);
+                        let is_valid = self
+                            .process_store_response(operation_id, &peer, &response)
+                            .await;
 
                         if !is_valid {
                             failure_count += 1;

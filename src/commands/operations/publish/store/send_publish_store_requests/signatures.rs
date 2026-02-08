@@ -31,13 +31,15 @@ impl SendPublishStoreRequestsCommandHandler {
             signature.vs.clone(),
         );
 
-        self.publish_store_operation_status_service.update_result(
-            operation_id,
-            PublishStoreOperationResult::new(None, Vec::new()),
-            |result| {
-                result.network_signatures.push(sig_data);
-            },
-        )?;
+        self.publish_store_operation_status_service
+            .update_result(
+                operation_id,
+                PublishStoreOperationResult::new(None, Vec::new()),
+                |result| {
+                    result.network_signatures.push(sig_data);
+                },
+            )
+            .await?;
 
         Ok(())
     }

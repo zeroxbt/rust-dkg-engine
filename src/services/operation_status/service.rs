@@ -62,12 +62,14 @@ where
     }
 
     /// Store a result in the key-value store.
-    pub(crate) fn store_result(
+    pub(crate) async fn store_result(
         &self,
         operation_id: Uuid,
-        result: &K::Result,
+        result: K::Result,
     ) -> Result<(), ResultStoreError> {
-        self.result_store.store_result(operation_id, result)?;
+        self.result_store
+            .store_result(operation_id, result)
+            .await?;
         tracing::debug!(
             operation_id = %operation_id,
             "[{}] Result stored",
@@ -77,32 +79,36 @@ where
     }
 
     /// Remove a result from the key-value store.
-    pub(crate) fn remove_result(&self, operation_id: Uuid) -> Result<bool, ResultStoreError> {
-        self.result_store.remove_result(operation_id)
+    pub(crate) async fn remove_result(
+        &self,
+        operation_id: Uuid,
+    ) -> Result<bool, ResultStoreError> {
+        self.result_store.remove_result(operation_id).await
     }
 
     /// Get a cached operation result from the key-value store.
-    pub(crate) fn get_result(
+    pub(crate) async fn get_result(
         &self,
         operation_id: Uuid,
     ) -> Result<Option<K::Result>, ResultStoreError> {
-        self.result_store.get_result(operation_id)
+        self.result_store.get_result(operation_id).await
     }
 
     /// Update a result in the key-value store using a closure.
     /// If no result exists, creates one from the default value.
     /// This enables incremental updates (e.g., adding signatures one at a time).
-    pub(crate) fn update_result<F>(
+    pub(crate) async fn update_result<F>(
         &self,
         operation_id: Uuid,
         default: K::Result,
         update_fn: F,
     ) -> Result<(), ResultStoreError>
     where
-        F: FnOnce(&mut K::Result),
+        F: FnOnce(&mut K::Result) + Send + 'static,
     {
         self.result_store
-            .update_result(operation_id, default, update_fn)?;
+            .update_result(operation_id, default, update_fn)
+            .await?;
         tracing::trace!(
             operation_id = %operation_id,
             "[{}] Result updated",
@@ -117,16 +123,16 @@ where
     pub(crate) async fn complete_with_result(
         &self,
         operation_id: Uuid,
-        result: &K::Result,
+        result: K::Result,
     ) -> Result<(), NodeError> {
-        self.store_result(operation_id, result)?;
+        self.store_result(operation_id, result).await?;
         self.mark_completed(operation_id).await?;
         Ok(())
     }
 
     /// Mark an operation as completed, ensuring a result exists first.
     pub(crate) async fn complete(&self, operation_id: Uuid) -> Result<(), NodeError> {
-        if self.get_result(operation_id)?.is_none() {
+        if self.get_result(operation_id).await?.is_none() {
             return Err(NodeError::Other(Self::MISSING_RESULT_ERROR.to_string()));
         }
         self.mark_completed(operation_id).await
@@ -157,7 +163,7 @@ where
             .update(operation_id, Some(OperationStatus::Failed), Some(reason))
             .await;
 
-        let _ = self.result_store.remove_result(operation_id);
+        let _ = self.result_store.remove_result(operation_id).await;
 
         match result {
             Ok(_) => {

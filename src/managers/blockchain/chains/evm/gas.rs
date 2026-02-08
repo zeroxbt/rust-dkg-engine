@@ -25,6 +25,7 @@ pub(crate) struct GasConfig {
     pub max_gas_price: U256,
 }
 
+#[cfg(test)]
 impl Default for GasConfig {
     fn default() -> Self {
         Self {

@@ -39,7 +39,7 @@ impl CommandHandler<SavePeerAddressesCommandData> for SavePeerAddressesCommandHa
         tracing::Span::current().record("peers", addresses.len());
 
         if !addresses.is_empty() {
-            self.address_store.save_all(&addresses);
+            self.address_store.save_all(&addresses).await;
         }
 
         CommandExecutionResult::Repeat {

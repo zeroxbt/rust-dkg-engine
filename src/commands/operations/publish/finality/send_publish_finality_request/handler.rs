@@ -149,7 +149,11 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         // This will fail if this node doesn't have the dataset locally
         // (e.g., KC was published by another node, node was offline, or wasn't contacted during
         // publish)
-        let pending_data = match self.publish_tmp_dataset_store.get(publish_operation_id) {
+        let pending_data = match self
+            .publish_tmp_dataset_store
+            .get(publish_operation_id)
+            .await
+        {
             Ok(Some(data)) => data,
             Ok(None) => {
                 tracing::debug!(
@@ -284,7 +288,11 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         };
 
         // Remove from publish tmp dataset store now that insertion succeeded
-        if let Err(e) = self.publish_tmp_dataset_store.remove(publish_operation_id) {
+        if let Err(e) = self
+            .publish_tmp_dataset_store
+            .remove(publish_operation_id)
+            .await
+        {
             tracing::warn!(
                 operation_id = %operation_id,
                 publish_operation_id = %publish_operation_id,

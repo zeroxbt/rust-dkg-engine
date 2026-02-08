@@ -11,7 +11,7 @@ impl SendPublishStoreRequestsCommandHandler {
     /// Process a store response and store the signature if valid.
     ///
     /// Returns true if the response is a valid ACK with signature data.
-    pub(crate) fn process_store_response(
+    pub(crate) async fn process_store_response(
         &self,
         operation_id: Uuid,
         peer: &PeerId,
@@ -30,13 +30,17 @@ impl SendPublishStoreRequestsCommandHandler {
                 );
 
                 // Store signature incrementally to redb
-                if let Err(e) = self.publish_store_operation_status_service.update_result(
-                    operation_id,
-                    PublishStoreOperationResult::new(None, Vec::new()),
-                    |result| {
-                        result.network_signatures.push(sig_data);
-                    },
-                ) {
+                if let Err(e) = self
+                    .publish_store_operation_status_service
+                    .update_result(
+                        operation_id,
+                        PublishStoreOperationResult::new(None, Vec::new()),
+                        |result| {
+                            result.network_signatures.push(sig_data);
+                        },
+                    )
+                    .await
+                {
                     tracing::error!(
                         operation_id = %operation_id,
                         peer = %peer,

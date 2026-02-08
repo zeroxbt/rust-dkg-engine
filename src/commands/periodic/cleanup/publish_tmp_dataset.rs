@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::managers::key_value_store::PublishTmpDatasetStore;
 
-pub(crate) fn cleanup_publish_tmp_datasets(
+pub(crate) async fn cleanup_publish_tmp_datasets(
     publish_tmp_dataset: &PublishTmpDatasetStore,
     ttl: Duration,
     batch_size: usize,
@@ -16,6 +16,7 @@ pub(crate) fn cleanup_publish_tmp_datasets(
     loop {
         let removed = publish_tmp_dataset
             .remove_expired(ttl, batch_size)
+            .await
             .map_err(|e| e.to_string())?;
 
         total_removed = total_removed.saturating_add(removed);

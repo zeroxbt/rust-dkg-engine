@@ -102,7 +102,7 @@ impl OperationResultHttpApiController {
             }
             OperationStatus::Completed => {
                 // Get signatures from redb
-                match Self::get_signatures(&context, operation_uuid) {
+                match Self::get_signatures(&context, operation_uuid).await {
                     Ok((publisher_sig, network_sigs)) => {
                         let response = OperationResultResponse::completed_with_signatures(
                             publisher_sig,
@@ -131,7 +131,7 @@ impl OperationResultHttpApiController {
     }
 
     /// Get signatures from redb storage
-    fn get_signatures(
+    async fn get_signatures(
         context: &Arc<Context>,
         operation_id: Uuid,
     ) -> Result<(Option<SignatureData>, Vec<SignatureData>), String> {
@@ -139,6 +139,7 @@ impl OperationResultHttpApiController {
         let result: Option<PublishStoreOperationResult> = context
             .publish_store_operation_status_service()
             .get_result(operation_id)
+            .await
             .map_err(|e| e.to_string())?;
 
         match result {
@@ -253,6 +254,7 @@ impl OperationResultHttpApiController {
                 match context
                     .get_operation_status_service()
                     .get_result(operation_uuid)
+                    .await
                 {
                     Ok(Some(result)) => {
                         let response = GetOperationResultResponse::completed(

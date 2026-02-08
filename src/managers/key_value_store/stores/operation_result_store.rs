@@ -35,30 +35,59 @@ where
         Ok(Self { table })
     }
 
-    pub(crate) fn store_result(&self, operation_id: Uuid, result: &R) -> Result<(), ResultStoreError> {
-        self.table.store(operation_id.as_bytes(), result)?;
+    pub(crate) async fn store_result(
+        &self,
+        operation_id: Uuid,
+        result: R,
+    ) -> Result<(), ResultStoreError>
+    where
+        R: Send + 'static,
+    {
+        self.table
+            .store(operation_id.as_bytes().to_vec(), result)
+            .await?;
         Ok(())
     }
 
-    pub(crate) fn remove_result(&self, operation_id: Uuid) -> Result<bool, ResultStoreError> {
-        Ok(self.table.remove(operation_id.as_bytes())?)
+    pub(crate) async fn remove_result(
+        &self,
+        operation_id: Uuid,
+    ) -> Result<bool, ResultStoreError>
+    where
+        R: Send + 'static,
+    {
+        Ok(self
+            .table
+            .remove(operation_id.as_bytes().to_vec())
+            .await?)
     }
 
-    pub(crate) fn get_result(&self, operation_id: Uuid) -> Result<Option<R>, ResultStoreError> {
-        Ok(self.table.get(operation_id.as_bytes())?)
+    pub(crate) async fn get_result(
+        &self,
+        operation_id: Uuid,
+    ) -> Result<Option<R>, ResultStoreError>
+    where
+        R: Send + 'static,
+    {
+        Ok(self
+            .table
+            .get(operation_id.as_bytes().to_vec())
+            .await?)
     }
 
-    pub(crate) fn update_result<F>(
+    pub(crate) async fn update_result<F>(
         &self,
         operation_id: Uuid,
         default: R,
         update_fn: F,
     ) -> Result<(), ResultStoreError>
     where
-        F: FnOnce(&mut R),
+        F: FnOnce(&mut R) + Send + 'static,
+        R: Send + 'static,
     {
         self.table
-            .update(operation_id.as_bytes(), default, update_fn)?;
+            .update(operation_id.as_bytes().to_vec(), default, update_fn)
+            .await?;
         Ok(())
     }
 }

@@ -63,26 +63,32 @@ impl PublishTmpDatasetStore {
         Ok(Self { table })
     }
 
-    pub(crate) fn store(
+    pub(crate) async fn store(
         &self,
         operation_id: Uuid,
-        data: &PublishTmpDataset,
+        data: PublishTmpDataset,
     ) -> Result<(), KeyValueStoreError> {
-        self.table.store(operation_id.as_bytes(), data)
+        self.table
+            .store(operation_id.as_bytes().to_vec(), data)
+            .await
     }
 
-    pub(crate) fn get(
+    pub(crate) async fn get(
         &self,
         operation_id: Uuid,
     ) -> Result<Option<PublishTmpDataset>, KeyValueStoreError> {
-        self.table.get(operation_id.as_bytes())
+        self.table
+            .get(operation_id.as_bytes().to_vec())
+            .await
     }
 
-    pub(crate) fn remove(&self, operation_id: Uuid) -> Result<bool, KeyValueStoreError> {
-        self.table.remove(operation_id.as_bytes())
+    pub(crate) async fn remove(&self, operation_id: Uuid) -> Result<bool, KeyValueStoreError> {
+        self.table
+            .remove(operation_id.as_bytes().to_vec())
+            .await
     }
 
-    pub(crate) fn remove_expired(
+    pub(crate) async fn remove_expired(
         &self,
         ttl: Duration,
         max_remove: usize,
@@ -92,11 +98,12 @@ impl PublishTmpDatasetStore {
 
         let keys = self
             .table
-            .collect_keys_matching(max_remove, |data| data.stored_at() <= cutoff)?;
+            .collect_keys_matching(max_remove, move |data| data.stored_at() <= cutoff)
+            .await?;
 
         let mut removed = 0usize;
         for key in keys {
-            if self.table.remove(&key)? {
+            if self.table.remove(key).await? {
                 removed += 1;
             }
         }
