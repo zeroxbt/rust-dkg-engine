@@ -18,9 +18,9 @@ use crate::{
         triple_store::Assertion,
     },
     operations::{PublishStoreOperationResult, protocols},
+    managers::key_value_store::{PendingStorageData, PendingStorageStore},
     services::{
         PeerService, operation_status::OperationStatusService as GenericOperationService,
-        pending_storage_service::PendingStorageService,
     },
 };
 
@@ -59,7 +59,7 @@ pub(crate) struct SendPublishStoreRequestsCommandHandler {
     pub(super) blockchain_manager: Arc<BlockchainManager>,
     pub(super) publish_store_operation_status_service:
         Arc<GenericOperationService<PublishStoreOperationResult>>,
-    pub(super) pending_storage_service: Arc<PendingStorageService>,
+    pub(super) pending_storage_store: Arc<PendingStorageStore>,
 }
 
 impl SendPublishStoreRequestsCommandHandler {
@@ -71,7 +71,12 @@ impl SendPublishStoreRequestsCommandHandler {
             publish_store_operation_status_service: Arc::clone(
                 context.publish_store_operation_status_service(),
             ),
-            pending_storage_service: Arc::clone(context.pending_storage_service()),
+            pending_storage_store: Arc::new(
+                context
+                    .key_value_store_manager()
+                    .pending_storage_store()
+                    .expect("Failed to create pending storage store"),
+            ),
         }
     }
 }
@@ -210,12 +215,12 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             }
         }
 
-        if let Err(e) = self.pending_storage_service.store_dataset(
-            operation_id,
-            dataset_root,
-            dataset,
-            &my_peer_id.to_base58(),
-        ) {
+        let pending = PendingStorageData::new(
+            dataset_root.to_owned(),
+            dataset.clone(),
+            my_peer_id.to_base58(),
+        );
+        if let Err(e) = self.pending_storage_store.store(operation_id, &pending) {
             tracing::error!(
                 operation_id = %operation_id,
                 error = %e,

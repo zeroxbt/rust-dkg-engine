@@ -9,10 +9,11 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
+        key_value_store::{PendingStorageData, PendingStorageStore},
         network::{NetworkManager, messages::StoreAck},
         triple_store::Assertion,
     },
-    services::{PeerService, ResponseChannels, pending_storage_service::PendingStorageService},
+    services::{PeerService, ResponseChannels},
     utils::validation,
 };
 
@@ -50,7 +51,7 @@ pub(crate) struct HandlePublishStoreRequestCommandHandler {
     blockchain_manager: Arc<BlockchainManager>,
     peer_service: Arc<PeerService>,
     response_channels: Arc<ResponseChannels<StoreAck>>,
-    pending_storage_service: Arc<PendingStorageService>,
+    pending_storage_store: Arc<PendingStorageStore>,
 }
 
 impl HandlePublishStoreRequestCommandHandler {
@@ -60,7 +61,12 @@ impl HandlePublishStoreRequestCommandHandler {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             peer_service: Arc::clone(context.peer_service()),
             response_channels: Arc::clone(context.store_response_channels()),
-            pending_storage_service: Arc::clone(context.pending_storage_service()),
+            pending_storage_store: Arc::new(
+                context
+                    .key_value_store_manager()
+                    .pending_storage_store()
+                    .expect("Failed to create pending storage store"),
+            ),
         }
     }
 }
@@ -202,12 +208,12 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             }
         };
 
-        if let Err(e) = self.pending_storage_service.store_dataset(
-            operation_id,
-            dataset_root,
-            dataset,
-            &remote_peer_id.to_base58(),
-        ) {
+        let pending = PendingStorageData::new(
+            dataset_root.to_owned(),
+            dataset.clone(),
+            remote_peer_id.to_base58(),
+        );
+        if let Err(e) = self.pending_storage_store.store(operation_id, &pending) {
             tracing::error!(
                 operation_id = %operation_id,
                 error = %e,

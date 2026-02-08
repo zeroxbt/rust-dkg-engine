@@ -8,6 +8,7 @@ use crate::{
     context::Context,
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, H256, U256},
+        key_value_store::PendingStorageStore,
         network::{
             NetworkManager, PeerId,
             message::ResponseBody,
@@ -17,7 +18,7 @@ use crate::{
         repository::RepositoryManager,
         triple_store::KnowledgeCollectionMetadata,
     },
-    services::{PeerService, TripleStoreService, pending_storage_service::PendingStorageService},
+    services::{PeerService, TripleStoreService},
     types::derive_ual,
     utils::validation,
 };
@@ -78,7 +79,7 @@ pub(crate) struct SendPublishFinalityRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
     peer_service: Arc<PeerService>,
     blockchain_manager: Arc<BlockchainManager>,
-    pending_storage_service: Arc<PendingStorageService>,
+    pending_storage_store: Arc<PendingStorageStore>,
     triple_store_service: Arc<TripleStoreService>,
 }
 
@@ -89,7 +90,12 @@ impl SendPublishFinalityRequestCommandHandler {
             network_manager: Arc::clone(context.network_manager()),
             peer_service: Arc::clone(context.peer_service()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
-            pending_storage_service: Arc::clone(context.pending_storage_service()),
+            pending_storage_store: Arc::new(
+                context
+                    .key_value_store_manager()
+                    .pending_storage_store()
+                    .expect("Failed to create pending storage store"),
+            ),
             triple_store_service: Arc::clone(context.triple_store_service()),
         }
     }
@@ -144,17 +150,22 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         // This will fail if this node doesn't have the dataset locally
         // (e.g., KC was published by another node, node was offline, or wasn't contacted during
         // publish)
-        let pending_data = match self
-            .pending_storage_service
-            .get_dataset(publish_operation_id)
-        {
-            Ok(data) => data,
+        let pending_data = match self.pending_storage_store.get(publish_operation_id) {
+            Ok(Some(data)) => data,
+            Ok(None) => {
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    publish_operation_id = %publish_operation_id,
+                    "Dataset not in pending storage, skipping finality"
+                );
+                return CommandExecutionResult::Completed;
+            }
             Err(e) => {
                 tracing::debug!(
                     operation_id = %operation_id,
                     publish_operation_id = %publish_operation_id,
                     error = %e,
-                    "Dataset not in pending storage, skipping finality"
+                    "Failed to read pending storage, skipping finality"
                 );
                 return CommandExecutionResult::Completed;
             }
@@ -274,7 +285,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         };
 
         // Remove from pending storage now that insertion succeeded
-        if let Err(e) = self.pending_storage_service.remove(publish_operation_id) {
+        if let Err(e) = self.pending_storage_store.remove(publish_operation_id) {
             tracing::warn!(
                 operation_id = %operation_id,
                 publish_operation_id = %publish_operation_id,

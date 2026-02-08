@@ -1,8 +1,12 @@
 mod error;
+mod stores;
 
 use std::{path::Path, sync::Arc};
 
 pub(crate) use error::KeyValueStoreError;
+pub(crate) use stores::{
+    OperationResultStore, PeerAddressStore, PendingStorageData, PendingStorageStore, ResultStoreError,
+};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -216,6 +220,23 @@ impl KeyValueStoreManager {
         write_txn.commit()?;
 
         Ok(Table::new(Arc::clone(&self.db), table_def))
+    }
+
+    pub(crate) fn pending_storage_store(&self) -> Result<PendingStorageStore, KeyValueStoreError> {
+        PendingStorageStore::new(self)
+    }
+
+    pub(crate) fn peer_address_store(&self) -> Result<PeerAddressStore, KeyValueStoreError> {
+        PeerAddressStore::new(self)
+    }
+
+    pub(crate) fn operation_result_store<R>(
+        &self,
+    ) -> Result<OperationResultStore<R>, ResultStoreError>
+    where
+        R: Serialize + DeserializeOwned + Send + Sync + 'static,
+    {
+        OperationResultStore::new(self)
     }
 }
 

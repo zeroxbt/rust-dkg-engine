@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use crate::services::PendingStorageService;
+use crate::managers::key_value_store::PendingStorageStore;
 
 pub(crate) fn cleanup_pending_storage(
-    pending_storage: &PendingStorageService,
+    pending_storage: &PendingStorageStore,
     ttl: Duration,
     batch_size: usize,
 ) -> Result<usize, String> {

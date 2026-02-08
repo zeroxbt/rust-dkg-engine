@@ -2,7 +2,6 @@ pub(crate) mod file_service;
 pub(crate) mod get_validation_service;
 pub(crate) mod operation_status;
 pub(crate) mod peer;
-pub(crate) mod pending_storage_service;
 pub(crate) mod response_channels;
 pub(crate) mod triple_store_service;
 
@@ -11,7 +10,6 @@ use std::sync::Arc;
 pub(crate) use get_validation_service::GetValidationService;
 pub(crate) use operation_status::OperationStatusService;
 pub(crate) use peer::{PeerAddressStore, PeerService};
-pub(crate) use pending_storage_service::PendingStorageService;
 pub(crate) use response_channels::ResponseChannels;
 pub(crate) use triple_store_service::TripleStoreService;
 
@@ -49,7 +47,6 @@ pub(crate) struct Services {
     pub get_operation: Arc<OperationStatusService<GetOperationResult>>,
 
     // Storage services
-    pub pending_storage: Arc<PendingStorageService>,
     pub triple_store: Arc<TripleStoreService>,
 
     // Validation services
@@ -90,11 +87,6 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
     );
 
     // Storage services
-    let pending_storage = Arc::new(
-        PendingStorageService::new(&managers.key_value_store)
-            .expect("Failed to create pending storage service"),
-    );
-
     let triple_store = Arc::new(TripleStoreService::new(Arc::clone(&managers.triple_store)));
 
     // Validation services
@@ -103,7 +95,9 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
     // Infrastructure services
     let peer_service = Arc::new(PeerService::new());
     let peer_address_store = Arc::new(
-        PeerAddressStore::new(&managers.key_value_store)
+        managers
+            .key_value_store
+            .peer_address_store()
             .expect("Failed to create peer address store"),
     );
 
@@ -113,7 +107,6 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
     Services {
         publish_store_operation,
         get_operation,
-        pending_storage,
         triple_store,
         get_validation,
         peer_service,

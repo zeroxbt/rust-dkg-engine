@@ -10,8 +10,11 @@ use crate::{
         registry::CommandHandler,
     },
     context::Context,
-    managers::repository::RepositoryManager,
-    services::{OperationStatusService, PendingStorageService},
+    managers::{
+        key_value_store::PendingStorageStore,
+        repository::RepositoryManager,
+    },
+    services::OperationStatusService,
 };
 
 #[derive(Clone)]
@@ -27,7 +30,7 @@ impl CleanupCommandData {
 
 pub(crate) struct CleanupCommandHandler {
     repository_manager: Arc<RepositoryManager>,
-    pending_storage_service: Arc<PendingStorageService>,
+    pending_storage_store: Arc<PendingStorageStore>,
     publish_operation_results:
         Arc<OperationStatusService<crate::operations::PublishStoreOperationResult>>,
     get_operation_results: Arc<OperationStatusService<crate::operations::GetOperationResult>>,
@@ -37,7 +40,12 @@ impl CleanupCommandHandler {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
-            pending_storage_service: Arc::clone(context.pending_storage_service()),
+            pending_storage_store: Arc::new(
+                context
+                    .key_value_store_manager()
+                    .pending_storage_store()
+                    .expect("Failed to create pending storage store"),
+            ),
             publish_operation_results: Arc::clone(context.publish_store_operation_status_service()),
             get_operation_results: Arc::clone(context.get_operation_status_service()),
         }
@@ -75,7 +83,7 @@ impl CommandHandler<CleanupCommandData> for CleanupCommandHandler {
 
         if data.config.pending_storage.ttl_secs > 0 {
             match cleanup_pending_storage(
-                &self.pending_storage_service,
+                &self.pending_storage_store,
                 Duration::from_secs(data.config.pending_storage.ttl_secs),
                 data.config.pending_storage.batch_size,
             ) {

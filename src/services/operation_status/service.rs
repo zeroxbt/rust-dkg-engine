@@ -3,11 +3,10 @@ use std::sync::Arc;
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
-use super::result_store::{ResultStoreError, TABLE_NAME};
 use crate::{
     error::NodeError,
     managers::{
-        key_value_store::{KeyValueStoreManager, Table},
+        key_value_store::{KeyValueStoreManager, OperationResultStore, ResultStoreError},
         repository::{OperationStatus, RepositoryManager},
     },
 };
@@ -17,7 +16,7 @@ use crate::{
 /// Stores a lightweight status record in SQL and the typed result in redb.
 pub(crate) struct OperationStatusService<R> {
     repository: Arc<RepositoryManager>,
-    result_table: Table<R>,
+    result_store: OperationResultStore<R>,
     operation_name: &'static str,
 }
 
@@ -31,10 +30,10 @@ where
         kv_store_manager: &KeyValueStoreManager,
         operation_name: &'static str,
     ) -> Result<Self, ResultStoreError> {
-        let result_table = kv_store_manager.table(TABLE_NAME)?;
+        let result_store = kv_store_manager.operation_result_store()?;
         Ok(Self {
             repository,
-            result_table,
+            result_store,
             operation_name,
         })
     }
@@ -65,7 +64,7 @@ where
         operation_id: Uuid,
         result: &R,
     ) -> Result<(), ResultStoreError> {
-        self.result_table.store(operation_id.as_bytes(), result)?;
+        self.result_store.store_result(operation_id, result)?;
         tracing::debug!(
             operation_id = %operation_id,
             "[{}] Result stored",
@@ -76,12 +75,12 @@ where
 
     /// Remove a result from the key-value store.
     pub(crate) fn remove_result(&self, operation_id: Uuid) -> Result<bool, ResultStoreError> {
-        Ok(self.result_table.remove(operation_id.as_bytes())?)
+        self.result_store.remove_result(operation_id)
     }
 
     /// Get a cached operation result from the key-value store.
     pub(crate) fn get_result(&self, operation_id: Uuid) -> Result<Option<R>, ResultStoreError> {
-        Ok(self.result_table.get(operation_id.as_bytes())?)
+        self.result_store.get_result(operation_id)
     }
 
     /// Update a result in the key-value store using a closure.
@@ -96,8 +95,8 @@ where
     where
         F: FnOnce(&mut R),
     {
-        self.result_table
-            .update(operation_id.as_bytes(), default, update_fn)?;
+        self.result_store
+            .update_result(operation_id, default, update_fn)?;
         tracing::trace!(
             operation_id = %operation_id,
             "[{}] Result updated",
@@ -131,7 +130,7 @@ where
             .update(operation_id, Some(OperationStatus::Failed), Some(reason))
             .await;
 
-        let _ = self.result_table.remove(operation_id.as_bytes());
+        let _ = self.result_store.remove_result(operation_id);
 
         match result {
             Ok(_) => {

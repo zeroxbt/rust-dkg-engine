@@ -45,6 +45,10 @@ impl Context {
         &self.managers.blockchain
     }
 
+    pub(crate) fn key_value_store_manager(&self) -> &Arc<crate::managers::KeyValueStoreManager> {
+        &self.managers.key_value_store
+    }
+
     // Service accessors
     pub(crate) fn triple_store_service(&self) -> &Arc<TripleStoreService> {
         &self.services.triple_store
@@ -52,10 +56,6 @@ impl Context {
 
     pub(crate) fn get_validation_service(&self) -> &Arc<GetValidationService> {
         &self.services.get_validation
-    }
-
-    pub(crate) fn pending_storage_service(&self) -> &Arc<crate::services::PendingStorageService> {
-        &self.services.pending_storage
     }
 
     pub(crate) fn peer_service(&self) -> &Arc<PeerService> {
