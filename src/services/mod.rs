@@ -1,4 +1,3 @@
-pub(crate) mod file_service;
 pub(crate) mod get_validation_service;
 pub(crate) mod operation_status;
 pub(crate) mod peer;

@@ -1,5 +1,4 @@
 pub(crate) mod config;
-pub(crate) mod messages;
 pub(crate) mod rate_limiter;
 pub(crate) mod rpc_router;
 mod v1;

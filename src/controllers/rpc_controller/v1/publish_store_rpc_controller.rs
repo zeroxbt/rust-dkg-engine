@@ -7,10 +7,10 @@ use crate::{
         registry::Command, scheduler::CommandScheduler,
     },
     context::Context,
-    controllers::rpc_controller::messages::{StoreAck, StoreRequestData},
     managers::network::{
         PeerId,
         message::{RequestMessage, ResponseMessage},
+        messages::{StoreAck, StoreRequestData},
         request_response,
     },
     services::ResponseChannels,

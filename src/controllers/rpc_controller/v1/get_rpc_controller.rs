@@ -7,10 +7,10 @@ use crate::{
         scheduler::CommandScheduler,
     },
     context::Context,
-    controllers::rpc_controller::messages::{GetAck, GetRequestData},
     managers::network::{
         PeerId,
         message::{RequestMessage, ResponseMessage},
+        messages::{GetAck, GetRequestData},
         request_response,
     },
     services::ResponseChannels,

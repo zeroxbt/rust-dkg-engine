@@ -7,10 +7,10 @@ use crate::{
         registry::Command, scheduler::CommandScheduler,
     },
     context::Context,
-    controllers::rpc_controller::messages::{FinalityAck, FinalityRequestData},
     managers::network::{
         PeerId,
         message::{RequestMessage, ResponseMessage},
+        messages::{FinalityAck, FinalityRequestData},
         request_response,
     },
     services::ResponseChannels,
