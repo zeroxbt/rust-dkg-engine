@@ -8,11 +8,12 @@
 
 mod config;
 
+use std::sync::OnceLock;
+
 pub(crate) use config::{LogFormat, LoggerConfig, TelemetryConfig};
 use opentelemetry::{KeyValue, trace::TracerProvider};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
-use std::sync::OnceLock;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 static TRACER_PROVIDER: OnceLock<opentelemetry_sdk::trace::SdkTracerProvider> = OnceLock::new();
@@ -144,9 +145,9 @@ fn initialize_with_otel(
 /// Shutdown OpenTelemetry gracefully, flushing any pending traces.
 /// Call this before application exit.
 pub(crate) fn shutdown_telemetry() {
-    if let Some(provider) = TRACER_PROVIDER.get() {
-        if let Err(err) = provider.shutdown() {
-            eprintln!("OpenTelemetry shutdown failed: {err}");
-        }
+    if let Some(provider) = TRACER_PROVIDER.get()
+        && let Err(err) = provider.shutdown()
+    {
+        eprintln!("OpenTelemetry shutdown failed: {err}");
     }
 }
