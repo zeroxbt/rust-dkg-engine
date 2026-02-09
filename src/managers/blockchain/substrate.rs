@@ -3,10 +3,20 @@
 //! This module provides functionality for interacting with Substrate-based chains,
 //! specifically for validating EVM account mappings on NeuroWeb parachain.
 
+use std::io;
+
+use jsonrpsee::{
+    core::{client::ClientT, traits::ToRpcParams},
+    http_client::{HttpClient, HttpClientBuilder},
+};
 use subxt::{
     OnlineClient, PolkadotConfig,
-    backend::{BackendExt, rpc::RpcClient},
+    backend::{
+        BackendExt,
+        rpc::{RawRpcFuture, RawRpcSubscription, RawValue, RpcClient, RpcClientT},
+    },
 };
+use url::Url;
 
 use crate::managers::blockchain::error::BlockchainError;
 
@@ -35,65 +45,52 @@ async fn check_evm_account_mapping(
         .try_into()
         .map_err(|_| BlockchainError::Custom("EVM address must be 20 bytes".to_string()))?;
 
-    // Try connecting to each endpoint until one succeeds
-    let client = connect_to_substrate(rpc_endpoints).await?;
-
-    // Query the evmAccounts.accounts storage
-    // Storage key: evmAccounts::accounts(H160) -> Option<AccountId32>
     let storage_key = build_evm_accounts_storage_key(&address_bytes);
 
-    // Get the latest finalized block
-    let block_ref = client
-        .backend()
-        .latest_finalized_block_ref()
-        .await
-        .map_err(|e| BlockchainError::Custom(format!("Failed to get latest block: {}", e)))?;
-
-    // Query raw storage
-    let storage_result: Option<Vec<u8>> = client
-        .backend()
-        .storage_fetch_value(storage_key, block_ref.hash())
-        .await
-        .map_err(|e| BlockchainError::Custom(format!("Failed to query storage: {}", e)))?;
-
-    // If storage value exists and is not empty, the mapping exists
-    match storage_result {
-        Some(value) if !value.is_empty() => Ok(true),
-        _ => Ok(false),
-    }
-}
-
-/// Connect to a Substrate chain using the provided RPC endpoints.
-///
-/// Tries each endpoint in order until one succeeds.
-async fn connect_to_substrate(
-    rpc_endpoints: &[String],
-) -> Result<OnlineClient<PolkadotConfig>, BlockchainError> {
+    // Try connecting to each endpoint until one succeeds
     let mut last_error = None;
 
     for endpoint in rpc_endpoints {
         tracing::debug!("Trying Substrate RPC endpoint: {}", endpoint);
 
-        match RpcClient::from_url(endpoint).await {
-            Ok(rpc_client) => {
-                match OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client).await {
-                    Ok(client) => {
-                        tracing::info!("Connected to Substrate RPC: {}", endpoint);
-                        return Ok(client);
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to create Substrate client from {}: {}",
-                            endpoint,
-                            e
-                        );
-                        last_error = Some(e.to_string());
-                    }
-                }
+        let rpc_client = match build_rpc_client(endpoint).await {
+            Ok(client) => client,
+            Err(e) => {
+                tracing::warn!("Failed to connect to Substrate RPC {}: {}", endpoint, e);
+                last_error = Some(e);
+                continue;
+            }
+        };
+
+        let result: Result<bool, String> = async {
+            let client = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let block_ref = client
+                .backend()
+                .latest_finalized_block_ref()
+                .await
+                .map_err(|e| format!("Failed to get latest block: {}", e))?;
+
+            let storage_result: Option<Vec<u8>> = client
+                .backend()
+                .storage_fetch_value(storage_key.clone(), block_ref.hash())
+                .await
+                .map_err(|e| format!("Failed to query storage: {}", e))?;
+
+            Ok(matches!(storage_result, Some(value) if !value.is_empty()))
+        }
+        .await;
+
+        match result {
+            Ok(mapped) => {
+                tracing::info!("Connected to Substrate RPC: {}", endpoint);
+                return Ok(mapped);
             }
             Err(e) => {
                 tracing::warn!("Failed to connect to Substrate RPC {}: {}", endpoint, e);
-                last_error = Some(e.to_string());
+                last_error = Some(e);
             }
         }
     }
@@ -102,6 +99,75 @@ async fn connect_to_substrate(
         "Failed to connect to any Substrate RPC endpoint: {}",
         last_error.unwrap_or_else(|| "no endpoints provided".to_string())
     )))
+}
+
+async fn build_rpc_client(endpoint: &str) -> Result<RpcClient, String> {
+    let url = Url::parse(endpoint).map_err(|e| format!("Invalid URL: {}", e))?;
+
+    match url.scheme() {
+        "wss" => RpcClient::from_url(endpoint)
+            .await
+            .map_err(|e| e.to_string()),
+        "ws" => RpcClient::from_insecure_url(endpoint)
+            .await
+            .map_err(|e| e.to_string()),
+        "https" | "http" => {
+            let client = HttpClientBuilder::default()
+                .build(url)
+                .map_err(|e| e.to_string())?;
+            Ok(RpcClient::new(HttpRpcClient::new(client)))
+        }
+        _ => Err(format!(
+            "Unsupported Substrate RPC URL scheme (expected ws/wss or http/https): {}",
+            endpoint
+        )),
+    }
+}
+
+struct HttpRpcClient {
+    client: HttpClient,
+}
+
+impl HttpRpcClient {
+    fn new(client: HttpClient) -> Self {
+        Self { client }
+    }
+}
+
+struct Params(Option<Box<RawValue>>);
+
+impl ToRpcParams for Params {
+    fn to_rpc_params(self) -> Result<Option<Box<RawValue>>, serde_json::Error> {
+        Ok(self.0)
+    }
+}
+
+impl RpcClientT for HttpRpcClient {
+    fn request_raw<'a>(
+        &'a self,
+        method: &'a str,
+        params: Option<Box<RawValue>>,
+    ) -> RawRpcFuture<'a, Box<RawValue>> {
+        Box::pin(async move {
+            let res = ClientT::request(&self.client, method, Params(params))
+                .await
+                .map_err(subxt::ext::subxt_rpcs::Error::from)?;
+            Ok(res)
+        })
+    }
+
+    fn subscribe_raw<'a>(
+        &'a self,
+        _sub: &'a str,
+        _params: Option<Box<RawValue>>,
+        _unsub: &'a str,
+    ) -> RawRpcFuture<'a, RawRpcSubscription> {
+        Box::pin(async move {
+            Err(subxt::ext::subxt_rpcs::Error::Client(Box::new(
+                io::Error::other("HTTP Substrate RPC does not support subscriptions; use ws/wss"),
+            )))
+        })
+    }
 }
 
 /// Build the storage key for evmAccounts.accounts(H160).

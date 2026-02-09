@@ -66,6 +66,8 @@ alloy = { version = "1.6.1", default-features = false, features = [
 ] }
 sha2 = "0.10"
 subxt = "0.44.2"
+jsonrpsee = { version = "0.24.10", default-features = false, features = ["http-client"] }
+url = "2.5.2"
 reqwest = { version = "0.13.2", features = ["json"] }
 dashmap = "6.1.0"
 async-trait = "0.1"
