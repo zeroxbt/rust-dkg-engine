@@ -8,7 +8,9 @@ use std::{collections::HashSet, path::Path, sync::Arc, time::Duration};
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 use chrono::{DateTime, SecondsFormat, Utc};
-pub(crate) use config::{DKG_REPOSITORY, TripleStoreBackendType, TripleStoreManagerConfig};
+pub(crate) use config::{
+    DKG_REPOSITORY, TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig,
+};
 use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
 pub(crate) use rdf::{extract_subject, group_triples_by_subject, parse_metadata_from_triples};

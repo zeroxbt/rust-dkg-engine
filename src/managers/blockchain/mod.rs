@@ -15,7 +15,10 @@ use chains::evm::EvmChain;
 pub(crate) use chains::evm::{
     ContractLog, ContractName, Hub, KnowledgeCollectionStorage, ParametersStorage,
 };
-pub(crate) use config::{BlockchainConfig, BlockchainManagerConfig};
+pub(crate) use config::{
+    BlockchainConfig, BlockchainConfigRaw, BlockchainManagerConfig, BlockchainManagerConfigRaw,
+    BlockchainRaw,
+};
 pub(crate) use rpc_rate_limiter::RpcRateLimiter;
 
 // Re-export event types for use by consumers

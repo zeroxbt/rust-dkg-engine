@@ -1,22 +1,23 @@
 use std::{
-    env,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
 
 use clap::{Arg, Command};
+pub(crate) mod defaults;
+
 use figment::{
     Figment,
-    providers::{Format, Toml},
+    providers::{Format, Serialized, Toml},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
     commands::periodic::cleanup::CleanupConfig,
     controllers::{http_api_controller::router::HttpApiConfig, rpc_controller::RpcConfig},
     logger::{LoggerConfig, TelemetryConfig},
-    managers::ManagersConfig,
+    managers::{ManagersConfig, ManagersConfigRaw},
 };
 
 #[derive(Error, Debug)]
@@ -35,9 +36,11 @@ pub(crate) enum ConfigError {
 
     #[error("Unknown environment: {0}")]
     UnknownEnvironment(String),
+
+    #[error("Invalid configuration: {0}")]
+    InvalidConfig(String),
 }
 
-const DEFAULTS_TOML: &str = include_str!("../../config/defaults.toml");
 static CONFIG_ENV: OnceLock<String> = OnceLock::new();
 
 #[derive(Debug, Deserialize)]
@@ -91,15 +94,26 @@ pub(crate) fn current_env() -> String {
 }
 
 /// Returns true if running in a development environment.
-/// Derived from config/environment (true if "development" or "devnet").
+/// Derived from config/environment (true if "development").
 pub(crate) fn is_dev_env() -> bool {
-    matches!(current_env().as_str(), "development" | "devnet")
+    matches!(current_env().as_str(), "development")
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Config {
+pub(crate) struct ConfigRaw {
     pub environment: String,
+    pub app_data_path: PathBuf,
+    pub managers: ManagersConfigRaw,
+    pub http_api: HttpApiConfig,
+    pub rpc: RpcConfig,
+    pub cleanup: CleanupConfig,
+    pub logger: LoggerConfig,
+    pub telemetry: TelemetryConfig,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Config {
     pub app_data_path: PathBuf,
     pub managers: ManagersConfig,
     pub http_api: HttpApiConfig,
@@ -107,6 +121,20 @@ pub(crate) struct Config {
     pub cleanup: CleanupConfig,
     pub logger: LoggerConfig,
     pub telemetry: TelemetryConfig,
+}
+
+impl ConfigRaw {
+    pub(crate) fn resolve(self) -> Result<Config, ConfigError> {
+        Ok(Config {
+            app_data_path: self.app_data_path,
+            managers: self.managers.resolve()?,
+            http_api: self.http_api,
+            rpc: self.rpc,
+            cleanup: self.cleanup,
+            logger: self.logger,
+            telemetry: self.telemetry,
+        })
+    }
 }
 
 pub(crate) fn initialize_configuration() -> Config {
@@ -132,21 +160,21 @@ fn load_configuration() -> Result<Config, ConfigError> {
     tracing::info!("Loading configuration for environment: {}", node_env);
 
     // Build configuration with layered sources (priority: lowest to highest)
-    let mut figment = Figment::from(Toml::string(DEFAULTS_TOML).nested()).select(&node_env);
+    let mut figment = Figment::from(Serialized::defaults(defaults::config_for(&node_env)));
 
     // User overrides from config.toml
     if Path::new("config.toml").exists() {
-        figment = figment.merge(Toml::file("config.toml").profile(&node_env));
+        figment = figment.merge(Toml::file("config.toml"));
     }
 
     // If custom config file is provided, merge it with highest priority
     if let Some(config_path) = custom_config_path {
         tracing::info!("Loading custom config file: {}", config_path);
-        figment = figment.merge(Toml::file(config_path).profile(&node_env));
+        figment = figment.merge(Toml::file(config_path));
     }
 
     // Extract configuration from files
-    let mut config: Config = figment.extract().map_err(Box::new)?;
+    let config: ConfigRaw = figment.extract().map_err(Box::new)?;
     if config.environment != node_env {
         return Err(ConfigError::UnknownEnvironment(format!(
             "config environment '{}' does not match selected '{}'",
@@ -154,12 +182,9 @@ fn load_configuration() -> Result<Config, ConfigError> {
         )));
     }
 
-    // Resolve secrets from environment variables (env vars take precedence over config files)
-    resolve_secrets(&mut config)?;
-
     tracing::info!("Configuration loaded successfully");
 
-    Ok(config)
+    config.resolve()
 }
 
 fn set_config_env(env: &str) {
@@ -201,46 +226,5 @@ fn read_environment_from(path: &str) -> Option<String> {
 }
 
 fn normalize_env(env: String) -> String {
-    match env.trim().to_lowercase().as_str() {
-        "dev" | "development" | "devnet" => "development".to_string(),
-        "test" | "testnet" => "testnet".to_string(),
-        "main" | "mainnet" => "mainnet".to_string(),
-        other => other.to_string(),
-    }
-}
-
-/// Resolves secrets from environment variables into the config.
-/// Environment variables take precedence over config file values.
-///
-/// Required secrets:
-/// - `EVM_OPERATIONAL_WALLET_PRIVATE_KEY` - operational wallet private key
-/// - `DB_PASSWORD` - database password
-///
-/// Optional secrets:
-/// - `EVM_MANAGEMENT_WALLET_PRIVATE_KEY` - management wallet private key
-fn resolve_secrets(config: &mut Config) -> Result<(), ConfigError> {
-    // Resolve database password
-    if let Ok(password) = env::var("DB_PASSWORD") {
-        config.managers.repository.set_password(password);
-    }
-    config.managers.repository.ensure_password()?;
-
-    // Resolve blockchain secrets for each configured blockchain
-    let operational_key = env::var("EVM_OPERATIONAL_WALLET_PRIVATE_KEY").ok();
-    let management_key = env::var("EVM_MANAGEMENT_WALLET_PRIVATE_KEY").ok();
-
-    for blockchain_config in config.managers.blockchain.configs_mut() {
-        // Set operational wallet private key from env if available
-        if let Some(ref key) = operational_key {
-            blockchain_config.set_operational_wallet_private_key(key.clone());
-        }
-        blockchain_config.ensure_operational_wallet_private_key()?;
-
-        // Set management wallet private key from env if available (optional)
-        if let Some(ref key) = management_key {
-            blockchain_config.set_management_wallet_private_key(key.clone());
-        }
-    }
-
-    Ok(())
+    env.trim().to_lowercase()
 }

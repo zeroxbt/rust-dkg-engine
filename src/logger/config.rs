@@ -1,7 +1,7 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Logger configuration for tracing output.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LoggerConfig {
     /// Log level filter (e.g., "info", "debug", "trace", or module-specific like
@@ -11,7 +11,7 @@ pub(crate) struct LoggerConfig {
     pub format: LogFormat,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum LogFormat {
     Pretty,
@@ -19,7 +19,7 @@ pub(crate) enum LogFormat {
 }
 
 /// OpenTelemetry configuration for distributed tracing.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TelemetryConfig {
     /// Whether to enable OpenTelemetry tracing export

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use governor::middleware::NoOpMiddleware;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tower_governor::{
     GovernorLayer, governor::GovernorConfigBuilder, key_extractor::PeerIpKeyExtractor,
 };
@@ -12,7 +12,7 @@ use tower_governor::{
 /// Uses a token bucket algorithm where tokens are replenished at a steady rate.
 /// Clients can make burst requests up to `burst_size`, then are limited to
 /// `max_requests` per `time_window`.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RateLimiterConfig {
     /// Whether rate limiting is enabled.

@@ -7,7 +7,7 @@ use axum::{
     Router,
     routing::{get, post},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::{
     net::TcpListener,
     sync::{Mutex, oneshot},
@@ -24,7 +24,7 @@ use super::{
 };
 use crate::{context::Context, controllers::http_api_controller::v1::get::GetHttpApiController};
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HttpApiConfig {
     /// Whether the HTTP API server is enabled.

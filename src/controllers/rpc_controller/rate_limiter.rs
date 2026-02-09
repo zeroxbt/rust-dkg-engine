@@ -7,7 +7,7 @@ use governor::{
     state::{InMemoryState, NotKeyed},
 };
 use libp2p::PeerId;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 type PeerLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;
 
@@ -15,7 +15,7 @@ type PeerLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;
 ///
 /// Uses a token bucket algorithm where tokens are replenished at `requests_per_second` rate.
 /// Peers can burst up to `burst_size` requests before being rate limited.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PeerRateLimiterConfig {
     /// Whether rate limiting is enabled.

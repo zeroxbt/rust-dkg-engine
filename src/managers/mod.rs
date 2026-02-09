@@ -8,7 +8,7 @@ pub(crate) mod triple_store;
 use std::sync::Arc;
 
 pub(crate) use blockchain::BlockchainManager;
-pub(crate) use config::ManagersConfig;
+pub(crate) use config::{ManagersConfig, ManagersConfigRaw};
 pub(crate) use key_value_store::KeyValueStoreManager;
 use libp2p::identity::Keypair;
 pub(crate) use network::{NetworkEventLoop, NetworkManager};

@@ -1,7 +1,7 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Cleanup configuration for periodic maintenance tasks.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CleanupConfig {
     pub enabled: bool,
@@ -13,7 +13,7 @@ pub(crate) struct CleanupConfig {
 }
 
 /// Cleanup config for operation status + result cache.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct OperationsCleanupConfig {
     pub ttl_secs: u64,
@@ -21,7 +21,7 @@ pub(crate) struct OperationsCleanupConfig {
 }
 
 /// Cleanup config for publish tmp dataset store (redb).
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PublishTmpDatasetCleanupConfig {
     pub ttl_secs: u64,
@@ -29,7 +29,7 @@ pub(crate) struct PublishTmpDatasetCleanupConfig {
 }
 
 /// Cleanup config for finality ack records.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FinalityAcksCleanupConfig {
     pub ttl_secs: u64,
@@ -37,7 +37,7 @@ pub(crate) struct FinalityAcksCleanupConfig {
 }
 
 /// Cleanup config for proof challenge records.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ProofChallengesCleanupConfig {
     pub ttl_secs: u64,

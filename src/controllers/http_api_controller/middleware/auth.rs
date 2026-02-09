@@ -12,13 +12,13 @@ use axum::{
     http::{Request, StatusCode},
     response::{IntoResponse, Response},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tower::{Layer, Service};
 
 /// Configuration for HTTP API authentication.
 ///
 /// The configured IP whitelist controls access to the API.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AuthConfig {
     /// Whether authentication is enabled.

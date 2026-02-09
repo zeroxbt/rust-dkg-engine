@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The fixed repository/namespace name used by the DKG.
 /// For Blazegraph: namespace name
@@ -6,7 +6,7 @@ use serde::Deserialize;
 pub(crate) const DKG_REPOSITORY: &str = "DKG";
 
 /// Backend type for the triple store
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum TripleStoreBackendType {
     /// Blazegraph HTTP-based backend (requires running Blazegraph server)
@@ -16,7 +16,7 @@ pub(crate) enum TripleStoreBackendType {
 }
 
 /// Configuration for the Triple Store Manager
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TripleStoreManagerConfig {
     /// Backend type to use.
@@ -48,7 +48,7 @@ pub(crate) struct TripleStoreManagerConfig {
 }
 
 /// Timeout configuration for different SPARQL operations
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TimeoutConfig {
     /// Timeout for CONSTRUCT/SELECT queries in milliseconds
