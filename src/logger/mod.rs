@@ -12,7 +12,10 @@ pub(crate) use config::{LogFormat, LoggerConfig, TelemetryConfig};
 use opentelemetry::{KeyValue, trace::TracerProvider};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
+use std::sync::OnceLock;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
+static TRACER_PROVIDER: OnceLock<opentelemetry_sdk::trace::SdkTracerProvider> = OnceLock::new();
 
 /// Initialize the global logger with the given configuration.
 ///
@@ -58,7 +61,7 @@ fn initialize_without_otel(logger_config: &LoggerConfig, filter: EnvFilter) {
 /// Create an OpenTelemetry tracer provider.
 fn create_tracer_provider(
     telemetry_config: &TelemetryConfig,
-) -> Result<opentelemetry_sdk::trace::TracerProvider, opentelemetry::trace::TraceError> {
+) -> Result<opentelemetry_sdk::trace::SdkTracerProvider, opentelemetry_otlp::ExporterBuildError> {
     // Build the OTLP span exporter
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_tonic()
@@ -66,12 +69,16 @@ fn create_tracer_provider(
         .build()?;
 
     // Build the tracer provider with resource attributes
-    let provider = opentelemetry_sdk::trace::TracerProvider::builder()
-        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
-        .with_resource(Resource::new(vec![
-            KeyValue::new("service.name", telemetry_config.service_name.clone()),
-            KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-        ]))
+    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            Resource::builder_empty()
+                .with_attributes([
+                    KeyValue::new("service.name", telemetry_config.service_name.clone()),
+                    KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
+                ])
+                .build(),
+        )
         .build();
 
     Ok(provider)
@@ -94,6 +101,7 @@ fn initialize_with_otel(
 
     // Set as global provider so shutdown works
     opentelemetry::global::set_tracer_provider(provider.clone());
+    let _ = TRACER_PROVIDER.set(provider.clone());
 
     let tracer = provider.tracer("rust-dkg-engine");
 
@@ -136,5 +144,9 @@ fn initialize_with_otel(
 /// Shutdown OpenTelemetry gracefully, flushing any pending traces.
 /// Call this before application exit.
 pub(crate) fn shutdown_telemetry() {
-    opentelemetry::global::shutdown_tracer_provider();
+    if let Some(provider) = TRACER_PROVIDER.get() {
+        if let Err(err) = provider.shutdown() {
+            eprintln!("OpenTelemetry shutdown failed: {err}");
+        }
+    }
 }

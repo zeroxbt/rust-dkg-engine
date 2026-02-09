@@ -1,3 +1,2 @@
 [build]
-rustc-wrapper = "sccache"
 jobs = 8
