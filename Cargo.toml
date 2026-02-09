@@ -71,7 +71,6 @@ url = "2.5.2"
 reqwest = { version = "0.13.2", features = ["json"] }
 dashmap = "6.1.0"
 async-trait = "0.1"
-blake2b_simd = "1.0"
 redb = "3.1.0"
 sea-orm = { version = "1.1.19", features = [
     "sqlx-mysql",
@@ -80,7 +79,6 @@ sea-orm = { version = "1.1.19", features = [
 ] }
 sea-orm-migration = "1.1.19"
 libp2p-mplex = "0.43.1"
-twox-hash = "2.1.2"
 void = "1.0.2"
 oxigraph = { version = "0.5.4" }
 rustls = { version = "0.23.36", default-features = false, features = [

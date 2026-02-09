@@ -12,9 +12,10 @@ use jsonrpsee::{
 use subxt::{
     OnlineClient, PolkadotConfig,
     backend::{
-        BackendExt,
         rpc::{RawRpcFuture, RawRpcSubscription, RawValue, RpcClient, RpcClientT},
     },
+    dynamic::Value,
+    metadata::Metadata,
 };
 use url::Url;
 
@@ -45,8 +46,6 @@ async fn check_evm_account_mapping(
         .try_into()
         .map_err(|_| BlockchainError::Custom("EVM address must be 20 bytes".to_string()))?;
 
-    let storage_key = build_evm_accounts_storage_key(&address_bytes);
-
     // Try connecting to each endpoint until one succeeds
     let mut last_error = None;
 
@@ -73,13 +72,24 @@ async fn check_evm_account_mapping(
                 .await
                 .map_err(|e| format!("Failed to get latest block: {}", e))?;
 
-            let storage_result: Option<Vec<u8>> = client
-                .backend()
-                .storage_fetch_value(storage_key.clone(), block_ref.hash())
+            let metadata = client.metadata();
+            let (pallet_name, storage_name) = resolve_evm_accounts_storage_names(&metadata)
+                .map_err(|e| format!("Failed to resolve evmAccounts storage: {}", e))?;
+
+            let storage_query = subxt::dynamic::storage(
+                &pallet_name,
+                &storage_name,
+                vec![Value::from_bytes(address_bytes)],
+            );
+
+            let storage_result = client
+                .storage()
+                .at(block_ref.hash())
+                .fetch(&storage_query)
                 .await
                 .map_err(|e| format!("Failed to query storage: {}", e))?;
 
-            Ok(matches!(storage_result, Some(value) if !value.is_empty()))
+            Ok(storage_result.is_some())
         }
         .await;
 
@@ -99,6 +109,33 @@ async fn check_evm_account_mapping(
         "Failed to connect to any Substrate RPC endpoint: {}",
         last_error.unwrap_or_else(|| "no endpoints provided".to_string())
     )))
+}
+
+fn resolve_evm_accounts_storage_names(metadata: &Metadata) -> Result<(String, String), String> {
+    let pallet = metadata
+        .pallets()
+        .find(|pallet| pallet.name().eq_ignore_ascii_case("evmaccounts"))
+        .ok_or_else(|| "pallet 'EvmAccounts' not found in metadata".to_string())?;
+
+    let storage = pallet.storage().ok_or_else(|| {
+        format!(
+            "pallet '{}' does not expose storage entries",
+            pallet.name()
+        )
+    })?;
+
+    let entry = storage
+        .entries()
+        .iter()
+        .find(|entry| entry.name().eq_ignore_ascii_case("accounts"))
+        .ok_or_else(|| {
+            format!(
+                "storage entry 'Accounts' not found in pallet '{}'",
+                pallet.name()
+            )
+        })?;
+
+    Ok((pallet.name().to_string(), entry.name().to_string()))
 }
 
 async fn build_rpc_client(endpoint: &str) -> Result<RpcClient, String> {
@@ -170,59 +207,6 @@ impl RpcClientT for HttpRpcClient {
     }
 }
 
-/// Build the storage key for evmAccounts.accounts(H160).
-///
-/// The storage key format is:
-/// - Pallet name hash (xxhash128): "EvmAccounts" -> first 16 bytes
-/// - Storage item hash (xxhash128): "Accounts" -> next 16 bytes
-/// - Key hash (blake2_128_concat): H160 address -> 16 bytes hash + 20 bytes address
-fn build_evm_accounts_storage_key(address: &[u8; 20]) -> Vec<u8> {
-    let mut key = Vec::with_capacity(68); // 16 + 16 + 16 + 20 = 68 bytes
-
-    // Pallet name hash using twox_128
-    key.extend_from_slice(&twox_128(b"EvmAccounts"));
-
-    // Storage item hash using twox_128
-    key.extend_from_slice(&twox_128(b"Accounts"));
-
-    // Key hash using Blake2_128Concat (hash + raw key)
-    key.extend_from_slice(&blake2_128(address));
-    key.extend_from_slice(address);
-
-    key
-}
-
-/// Compute twox_128 hash (used for pallet and storage item names)
-fn twox_128(data: &[u8]) -> [u8; 16] {
-    use std::hash::Hasher;
-
-    // xxhash64 with seed 0
-    let mut h0 = twox_hash::XxHash64::with_seed(0);
-    h0.write(data);
-    let r0 = h0.finish();
-
-    // xxhash64 with seed 1
-    let mut h1 = twox_hash::XxHash64::with_seed(1);
-    h1.write(data);
-    let r1 = h1.finish();
-
-    // Combine into 128-bit hash
-    let mut result = [0u8; 16];
-    result[0..8].copy_from_slice(&r0.to_le_bytes());
-    result[8..16].copy_from_slice(&r1.to_le_bytes());
-    result
-}
-
-/// Compute blake2_128 hash (used for storage key hashing)
-fn blake2_128(data: &[u8]) -> [u8; 16] {
-    // Use blake2b with 128-bit output
-    // subxt uses sp_core_hashing which uses blake2b_simd
-    let hash = blake2b_simd::Params::new().hash_length(16).hash(data);
-    let mut result = [0u8; 16];
-    result.copy_from_slice(hash.as_bytes());
-    result
-}
-
 /// Validate EVM wallet mappings for NeuroWeb parachain.
 ///
 /// This checks that all configured EVM wallets have valid Substrate account mappings.
@@ -265,41 +249,5 @@ pub(crate) async fn validate_evm_wallets(
 mod hex {
     pub(crate) fn decode(s: &str) -> Result<Vec<u8>, String> {
         alloy::primitives::hex::decode(s).map_err(|e| e.to_string())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_build_storage_key_format() {
-        // Test address
-        let address: [u8; 20] = [
-            0x70, 0x99, 0x79, 0x70, 0xC5, 0x18, 0x12, 0xdc, 0x3A, 0x01, 0x0C, 0x7d, 0x01, 0xb5,
-            0x0e, 0x0d, 0x17, 0xdc, 0x79, 0xC8,
-        ];
-
-        let key = build_evm_accounts_storage_key(&address);
-
-        // Key should be 68 bytes: 16 (pallet) + 16 (storage) + 16 (blake2_128) + 20 (address)
-        assert_eq!(key.len(), 68);
-
-        // Verify the address is at the end (blake2_128_concat includes raw key)
-        assert_eq!(&key[48..], &address);
-    }
-
-    #[test]
-    fn test_twox_128() {
-        // Test known hash values
-        let hash = twox_128(b"EvmAccounts");
-        // The hash should be deterministic
-        assert_eq!(hash.len(), 16);
-    }
-
-    #[test]
-    fn test_blake2_128() {
-        let hash = blake2_128(&[0x70, 0x99, 0x79, 0x70]);
-        assert_eq!(hash.len(), 16);
     }
 }
