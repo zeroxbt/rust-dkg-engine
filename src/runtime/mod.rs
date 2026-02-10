@@ -92,7 +92,7 @@ pub(crate) async fn run(
 
     // Step 3: Wait for command executor to drain pending commands
     // Commands still have network access during this phase
-    const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
+    const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
     tracing::info!("Waiting for command executor to drain...");
     match tokio::time::timeout(SHUTDOWN_TIMEOUT, execute_commands_task).await {
         Ok(Ok(())) => tracing::info!("Command executor shut down cleanly"),
