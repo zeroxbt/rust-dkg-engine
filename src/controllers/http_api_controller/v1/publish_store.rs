@@ -55,10 +55,21 @@ impl PublishStoreHttpApiController {
                         req.dataset,
                     ));
 
-                context
+                if !context
                     .command_scheduler()
-                    .schedule(CommandExecutionRequest::new(command))
-                    .await;
+                    .try_schedule(CommandExecutionRequest::new(command))
+                {
+                    context
+                        .publish_store_operation_status_service()
+                        .mark_failed(operation_id, "Command queue full".to_string())
+                        .await;
+
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Node is busy, please retry.",
+                    )
+                        .into_response();
+                }
 
                 Json(PublishResponse::new(operation_id)).into_response()
             }

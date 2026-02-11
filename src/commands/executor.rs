@@ -3,9 +3,13 @@ use std::{sync::Arc, time::Duration};
 use chrono::Utc;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::{Semaphore, mpsc};
+use tokio_util::time::DelayQueue;
 
 use super::{
-    constants::{COMMAND_CONCURRENT_LIMIT, MAX_COMMAND_LIFETIME},
+    constants::{
+        GENERAL_COMMAND_CONCURRENT_LIMIT, MAX_COMMAND_LIFETIME,
+        PERIODIC_COMMAND_CONCURRENT_LIMIT,
+    },
     registry::{Command, CommandResolver},
 };
 use crate::{commands::scheduler::CommandScheduler, context::Context};
@@ -33,6 +37,10 @@ impl CommandExecutionRequest {
 
     pub(crate) fn with_delay(mut self, delay: Duration) -> Self {
         self.delay = delay;
+        // Set created_at to the time the command becomes eligible to run.
+        // This prevents delayed commands from expiring before their delay elapses.
+        let delay_ms = delay.as_millis().min(i64::MAX as u128) as i64;
+        self.created_at = Utc::now().timestamp_millis().saturating_add(delay_ms);
         self
     }
 
@@ -71,7 +79,8 @@ impl CommandExecutionRequest {
 pub(crate) struct CommandExecutor {
     command_resolver: Arc<CommandResolver>,
     rx: mpsc::Receiver<CommandExecutionRequest>,
-    semaphore: Arc<Semaphore>,
+    periodic_semaphore: Arc<Semaphore>,
+    general_semaphore: Arc<Semaphore>,
 }
 
 // TODO:
@@ -84,7 +93,8 @@ impl CommandExecutor {
         Self {
             command_resolver: Arc::new(CommandResolver::new(context)),
             rx,
-            semaphore: Arc::new(Semaphore::new(COMMAND_CONCURRENT_LIMIT)),
+            periodic_semaphore: Arc::new(Semaphore::new(PERIODIC_COMMAND_CONCURRENT_LIMIT)),
+            general_semaphore: Arc::new(Semaphore::new(GENERAL_COMMAND_CONCURRENT_LIMIT)),
         }
     }
 
@@ -93,8 +103,14 @@ impl CommandExecutor {
     /// This method consumes self and runs until either:
     /// - Shutdown is requested and no pending commands remain
     /// - The command channel is closed
+    ///
+    /// Periodic commands that return `Repeat { delay }` are rescheduled via an
+    /// internal `DelayQueue` rather than sending back through the mpsc channel.
+    /// This avoids a potential deadlock (executor blocking on its own channel)
+    /// and eliminates unbounded spawned delay tasks.
     pub(crate) async fn run(mut self, scheduler: &CommandScheduler) {
         let mut pending_tasks: FuturesUnordered<_> = FuturesUnordered::new();
+        let mut delay_queue: DelayQueue<CommandExecutionRequest> = DelayQueue::new();
 
         loop {
             tokio::select! {
@@ -105,16 +121,42 @@ impl CommandExecutor {
                 }
                 result = pending_tasks.select_next_some(), if !pending_tasks.is_empty() => {
                     // Reschedule command if it returned Repeat
+                    let result: Option<CommandExecutionRequest> = result;
                     if let Some(request) = result {
-                        scheduler.schedule(request).await;
+                        let delay = request.delay();
+                        delay_queue.insert(request, delay);
                     }
                 }
+                // Delayed commands becoming ready for execution
+                Some(expired) = delay_queue.next(), if !delay_queue.is_empty() => {
+                    let mut request = expired.into_inner();
+                    request.clear_delay();
+                    let semaphore = if request.command().is_periodic() {
+                        &self.periodic_semaphore
+                    } else {
+                        &self.general_semaphore
+                    };
+                    let permit = semaphore.clone().acquire_owned().await.expect("Permit acquired");
+                    let resolver = Arc::clone(&self.command_resolver);
+                    pending_tasks.push(Self::execute(resolver, request, permit));
+                }
+                // New commands from external callers (RPC controllers, startup, etc.)
                 command = self.rx.recv() => {
                     match command {
                         Some(request) => {
-                            let permit = self.semaphore.clone().acquire_owned().await.expect("Permit acquired");
-                            let resolver = Arc::clone(&self.command_resolver);
-                            pending_tasks.push(Self::execute(resolver, request, permit));
+                            let delay = request.delay();
+                            if delay > Duration::ZERO {
+                                delay_queue.insert(request, delay);
+                            } else {
+                                let semaphore = if request.command().is_periodic() {
+                                    &self.periodic_semaphore
+                                } else {
+                                    &self.general_semaphore
+                                };
+                                let permit = semaphore.clone().acquire_owned().await.expect("Permit acquired");
+                                let resolver = Arc::clone(&self.command_resolver);
+                                pending_tasks.push(Self::execute(resolver, request, permit));
+                            }
                         }
                         None => {
                             tracing::info!("Command channel closed, shutting down executor");

@@ -30,12 +30,17 @@ impl PublishStoreRpcController {
         }
     }
 
-    pub(crate) async fn handle_request(
+    /// Handle an inbound publish store request.
+    ///
+    /// Returns `None` on success (channel stored for the command handler).
+    /// Returns `Some(channel)` if the command queue is full — caller should
+    /// send a Busy response.
+    pub(crate) fn handle_request(
         &self,
         request: RequestMessage<StoreRequestData>,
         channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
         remote_peer_id: PeerId,
-    ) {
+    ) -> Option<request_response::ResponseChannel<ResponseMessage<StoreAck>>> {
         let RequestMessage { header, data } = request;
 
         let operation_id = header.operation_id();
@@ -47,17 +52,14 @@ impl PublishStoreRpcController {
             "Store request received"
         );
 
-        // Store channel for later retrieval by command handler
         self.response_channels
             .store(&remote_peer_id, operation_id, channel);
 
-        // Create dataset from request data
         let dataset = Assertion {
             public: data.dataset().to_owned(),
             private: None,
         };
 
-        // Schedule command with dataset passed inline
         let command =
             Command::HandlePublishStoreRequest(HandlePublishStoreRequestCommandData::new(
                 data.blockchain().clone(),
@@ -67,8 +69,13 @@ impl PublishStoreRpcController {
                 dataset,
             ));
 
-        self.command_scheduler
-            .schedule(CommandExecutionRequest::new(command))
-            .await;
+        if !self
+            .command_scheduler
+            .try_schedule(CommandExecutionRequest::new(command))
+        {
+            return self.response_channels.retrieve(&remote_peer_id, operation_id);
+        }
+
+        None
     }
 }

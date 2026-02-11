@@ -116,14 +116,14 @@ impl NetworkEventHandler for RpcRouter {
         channel: ResponseChannel<ResponseMessage<StoreAck>>,
         peer: PeerId,
     ) {
+        let operation_id = request.header.operation_id();
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_store_busy(channel, request.header.operation_id())
-                .await;
+            self.send_store_busy(channel, operation_id).await;
             return;
         }
-        self.store_controller
-            .handle_request(request, channel, peer)
-            .await;
+        if let Some(channel) = self.store_controller.handle_request(request, channel, peer) {
+            self.send_store_busy(channel, operation_id).await;
+        }
     }
 
     async fn on_get_request(
@@ -132,14 +132,14 @@ impl NetworkEventHandler for RpcRouter {
         channel: ResponseChannel<ResponseMessage<GetAck>>,
         peer: PeerId,
     ) {
+        let operation_id = request.header.operation_id();
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_get_busy(channel, request.header.operation_id())
-                .await;
+            self.send_get_busy(channel, operation_id).await;
             return;
         }
-        self.get_controller
-            .handle_request(request, channel, peer)
-            .await;
+        if let Some(channel) = self.get_controller.handle_request(request, channel, peer) {
+            self.send_get_busy(channel, operation_id).await;
+        }
     }
 
     async fn on_finality_request(
@@ -148,14 +148,17 @@ impl NetworkEventHandler for RpcRouter {
         channel: ResponseChannel<ResponseMessage<FinalityAck>>,
         peer: PeerId,
     ) {
+        let operation_id = request.header.operation_id();
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_finality_busy(channel, request.header.operation_id())
-                .await;
+            self.send_finality_busy(channel, operation_id).await;
             return;
         }
-        self.finality_controller
+        if let Some(channel) = self
+            .finality_controller
             .handle_request(request, channel, peer)
-            .await;
+        {
+            self.send_finality_busy(channel, operation_id).await;
+        }
     }
 
     async fn on_batch_get_request(
@@ -164,13 +167,16 @@ impl NetworkEventHandler for RpcRouter {
         channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
         peer: PeerId,
     ) {
+        let operation_id = request.header.operation_id();
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_batch_get_busy(channel, request.header.operation_id())
-                .await;
+            self.send_batch_get_busy(channel, operation_id).await;
             return;
         }
-        self.batch_get_controller
+        if let Some(channel) = self
+            .batch_get_controller
             .handle_request(request, channel, peer)
-            .await;
+        {
+            self.send_batch_get_busy(channel, operation_id).await;
+        }
     }
 }

@@ -172,6 +172,22 @@ command_registry! {
     }
 }
 
+impl Command {
+    pub(crate) fn is_periodic(&self) -> bool {
+        matches!(
+            self,
+            Command::BlockchainEventListener(_)
+                | Command::Cleanup(_)
+                | Command::DialPeers(_)
+                | Command::ShardingTableCheck(_)
+                | Command::Sync(_)
+                | Command::Proving(_)
+                | Command::ClaimRewards(_)
+                | Command::SavePeerAddresses(_)
+        )
+    }
+}
+
 /// Default commands scheduled at startup. Keep this list explicit for clarity.
 pub(crate) fn default_command_requests(
     blockchain_ids: &[BlockchainId],

@@ -29,12 +29,17 @@ impl GetRpcController {
         }
     }
 
-    pub(crate) async fn handle_request(
+    /// Handle an inbound get request.
+    ///
+    /// Returns `None` on success (channel stored for the command handler).
+    /// Returns `Some(channel)` if the command queue is full — caller should
+    /// send a Busy response.
+    pub(crate) fn handle_request(
         &self,
         request: RequestMessage<GetRequestData>,
         channel: request_response::ResponseChannel<ResponseMessage<GetAck>>,
         remote_peer_id: PeerId,
-    ) {
+    ) -> Option<request_response::ResponseChannel<ResponseMessage<GetAck>>> {
         let RequestMessage { header, data } = request;
 
         let operation_id = header.operation_id();
@@ -46,11 +51,9 @@ impl GetRpcController {
             "Get request received"
         );
 
-        // Store channel for later retrieval by command handler
         self.response_channels
             .store(&remote_peer_id, operation_id, channel);
 
-        // Schedule command to handle the get request
         let command = Command::HandleGetRequest(HandleGetRequestCommandData::new(
             operation_id,
             data.ual().to_string(),
@@ -60,8 +63,13 @@ impl GetRpcController {
             remote_peer_id,
         ));
 
-        self.command_scheduler
-            .schedule(CommandExecutionRequest::new(command))
-            .await;
+        if !self
+            .command_scheduler
+            .try_schedule(CommandExecutionRequest::new(command))
+        {
+            return self.response_channels.retrieve(&remote_peer_id, operation_id);
+        }
+
+        None
     }
 }

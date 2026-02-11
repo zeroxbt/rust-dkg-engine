@@ -1,12 +1,14 @@
-use std::time::Duration;
-
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::constants::{COMMAND_QUEUE_SIZE, MAX_COMMAND_DELAY};
+use super::constants::COMMAND_QUEUE_SIZE;
 use crate::commands::executor::CommandExecutionRequest;
 
 /// Handle for scheduling commands. Can be cloned and shared across the application.
+///
+/// This is used by external callers (RPC controllers, HTTP API, startup) to submit
+/// commands to the executor. Periodic command rescheduling (Repeat with delay) is
+/// handled internally by the executor's DelayQueue and does not flow through here.
 #[derive(Clone)]
 pub(crate) struct CommandScheduler {
     tx: mpsc::Sender<CommandExecutionRequest>,
@@ -23,7 +25,6 @@ impl CommandScheduler {
     }
 
     /// Signal shutdown to stop accepting new commands.
-    /// Spawned delay tasks will check this before sending.
     pub(crate) fn shutdown(&self) {
         self.shutdown.cancel();
     }
@@ -33,9 +34,17 @@ impl CommandScheduler {
         self.shutdown.cancelled()
     }
 
-    /// Schedule a command for execution. Logs an error if scheduling fails.
+    /// Schedule a command for execution.
+    ///
+    /// Sends the command to the executor's channel. Blocks if the channel is full
+    /// (backpressure). Returns immediately if shutdown has been signaled.
+    ///
+    /// Delays (if any) are honored by the executor when it receives the command.
+    ///
+    /// Use this for commands that must not be dropped (startup, internal scheduling).
+    /// For inbound peer requests, prefer [`try_schedule`] to avoid blocking the
+    /// network event loop.
     pub(crate) async fn schedule(&self, request: CommandExecutionRequest) {
-        // Don't schedule new commands if shutdown has been signaled
         if self.shutdown.is_cancelled() {
             tracing::debug!(
                 command = %request.command().name(),
@@ -45,46 +54,40 @@ impl CommandScheduler {
         }
 
         let command_name = request.command().name();
-        let delay = request.delay().min(MAX_COMMAND_DELAY);
 
-        let result = if delay > Duration::ZERO {
-            let tx = self.tx.clone();
-            let shutdown = self.shutdown.clone();
-            let mut delayed_request = request;
-            delayed_request.clear_delay();
-
-            tokio::spawn(async move {
-                tokio::time::sleep(delay).await;
-
-                // Check shutdown before sending - this is the key fix
-                if shutdown.is_cancelled() {
-                    tracing::debug!(
-                        command = %command_name,
-                        "Shutdown in progress, dropping delayed command"
-                    );
-                    return;
-                }
-
-                if let Err(e) = tx.send(delayed_request).await {
-                    tracing::error!(
-                        command = %command_name,
-                        error = %e,
-                        "Failed to schedule delayed command"
-                    );
-                }
-            });
-
-            return;
-        } else {
-            self.tx.send(request).await
-        };
-
-        if let Err(e) = result {
+        if let Err(e) = self.tx.send(request).await {
             tracing::error!(
                 command = %command_name,
                 error = %e,
                 "Failed to schedule command"
             );
+        }
+    }
+
+    /// Try to schedule a command without blocking.
+    ///
+    /// Returns `true` if the command was accepted, `false` if the channel is full
+    /// or shutdown is in progress. Callers should respond with Busy when this
+    /// returns `false`.
+    pub(crate) fn try_schedule(&self, request: CommandExecutionRequest) -> bool {
+        if self.shutdown.is_cancelled() {
+            tracing::debug!(
+                command = %request.command().name(),
+                "Shutdown in progress, not scheduling command"
+            );
+            return false;
+        }
+
+        match self.tx.try_send(request) {
+            Ok(()) => true,
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                tracing::warn!("Command queue full, rejecting command");
+                false
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                tracing::error!("Command channel closed");
+                false
+            }
         }
     }
 }

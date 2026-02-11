@@ -29,12 +29,17 @@ impl PublishFinalityRpcController {
         }
     }
 
-    pub(crate) async fn handle_request(
+    /// Handle an inbound publish finality request.
+    ///
+    /// Returns `None` on success (channel stored for the command handler).
+    /// Returns `Some(channel)` if the command queue is full — caller should
+    /// send a Busy response.
+    pub(crate) fn handle_request(
         &self,
         request: RequestMessage<FinalityRequestData>,
         channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
         remote_peer_id: PeerId,
-    ) {
+    ) -> Option<request_response::ResponseChannel<ResponseMessage<FinalityAck>>> {
         let RequestMessage { header, data } = request;
 
         let operation_id = header.operation_id();
@@ -47,11 +52,9 @@ impl PublishFinalityRpcController {
             "Finality request received"
         );
 
-        // Store channel for later retrieval by command handler
         self.response_channels
             .store(&remote_peer_id, operation_id, channel);
 
-        // Schedule the HandlePublishFinalityRequest command
         let command_data = HandlePublishFinalityRequestCommandData::new(
             operation_id,
             data.ual().to_string(),
@@ -59,10 +62,15 @@ impl PublishFinalityRpcController {
             remote_peer_id,
         );
 
-        self.command_scheduler
-            .schedule(CommandExecutionRequest::new(
+        if !self
+            .command_scheduler
+            .try_schedule(CommandExecutionRequest::new(
                 Command::HandlePublishFinalityRequest(command_data),
             ))
-            .await;
+        {
+            return self.response_channels.retrieve(&remote_peer_id, operation_id);
+        }
+
+        None
     }
 }
