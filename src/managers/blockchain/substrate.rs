@@ -11,9 +11,7 @@ use jsonrpsee::{
 };
 use subxt::{
     OnlineClient, PolkadotConfig,
-    backend::{
-        rpc::{RawRpcFuture, RawRpcSubscription, RawValue, RpcClient, RpcClientT},
-    },
+    backend::rpc::{RawRpcFuture, RawRpcSubscription, RawValue, RpcClient, RpcClientT},
     dynamic::Value,
     metadata::Metadata,
 };
@@ -117,12 +115,9 @@ fn resolve_evm_accounts_storage_names(metadata: &Metadata) -> Result<(String, St
         .find(|pallet| pallet.name().eq_ignore_ascii_case("evmaccounts"))
         .ok_or_else(|| "pallet 'EvmAccounts' not found in metadata".to_string())?;
 
-    let storage = pallet.storage().ok_or_else(|| {
-        format!(
-            "pallet '{}' does not expose storage entries",
-            pallet.name()
-        )
-    })?;
+    let storage = pallet
+        .storage()
+        .ok_or_else(|| format!("pallet '{}' does not expose storage entries", pallet.name()))?;
 
     let entry = storage
         .entries()

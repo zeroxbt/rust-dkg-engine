@@ -6,8 +6,7 @@ pub(crate) const COMMAND_CONCURRENT_LIMIT: usize = 32;
 
 /// Reserved permits for periodic commands.
 /// Defaults to ~25% of total, rounding up.
-pub(crate) const PERIODIC_COMMAND_CONCURRENT_LIMIT: usize =
-    (COMMAND_CONCURRENT_LIMIT + 3) / 4;
+pub(crate) const PERIODIC_COMMAND_CONCURRENT_LIMIT: usize = COMMAND_CONCURRENT_LIMIT.div_ceil(4);
 
 /// Permits for non-periodic commands.
 pub(crate) const GENERAL_COMMAND_CONCURRENT_LIMIT: usize =

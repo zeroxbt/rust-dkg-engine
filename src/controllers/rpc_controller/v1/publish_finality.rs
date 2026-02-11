@@ -68,7 +68,9 @@ impl PublishFinalityRpcController {
                 Command::HandlePublishFinalityRequest(command_data),
             ))
         {
-            return self.response_channels.retrieve(&remote_peer_id, operation_id);
+            return self
+                .response_channels
+                .retrieve(&remote_peer_id, operation_id);
         }
 
         None

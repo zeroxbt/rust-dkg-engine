@@ -7,8 +7,7 @@ use tokio_util::time::DelayQueue;
 
 use super::{
     constants::{
-        GENERAL_COMMAND_CONCURRENT_LIMIT, MAX_COMMAND_LIFETIME,
-        PERIODIC_COMMAND_CONCURRENT_LIMIT,
+        GENERAL_COMMAND_CONCURRENT_LIMIT, MAX_COMMAND_LIFETIME, PERIODIC_COMMAND_CONCURRENT_LIMIT,
     },
     registry::{Command, CommandResolver},
 };
