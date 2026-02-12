@@ -6,9 +6,8 @@ use crate::commands::executor::CommandExecutionRequest;
 
 /// Handle for scheduling commands. Can be cloned and shared across the application.
 ///
-/// This is used by external callers (RPC controllers, HTTP API, startup) to submit
-/// commands to the executor. Periodic command rescheduling (Repeat with delay) is
-/// handled internally by the executor's DelayQueue and does not flow through here.
+/// This is used by external callers (RPC controllers, HTTP API, periodic tasks) to submit
+/// operation commands to the executor.
 #[derive(Clone)]
 pub(crate) struct CommandScheduler {
     tx: mpsc::Sender<CommandExecutionRequest>,
@@ -29,9 +28,9 @@ impl CommandScheduler {
         self.shutdown.cancel();
     }
 
-    /// Returns a future that completes when shutdown is requested.
-    pub(crate) fn cancelled(&self) -> tokio_util::sync::WaitForCancellationFuture<'_> {
-        self.shutdown.cancelled()
+    /// Get a clone of the scheduler shutdown token.
+    pub(crate) fn shutdown_token(&self) -> CancellationToken {
+        self.shutdown.clone()
     }
 
     /// Schedule a command for execution.
@@ -39,9 +38,7 @@ impl CommandScheduler {
     /// Sends the command to the executor's channel. Blocks if the channel is full
     /// (backpressure). Returns immediately if shutdown has been signaled.
     ///
-    /// Delays (if any) are honored by the executor when it receives the command.
-    ///
-    /// Use this for commands that must not be dropped (startup, internal scheduling).
+    /// Use this for commands that must not be dropped (internal scheduling).
     /// For inbound peer requests, prefer [`try_schedule`] to avoid blocking the
     /// network event loop.
     pub(crate) async fn schedule(&self, request: CommandExecutionRequest) {

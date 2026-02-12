@@ -6,5 +6,3 @@ pub(crate) mod proving;
 pub(crate) mod save_peer_addresses;
 pub(crate) mod sharding_table_check;
 pub(crate) mod sync;
-
-pub(crate) use sharding_table_check::seed_sharding_tables;

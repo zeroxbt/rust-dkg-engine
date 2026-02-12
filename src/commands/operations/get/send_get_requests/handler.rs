@@ -6,7 +6,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
+    commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
     managers::{
         blockchain::BlockchainManager,
@@ -89,7 +89,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             peer_count = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, data: &SendGetRequestsCommandData) -> CommandExecutionResult {
+    async fn execute(&self, data: &SendGetRequestsCommandData) -> CommandOutcome {
         let operation_id = data.operation_id;
         let ual = &data.ual;
 
@@ -118,7 +118,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             )
             .await
         {
-            Ok(LocalQueryOutcome::Completed) => return CommandExecutionResult::Completed,
+            Ok(LocalQueryOutcome::Completed) => return CommandOutcome::Completed,
             Ok(LocalQueryOutcome::Continue) => {}
             Err(result) => return result,
         }
@@ -148,7 +148,7 @@ impl SendGetRequestsCommandHandler {
         &self,
         operation_id: Uuid,
         ual: &str,
-    ) -> Result<ParsedUal, CommandExecutionResult> {
+    ) -> Result<ParsedUal, CommandOutcome> {
         match parse_ual(ual) {
             Ok(parsed) => {
                 tracing::debug!(
@@ -167,7 +167,7 @@ impl SendGetRequestsCommandHandler {
                 self.get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
-                Err(CommandExecutionResult::Completed)
+                Err(CommandOutcome::Completed)
             }
         }
     }
@@ -185,7 +185,7 @@ impl SendGetRequestsCommandHandler {
         &self,
         operation_id: Uuid,
         parsed_ual: &ParsedUal,
-    ) -> Result<(), CommandExecutionResult> {
+    ) -> Result<(), CommandOutcome> {
         match self
             .blockchain_manager
             .get_knowledge_collection_publisher(
@@ -215,7 +215,7 @@ impl SendGetRequestsCommandHandler {
                 self.get_operation_status_service
                     .mark_failed(operation_id, error_message)
                     .await;
-                Err(CommandExecutionResult::Completed)
+                Err(CommandOutcome::Completed)
             }
             Err(e) => {
                 // Log warning but continue - collection might be on old storage contract
@@ -245,7 +245,7 @@ impl SendGetRequestsCommandHandler {
         token_ids: &TokenIds,
         visibility: Visibility,
         include_metadata: bool,
-    ) -> Result<LocalQueryOutcome, CommandExecutionResult> {
+    ) -> Result<LocalQueryOutcome, CommandOutcome> {
         let local_result = self
             .triple_store_service
             .query_assertion(parsed_ual, token_ids, visibility, include_metadata)
@@ -295,7 +295,7 @@ impl SendGetRequestsCommandHandler {
                         self.get_operation_status_service
                             .mark_failed(operation_id, e.to_string())
                             .await;
-                        return Err(CommandExecutionResult::Completed);
+                        return Err(CommandOutcome::Completed);
                     }
 
                     Ok(LocalQueryOutcome::Completed)
@@ -335,7 +335,7 @@ impl SendGetRequestsCommandHandler {
         parsed_ual: &ParsedUal,
         token_ids: TokenIds,
         data: &SendGetRequestsCommandData,
-    ) -> CommandExecutionResult {
+    ) -> CommandOutcome {
         let mut peers = match self
             .load_shard_peers(operation_id, parsed_ual, data.paranet_ual.as_deref())
             .await
@@ -367,7 +367,7 @@ impl SendGetRequestsCommandHandler {
             self.get_operation_status_service
                 .mark_failed(operation_id, error_message)
                 .await;
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         let get_request_data = GetRequestData::new(
@@ -427,7 +427,7 @@ impl SendGetRequestsCommandHandler {
                                 .await;
                         }
 
-                        return CommandExecutionResult::Completed;
+                        return CommandOutcome::Completed;
                     }
                     Ok(None) => {
                         failure_count += 1;
@@ -470,7 +470,7 @@ impl SendGetRequestsCommandHandler {
             .mark_failed(operation_id, error_message)
             .await;
 
-        CommandExecutionResult::Completed
+        CommandOutcome::Completed
     }
 }
 

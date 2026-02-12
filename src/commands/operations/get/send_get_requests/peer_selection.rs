@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use super::handler::SendGetRequestsCommandHandler;
 use crate::{
-    commands::executor::CommandExecutionResult,
+    commands::executor::CommandOutcome,
     managers::network::protocols::{GetProtocol, ProtocolSpec},
     types::ParsedUal,
 };
@@ -14,7 +14,7 @@ impl SendGetRequestsCommandHandler {
         operation_id: Uuid,
         parsed_ual: &ParsedUal,
         paranet_ual: Option<&str>,
-    ) -> Result<Vec<PeerId>, CommandExecutionResult> {
+    ) -> Result<Vec<PeerId>, CommandOutcome> {
         // Get shard peers that support the GET protocol, excluding self
         let my_peer_id = self.network_manager.peer_id();
         let all_shard_peers = self.peer_service.select_shard_peers(
@@ -48,7 +48,7 @@ impl SendGetRequestsCommandHandler {
                 Ok(filtered_peers) => filtered_peers,
                 Err(()) => {
                     // Operation already marked as failed in handle_paranet_node_selection
-                    return Err(CommandExecutionResult::Completed);
+                    return Err(CommandOutcome::Completed);
                 }
             }
         } else {

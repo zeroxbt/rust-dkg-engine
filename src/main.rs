@@ -6,6 +6,7 @@ mod error;
 mod logger;
 mod managers;
 mod operations;
+mod periodic;
 mod runtime;
 mod services;
 mod state;
@@ -14,12 +15,10 @@ mod utils;
 
 use std::sync::Arc;
 
-use commands::{
-    executor::CommandExecutor, registry::default_command_requests, scheduler::CommandScheduler,
-    seed_sharding_tables,
-};
+use commands::{executor::CommandExecutor, scheduler::CommandScheduler};
 use context::Context;
 use managers::network::KeyManager;
+use periodic::seed_sharding_tables;
 
 use crate::config::AppPaths;
 
@@ -56,9 +55,6 @@ async fn main() {
         return;
     }
 
-    // Clone refs needed after managers is moved into Context
-    let blockchain_manager_for_ids = Arc::clone(&managers.blockchain);
-
     if config::is_dev_env() {
         initialize_dev_environment(&managers.blockchain).await;
     }
@@ -82,32 +78,19 @@ async fn main() {
         }
     }
 
-    // Clone scheduler for the executor before moving into context
-    let command_scheduler_for_executor = command_scheduler.clone();
-
     let context = Arc::new(Context::new(command_scheduler, managers, services));
 
     let command_executor = CommandExecutor::new(Arc::clone(&context), command_rx);
-
-    // Schedule default commands (including per-blockchain event listeners)
-    let blockchain_ids: Vec<_> = blockchain_manager_for_ids
-        .get_blockchain_ids()
-        .into_iter()
-        .cloned()
-        .collect();
-    for request in default_command_requests(&blockchain_ids, &config.cleanup) {
-        command_scheduler_for_executor.schedule(request).await;
-    }
 
     let controllers = controllers::initialize(&config.http_api, &config.rpc, &context);
 
     runtime::run(
         context,
         command_executor,
-        command_scheduler_for_executor,
         network_event_loop,
         controllers.rpc_router,
         controllers.http_router,
+        config.cleanup.clone(),
     )
     .await;
 }

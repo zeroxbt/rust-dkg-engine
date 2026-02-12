@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    commands::periodic::cleanup::CleanupConfig,
     config::ConfigError,
     controllers::{http_api_controller::router::HttpApiConfig, rpc_controller::RpcConfig},
     logger::{LoggerConfig, TelemetryConfig},
     managers::{ManagersConfig, ManagersConfigRaw},
+    periodic::tasks::cleanup::CleanupConfig,
 };
 
 /// Centralized application paths derived from the root data directory.

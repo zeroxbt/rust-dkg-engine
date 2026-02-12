@@ -5,7 +5,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
+    commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
@@ -87,7 +87,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             remote_peer = %data.remote_peer_id,
         )
     )]
-    async fn execute(&self, data: &HandlePublishStoreRequestCommandData) -> CommandExecutionResult {
+    async fn execute(&self, data: &HandlePublishStoreRequestCommandData) -> CommandOutcome {
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;
         let dataset_root = &data.dataset_root;
@@ -104,7 +104,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
                 peer = %remote_peer_id,
                 "No cached response channel found. Channel may have expired."
             );
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         };
 
         // Validate that the remote peer is in our shard
@@ -128,7 +128,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             self.send_nack(channel, operation_id, "Invalid neighbourhood")
                 .await;
 
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         let computed_dataset_root = validation::calculate_merkle_root(&dataset.public);
@@ -158,7 +158,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             )
             .await;
 
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         let identity_id = self.blockchain_manager.identity_id(blockchain);
@@ -177,7 +177,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             self.send_nack(channel, operation_id, "Dataset root missing '0x' prefix")
                 .await;
 
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         };
 
         let signature = match self
@@ -205,7 +205,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
                 )
                 .await;
 
-                return CommandExecutionResult::Completed;
+                return CommandOutcome::Completed;
             }
         };
 
@@ -230,7 +230,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
                 &format!("Failed to store dataset: {}", e),
             )
             .await;
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         tracing::debug!(
@@ -249,6 +249,6 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             "Store request validated; ACK sent"
         );
 
-        CommandExecutionResult::Completed
+        CommandOutcome::Completed
     }
 }

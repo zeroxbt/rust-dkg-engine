@@ -5,7 +5,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
+    commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
     managers::network::{NetworkManager, messages::BatchGetAck},
     services::TripleStoreService,
@@ -73,7 +73,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             ual_count = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, data: &HandleBatchGetRequestCommandData) -> CommandExecutionResult {
+    async fn execute(&self, data: &HandleBatchGetRequestCommandData) -> CommandOutcome {
         let operation_id = data.operation_id;
         let remote_peer_id = &data.remote_peer_id;
 
@@ -87,7 +87,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
                 peer = %remote_peer_id,
                 "Response channel not found; request may have expired"
             );
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         };
 
         // Apply UAL limit
@@ -146,7 +146,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
                     format!("Triple store query failed: {}", e),
                 )
                 .await;
-                return CommandExecutionResult::Completed;
+                return CommandOutcome::Completed;
             }
         };
 
@@ -173,6 +173,6 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         self.send_ack(channel, operation_id, assertions, metadata)
             .await;
 
-        CommandExecutionResult::Completed
+        CommandOutcome::Completed
     }
 }

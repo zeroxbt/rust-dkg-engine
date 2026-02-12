@@ -1,4 +1,4 @@
-//! Proving command handler implementation.
+//! Proving periodic task implementation.
 
 use std::{
     sync::Arc,
@@ -9,14 +9,12 @@ use alloy::primitives::U256;
 use chrono::Utc;
 use futures::{StreamExt, stream::FuturesUnordered};
 use libp2p::PeerId;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
-    commands::{
-        executor::CommandExecutionResult, operations::get::send_get_requests::CONCURRENT_PEERS,
-        registry::CommandHandler,
-    },
+    commands::operations::get::send_get_requests::CONCURRENT_PEERS,
     context::Context,
     managers::{
         blockchain::BlockchainManager,
@@ -29,23 +27,13 @@ use crate::{
         repository::{ChallengeState, RepositoryManager},
         triple_store::{group_triples_by_subject, query::subjects::PRIVATE_HASH_SUBJECT_PREFIX},
     },
+    periodic::runner::run_with_shutdown,
     services::{AssertionValidationService, PeerService, TripleStoreService},
     types::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual},
     utils::validation,
 };
 
-#[derive(Clone)]
-pub(crate) struct ProvingCommandData {
-    pub blockchain_id: BlockchainId,
-}
-
-impl ProvingCommandData {
-    pub(crate) fn new(blockchain_id: BlockchainId) -> Self {
-        Self { blockchain_id }
-    }
-}
-
-pub(crate) struct ProvingCommandHandler {
+pub(crate) struct ProvingTask {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
     triple_store_service: Arc<TripleStoreService>,
@@ -54,7 +42,7 @@ pub(crate) struct ProvingCommandHandler {
     peer_service: Arc<PeerService>,
 }
 
-impl ProvingCommandHandler {
+impl ProvingTask {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
@@ -299,37 +287,31 @@ impl ProvingCommandHandler {
             }
         }
     }
-}
 
-impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
-    #[tracing::instrument(
-        name = "periodic.proving",
-        skip(self, data),
-        fields(blockchain_id = %data.blockchain_id)
-    )]
-    async fn execute(&self, data: &ProvingCommandData) -> CommandExecutionResult {
+    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
+        run_with_shutdown("proving", shutdown, || self.execute(blockchain_id)).await;
+    }
+
+    #[tracing::instrument(name = "periodic.proving", skip(self,))]
+    async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
         // 1. Check if we're in the shard
-        if !self.is_in_shard(&data.blockchain_id) {
+        if !self.is_in_shard(blockchain_id) {
             tracing::debug!("Node not in shard, skipping proving");
-            return CommandExecutionResult::Repeat {
-                delay: PROVING_PERIOD,
-            };
+            return PROVING_PERIOD;
         }
 
-        let identity_id = self.identity_id(&data.blockchain_id);
+        let identity_id = self.identity_id(blockchain_id);
 
         // 2. Get active proof period status
         let proof_period = match self
             .blockchain_manager
-            .get_active_proof_period_status(&data.blockchain_id)
+            .get_active_proof_period_status(blockchain_id)
             .await
         {
             Ok(status) => status,
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to get proof period status");
-                return CommandExecutionResult::Repeat {
-                    delay: PROVING_PERIOD,
-                };
+                return PROVING_PERIOD;
             }
         };
 
@@ -337,7 +319,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
         let latest_challenge = self
             .repository_manager
             .proof_challenge_repository()
-            .get_latest(data.blockchain_id.as_str())
+            .get_latest(blockchain_id.as_str())
             .await
             .ok()
             .flatten();
@@ -364,16 +346,14 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                     ChallengeState::Finalized => {
                         // Already finalized, nothing to do
                         tracing::debug!("Challenge already finalized");
-                        return CommandExecutionResult::Repeat {
-                            delay: PROVING_PERIOD,
-                        };
+                        return PROVING_PERIOD;
                     }
                     ChallengeState::Submitted => {
                         // Check score on-chain first
                         let score = self
                             .blockchain_manager
                             .get_node_epoch_proof_period_score(
-                                &data.blockchain_id,
+                                blockchain_id,
                                 identity_id,
                                 U256::from(challenge.epoch as u64),
                                 challenge_start_block,
@@ -393,9 +373,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                                         buffer_secs = REORG_BUFFER.as_secs(),
                                         "Waiting for reorg buffer before finalizing"
                                     );
-                                    return CommandExecutionResult::Repeat {
-                                        delay: PROVING_PERIOD,
-                                    };
+                                    return PROVING_PERIOD;
                                 }
 
                                 // Finalize
@@ -403,7 +381,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                                     .repository_manager
                                     .proof_challenge_repository()
                                     .set_state(
-                                        data.blockchain_id.as_str(),
+                                        blockchain_id.as_str(),
                                         challenge.epoch,
                                         challenge.proof_period_start_block,
                                         ChallengeState::Finalized,
@@ -414,9 +392,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                                     tracing::warn!(error = %e, "Failed to update challenge state");
                                 }
                                 tracing::info!(score = %score, "Proof finalized successfully");
-                                return CommandExecutionResult::Repeat {
-                                    delay: PROVING_PERIOD,
-                                };
+                                return PROVING_PERIOD;
                             }
                             Ok(_) => {
                                 // Score is zero - reset to Pending and fall through to
@@ -426,7 +402,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                                     .repository_manager
                                     .proof_challenge_repository()
                                     .set_state(
-                                        data.blockchain_id.as_str(),
+                                        blockchain_id.as_str(),
                                         challenge.epoch,
                                         challenge.proof_period_start_block,
                                         ChallengeState::Pending,
@@ -440,9 +416,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                             }
                             Err(e) => {
                                 tracing::warn!(error = %e, "Failed to get proof score");
-                                return CommandExecutionResult::Repeat {
-                                    delay: PROVING_PERIOD,
-                                };
+                                return PROVING_PERIOD;
                             }
                         }
                     }
@@ -467,27 +441,23 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
         if needs_new_challenge
             && let Err(e) = self
                 .blockchain_manager
-                .create_challenge(&data.blockchain_id)
+                .create_challenge(blockchain_id)
                 .await
         {
             tracing::warn!(error = %e, "Failed to create challenge");
-            return CommandExecutionResult::Repeat {
-                delay: PROVING_PERIOD,
-            };
+            return PROVING_PERIOD;
         }
 
         // 5. Get challenge details from chain
         let node_challenge = match self
             .blockchain_manager
-            .get_node_challenge(&data.blockchain_id, identity_id)
+            .get_node_challenge(blockchain_id, identity_id)
             .await
         {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to get node challenge");
-                return CommandExecutionResult::Repeat {
-                    delay: PROVING_PERIOD,
-                };
+                return PROVING_PERIOD;
             }
         };
 
@@ -502,7 +472,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
         let db_challenge = self
             .repository_manager
             .proof_challenge_repository()
-            .get_latest(data.blockchain_id.as_str())
+            .get_latest(blockchain_id.as_str())
             .await
             .ok()
             .flatten();
@@ -517,7 +487,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                 .repository_manager
                 .proof_challenge_repository()
                 .create(
-                    data.blockchain_id.as_str(),
+                    blockchain_id.as_str(),
                     epoch,
                     start_block,
                     &contract_addr,
@@ -532,7 +502,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
 
         // 6. Fetch assertion
         let ual = derive_ual(
-            &data.blockchain_id,
+            blockchain_id,
             &node_challenge.knowledge_collection_storage_contract,
             kc_id,
             None,
@@ -542,9 +512,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
             Ok(u) => u,
             Err(e) => {
                 tracing::warn!(error = %e, ual = %ual, "Failed to parse UAL");
-                return CommandExecutionResult::Repeat {
-                    delay: PROVING_PERIOD,
-                };
+                return PROVING_PERIOD;
             }
         };
 
@@ -552,7 +520,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
         let token_ids = match self
             .blockchain_manager
             .get_knowledge_assets_range(
-                &data.blockchain_id,
+                blockchain_id,
                 node_challenge.knowledge_collection_storage_contract,
                 kc_id,
             )
@@ -567,9 +535,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
             }
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to get knowledge assets range");
-                return CommandExecutionResult::Repeat {
-                    delay: PROVING_PERIOD,
-                };
+                return PROVING_PERIOD;
             }
         };
 
@@ -598,9 +564,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                         Some(assertion) => assertion,
                         None => {
                             tracing::warn!(ual = %ual, "Assertion not found on network");
-                            return CommandExecutionResult::Repeat {
-                                delay: PROVING_PERIOD,
-                            };
+                            return PROVING_PERIOD;
                         }
                     }
                 }
@@ -615,9 +579,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                     Some(assertion) => assertion,
                     None => {
                         tracing::warn!(ual = %ual, "Assertion not found locally or on network");
-                        return CommandExecutionResult::Repeat {
-                            delay: PROVING_PERIOD,
-                        };
+                        return PROVING_PERIOD;
                     }
                 }
             }
@@ -630,9 +592,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
                     Some(assertion) => assertion,
                     None => {
                         tracing::warn!(ual = %ual, "Assertion not found on network");
-                        return CommandExecutionResult::Repeat {
-                            delay: PROVING_PERIOD,
-                        };
+                        return PROVING_PERIOD;
                     }
                 }
             }
@@ -645,9 +605,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
             Ok(result) => result,
             Err(e) => {
                 tracing::warn!(error = %e, chunk_index, "Failed to calculate Merkle proof");
-                return CommandExecutionResult::Repeat {
-                    delay: PROVING_PERIOD,
-                };
+                return PROVING_PERIOD;
             }
         };
 
@@ -657,13 +615,11 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
         // 8. Submit proof
         if let Err(e) = self
             .blockchain_manager
-            .submit_proof(&data.blockchain_id, &proof_result.chunk, &proof_bytes)
+            .submit_proof(blockchain_id, &proof_result.chunk, &proof_bytes)
             .await
         {
             tracing::warn!(error = %e, "Failed to submit proof");
-            return CommandExecutionResult::Repeat {
-                delay: PROVING_PERIOD,
-            };
+            return PROVING_PERIOD;
         }
 
         // 9. Update database state
@@ -671,7 +627,7 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
             .repository_manager
             .proof_challenge_repository()
             .set_state(
-                data.blockchain_id.as_str(),
+                blockchain_id.as_str(),
                 epoch,
                 start_block,
                 ChallengeState::Submitted,
@@ -684,8 +640,6 @@ impl CommandHandler<ProvingCommandData> for ProvingCommandHandler {
 
         tracing::info!(epoch, chunk_index, "Proof submitted successfully");
 
-        CommandExecutionResult::Repeat {
-            delay: PROVING_PERIOD,
-        }
+        PROVING_PERIOD
     }
 }

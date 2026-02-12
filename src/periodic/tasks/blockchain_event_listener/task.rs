@@ -1,16 +1,17 @@
-//! Blockchain event listener command handler implementation.
+//! Blockchain event listener periodic task implementation.
 
 use std::{sync::Arc, time::Duration};
+
+use tokio_util::sync::CancellationToken;
 
 use super::blockchain_event_spec::{
     ContractEvent, decode_contract_event, monitored_contract_events,
 };
 use crate::{
     commands::{
-        executor::{CommandExecutionRequest, CommandExecutionResult},
+        executor::CommandExecutionRequest,
         operations::publish::finality::send_publish_finality_request::SendPublishFinalityRequestCommandData,
-        registry::{Command, CommandHandler},
-        scheduler::CommandScheduler,
+        registry::Command, scheduler::CommandScheduler,
     },
     config,
     context::Context,
@@ -25,6 +26,7 @@ use crate::{
         },
         repository::RepositoryManager,
     },
+    periodic::runner::run_with_shutdown,
 };
 
 /// Event fetch interval for mainnet (10 seconds)
@@ -40,7 +42,7 @@ const EVENT_FETCH_INTERVAL_DEV: Duration = Duration::from_secs(4);
 const MAX_BLOCKS_TO_SYNC_MAINNET: u64 = 300; // ~1 hour at 12s blocks
 const MAX_BLOCKS_TO_SYNC_DEV: u64 = u64::MAX; // unlimited for dev
 
-pub(crate) struct BlockchainEventListenerCommandHandler {
+pub(crate) struct BlockchainEventListenerTask {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
     command_scheduler: CommandScheduler,
@@ -50,7 +52,7 @@ pub(crate) struct BlockchainEventListenerCommandHandler {
     max_blocks_to_sync: u64,
 }
 
-impl BlockchainEventListenerCommandHandler {
+impl BlockchainEventListenerTask {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         let is_dev_env = config::is_dev_env();
 
@@ -73,6 +75,48 @@ impl BlockchainEventListenerCommandHandler {
             poll_interval,
             max_blocks_to_sync,
         }
+    }
+
+    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
+        run_with_shutdown("blockchain_events", shutdown, || {
+            self.execute(blockchain_id)
+        })
+        .await;
+    }
+
+    #[tracing::instrument(
+        name = "periodic.blockchain_events",
+        skip(self),
+        fields(
+            blockchain_id = %blockchain_id,
+            poll_interval_ms = tracing::field::Empty,
+            max_blocks_to_sync = tracing::field::Empty,
+        )
+    )]
+    async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
+        tracing::Span::current().record(
+            "poll_interval_ms",
+            tracing::field::display(self.poll_interval.as_millis()),
+        );
+        tracing::Span::current().record(
+            "max_blocks_to_sync",
+            tracing::field::display(self.max_blocks_to_sync),
+        );
+
+        tracing::trace!(
+            poll_interval_ms = self.poll_interval.as_millis(),
+            "Running blockchain event listener"
+        );
+
+        if let Err(error) = self.fetch_and_handle_blockchain_events(blockchain_id).await {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                error = %error,
+                "Error fetching/processing blockchain events"
+            );
+        }
+
+        self.poll_interval
     }
 
     /// Fetch and handle events for a single blockchain
@@ -417,7 +461,7 @@ impl BlockchainEventListenerCommandHandler {
             "Knowledge collection created"
         );
 
-        // Extract minimal data from the log - parsing happens in the command handler
+        // Extract minimal data from the log - parsing happens in the operation command handler
         let Some(transaction_hash) = log.transaction_hash else {
             tracing::error!(
                 blockchain = %blockchain_id,
@@ -445,56 +489,5 @@ impl BlockchainEventListenerCommandHandler {
         self.command_scheduler
             .schedule(CommandExecutionRequest::new(command))
             .await;
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct BlockchainEventListenerCommandData {
-    pub blockchain_id: BlockchainId,
-}
-
-impl BlockchainEventListenerCommandData {
-    pub(crate) fn new(blockchain_id: BlockchainId) -> Self {
-        Self { blockchain_id }
-    }
-}
-
-impl CommandHandler<BlockchainEventListenerCommandData> for BlockchainEventListenerCommandHandler {
-    #[tracing::instrument(
-        name = "periodic.blockchain_events",
-        skip(self, data),
-        fields(
-            blockchain_id = %data.blockchain_id,
-            poll_interval_ms = tracing::field::Empty,
-            max_blocks_to_sync = tracing::field::Empty,
-        )
-    )]
-    async fn execute(&self, data: &BlockchainEventListenerCommandData) -> CommandExecutionResult {
-        let blockchain = &data.blockchain_id;
-        tracing::Span::current().record(
-            "poll_interval_ms",
-            tracing::field::display(self.poll_interval.as_millis()),
-        );
-        tracing::Span::current().record(
-            "max_blocks_to_sync",
-            tracing::field::display(self.max_blocks_to_sync),
-        );
-
-        tracing::trace!(
-            poll_interval_ms = self.poll_interval.as_millis(),
-            "Running blockchain event listener"
-        );
-
-        if let Err(error) = self.fetch_and_handle_blockchain_events(blockchain).await {
-            tracing::error!(
-                blockchain = %blockchain,
-                error = %error,
-                "Error fetching/processing blockchain events"
-            );
-        }
-
-        CommandExecutionResult::Repeat {
-            delay: self.poll_interval,
-        }
     }
 }

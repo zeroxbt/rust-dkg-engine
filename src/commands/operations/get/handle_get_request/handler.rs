@@ -5,7 +5,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
+    commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
     managers::{
         blockchain::BlockchainManager,
@@ -80,7 +80,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             effective_visibility = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, data: &HandleGetRequestCommandData) -> CommandExecutionResult {
+    async fn execute(&self, data: &HandleGetRequestCommandData) -> CommandOutcome {
         let operation_id = data.operation_id;
         let ual = &data.ual;
         let remote_peer_id = &data.remote_peer_id;
@@ -95,7 +95,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
                 peer = %remote_peer_id,
                 "Response channel not found; request may have expired"
             );
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         };
 
         // Parse the UAL
@@ -110,7 +110,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
                 );
                 self.send_nack(channel, operation_id, &format!("Invalid UAL: {}", e))
                     .await;
-                return CommandExecutionResult::Completed;
+                return CommandOutcome::Completed;
             }
         };
 
@@ -189,6 +189,6 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             }
         }
 
-        CommandExecutionResult::Completed
+        CommandOutcome::Completed
     }
 }

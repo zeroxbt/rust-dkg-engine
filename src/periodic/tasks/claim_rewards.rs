@@ -1,80 +1,65 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use alloy::primitives::Address;
 use futures::stream::{FuturesUnordered, StreamExt};
+use tokio_util::sync::CancellationToken;
 
-use super::{CLAIM_REWARDS_BATCH_SIZE, CLAIM_REWARDS_INTERVAL};
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
-    context::Context,
-    managers::blockchain::BlockchainManager,
+    context::Context, managers::blockchain::BlockchainManager, periodic::runner::run_with_shutdown,
     types::BlockchainId,
 };
 
-#[derive(Clone)]
-pub(crate) struct ClaimRewardsCommandData {
-    pub blockchain_id: BlockchainId,
-}
+/// Interval between claim rewards cycles (1 hour).
+pub(crate) const CLAIM_REWARDS_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
-impl ClaimRewardsCommandData {
-    pub(crate) fn new(blockchain_id: BlockchainId) -> Self {
-        Self { blockchain_id }
-    }
-}
+/// Maximum number of delegators claimed per transaction.
+pub(crate) const CLAIM_REWARDS_BATCH_SIZE: usize = 10;
 
-pub(crate) struct ClaimRewardsCommandHandler {
+pub(crate) struct ClaimRewardsTask {
     blockchain_manager: Arc<BlockchainManager>,
 }
 
-impl ClaimRewardsCommandHandler {
+impl ClaimRewardsTask {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
         }
     }
-}
 
-impl CommandHandler<ClaimRewardsCommandData> for ClaimRewardsCommandHandler {
-    #[tracing::instrument(
-        name = "periodic.claim_rewards",
-        skip(self, data),
-        fields(blockchain_id = %data.blockchain_id)
-    )]
-    async fn execute(&self, data: &ClaimRewardsCommandData) -> CommandExecutionResult {
-        let identity_id = self.blockchain_manager.identity_id(&data.blockchain_id);
+    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
+        run_with_shutdown("claim_rewards", shutdown, || self.execute(blockchain_id)).await;
+    }
+
+    #[tracing::instrument(name = "periodic.claim_rewards", skip(self))]
+    async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
+        let identity_id = self.blockchain_manager.identity_id(blockchain_id);
 
         let delegators = match self
             .blockchain_manager
-            .get_delegators(&data.blockchain_id, identity_id)
+            .get_delegators(blockchain_id, identity_id)
             .await
         {
             Ok(delegators) => delegators,
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to fetch delegators");
-                return CommandExecutionResult::Repeat {
-                    delay: CLAIM_REWARDS_INTERVAL,
-                };
+                return CLAIM_REWARDS_INTERVAL;
             }
         };
 
         if delegators.is_empty() {
             tracing::debug!("No delegators found");
-            return CommandExecutionResult::Repeat {
-                delay: CLAIM_REWARDS_INTERVAL,
-            };
+            return CLAIM_REWARDS_INTERVAL;
         }
 
         let current_epoch = match self
             .blockchain_manager
-            .get_current_epoch(&data.blockchain_id)
+            .get_current_epoch(blockchain_id)
             .await
         {
             Ok(epoch) => epoch,
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to get current epoch");
-                return CommandExecutionResult::Repeat {
-                    delay: CLAIM_REWARDS_INTERVAL,
-                };
+                return CLAIM_REWARDS_INTERVAL;
             }
         };
 
@@ -82,7 +67,7 @@ impl CommandHandler<ClaimRewardsCommandData> for ClaimRewardsCommandHandler {
         let mut last_claimed_futures = FuturesUnordered::new();
 
         for delegator in delegators {
-            let blockchain_id = data.blockchain_id.clone();
+            let blockchain_id = blockchain_id.clone();
             let blockchain_manager = Arc::clone(&self.blockchain_manager);
             last_claimed_futures.push(async move {
                 let epoch = blockchain_manager
@@ -111,7 +96,7 @@ impl CommandHandler<ClaimRewardsCommandData> for ClaimRewardsCommandHandler {
             let mut has_ever_futures = FuturesUnordered::new();
 
             for delegator in zero_delegators {
-                let blockchain_id = data.blockchain_id.clone();
+                let blockchain_id = blockchain_id.clone();
                 let blockchain_manager = Arc::clone(&self.blockchain_manager);
                 has_ever_futures.push(async move {
                     let has_ever = blockchain_manager
@@ -158,7 +143,7 @@ impl CommandHandler<ClaimRewardsCommandData> for ClaimRewardsCommandHandler {
                     let result = self
                         .blockchain_manager
                         .batch_claim_delegator_rewards(
-                            &data.blockchain_id,
+                            blockchain_id,
                             identity_id,
                             &[epoch + 1],
                             batch,
@@ -198,8 +183,6 @@ impl CommandHandler<ClaimRewardsCommandData> for ClaimRewardsCommandHandler {
             idx += 1;
         }
 
-        CommandExecutionResult::Repeat {
-            delay: CLAIM_REWARDS_INTERVAL,
-        }
+        CLAIM_REWARDS_INTERVAL
     }
 }

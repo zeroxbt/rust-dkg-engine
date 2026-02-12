@@ -6,7 +6,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
+    commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
     managers::{
         blockchain::{BlockchainId, BlockchainManager},
@@ -99,7 +99,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             peer_count = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, data: &SendPublishStoreRequestsCommandData) -> CommandExecutionResult {
+    async fn execute(&self, data: &SendPublishStoreRequestsCommandData) -> CommandOutcome {
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;
         let dataset_root = &data.dataset_root;
@@ -173,7 +173,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                 .mark_failed(operation_id, error_message)
                 .await;
 
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         let identity_id = self.blockchain_manager.identity_id(blockchain);
@@ -182,7 +182,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             self.publish_store_operation_status_service
                 .mark_failed(operation_id, "Dataset root missing '0x' prefix".to_string())
                 .await;
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         };
 
         // Create and store publisher signature directly to result storage
@@ -237,7 +237,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             self.publish_store_operation_status_service
                 .mark_failed(operation_id, format!("Failed to store dataset: {}", e))
                 .await;
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         // Handle self-node signature if we're in the shard
@@ -355,7 +355,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                     .await;
             }
 
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         // All peer chunks exhausted without meeting success threshold
@@ -368,7 +368,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             .mark_failed(operation_id, error_message)
             .await;
 
-        CommandExecutionResult::Completed
+        CommandOutcome::Completed
     }
 }
 

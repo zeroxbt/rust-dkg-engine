@@ -11,10 +11,6 @@ use std::path::PathBuf;
 
 use super::ConfigRaw;
 use crate::{
-    commands::periodic::cleanup::{
-        CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
-        ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
-    },
     controllers::{
         http_api_controller::{
             middleware::{AuthConfig, RateLimiterConfig},
@@ -30,6 +26,10 @@ use crate::{
         network::NetworkManagerConfig,
         repository::RepositoryManagerConfigRaw,
         triple_store::{TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig},
+    },
+    periodic::tasks::cleanup::{
+        CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
+        ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
     },
 };
 

@@ -5,7 +5,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
+    commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
     managers::{
         network::{NetworkManager, messages::FinalityAck},
@@ -75,10 +75,7 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
             remote_peer = %data.remote_peer_id,
         )
     )]
-    async fn execute(
-        &self,
-        data: &HandlePublishFinalityRequestCommandData,
-    ) -> CommandExecutionResult {
+    async fn execute(&self, data: &HandlePublishFinalityRequestCommandData) -> CommandOutcome {
         let publish_finality_operation_id = data.operation_id;
         let ual = &data.ual;
         let publish_store_operation_id = &data.publish_store_operation_id;
@@ -94,7 +91,7 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
                 peer = %remote_peer_id,
                 "Response channel not found; finality request may have expired"
             );
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         };
 
         // Parse the publish operation ID
@@ -109,7 +106,7 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
                 );
                 self.send_nack(channel, publish_finality_operation_id, ual)
                     .await;
-                return CommandExecutionResult::Completed;
+                return CommandOutcome::Completed;
             }
         };
 
@@ -130,7 +127,7 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
             );
             self.send_nack(channel, publish_finality_operation_id, ual)
                 .await;
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         tracing::debug!(
@@ -158,6 +155,6 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
             "Finality request handled"
         );
 
-        CommandExecutionResult::Completed
+        CommandOutcome::Completed
     }
 }

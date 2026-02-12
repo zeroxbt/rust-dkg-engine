@@ -4,7 +4,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
+    commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, H256, U256},
@@ -116,10 +116,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             block_number = data.block_number,
         )
     )]
-    async fn execute(
-        &self,
-        data: &SendPublishFinalityRequestCommandData,
-    ) -> CommandExecutionResult {
+    async fn execute(&self, data: &SendPublishFinalityRequestCommandData) -> CommandOutcome {
         // Generate a new operation ID for the finality request
         let operation_id = Uuid::new_v4();
         tracing::Span::current().record("operation_id", tracing::field::display(operation_id));
@@ -132,7 +129,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                     error = %e,
                     "Failed to parse publish_operation_id as UUID"
                 );
-                return CommandExecutionResult::Completed;
+                return CommandOutcome::Completed;
             }
         };
 
@@ -142,7 +139,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             knowledge_collection_id = %data.knowledge_collection_id,
             "Knowledge collection ID exceeds u128 max"
             );
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         };
 
         // Retrieve cached dataset from publish tmp dataset store
@@ -161,7 +158,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                     publish_operation_id = %publish_operation_id,
                     "Dataset not in publish tmp dataset store, skipping finality"
                 );
-                return CommandExecutionResult::Completed;
+                return CommandOutcome::Completed;
             }
             Err(e) => {
                 tracing::debug!(
@@ -170,7 +167,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                     error = %e,
                     "Failed to read publish tmp dataset store, skipping finality"
                 );
-                return CommandExecutionResult::Completed;
+                return CommandOutcome::Completed;
             }
         };
 
@@ -186,7 +183,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                     tx_hash = %data.transaction_hash,
                     "Transaction not found, cannot determine publisher address"
                 );
-                return CommandExecutionResult::Completed;
+                return CommandOutcome::Completed;
             }
             Err(e) => {
                 tracing::error!(
@@ -194,7 +191,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                     error = %e,
                     "Failed to fetch transaction"
                 );
-                return CommandExecutionResult::Completed;
+                return CommandOutcome::Completed;
             }
         };
 
@@ -220,7 +217,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                 cached_merkle_root = %pending_data.dataset_root(),
                 "Merkle root mismatch: blockchain value does not match cached value"
             );
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         // Validate byte size matches
@@ -232,7 +229,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                 calculated_byte_size = calculated_size,
                 "Byte size mismatch: blockchain value does not match calculated value"
             );
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         tracing::debug!(
@@ -283,7 +280,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                     error = %e,
                     "Failed to insert Knowledge Collection to Triple Store"
                 );
-                return CommandExecutionResult::Completed;
+                return CommandOutcome::Completed;
             }
         };
 
@@ -331,7 +328,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                     error = %e,
                     "Failed to parse publisher peer ID"
                 );
-                return CommandExecutionResult::Completed;
+                return CommandOutcome::Completed;
             }
         };
 
@@ -358,7 +355,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                 );
             }
 
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         if !self
@@ -371,7 +368,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                 peer = %publisher_peer_id,
                 "Publisher does not advertise finality protocol; skipping request"
             );
-            return CommandExecutionResult::Completed;
+            return CommandOutcome::Completed;
         }
 
         let finality_request_data = FinalityRequestData::new(
@@ -412,6 +409,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             }
         }
 
-        CommandExecutionResult::Completed
+        CommandOutcome::Completed
     }
 }

@@ -1,11 +1,12 @@
-//! Sync command handler implementation.
+//! Sync periodic task implementation.
 //!
-//! Contains the `SyncCommandHandler` which orchestrates the three-stage sync pipeline.
+//! Contains the `SyncTask` which orchestrates the three-stage sync pipeline.
 
 use std::{sync::Arc, time::Duration};
 
 use futures::future::join_all;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
 use super::{
@@ -17,19 +18,17 @@ use super::{
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
 use crate::{
-    commands::{
-        executor::CommandExecutionResult, operations::get::send_get_requests::CONCURRENT_PEERS,
-        registry::CommandHandler,
-    },
+    commands::operations::get::send_get_requests::CONCURRENT_PEERS,
     context::Context,
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
         repository::RepositoryManager,
     },
+    periodic::runner::run_with_shutdown,
     services::{AssertionValidationService, PeerService, TripleStoreService},
 };
 
-pub(crate) struct SyncCommandHandler {
+pub(crate) struct SyncTask {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
     triple_store_service: Arc<TripleStoreService>,
@@ -38,7 +37,7 @@ pub(crate) struct SyncCommandHandler {
     peer_service: Arc<PeerService>,
 }
 
-impl SyncCommandHandler {
+impl SyncTask {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
@@ -427,49 +426,38 @@ impl SyncCommandHandler {
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct SyncCommandData {
-    pub blockchain_id: BlockchainId,
-}
-
-impl SyncCommandData {
-    pub(crate) fn new(blockchain_id: BlockchainId) -> Self {
-        Self { blockchain_id }
-    }
-}
-
 /// Delay before retrying sync when not enough peers are connected
 const SYNC_NO_PEERS_RETRY_DELAY: Duration = Duration::from_secs(5);
 
-impl CommandHandler<SyncCommandData> for SyncCommandHandler {
+impl SyncTask {
+    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
+        run_with_shutdown("sync", shutdown, || self.execute(blockchain_id)).await;
+    }
+
     #[tracing::instrument(
         name = "periodic.sync",
-        skip(self, data),
-        fields(blockchain_id = %data.blockchain_id)
+        skip(self),
+        fields(blockchain_id = %blockchain_id)
     )]
-    async fn execute(&self, data: &SyncCommandData) -> CommandExecutionResult {
+    async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
         // Check if we have identified enough shard peers before attempting sync
-        let total_shard_peers = self.peer_service.shard_peer_count(&data.blockchain_id);
-        let identified_peers = self
-            .peer_service
-            .identified_shard_peer_count(&data.blockchain_id);
+        let total_shard_peers = self.peer_service.shard_peer_count(blockchain_id);
+        let identified_peers = self.peer_service.identified_shard_peer_count(blockchain_id);
         let min_required = (total_shard_peers / 3).max(CONCURRENT_PEERS);
 
         if identified_peers < min_required {
             tracing::debug!(
-                blockchain_id = %data.blockchain_id,
+                blockchain_id = %blockchain_id,
                 identified = identified_peers,
                 total = total_shard_peers,
                 required = min_required,
                 "Not enough shard peers identified yet, retrying later"
             );
-            return CommandExecutionResult::Repeat {
-                delay: SYNC_NO_PEERS_RETRY_DELAY,
-            };
+            return SYNC_NO_PEERS_RETRY_DELAY;
         }
 
         tracing::debug!(
-            blockchain_id = %data.blockchain_id,
+            blockchain_id = %blockchain_id,
             identified_peers,
             total_shard_peers,
             "Starting sync cycle"
@@ -477,27 +465,22 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
 
         let contract_addresses = match self
             .blockchain_manager
-            .get_all_contract_addresses(
-                &data.blockchain_id,
-                &ContractName::KnowledgeCollectionStorage,
-            )
+            .get_all_contract_addresses(blockchain_id, &ContractName::KnowledgeCollectionStorage)
             .await
         {
             Ok(addresses) => addresses,
             Err(e) => {
                 tracing::error!(
-                    blockchain_id = %data.blockchain_id,
+                    blockchain_id = %blockchain_id,
                     error = %e,
                     "Failed to get KC storage contract addresses"
                 );
-                return CommandExecutionResult::Repeat {
-                    delay: SYNC_PERIOD_IDLE,
-                };
+                return SYNC_PERIOD_IDLE;
             }
         };
 
         tracing::debug!(
-            blockchain_id = %data.blockchain_id,
+            blockchain_id = %blockchain_id,
             contract_count = contract_addresses.len(),
             "Found KC storage contracts"
         );
@@ -505,7 +488,7 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
         // Sync each contract in parallel
         let sync_futures = contract_addresses
             .iter()
-            .map(|&contract_address| self.sync_contract(&data.blockchain_id, contract_address));
+            .map(|&contract_address| self.sync_contract(blockchain_id, contract_address));
 
         let results = join_all(sync_futures).await;
 
@@ -525,7 +508,7 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
 
                     if r.enqueued > 0 || r.pending > 0 {
                         tracing::debug!(
-                            blockchain_id = %data.blockchain_id,
+                            blockchain_id = %blockchain_id,
                             contract = ?contract_addresses[i],
                             enqueued = r.enqueued,
                             pending = r.pending,
@@ -537,7 +520,7 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
                 }
                 Err(e) => {
                     tracing::error!(
-                        blockchain_id = %data.blockchain_id,
+                        blockchain_id = %blockchain_id,
                         contract = ?contract_addresses[i],
                         error = %e,
                         "Failed to sync contract"
@@ -548,7 +531,7 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
 
         if total_enqueued > 0 || total_pending > 0 {
             tracing::info!(
-                blockchain_id = %data.blockchain_id,
+                blockchain_id = %blockchain_id,
                 total_enqueued,
                 total_pending,
                 total_synced,
@@ -560,9 +543,10 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
         // Use short delay while catching up, longer delay when idle
         // - total_pending > 0: still have KCs in queue to process
         // - total_enqueued > 0: just discovered new KCs on chain (might be more due to limit)
-        let delay = if total_pending > 0 || total_enqueued > 0 {
+
+        if total_pending > 0 || total_enqueued > 0 {
             tracing::debug!(
-                blockchain_id = %data.blockchain_id,
+                blockchain_id = %blockchain_id,
                 total_pending,
                 total_enqueued,
                 "Still catching up, scheduling immediate resync"
@@ -570,12 +554,10 @@ impl CommandHandler<SyncCommandData> for SyncCommandHandler {
             SYNC_PERIOD_CATCHING_UP
         } else {
             tracing::debug!(
-                blockchain_id = %data.blockchain_id,
+                blockchain_id = %blockchain_id,
                 "Caught up, scheduling idle poll"
             );
             SYNC_PERIOD_IDLE
-        };
-
-        CommandExecutionResult::Repeat { delay }
+        }
     }
 }

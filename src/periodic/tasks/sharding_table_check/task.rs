@@ -1,15 +1,15 @@
 use std::{sync::Arc, time::Duration};
 
-use futures::future::join_all;
 use libp2p::PeerId;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
     error::NodeError,
     managers::blockchain::{
         BlockchainId, BlockchainManager, chains::evm::ShardingTableLib::NodeInfo,
     },
+    periodic::runner::run_with_shutdown,
     services::PeerService,
 };
 
@@ -181,15 +181,15 @@ fn collect_peer_ids(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Command handler
+// Periodic task
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub(crate) struct ShardingTableCheckCommandHandler {
+pub(crate) struct ShardingTableCheckTask {
     blockchain_manager: Arc<BlockchainManager>,
     peer_service: Arc<PeerService>,
 }
 
-impl ShardingTableCheckCommandHandler {
+impl ShardingTableCheckTask {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
@@ -223,42 +223,24 @@ impl ShardingTableCheckCommandHandler {
         pull_sharding_table(&self.blockchain_manager, &self.peer_service, blockchain).await?;
         Ok(true)
     }
-}
 
-#[derive(Clone, Default)]
-pub(crate) struct ShardingTableCheckCommandData;
+    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
+        run_with_shutdown("sharding_table_check", shutdown, || {
+            self.execute(blockchain_id)
+        })
+        .await;
+    }
 
-impl CommandHandler<ShardingTableCheckCommandData> for ShardingTableCheckCommandHandler {
-    #[tracing::instrument(
-        name = "periodic.sharding_table_check",
-        skip(self),
-        fields(blockchain_count = tracing::field::Empty)
-    )]
-    async fn execute(&self, _: &ShardingTableCheckCommandData) -> CommandExecutionResult {
-        let blockchain_ids = self.blockchain_manager.get_blockchain_ids();
-        tracing::Span::current().record(
-            "blockchain_count",
-            tracing::field::display(blockchain_ids.len()),
-        );
-
-        let futures = blockchain_ids
-            .iter()
-            .map(|blockchain| self.sync_blockchain_sharding_table(blockchain));
-
-        let results = join_all(futures).await;
-
-        for (blockchain, result) in blockchain_ids.iter().zip(results) {
-            if let Err(error) = result {
-                tracing::error!(
-                    blockchain = %blockchain,
-                    error = %error,
-                    "Error syncing sharding table"
-                );
-            }
+    #[tracing::instrument(name = "periodic.sharding_table_check", skip(self))]
+    async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
+        if let Err(error) = self.sync_blockchain_sharding_table(blockchain_id).await {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                error = %error,
+                "Error syncing sharding table"
+            );
         }
 
-        CommandExecutionResult::Repeat {
-            delay: SHARDING_TABLE_CHECK_PERIOD,
-        }
+        SHARDING_TABLE_CHECK_PERIOD
     }
 }

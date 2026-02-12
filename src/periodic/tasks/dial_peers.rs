@@ -1,23 +1,22 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use libp2p::PeerId;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
-    context::Context,
-    managers::network::NetworkManager,
+    context::Context, managers::network::NetworkManager, periodic::runner::run_with_shutdown,
     services::PeerService,
 };
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
 const CONCURRENT_PEER_DIALS: usize = 20;
 
-pub(crate) struct DialPeersCommandHandler {
+pub(crate) struct DialPeersTask {
     network_manager: Arc<NetworkManager>,
     peer_service: Arc<PeerService>,
 }
 
-impl DialPeersCommandHandler {
+impl DialPeersTask {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             network_manager: Arc::clone(context.network_manager()),
@@ -75,12 +74,11 @@ impl DialPeersCommandHandler {
         }
         false
     }
-}
 
-#[derive(Clone, Default)]
-pub(crate) struct DialPeersCommandData;
+    pub(crate) async fn run(self, shutdown: CancellationToken) {
+        run_with_shutdown("dial_peers", shutdown, || self.execute()).await;
+    }
 
-impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
     #[tracing::instrument(
         name = "periodic.dial_peers",
         skip(self),
@@ -92,10 +90,8 @@ impl CommandHandler<DialPeersCommandData> for DialPeersCommandHandler {
             to_discover = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, _: &DialPeersCommandData) -> CommandExecutionResult {
-        let repeat = || CommandExecutionResult::Repeat {
-            delay: DIAL_PEERS_PERIOD,
-        };
+    async fn execute(&self) -> Duration {
+        let repeat = || DIAL_PEERS_PERIOD;
         let own_peer_id = *self.network_manager.peer_id();
         tracing::Span::current().record("own_peer_id", tracing::field::display(&own_peer_id));
 

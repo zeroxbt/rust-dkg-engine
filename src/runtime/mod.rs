@@ -1,25 +1,29 @@
 use std::{sync::Arc, time::Duration};
 
 use tokio::{select, signal::unix::SignalKind};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
-    commands::{executor::CommandExecutor, scheduler::CommandScheduler},
+    commands::executor::CommandExecutor,
     context::Context,
     controllers::{
         http_api_controller::router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
     },
     logger,
     managers::network::NetworkEventLoop,
+    periodic,
+    periodic::tasks::cleanup::CleanupConfig,
 };
 
 pub(crate) async fn run(
     context: Arc<Context>,
     command_executor: CommandExecutor,
-    command_scheduler: CommandScheduler,
     network_event_loop: NetworkEventLoop,
     rpc_router: RpcRouter,
     http_router: Option<HttpApiRouter>,
+    cleanup_config: CleanupConfig,
 ) {
+    let command_scheduler = context.command_scheduler().clone();
     // Spawn peer service loop for network observations.
     let peer_event_rx = context.network_manager().subscribe_peer_events();
     let peer_service = Arc::clone(context.peer_service());
@@ -28,14 +32,15 @@ pub(crate) async fn run(
     // Create HTTP shutdown channel (oneshot for single signal)
     let (http_shutdown_tx, http_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
-    let command_scheduler_for_executor = command_scheduler.clone();
-    let command_scheduler_for_shutdown = command_scheduler.clone();
+    // Spawn command executor task (executor is consumed)
+    let execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
 
-    // Spawn command executor task (executor is consumed, scheduler is borrowed)
-    let execute_commands_task =
-        tokio::task::spawn(
-            async move { command_executor.run(&command_scheduler_for_executor).await },
-        );
+    let periodic_shutdown = CancellationToken::new();
+    let periodic_handle = tokio::task::spawn(periodic::run_all(
+        Arc::clone(&context),
+        cleanup_config,
+        periodic_shutdown.clone(),
+    ));
 
     // Spawn network service event loop task with RPC router as the event handler
     let network_event_loop_task = tokio::task::spawn(async move {
@@ -71,40 +76,44 @@ pub(crate) async fn run(
     // ═══════════════════════════════════════════════════════════════════════════
     //
     // 1. Stop HTTP server (stop accepting new requests)
-    // 2. Drop command_scheduler (close command channel)
-    // 3. Wait for executor to drain (commands still have network access)
-    // 4. Drop context (closes network action channel)
-    // 5. Wait for network loop to exit
-    // 6. Wait for HTTP to finish in-flight requests
+    // 2. Cancel periodic tasks (they finish current iteration and exit)
+    // 3. Wait for periodic tasks to exit
+    // 4. Signal command scheduler to stop accepting new commands
+    // 5. Drop local runtime context reference
+    // 6. Wait for command executor to drain
+    // 7. Wait for network loop to exit
+    // 8. Wait for HTTP to finish in-flight requests
+    // 9. Flush telemetry
 
     tracing::info!("Shutting down gracefully...");
 
     // Step 1: Signal HTTP server to stop accepting new connections
     let _ = http_shutdown_tx.send(());
 
-    // Step 2: Signal command scheduler to stop accepting new commands
-    // This prevents spawned delay tasks from scheduling new commands
-    command_scheduler_for_shutdown.shutdown();
+    // Step 2: Cancel periodic tasks (they check CancellationToken between iterations)
+    periodic_shutdown.cancel();
 
-    // Step 3: Drop command scheduler to close the command channel
-    // This causes the executor to stop accepting new commands
-    drop(context);
-
-    // Step 3: Wait for command executor to drain pending commands
-    // Commands still have network access during this phase
-    const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
-    tracing::info!("Waiting for command executor to drain...");
-    match tokio::time::timeout(SHUTDOWN_TIMEOUT, execute_commands_task).await {
-        Ok(Ok(())) => tracing::info!("Command executor shut down cleanly"),
-        Ok(Err(e)) => tracing::error!("Command executor task panicked: {:?}", e),
-        Err(_) => tracing::warn!(
-            "Command executor drain timeout after {:?}",
-            SHUTDOWN_TIMEOUT
-        ),
+    // Step 3: Wait for periodic tasks to finish current iteration and exit
+    tracing::info!("Waiting for periodic tasks to shut down...");
+    match periodic_handle.await {
+        Ok(()) => tracing::info!("Periodic tasks shut down cleanly"),
+        Err(e) => tracing::error!("Periodic tasks panicked: {:?}", e),
     }
 
-    // Step 4 & 5: Network manager shuts down when its action channel closes
-    // (which happened when we dropped context above)
+    // Step 4: Signal command scheduler to stop accepting new commands
+    command_scheduler.shutdown();
+
+    // Step 5: Drop local runtime context reference
+    drop(context);
+
+    // Step 6: Wait for command executor to drain pending commands
+    tracing::info!("Waiting for command executor to drain...");
+    match execute_commands_task.await {
+        Ok(()) => tracing::info!("Command executor shut down cleanly"),
+        Err(e) => tracing::error!("Command executor task panicked: {:?}", e),
+    }
+
+    // Step 7: Network manager shuts down when its action channel closes
     tracing::info!("Waiting for network manager to shut down...");
     match tokio::time::timeout(Duration::from_secs(5), network_event_loop_task).await {
         Ok(Ok(())) => tracing::info!("Network manager shut down cleanly"),
@@ -112,7 +121,7 @@ pub(crate) async fn run(
         Err(_) => tracing::warn!("Network manager shutdown timeout"),
     }
 
-    // Step 6: Wait for HTTP server to finish in-flight requests
+    // Step 8: Wait for HTTP server to finish in-flight requests
     tracing::info!("Waiting for HTTP server to shut down...");
     match tokio::time::timeout(Duration::from_secs(5), handle_http_events_task).await {
         Ok(Ok(())) => tracing::info!("HTTP server shut down cleanly"),
@@ -120,7 +129,7 @@ pub(crate) async fn run(
         Err(_) => tracing::warn!("HTTP server shutdown timeout"),
     }
 
-    // Step 7: Flush OpenTelemetry traces
+    // Step 9: Flush OpenTelemetry traces
     logger::shutdown_telemetry();
 
     tracing::info!("Shutdown complete");

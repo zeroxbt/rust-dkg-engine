@@ -1,31 +1,32 @@
 use std::{sync::Arc, time::Duration};
 
+use tokio_util::sync::CancellationToken;
+
 use crate::{
-    commands::{executor::CommandExecutionResult, registry::CommandHandler},
     context::Context,
+    periodic::runner::run_with_shutdown,
     services::{PeerService, peer::PeerAddressStore},
 };
 
 const SAVE_PEER_ADDRESSES_PERIOD: Duration = Duration::from_secs(60);
 
-pub(crate) struct SavePeerAddressesCommandHandler {
+pub(crate) struct SavePeerAddressesTask {
     peer_service: Arc<PeerService>,
     address_store: Arc<PeerAddressStore>,
 }
 
-impl SavePeerAddressesCommandHandler {
+impl SavePeerAddressesTask {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
             peer_service: Arc::clone(context.peer_service()),
             address_store: Arc::clone(context.peer_address_store()),
         }
     }
-}
 
-#[derive(Clone, Default)]
-pub(crate) struct SavePeerAddressesCommandData;
+    pub(crate) async fn run(self, shutdown: CancellationToken) {
+        run_with_shutdown("save_peer_addresses", shutdown, || self.execute()).await;
+    }
 
-impl CommandHandler<SavePeerAddressesCommandData> for SavePeerAddressesCommandHandler {
     #[tracing::instrument(
         name = "periodic.save_peer_addresses",
         skip(self),
@@ -33,7 +34,7 @@ impl CommandHandler<SavePeerAddressesCommandData> for SavePeerAddressesCommandHa
             peers = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, _: &SavePeerAddressesCommandData) -> CommandExecutionResult {
+    async fn execute(&self) -> Duration {
         let addresses = self.peer_service.get_all_addresses();
 
         tracing::Span::current().record("peers", addresses.len());
@@ -42,8 +43,6 @@ impl CommandHandler<SavePeerAddressesCommandData> for SavePeerAddressesCommandHa
             self.address_store.save_all(&addresses).await;
         }
 
-        CommandExecutionResult::Repeat {
-            delay: SAVE_PEER_ADDRESSES_PERIOD,
-        }
+        SAVE_PEER_ADDRESSES_PERIOD
     }
 }
