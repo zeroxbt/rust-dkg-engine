@@ -81,6 +81,18 @@ impl NetworkManager {
             .map_err(|_| NetworkError::ActionChannelClosed)
     }
 
+    fn try_enqueue_action(&self, action: NetworkAction) -> Result<(), NetworkError> {
+        self.action_tx.try_send(action).map_err(|err| match err {
+            mpsc::error::TrySendError::Full(_) => NetworkError::ActionChannelFull,
+            mpsc::error::TrySendError::Closed(_) => NetworkError::ActionChannelClosed,
+        })
+    }
+
+    /// Gracefully stop the network event loop.
+    pub(crate) async fn shutdown(&self) -> Result<(), NetworkError> {
+        self.enqueue_action(NetworkAction::Shutdown).await
+    }
+
     /// Discover peers via Kademlia DHT lookup.
     /// This initiates a get_closest_peers query for each peer, which will discover
     /// their addresses through the DHT and add them to the routing table.
@@ -144,6 +156,15 @@ impl NetworkManager {
             .await
     }
 
+    /// Try to send a store response without awaiting channel capacity.
+    pub(crate) fn try_send_store_response(
+        &self,
+        channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
+        message: ResponseMessage<StoreAck>,
+    ) -> Result<(), NetworkError> {
+        self.try_enqueue_action(NetworkAction::SendStoreResponse { channel, message })
+    }
+
     /// Send a get request and await the response.
     pub(crate) async fn send_get_request(
         &self,
@@ -172,6 +193,15 @@ impl NetworkManager {
             .await
     }
 
+    /// Try to send a get response without awaiting channel capacity.
+    pub(crate) fn try_send_get_response(
+        &self,
+        channel: request_response::ResponseChannel<ResponseMessage<GetAck>>,
+        message: ResponseMessage<GetAck>,
+    ) -> Result<(), NetworkError> {
+        self.try_enqueue_action(NetworkAction::SendGetResponse { channel, message })
+    }
+
     /// Send a finality request and await the response.
     pub(crate) async fn send_finality_request(
         &self,
@@ -198,6 +228,15 @@ impl NetworkManager {
     ) -> Result<(), NetworkError> {
         self.enqueue_action(NetworkAction::SendFinalityResponse { channel, message })
             .await
+    }
+
+    /// Try to send a finality response without awaiting channel capacity.
+    pub(crate) fn try_send_finality_response(
+        &self,
+        channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
+        message: ResponseMessage<FinalityAck>,
+    ) -> Result<(), NetworkError> {
+        self.try_enqueue_action(NetworkAction::SendFinalityResponse { channel, message })
     }
 
     /// Send a batch get request and await the response.
@@ -231,5 +270,14 @@ impl NetworkManager {
     ) -> Result<(), NetworkError> {
         self.enqueue_action(NetworkAction::SendBatchGetResponse { channel, message })
             .await
+    }
+
+    /// Try to send a batch get response without awaiting channel capacity.
+    pub(crate) fn try_send_batch_get_response(
+        &self,
+        channel: request_response::ResponseChannel<ResponseMessage<BatchGetAck>>,
+        message: ResponseMessage<BatchGetAck>,
+    ) -> Result<(), NetworkError> {
+        self.try_enqueue_action(NetworkAction::SendBatchGetResponse { channel, message })
     }
 }

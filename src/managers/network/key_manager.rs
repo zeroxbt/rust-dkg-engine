@@ -53,11 +53,10 @@ impl KeyManager {
                 tracing::info!("Loaded existing network key from {}", key_path.display());
                 Ok(pk.into())
             }
-            Err(error) => {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 tracing::info!(
-                    "No existing key found at {} ({}), generating new key",
-                    key_path.display(),
-                    error
+                    "No existing key found at {}, generating new key",
+                    key_path.display()
                 );
 
                 let new_key = identity::Keypair::generate_ed25519();
@@ -73,6 +72,57 @@ impl KeyManager {
 
                 Ok(new_key)
             }
+            Err(error) => {
+                tracing::error!(
+                    "Failed to load existing network key from {}: {}",
+                    key_path.display(),
+                    error
+                );
+                Err(NetworkError::PeerIdIo(error))
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+    use tokio::fs;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn load_or_generate_fails_for_invalid_existing_key() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let key_path = temp_dir.path().join("network/private_key");
+
+        fs::create_dir_all(
+            key_path
+                .parent()
+                .expect("private key path should have a parent directory"),
+        )
+        .await
+        .expect("create key dir");
+        fs::write(&key_path, b"invalid-private-key-bytes")
+            .await
+            .expect("write invalid key bytes");
+
+        let result = KeyManager::load_or_generate(&key_path).await;
+        assert!(matches!(result, Err(NetworkError::PeerIdIo(_))));
+    }
+
+    #[tokio::test]
+    async fn load_or_generate_creates_and_reuses_key() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let key_path = temp_dir.path().join("network/private_key");
+
+        let first = KeyManager::load_or_generate(&key_path)
+            .await
+            .expect("first key generation should succeed");
+        let second = KeyManager::load_or_generate(&key_path)
+            .await
+            .expect("second key load should succeed");
+
+        assert_eq!(first.public(), second.public());
     }
 }

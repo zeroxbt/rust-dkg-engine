@@ -334,7 +334,12 @@ impl NetworkEventLoop {
                 }
                 action = self.action_rx.recv() => {
                     match action {
-                        Some(action) => self.handle_action(action),
+                        Some(action) => {
+                            if !self.handle_action(action) {
+                                tracing::info!("Received shutdown action, stopping network loop");
+                                break;
+                            }
+                        }
                         None => {
                             tracing::info!("Action channel closed, shutting down network loop");
                             break;
@@ -464,8 +469,9 @@ impl NetworkEventLoop {
     }
 
     /// Handle a network action.
-    fn handle_action(&mut self, action: NetworkAction) {
+    fn handle_action(&mut self, action: NetworkAction) -> bool {
         match action {
+            NetworkAction::Shutdown => return false,
             NetworkAction::FindPeers(peers) => {
                 for peer in peers {
                     self.swarm.behaviour_mut().kad.get_closest_peers(peer);
@@ -576,5 +582,6 @@ impl NetworkEventLoop {
                     .send_response(channel, message);
             }
         }
+        true
     }
 }

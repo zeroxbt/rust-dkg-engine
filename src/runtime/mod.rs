@@ -24,6 +24,7 @@ pub(crate) async fn run(
     cleanup_config: CleanupConfig,
 ) {
     let command_scheduler = context.command_scheduler().clone();
+    let network_manager = Arc::clone(context.network_manager());
     // Spawn peer service loop for network observations.
     let peer_event_rx = context.network_manager().subscribe_peer_events();
     let peer_service = Arc::clone(context.peer_service());
@@ -81,9 +82,10 @@ pub(crate) async fn run(
     // 4. Signal command scheduler to stop accepting new commands
     // 5. Drop local runtime context reference
     // 6. Wait for command executor to drain
-    // 7. Wait for network loop to exit
-    // 8. Wait for HTTP to finish in-flight requests
-    // 9. Flush telemetry
+    // 7. Signal network loop to stop
+    // 8. Wait for network loop to exit
+    // 9. Wait for HTTP to finish in-flight requests
+    // 10. Flush telemetry
 
     tracing::info!("Shutting down gracefully...");
 
@@ -113,7 +115,12 @@ pub(crate) async fn run(
         Err(e) => tracing::error!("Command executor task panicked: {:?}", e),
     }
 
-    // Step 7: Network manager shuts down when its action channel closes
+    // Step 7: Signal network manager event loop to stop
+    if let Err(error) = network_manager.shutdown().await {
+        tracing::warn!(error = %error, "Failed to send network shutdown signal");
+    }
+
+    // Step 8: Wait for network manager to exit
     tracing::info!("Waiting for network manager to shut down...");
     match tokio::time::timeout(Duration::from_secs(5), network_event_loop_task).await {
         Ok(Ok(())) => tracing::info!("Network manager shut down cleanly"),
@@ -121,7 +128,7 @@ pub(crate) async fn run(
         Err(_) => tracing::warn!("Network manager shutdown timeout"),
     }
 
-    // Step 8: Wait for HTTP server to finish in-flight requests
+    // Step 9: Wait for HTTP server to finish in-flight requests
     tracing::info!("Waiting for HTTP server to shut down...");
     match tokio::time::timeout(Duration::from_secs(5), handle_http_events_task).await {
         Ok(Ok(())) => tracing::info!("HTTP server shut down cleanly"),
@@ -129,7 +136,7 @@ pub(crate) async fn run(
         Err(_) => tracing::warn!("HTTP server shutdown timeout"),
     }
 
-    // Step 9: Flush OpenTelemetry traces
+    // Step 10: Flush OpenTelemetry traces
     logger::shutdown_telemetry();
 
     tracing::info!("Shutdown complete");

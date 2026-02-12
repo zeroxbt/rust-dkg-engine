@@ -44,7 +44,7 @@ impl RpcRouter {
         }
     }
 
-    async fn send_store_busy(
+    fn send_store_busy(
         &self,
         channel: ResponseChannel<ResponseMessage<StoreAck>>,
         operation_id: Uuid,
@@ -53,13 +53,19 @@ impl RpcRouter {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
             data: ResponseBody::error("Rate limited"),
         };
-        let _ = self
+        if let Err(error) = self
             .network_manager
-            .send_store_response(channel, response)
-            .await;
+            .try_send_store_response(channel, response)
+        {
+            tracing::warn!(
+                %operation_id,
+                %error,
+                "Failed to enqueue store busy response"
+            );
+        }
     }
 
-    async fn send_get_busy(
+    fn send_get_busy(
         &self,
         channel: ResponseChannel<ResponseMessage<GetAck>>,
         operation_id: Uuid,
@@ -68,13 +74,19 @@ impl RpcRouter {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
             data: ResponseBody::error("Rate limited"),
         };
-        let _ = self
+        if let Err(error) = self
             .network_manager
-            .send_get_response(channel, response)
-            .await;
+            .try_send_get_response(channel, response)
+        {
+            tracing::warn!(
+                %operation_id,
+                %error,
+                "Failed to enqueue get busy response"
+            );
+        }
     }
 
-    async fn send_finality_busy(
+    fn send_finality_busy(
         &self,
         channel: ResponseChannel<ResponseMessage<FinalityAck>>,
         operation_id: Uuid,
@@ -83,13 +95,19 @@ impl RpcRouter {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
             data: ResponseBody::error("Rate limited"),
         };
-        let _ = self
+        if let Err(error) = self
             .network_manager
-            .send_finality_response(channel, response)
-            .await;
+            .try_send_finality_response(channel, response)
+        {
+            tracing::warn!(
+                %operation_id,
+                %error,
+                "Failed to enqueue finality busy response"
+            );
+        }
     }
 
-    async fn send_batch_get_busy(
+    fn send_batch_get_busy(
         &self,
         channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
         operation_id: Uuid,
@@ -98,10 +116,16 @@ impl RpcRouter {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
             data: ResponseBody::error("Rate limited"),
         };
-        let _ = self
+        if let Err(error) = self
             .network_manager
-            .send_batch_get_response(channel, response)
-            .await;
+            .try_send_batch_get_response(channel, response)
+        {
+            tracing::warn!(
+                %operation_id,
+                %error,
+                "Failed to enqueue batch-get busy response"
+            );
+        }
     }
 }
 
@@ -118,11 +142,11 @@ impl NetworkEventHandler for RpcRouter {
     ) {
         let operation_id = request.header.operation_id();
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_store_busy(channel, operation_id).await;
+            self.send_store_busy(channel, operation_id);
             return;
         }
         if let Some(channel) = self.store_controller.handle_request(request, channel, peer) {
-            self.send_store_busy(channel, operation_id).await;
+            self.send_store_busy(channel, operation_id);
         }
     }
 
@@ -134,11 +158,11 @@ impl NetworkEventHandler for RpcRouter {
     ) {
         let operation_id = request.header.operation_id();
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_get_busy(channel, operation_id).await;
+            self.send_get_busy(channel, operation_id);
             return;
         }
         if let Some(channel) = self.get_controller.handle_request(request, channel, peer) {
-            self.send_get_busy(channel, operation_id).await;
+            self.send_get_busy(channel, operation_id);
         }
     }
 
@@ -150,14 +174,14 @@ impl NetworkEventHandler for RpcRouter {
     ) {
         let operation_id = request.header.operation_id();
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_finality_busy(channel, operation_id).await;
+            self.send_finality_busy(channel, operation_id);
             return;
         }
         if let Some(channel) = self
             .finality_controller
             .handle_request(request, channel, peer)
         {
-            self.send_finality_busy(channel, operation_id).await;
+            self.send_finality_busy(channel, operation_id);
         }
     }
 
@@ -169,14 +193,14 @@ impl NetworkEventHandler for RpcRouter {
     ) {
         let operation_id = request.header.operation_id();
         if !self.peer_rate_limiter.check(&peer) {
-            self.send_batch_get_busy(channel, operation_id).await;
+            self.send_batch_get_busy(channel, operation_id);
             return;
         }
         if let Some(channel) = self
             .batch_get_controller
             .handle_request(request, channel, peer)
         {
-            self.send_batch_get_busy(channel, operation_id).await;
+            self.send_batch_get_busy(channel, operation_id);
         }
     }
 }

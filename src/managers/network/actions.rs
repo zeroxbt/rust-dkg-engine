@@ -16,6 +16,8 @@ use super::{
 
 /// Network action commands sent to the swarm event loop.
 pub(crate) enum NetworkAction {
+    /// Gracefully stop the network event loop.
+    Shutdown,
     /// Discover peers via Kademlia DHT lookup (get_closest_peers).
     /// This queries the network for nodes closest to the given peer IDs,
     /// which populates the routing table with their addresses.
