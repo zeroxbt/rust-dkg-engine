@@ -26,12 +26,7 @@ impl CleanupTask {
     pub(crate) fn new(context: Arc<Context>, config: CleanupConfig) -> Self {
         Self {
             repository_manager: Arc::clone(context.repository_manager()),
-            publish_tmp_dataset_store: Arc::new(
-                context
-                    .key_value_store_manager()
-                    .publish_tmp_dataset_store()
-                    .expect("Failed to create publish tmp dataset store"),
-            ),
+            publish_tmp_dataset_store: Arc::clone(context.publish_tmp_dataset_store()),
             publish_operation_results: Arc::clone(context.publish_store_operation_status_service()),
             get_operation_results: Arc::clone(context.get_operation_status_service()),
             config,

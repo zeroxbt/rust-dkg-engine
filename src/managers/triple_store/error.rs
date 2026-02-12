@@ -3,6 +3,10 @@ use thiserror::Error;
 /// Triple store specific errors
 #[derive(Error, Debug)]
 pub(crate) enum TripleStoreError {
+    /// Semaphore closed
+    #[error("Semaphore closed")]
+    SemaphoreClosed,
+
     /// HTTP request failed
     #[error("HTTP request failed: {0}")]
     Http(#[from] reqwest::Error),

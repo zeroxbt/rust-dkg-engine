@@ -72,12 +72,7 @@ impl SendPublishStoreRequestsCommandHandler {
             publish_store_operation_status_service: Arc::clone(
                 context.publish_store_operation_status_service(),
             ),
-            publish_tmp_dataset_store: Arc::new(
-                context
-                    .key_value_store_manager()
-                    .publish_tmp_dataset_store()
-                    .expect("Failed to create publish tmp dataset store"),
-            ),
+            publish_tmp_dataset_store: Arc::clone(context.publish_tmp_dataset_store()),
         }
     }
 }

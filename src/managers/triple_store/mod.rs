@@ -15,7 +15,7 @@ use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
 pub(crate) use rdf::{extract_subject, group_triples_by_subject, parse_metadata_from_triples};
 use serde::Deserialize;
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 pub(crate) use types::GraphVisibility;
 
 use crate::types::{KnowledgeAsset, KnowledgeCollectionMetadata};
@@ -68,11 +68,19 @@ impl TripleStoreManager {
         };
 
         // Initialize concurrency limiter
+        let max_concurrent = config.max_concurrent_operations.max(1);
+        if max_concurrent != config.max_concurrent_operations {
+            tracing::warn!(
+                configured = config.max_concurrent_operations,
+                effective = max_concurrent,
+                "Triple store max_concurrent_operations too low; clamped"
+            );
+        }
         tracing::info!(
-            max_concurrent = config.max_concurrent_operations,
+            max_concurrent = max_concurrent,
             "Triple store concurrency limiter initialized"
         );
-        let concurrency_limiter = Arc::new(Semaphore::new(config.max_concurrent_operations));
+        let concurrency_limiter = Arc::new(Semaphore::new(max_concurrent));
 
         let manager = Self {
             backend,
@@ -147,43 +155,35 @@ impl TripleStoreManager {
 
     // ========== Internal Backend Wrappers (with concurrency limiting) ==========
 
+    async fn acquire_permit(&self) -> Result<OwnedSemaphorePermit> {
+        self.concurrency_limiter
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| TripleStoreError::SemaphoreClosed)
+    }
+
     /// Execute a SPARQL UPDATE with concurrency limiting
     async fn backend_update(&self, query: &str, timeout: Duration) -> Result<()> {
-        let _permit = self
-            .concurrency_limiter
-            .acquire()
-            .await
-            .expect("semaphore closed");
+        let _permit = self.acquire_permit().await?;
         self.backend.update(query, timeout).await
     }
 
     /// Execute a SPARQL CONSTRUCT with concurrency limiting
     async fn backend_construct(&self, query: &str, timeout: Duration) -> Result<String> {
-        let _permit = self
-            .concurrency_limiter
-            .acquire()
-            .await
-            .expect("semaphore closed");
+        let _permit = self.acquire_permit().await?;
         self.backend.construct(query, timeout).await
     }
 
     /// Execute a SPARQL ASK with concurrency limiting
     async fn backend_ask(&self, query: &str, timeout: Duration) -> Result<bool> {
-        let _permit = self
-            .concurrency_limiter
-            .acquire()
-            .await
-            .expect("semaphore closed");
+        let _permit = self.acquire_permit().await?;
         self.backend.ask(query, timeout).await
     }
 
     /// Execute a SPARQL SELECT with concurrency limiting
     async fn backend_select(&self, query: &str, timeout: Duration) -> Result<String> {
-        let _permit = self
-            .concurrency_limiter
-            .acquire()
-            .await
-            .expect("semaphore closed");
+        let _permit = self.acquire_permit().await?;
         self.backend.select(query, timeout).await
     }
 
@@ -587,7 +587,8 @@ impl TripleStoreManager {
         backend: Box<dyn TripleStoreBackend>,
         config: TripleStoreManagerConfig,
     ) -> Self {
-        let concurrency_limiter = Arc::new(Semaphore::new(config.max_concurrent_operations));
+        let max_concurrent = config.max_concurrent_operations.max(1);
+        let concurrency_limiter = Arc::new(Semaphore::new(max_concurrent));
         Self {
             backend,
             config,

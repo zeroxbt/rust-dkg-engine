@@ -117,10 +117,21 @@ impl BlockchainConfigRaw {
         Ok(())
     }
 
+    /// Ensures the RPC rate limit, if configured, is greater than zero.
+    pub(crate) fn ensure_max_rpc_requests_per_second(&self) -> Result<(), ConfigError> {
+        if self.max_rpc_requests_per_second == Some(0) {
+            return Err(ConfigError::InvalidConfig(
+                "max_rpc_requests_per_second must be greater than 0 when set".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn resolve(self) -> Result<BlockchainConfig, ConfigError> {
         self.ensure_rpc_endpoints()?;
         self.ensure_management_wallet_address()?;
         self.ensure_operational_wallet_private_key()?;
+        self.ensure_max_rpc_requests_per_second()?;
 
         let operational_key = self
             .evm_operational_wallet_private_key
@@ -382,3 +393,53 @@ impl BlockchainManagerConfigRaw {
 
 #[derive(Debug, Clone)]
 pub(crate) struct BlockchainManagerConfig(pub Vec<Blockchain>);
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    fn sample_raw(max_rpc_requests_per_second: Option<u32>) -> BlockchainConfigRaw {
+        BlockchainConfigRaw {
+            enabled: true,
+            blockchain_id: BlockchainId::from("hardhat:31337"),
+            evm_operational_wallet_private_key: Some(
+                "449bf49be49946f2160d288a56e820adc5808806d558f33a2412783a61aad3d7"
+                    .to_string(),
+            ),
+            evm_operational_wallet_address: None,
+            evm_management_wallet_address: Some(
+                "0x0000000000000000000000000000000000000001".to_string(),
+            ),
+            evm_management_wallet_private_key: None,
+            hub_contract_address: "0x0000000000000000000000000000000000000002".to_string(),
+            rpc_endpoints: vec!["http://localhost:8545".to_string()],
+            node_name: "test-node".to_string(),
+            gas_price_oracle_url: None,
+            operator_fee: Some(0),
+            substrate_rpc_endpoints: None,
+            max_rpc_requests_per_second,
+            tx_confirmations: 1,
+            tx_receipt_timeout_ms: 60_000,
+        }
+    }
+
+    #[test]
+    fn resolve_rejects_zero_rpc_rate_limit() {
+        let config = sample_raw(Some(0));
+        let result = config.resolve();
+        assert!(matches!(
+            result,
+            Err(ConfigError::InvalidConfig(ref msg))
+                if msg.contains("max_rpc_requests_per_second")
+        ));
+    }
+
+    #[test]
+    fn resolve_accepts_positive_rpc_rate_limit() {
+        let config = sample_raw(Some(10));
+        let resolved = config.resolve().unwrap();
+        assert_eq!(resolved.max_rpc_requests_per_second(), Some(10));
+    }
+}

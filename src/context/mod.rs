@@ -4,6 +4,7 @@ use crate::{
     commands::scheduler::CommandScheduler,
     managers::{
         Managers,
+        key_value_store::PublishTmpDatasetStore,
         network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
     services::{AssertionValidationService, PeerService, Services, TripleStoreService},
@@ -46,10 +47,6 @@ impl Context {
         &self.managers.blockchain
     }
 
-    pub(crate) fn key_value_store_manager(&self) -> &Arc<crate::managers::KeyValueStoreManager> {
-        &self.managers.key_value_store
-    }
-
     // Service accessors
     pub(crate) fn triple_store_service(&self) -> &Arc<TripleStoreService> {
         &self.services.triple_store
@@ -65,6 +62,10 @@ impl Context {
 
     pub(crate) fn peer_address_store(&self) -> &Arc<crate::services::PeerAddressStore> {
         &self.services.peer_address_store
+    }
+
+    pub(crate) fn publish_tmp_dataset_store(&self) -> &Arc<PublishTmpDatasetStore> {
+        &self.services.publish_tmp_dataset_store
     }
 
     // Response channel accessors

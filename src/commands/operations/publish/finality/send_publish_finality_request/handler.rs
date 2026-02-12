@@ -89,12 +89,7 @@ impl SendPublishFinalityRequestCommandHandler {
             network_manager: Arc::clone(context.network_manager()),
             peer_service: Arc::clone(context.peer_service()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
-            publish_tmp_dataset_store: Arc::new(
-                context
-                    .key_value_store_manager()
-                    .publish_tmp_dataset_store()
-                    .expect("Failed to create publish tmp dataset store"),
-            ),
+            publish_tmp_dataset_store: Arc::clone(context.publish_tmp_dataset_store()),
             triple_store_service: Arc::clone(context.triple_store_service()),
         }
     }

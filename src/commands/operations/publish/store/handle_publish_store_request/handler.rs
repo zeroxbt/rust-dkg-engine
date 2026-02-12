@@ -62,12 +62,7 @@ impl HandlePublishStoreRequestCommandHandler {
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             peer_service: Arc::clone(context.peer_service()),
             response_channels: Arc::clone(context.store_response_channels()),
-            publish_tmp_dataset_store: Arc::new(
-                context
-                    .key_value_store_manager()
-                    .publish_tmp_dataset_store()
-                    .expect("Failed to create publish tmp dataset store"),
-            ),
+            publish_tmp_dataset_store: Arc::clone(context.publish_tmp_dataset_store()),
         }
     }
 }

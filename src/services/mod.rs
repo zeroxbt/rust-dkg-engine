@@ -13,6 +13,7 @@ pub(crate) use triple_store::TripleStoreService;
 use crate::{
     managers::{
         Managers,
+        key_value_store::PublishTmpDatasetStore,
         network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
     operations::{GetOperation, PublishStoreOperation},
@@ -53,6 +54,7 @@ pub(crate) struct Services {
     // Infrastructure services
     pub peer_service: Arc<PeerService>,
     pub peer_address_store: Arc<PeerAddressStore>,
+    pub publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 
     // Response channels for all protocols
     pub response_channels: ResponseChannelsSet,
@@ -98,6 +100,12 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
             .peer_address_store()
             .expect("Failed to create peer address store"),
     );
+    let publish_tmp_dataset_store = Arc::new(
+        managers
+            .key_value_store
+            .publish_tmp_dataset_store()
+            .expect("Failed to create publish tmp dataset store"),
+    );
 
     // Response channels
     let response_channels = ResponseChannelsSet::new();
@@ -109,6 +117,7 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
         assertion_validation,
         peer_service,
         peer_address_store,
+        publish_tmp_dataset_store,
         response_channels,
     }
 }

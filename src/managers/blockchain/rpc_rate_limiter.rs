@@ -19,11 +19,17 @@ impl RpcRateLimiter {
     ///
     /// - `requests_per_second`: Maximum requests per second. `None` means unlimited.
     pub(crate) fn new(requests_per_second: Option<u32>) -> Self {
-        let limiter = requests_per_second.and_then(|rps| {
-            NonZeroU32::new(rps).map(|rps| {
+        let limiter = requests_per_second.and_then(|rps| match NonZeroU32::new(rps) {
+            Some(rps) => {
                 let quota = Quota::per_second(rps);
-                RateLimiter::direct(quota)
-            })
+                Some(RateLimiter::direct(quota))
+            }
+            None => {
+                tracing::warn!(
+                    "Invalid max_rpc_requests_per_second=0; rate limiting disabled"
+                );
+                None
+            }
         });
 
         Self { limiter }
