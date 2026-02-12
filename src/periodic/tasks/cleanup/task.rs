@@ -8,10 +8,15 @@ use super::{
 };
 use crate::{
     context::Context,
-    managers::{key_value_store::PublishTmpDatasetStore, repository::RepositoryManager},
+    managers::{
+        key_value_store::PublishTmpDatasetStore,
+        network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
+        repository::RepositoryManager,
+    },
     operations::{GetOperation, PublishStoreOperation},
     periodic::runner::run_with_shutdown,
     services::OperationStatusService,
+    state::ResponseChannels,
 };
 
 pub(crate) struct CleanupTask {
@@ -19,6 +24,10 @@ pub(crate) struct CleanupTask {
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
     publish_operation_results: Arc<OperationStatusService<PublishStoreOperation>>,
     get_operation_results: Arc<OperationStatusService<GetOperation>>,
+    store_response_channels: Arc<ResponseChannels<StoreAck>>,
+    get_response_channels: Arc<ResponseChannels<GetAck>>,
+    finality_response_channels: Arc<ResponseChannels<FinalityAck>>,
+    batch_get_response_channels: Arc<ResponseChannels<BatchGetAck>>,
     config: CleanupConfig,
 }
 
@@ -29,6 +38,10 @@ impl CleanupTask {
             publish_tmp_dataset_store: Arc::clone(context.publish_tmp_dataset_store()),
             publish_operation_results: Arc::clone(context.publish_store_operation_status_service()),
             get_operation_results: Arc::clone(context.get_operation_status_service()),
+            store_response_channels: Arc::clone(context.store_response_channels()),
+            get_response_channels: Arc::clone(context.get_response_channels()),
+            finality_response_channels: Arc::clone(context.finality_response_channels()),
+            batch_get_response_channels: Arc::clone(context.batch_get_response_channels()),
             config,
         }
     }
@@ -116,6 +129,21 @@ impl CleanupTask {
             }
         }
 
+        let removed_response_channels = self.cleanup_response_channels();
+        if removed_response_channels > 0 {
+            tracing::info!(
+                removed = removed_response_channels,
+                "Cleaned up expired network response channels"
+            );
+        }
+
         interval
+    }
+
+    fn cleanup_response_channels(&self) -> usize {
+        self.store_response_channels.cleanup_expired()
+            + self.get_response_channels.cleanup_expired()
+            + self.finality_response_channels.cleanup_expired()
+            + self.batch_get_response_channels.cleanup_expired()
     }
 }

@@ -24,7 +24,7 @@ struct ChannelEntry<T> {
 /// - `ResponseChannels<StoreAck>` for Store protocol
 /// - `ResponseChannels<GetAck>` for Get protocol
 ///
-/// Expired channels are cleaned up opportunistically when new channels are stored.
+/// Expired channels are cleaned up by the periodic cleanup task.
 pub(crate) struct ResponseChannels<T>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
@@ -50,9 +50,6 @@ where
         operation_id: Uuid,
         channel: request_response::ResponseChannel<ResponseMessage<T>>,
     ) {
-        // Clean up expired entries opportunistically
-        Self::cleanup_expired(&self.channels, self.timeout);
-
         let key = (peer_id.to_string(), operation_id);
         let entry = ChannelEntry {
             channel,
@@ -84,25 +81,26 @@ where
         self.channels.remove(&key).map(|(_, entry)| entry.channel)
     }
 
-    fn cleanup_expired(channels: &DashMap<ChannelKey, ChannelEntry<T>>, timeout: Duration) {
+    pub(crate) fn cleanup_expired(&self) -> usize {
         let now = Instant::now();
         let mut expired_keys = Vec::new();
 
-        for entry in channels.iter() {
-            if now.duration_since(entry.value().created_at) > timeout {
+        for entry in self.channels.iter() {
+            if now.duration_since(entry.value().created_at) > self.timeout {
                 expired_keys.push(entry.key().clone());
             }
         }
 
-        if !expired_keys.is_empty() {
-            tracing::debug!(
-                "Cleaning up {} expired response channels",
-                expired_keys.len()
-            );
+        let removed = expired_keys.len();
+
+        if removed > 0 {
+            tracing::debug!(removed, "Cleaning up expired response channels");
             for key in expired_keys {
-                channels.remove(&key);
+                self.channels.remove(&key);
             }
         }
+
+        removed
     }
 }
 
