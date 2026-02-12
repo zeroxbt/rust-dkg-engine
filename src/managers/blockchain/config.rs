@@ -405,8 +405,7 @@ mod tests {
             enabled: true,
             blockchain_id: BlockchainId::from("hardhat:31337"),
             evm_operational_wallet_private_key: Some(
-                "449bf49be49946f2160d288a56e820adc5808806d558f33a2412783a61aad3d7"
-                    .to_string(),
+                "449bf49be49946f2160d288a56e820adc5808806d558f33a2412783a61aad3d7".to_string(),
             ),
             evm_operational_wallet_address: None,
             evm_management_wallet_address: Some(

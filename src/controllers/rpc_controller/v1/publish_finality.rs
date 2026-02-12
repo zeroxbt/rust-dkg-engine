@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use super::inbound_request::store_channel_and_try_schedule;
 use crate::{
     commands::{
         executor::CommandExecutionRequest,
@@ -52,27 +53,19 @@ impl PublishFinalityRpcController {
             "Finality request received"
         );
 
-        self.response_channels
-            .store(&remote_peer_id, operation_id, channel);
-
         let command_data = HandlePublishFinalityRequestCommandData::new(
             operation_id,
             data.ual().to_string(),
             data.publish_operation_id().to_string(),
             remote_peer_id,
         );
-
-        if !self
-            .command_scheduler
-            .try_schedule(CommandExecutionRequest::new(
-                Command::HandlePublishFinalityRequest(command_data),
-            ))
-        {
-            return self
-                .response_channels
-                .retrieve(&remote_peer_id, operation_id);
-        }
-
-        None
+        store_channel_and_try_schedule(
+            &self.response_channels,
+            &self.command_scheduler,
+            &remote_peer_id,
+            operation_id,
+            channel,
+            CommandExecutionRequest::new(Command::HandlePublishFinalityRequest(command_data)),
+        )
     }
 }

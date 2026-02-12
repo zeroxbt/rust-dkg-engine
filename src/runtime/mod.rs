@@ -116,9 +116,7 @@ pub(crate) async fn run(
     }
 
     // Step 7: Signal network manager event loop to stop
-    if let Err(error) = network_manager.shutdown().await {
-        tracing::warn!(error = %error, "Failed to send network shutdown signal");
-    }
+    network_manager.shutdown();
 
     // Step 8: Wait for network manager to exit
     tracing::info!("Waiting for network manager to shut down...");

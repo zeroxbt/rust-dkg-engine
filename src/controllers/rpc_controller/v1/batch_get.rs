@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use super::inbound_request::store_channel_and_try_schedule;
 use crate::{
     commands::{
         executor::CommandExecutionRequest,
@@ -51,9 +52,6 @@ impl BatchGetRpcController {
             "Batch get request received"
         );
 
-        self.response_channels
-            .store(&remote_peer_id, operation_id, channel);
-
         let command = Command::HandleBatchGetRequest(HandleBatchGetRequestCommandData::new(
             operation_id,
             data.uals().to_vec(),
@@ -61,16 +59,13 @@ impl BatchGetRpcController {
             data.include_metadata(),
             remote_peer_id,
         ));
-
-        if !self
-            .command_scheduler
-            .try_schedule(CommandExecutionRequest::new(command))
-        {
-            return self
-                .response_channels
-                .retrieve(&remote_peer_id, operation_id);
-        }
-
-        None
+        store_channel_and_try_schedule(
+            &self.response_channels,
+            &self.command_scheduler,
+            &remote_peer_id,
+            operation_id,
+            channel,
+            CommandExecutionRequest::new(command),
+        )
     }
 }

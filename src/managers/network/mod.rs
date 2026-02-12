@@ -26,7 +26,7 @@ pub(crate) use config::NetworkManagerConfig;
 pub(crate) use error::NetworkError;
 pub(crate) use event_loop::NetworkEventLoop;
 pub(crate) use handle::NetworkManager;
-pub(crate) use handler::NetworkEventHandler;
+pub(crate) use handler::{ImmediateResponse, InboundDecision, NetworkEventHandler};
 pub(crate) use key_manager::KeyManager;
 // Re-export libp2p types for application use
 pub(crate) use libp2p::{PeerId, request_response};

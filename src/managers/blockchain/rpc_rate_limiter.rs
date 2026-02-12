@@ -25,9 +25,7 @@ impl RpcRateLimiter {
                 Some(RateLimiter::direct(quota))
             }
             None => {
-                tracing::warn!(
-                    "Invalid max_rpc_requests_per_second=0; rate limiting disabled"
-                );
+                tracing::warn!("Invalid max_rpc_requests_per_second=0; rate limiting disabled");
                 None
             }
         });

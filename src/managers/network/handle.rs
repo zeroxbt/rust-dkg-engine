@@ -5,12 +5,13 @@
 
 use libp2p::{Multiaddr, PeerId, identity, request_response};
 use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 use uuid::Uuid;
 
 use super::{
     NetworkError, NetworkManagerConfig, ResponseMessage,
-    actions::NetworkAction,
+    actions::{NetworkControlAction, NetworkDataAction},
     behaviour::build_swarm,
     protocols::{
         BatchGetAck, BatchGetRequestData, BatchGetResponseData, FinalityAck, FinalityRequestData,
@@ -22,9 +23,11 @@ use super::{
 /// NetworkManager handle for network operations.
 ///
 /// This is a lightweight handle that sends actions to the NetworkEventLoop.
-/// All network operations go through the action channel to the event loop.
+/// Control and protocol data actions are sent via separate channels.
 pub(crate) struct NetworkManager {
-    action_tx: mpsc::Sender<NetworkAction>,
+    control_tx: mpsc::Sender<NetworkControlAction>,
+    data_tx: mpsc::Sender<NetworkDataAction>,
+    shutdown: CancellationToken,
     peer_id: PeerId,
     peer_event_tx: broadcast::Sender<super::PeerEvent>,
 }
@@ -46,20 +49,26 @@ impl NetworkManager {
         key: identity::Keypair,
     ) -> Result<(Self, super::event_loop::NetworkEventLoop), NetworkError> {
         let (swarm, local_peer_id) = build_swarm(config, key)?;
-        let (action_tx, action_rx) = mpsc::channel(128);
+        let (control_tx, control_rx) = mpsc::channel(128);
+        let (data_tx, data_rx) = mpsc::channel(128);
         let (peer_event_tx, _) = broadcast::channel(1024);
+        let shutdown = CancellationToken::new();
 
         let handle = Self {
-            action_tx,
+            control_tx,
+            data_tx,
+            shutdown: shutdown.clone(),
             peer_id: local_peer_id,
             peer_event_tx: peer_event_tx.clone(),
         };
 
         let event_loop = super::event_loop::NetworkEventLoop::new(
             swarm,
-            action_rx,
+            control_rx,
+            data_rx,
             config.clone(),
             peer_event_tx,
+            shutdown,
         );
 
         Ok((handle, event_loop))
@@ -74,30 +83,34 @@ impl NetworkManager {
         self.peer_event_tx.subscribe()
     }
 
-    async fn enqueue_action(&self, action: NetworkAction) -> Result<(), NetworkError> {
-        self.action_tx
+    async fn enqueue_control_action(
+        &self,
+        action: NetworkControlAction,
+    ) -> Result<(), NetworkError> {
+        self.control_tx
             .send(action)
             .await
             .map_err(|_| NetworkError::ActionChannelClosed)
     }
 
-    fn try_enqueue_action(&self, action: NetworkAction) -> Result<(), NetworkError> {
-        self.action_tx.try_send(action).map_err(|err| match err {
-            mpsc::error::TrySendError::Full(_) => NetworkError::ActionChannelFull,
-            mpsc::error::TrySendError::Closed(_) => NetworkError::ActionChannelClosed,
-        })
+    async fn enqueue_data_action(&self, action: NetworkDataAction) -> Result<(), NetworkError> {
+        self.data_tx
+            .send(action)
+            .await
+            .map_err(|_| NetworkError::ActionChannelClosed)
     }
 
     /// Gracefully stop the network event loop.
-    pub(crate) async fn shutdown(&self) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::Shutdown).await
+    pub(crate) fn shutdown(&self) {
+        self.shutdown.cancel();
     }
 
     /// Discover peers via Kademlia DHT lookup.
     /// This initiates a get_closest_peers query for each peer, which will discover
     /// their addresses through the DHT and add them to the routing table.
     pub(crate) async fn find_peers(&self, peers: Vec<PeerId>) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::FindPeers(peers)).await
+        self.enqueue_control_action(NetworkControlAction::FindPeers(peers))
+            .await
     }
 
     /// Add known addresses for peers to the Kademlia routing table.
@@ -106,14 +119,14 @@ impl NetworkManager {
         &self,
         addresses: Vec<(PeerId, Vec<Multiaddr>)>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::AddAddresses { addresses })
+        self.enqueue_control_action(NetworkControlAction::AddAddresses { addresses })
             .await
     }
 
     /// Get the list of currently connected peers.
     pub(crate) async fn connected_peers(&self) -> Result<Vec<PeerId>, NetworkError> {
         let (tx, rx) = oneshot::channel();
-        self.enqueue_action(NetworkAction::GetConnectedPeers(tx))
+        self.enqueue_control_action(NetworkControlAction::GetConnectedPeers(tx))
             .await?;
         rx.await.map_err(|_| NetworkError::ResponseChannelClosed)
     }
@@ -136,7 +149,7 @@ impl NetworkManager {
         request_data: StoreRequestData,
     ) -> Result<StoreResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
-        self.enqueue_action(NetworkAction::SendStoreRequest {
+        self.enqueue_data_action(NetworkDataAction::SendStoreRequest {
             peer,
             operation_id,
             request_data,
@@ -152,17 +165,8 @@ impl NetworkManager {
         channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
         message: ResponseMessage<StoreAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::SendStoreResponse { channel, message })
+        self.enqueue_data_action(NetworkDataAction::SendStoreResponse { channel, message })
             .await
-    }
-
-    /// Try to send a store response without awaiting channel capacity.
-    pub(crate) fn try_send_store_response(
-        &self,
-        channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
-        message: ResponseMessage<StoreAck>,
-    ) -> Result<(), NetworkError> {
-        self.try_enqueue_action(NetworkAction::SendStoreResponse { channel, message })
     }
 
     /// Send a get request and await the response.
@@ -173,7 +177,7 @@ impl NetworkManager {
         request_data: GetRequestData,
     ) -> Result<GetResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
-        self.enqueue_action(NetworkAction::SendGetRequest {
+        self.enqueue_data_action(NetworkDataAction::SendGetRequest {
             peer,
             operation_id,
             request_data,
@@ -189,17 +193,8 @@ impl NetworkManager {
         channel: request_response::ResponseChannel<ResponseMessage<GetAck>>,
         message: ResponseMessage<GetAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::SendGetResponse { channel, message })
+        self.enqueue_data_action(NetworkDataAction::SendGetResponse { channel, message })
             .await
-    }
-
-    /// Try to send a get response without awaiting channel capacity.
-    pub(crate) fn try_send_get_response(
-        &self,
-        channel: request_response::ResponseChannel<ResponseMessage<GetAck>>,
-        message: ResponseMessage<GetAck>,
-    ) -> Result<(), NetworkError> {
-        self.try_enqueue_action(NetworkAction::SendGetResponse { channel, message })
     }
 
     /// Send a finality request and await the response.
@@ -210,7 +205,7 @@ impl NetworkManager {
         request_data: FinalityRequestData,
     ) -> Result<FinalityResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
-        self.enqueue_action(NetworkAction::SendFinalityRequest {
+        self.enqueue_data_action(NetworkDataAction::SendFinalityRequest {
             peer,
             operation_id,
             request_data,
@@ -226,17 +221,8 @@ impl NetworkManager {
         channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
         message: ResponseMessage<FinalityAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::SendFinalityResponse { channel, message })
+        self.enqueue_data_action(NetworkDataAction::SendFinalityResponse { channel, message })
             .await
-    }
-
-    /// Try to send a finality response without awaiting channel capacity.
-    pub(crate) fn try_send_finality_response(
-        &self,
-        channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
-        message: ResponseMessage<FinalityAck>,
-    ) -> Result<(), NetworkError> {
-        self.try_enqueue_action(NetworkAction::SendFinalityResponse { channel, message })
     }
 
     /// Send a batch get request and await the response.
@@ -252,7 +238,7 @@ impl NetworkManager {
         request_data: BatchGetRequestData,
     ) -> Result<BatchGetResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
-        self.enqueue_action(NetworkAction::SendBatchGetRequest {
+        self.enqueue_data_action(NetworkDataAction::SendBatchGetRequest {
             peer,
             operation_id,
             request_data,
@@ -268,16 +254,7 @@ impl NetworkManager {
         channel: request_response::ResponseChannel<ResponseMessage<BatchGetAck>>,
         message: ResponseMessage<BatchGetAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_action(NetworkAction::SendBatchGetResponse { channel, message })
+        self.enqueue_data_action(NetworkDataAction::SendBatchGetResponse { channel, message })
             .await
-    }
-
-    /// Try to send a batch get response without awaiting channel capacity.
-    pub(crate) fn try_send_batch_get_response(
-        &self,
-        channel: request_response::ResponseChannel<ResponseMessage<BatchGetAck>>,
-        message: ResponseMessage<BatchGetAck>,
-    ) -> Result<(), NetworkError> {
-        self.try_enqueue_action(NetworkAction::SendBatchGetResponse { channel, message })
     }
 }

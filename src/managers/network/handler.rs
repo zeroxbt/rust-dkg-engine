@@ -8,13 +8,28 @@ use super::{
     request_response::ResponseChannel,
 };
 
+/// Response that should be sent immediately by the network event loop.
+pub(crate) struct ImmediateResponse<T> {
+    pub(crate) channel: ResponseChannel<ResponseMessage<T>>,
+    pub(crate) message: ResponseMessage<T>,
+}
+
+/// Decision returned by inbound request handlers.
+pub(crate) enum InboundDecision<T> {
+    /// Request accepted and scheduled for async command execution.
+    Scheduled,
+    /// Request should be responded to immediately by the network event loop.
+    RespondNow(ImmediateResponse<T>),
+}
+
 /// Handler for network events that require application-level processing.
 ///
 /// Response events (success/failure for outbound requests) are handled
 /// internally by NetworkManager via PendingRequests. This trait only
 /// receives events that need to be dispatched to the application layer.
 ///
-/// All async methods return `Send` futures to allow use in multi-threaded contexts.
+/// Methods are synchronous to ensure inbound network processing never blocks on
+/// application-level async work.
 pub(crate) trait NetworkEventHandler: Send + Sync {
     // ─────────────────────────────────────────────────────────────────────────
     // Protocol inbound requests
@@ -26,7 +41,7 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
         request: RequestMessage<StoreRequestData>,
         channel: ResponseChannel<ResponseMessage<StoreAck>>,
         peer: PeerId,
-    ) -> impl std::future::Future<Output = ()> + Send;
+    ) -> InboundDecision<StoreAck>;
 
     /// Called when a get request is received from a peer.
     fn on_get_request(
@@ -34,7 +49,7 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
         request: RequestMessage<GetRequestData>,
         channel: ResponseChannel<ResponseMessage<GetAck>>,
         peer: PeerId,
-    ) -> impl std::future::Future<Output = ()> + Send;
+    ) -> InboundDecision<GetAck>;
 
     /// Called when a finality request is received from a peer.
     fn on_finality_request(
@@ -42,7 +57,7 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
         request: RequestMessage<FinalityRequestData>,
         channel: ResponseChannel<ResponseMessage<FinalityAck>>,
         peer: PeerId,
-    ) -> impl std::future::Future<Output = ()> + Send;
+    ) -> InboundDecision<FinalityAck>;
 
     /// Called when a batch get request is received from a peer.
     fn on_batch_get_request(
@@ -50,7 +65,7 @@ pub(crate) trait NetworkEventHandler: Send + Sync {
         request: RequestMessage<BatchGetRequestData>,
         channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
         peer: PeerId,
-    ) -> impl std::future::Future<Output = ()> + Send;
+    ) -> InboundDecision<BatchGetAck>;
 
     // Infrastructure events are emitted via PeerEvent and handled by observers.
 }

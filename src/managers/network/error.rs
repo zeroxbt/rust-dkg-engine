@@ -40,10 +40,6 @@ pub(crate) enum NetworkError {
     #[error("Swarm action channel closed")]
     ActionChannelClosed,
 
-    /// Swarm action channel is full
-    #[error("Swarm action channel full")]
-    ActionChannelFull,
-
     /// Response channel closed (event loop shut down before returning response)
     #[error("Response channel closed before receiving response")]
     ResponseChannelClosed,

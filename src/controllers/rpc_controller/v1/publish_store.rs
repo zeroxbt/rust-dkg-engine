@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use super::inbound_request::store_channel_and_try_schedule;
 use crate::{
     commands::{
         executor::CommandExecutionRequest,
@@ -52,9 +53,6 @@ impl PublishStoreRpcController {
             "Store request received"
         );
 
-        self.response_channels
-            .store(&remote_peer_id, operation_id, channel);
-
         let dataset = Assertion {
             public: data.dataset().to_owned(),
             private: None,
@@ -68,16 +66,13 @@ impl PublishStoreRpcController {
                 remote_peer_id,
                 dataset,
             ));
-
-        if !self
-            .command_scheduler
-            .try_schedule(CommandExecutionRequest::new(command))
-        {
-            return self
-                .response_channels
-                .retrieve(&remote_peer_id, operation_id);
-        }
-
-        None
+        store_channel_and_try_schedule(
+            &self.response_channels,
+            &self.command_scheduler,
+            &remote_peer_id,
+            operation_id,
+            channel,
+            CommandExecutionRequest::new(command),
+        )
     }
 }

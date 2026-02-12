@@ -12,13 +12,14 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
 };
 use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
-    IdentifyInfo, JsCompatCodec, NetworkError, NetworkEventHandler, NetworkManagerConfig,
-    PeerEvent, PendingRequests, RequestContext, RequestMessage, RequestOutcome, RequestOutcomeKind,
-    ResponseMessage,
-    actions::NetworkAction,
+    IdentifyInfo, ImmediateResponse, InboundDecision, JsCompatCodec, NetworkError,
+    NetworkEventHandler, NetworkManagerConfig, PeerEvent, PendingRequests, RequestContext,
+    RequestMessage, RequestOutcome, RequestOutcomeKind, ResponseMessage,
+    actions::{NetworkControlAction, NetworkDataAction},
     behaviour::{NodeBehaviour, NodeBehaviourEvent},
     message::{RequestMessageHeader, RequestMessageType},
     protocols::{
@@ -28,12 +29,22 @@ use super::{
     },
 };
 
+/// Maximum number of control actions processed per loop tick before yielding to
+/// swarm/data processing.
+const CONTROL_ACTION_BURST: usize = 16;
+
 /// Handle a protocol event - processes responses and dispatches requests.
-async fn handle_protocol_event<P, H>(
+fn handle_protocol_event<P, H>(
     event: request_response::Event<RequestMessage<P::RequestData>, ResponseMessage<P::Ack>>,
+    swarm: &mut Swarm<NodeBehaviour>,
     pending: &mut PendingRequests<ProtocolResponse<P>>,
     handler: &H,
     peer_event_tx: &broadcast::Sender<PeerEvent>,
+    send_response: impl FnOnce(
+        &mut Swarm<NodeBehaviour>,
+        request_response::ResponseChannel<ResponseMessage<P::Ack>>,
+        ResponseMessage<P::Ack>,
+    ) -> Result<(), ResponseMessage<P::Ack>>,
 ) where
     P: ProtocolSpec,
     H: NetworkEventHandler + ProtocolHandler<P>,
@@ -60,9 +71,19 @@ async fn handle_protocol_event<P, H>(
             }
             request_response::Message::Request {
                 request, channel, ..
-            } => {
-                handler.handle_request(request, channel, peer).await;
-            }
+            } => match handler.handle_request(request, channel, peer) {
+                InboundDecision::Scheduled => {}
+                InboundDecision::RespondNow(ImmediateResponse { channel, message }) => {
+                    if let Err(response) = send_response(swarm, channel, message) {
+                        tracing::warn!(
+                            %peer,
+                            response_header = ?response.header,
+                            "{} immediate response could not be sent",
+                            P::NAME
+                        );
+                    }
+                }
+            },
         },
         request_response::Event::OutboundFailure {
             request_id,
@@ -111,58 +132,58 @@ trait ProtocolHandler<P: ProtocolSpec>: Send + Sync {
         request: RequestMessage<P::RequestData>,
         channel: request_response::ResponseChannel<ResponseMessage<P::Ack>>,
         peer: PeerId,
-    ) -> impl std::future::Future<Output = ()> + Send;
+    ) -> InboundDecision<P::Ack>;
 }
 
 impl<H: NetworkEventHandler> ProtocolHandler<StoreProtocol> for H {
-    async fn handle_request(
+    fn handle_request(
         &self,
         request: RequestMessage<<StoreProtocol as ProtocolSpec>::RequestData>,
         channel: request_response::ResponseChannel<
             ResponseMessage<<StoreProtocol as ProtocolSpec>::Ack>,
         >,
         peer: PeerId,
-    ) {
-        self.on_store_request(request, channel, peer).await;
+    ) -> InboundDecision<<StoreProtocol as ProtocolSpec>::Ack> {
+        self.on_store_request(request, channel, peer)
     }
 }
 
 impl<H: NetworkEventHandler> ProtocolHandler<GetProtocol> for H {
-    async fn handle_request(
+    fn handle_request(
         &self,
         request: RequestMessage<<GetProtocol as ProtocolSpec>::RequestData>,
         channel: request_response::ResponseChannel<
             ResponseMessage<<GetProtocol as ProtocolSpec>::Ack>,
         >,
         peer: PeerId,
-    ) {
-        self.on_get_request(request, channel, peer).await;
+    ) -> InboundDecision<<GetProtocol as ProtocolSpec>::Ack> {
+        self.on_get_request(request, channel, peer)
     }
 }
 
 impl<H: NetworkEventHandler> ProtocolHandler<FinalityProtocol> for H {
-    async fn handle_request(
+    fn handle_request(
         &self,
         request: RequestMessage<<FinalityProtocol as ProtocolSpec>::RequestData>,
         channel: request_response::ResponseChannel<
             ResponseMessage<<FinalityProtocol as ProtocolSpec>::Ack>,
         >,
         peer: PeerId,
-    ) {
-        self.on_finality_request(request, channel, peer).await;
+    ) -> InboundDecision<<FinalityProtocol as ProtocolSpec>::Ack> {
+        self.on_finality_request(request, channel, peer)
     }
 }
 
 impl<H: NetworkEventHandler> ProtocolHandler<BatchGetProtocol> for H {
-    async fn handle_request(
+    fn handle_request(
         &self,
         request: RequestMessage<<BatchGetProtocol as ProtocolSpec>::RequestData>,
         channel: request_response::ResponseChannel<
             ResponseMessage<<BatchGetProtocol as ProtocolSpec>::Ack>,
         >,
         peer: PeerId,
-    ) {
-        self.on_batch_get_request(request, channel, peer).await;
+    ) -> InboundDecision<<BatchGetProtocol as ProtocolSpec>::Ack> {
+        self.on_batch_get_request(request, channel, peer)
     }
 }
 
@@ -221,7 +242,9 @@ fn dial_peer_if_needed(swarm: &mut Swarm<NodeBehaviour>, peer: PeerId) {
 /// This is created by `NetworkManager::connect()` and runs in its own task.
 pub(crate) struct NetworkEventLoop {
     swarm: Swarm<NodeBehaviour>,
-    action_rx: mpsc::Receiver<NetworkAction>,
+    control_rx: mpsc::Receiver<NetworkControlAction>,
+    data_rx: mpsc::Receiver<NetworkDataAction>,
+    shutdown: CancellationToken,
     config: NetworkManagerConfig,
     peer_event_tx: broadcast::Sender<PeerEvent>,
     // Per-protocol pending request tracking
@@ -235,13 +258,17 @@ impl NetworkEventLoop {
     /// Create a new NetworkEventLoop.
     pub(super) fn new(
         swarm: Swarm<NodeBehaviour>,
-        action_rx: mpsc::Receiver<NetworkAction>,
+        control_rx: mpsc::Receiver<NetworkControlAction>,
+        data_rx: mpsc::Receiver<NetworkDataAction>,
         config: NetworkManagerConfig,
         peer_event_tx: broadcast::Sender<PeerEvent>,
+        shutdown: CancellationToken,
     ) -> Self {
         Self {
             swarm,
-            action_rx,
+            control_rx,
+            data_rx,
+            shutdown,
             config,
             peer_event_tx,
             pending_store: PendingRequests::new(),
@@ -321,28 +348,68 @@ impl NetworkEventLoop {
 
     /// Runs the network event loop, processing swarm events and actions.
     ///
-    /// This method consumes self and runs until the action channel is closed.
+    /// This method consumes self and runs until shutdown is requested or both
+    /// control/data channels are closed.
     pub(crate) async fn run<H: NetworkEventHandler>(mut self, handler: &H) {
         use libp2p::futures::StreamExt;
 
         self.run_bootstrap();
 
+        let mut control_closed = false;
+        let mut data_closed = false;
+
         loop {
+            if self.shutdown.is_cancelled() {
+                tracing::info!("Network shutdown token cancelled, stopping network loop");
+                break;
+            }
+
+            if control_closed && data_closed {
+                tracing::info!("Control and data channels closed, shutting down network loop");
+                break;
+            }
+
+            // Drain a small burst of control actions first to keep control-plane
+            // signals responsive under data-plane load.
+            for _ in 0..CONTROL_ACTION_BURST {
+                if control_closed {
+                    break;
+                }
+
+                match self.control_rx.try_recv() {
+                    Ok(action) => self.handle_control_action(action),
+                    Err(mpsc::error::TryRecvError::Empty) => break,
+                    Err(mpsc::error::TryRecvError::Disconnected) => {
+                        tracing::info!("Control channel closed");
+                        control_closed = true;
+                        break;
+                    }
+                }
+            }
+
             tokio::select! {
                 event = self.swarm.select_next_some() => {
-                    self.handle_swarm_event(event, handler).await;
+                    self.handle_swarm_event(event, handler);
                 }
-                action = self.action_rx.recv() => {
-                    match action {
-                        Some(action) => {
-                            if !self.handle_action(action) {
-                                tracing::info!("Received shutdown action, stopping network loop");
-                                break;
-                            }
-                        }
+                _ = self.shutdown.cancelled() => {
+                    tracing::info!("Network shutdown token cancelled, stopping network loop");
+                    break;
+                }
+                control_action = self.control_rx.recv(), if !control_closed => {
+                    match control_action {
+                        Some(action) => self.handle_control_action(action),
                         None => {
-                            tracing::info!("Action channel closed, shutting down network loop");
-                            break;
+                            tracing::info!("Control channel closed");
+                            control_closed = true;
+                        }
+                    }
+                }
+                data_action = self.data_rx.recv(), if !data_closed => {
+                    match data_action {
+                        Some(action) => self.handle_data_action(action),
+                        None => {
+                            tracing::info!("Data channel closed");
+                            data_closed = true;
                         }
                     }
                 }
@@ -351,7 +418,7 @@ impl NetworkEventLoop {
     }
 
     /// Process a swarm event.
-    async fn handle_swarm_event<H: NetworkEventHandler>(
+    fn handle_swarm_event<H: NetworkEventHandler>(
         &mut self,
         event: SwarmEvent<<NodeBehaviour as NetworkBehaviour>::ToSwarm>,
         handler: &H,
@@ -362,38 +429,56 @@ impl NetworkEventLoop {
                 NodeBehaviourEvent::Store(inner) => {
                     handle_protocol_event::<StoreProtocol, _>(
                         inner,
+                        &mut self.swarm,
                         &mut self.pending_store,
                         handler,
                         &self.peer_event_tx,
-                    )
-                    .await;
+                        |swarm, channel, message| {
+                            swarm.behaviour_mut().store.send_response(channel, message)
+                        },
+                    );
                 }
                 NodeBehaviourEvent::Get(inner) => {
                     handle_protocol_event::<GetProtocol, _>(
                         inner,
+                        &mut self.swarm,
                         &mut self.pending_get,
                         handler,
                         &self.peer_event_tx,
-                    )
-                    .await;
+                        |swarm, channel, message| {
+                            swarm.behaviour_mut().get.send_response(channel, message)
+                        },
+                    );
                 }
                 NodeBehaviourEvent::Finality(inner) => {
                     handle_protocol_event::<FinalityProtocol, _>(
                         inner,
+                        &mut self.swarm,
                         &mut self.pending_finality,
                         handler,
                         &self.peer_event_tx,
-                    )
-                    .await;
+                        |swarm, channel, message| {
+                            swarm
+                                .behaviour_mut()
+                                .finality
+                                .send_response(channel, message)
+                        },
+                    );
                 }
                 NodeBehaviourEvent::BatchGet(inner) => {
                     handle_protocol_event::<BatchGetProtocol, _>(
                         inner,
+                        &mut self.swarm,
                         &mut self.pending_batch_get,
                         handler,
                         &self.peer_event_tx,
-                    )
-                    .await;
+                        |swarm, channel, message| {
+                            swarm
+                                .behaviour_mut()
+                                .batch_get
+                                .send_response(channel, message)
+                        },
+                    );
                 }
 
                 // Identify protocol
@@ -468,20 +553,19 @@ impl NetworkEventLoop {
         }
     }
 
-    /// Handle a network action.
-    fn handle_action(&mut self, action: NetworkAction) -> bool {
+    /// Handle a control-plane action.
+    fn handle_control_action(&mut self, action: NetworkControlAction) {
         match action {
-            NetworkAction::Shutdown => return false,
-            NetworkAction::FindPeers(peers) => {
+            NetworkControlAction::FindPeers(peers) => {
                 for peer in peers {
                     self.swarm.behaviour_mut().kad.get_closest_peers(peer);
                 }
             }
-            NetworkAction::GetConnectedPeers(response_tx) => {
+            NetworkControlAction::GetConnectedPeers(response_tx) => {
                 let peers: Vec<PeerId> = self.swarm.connected_peers().copied().collect();
                 let _ = response_tx.send(peers);
             }
-            NetworkAction::AddAddresses { addresses } => {
+            NetworkControlAction::AddAddresses { addresses } => {
                 let mut total_addrs = 0usize;
                 for (peer_id, addrs) in &addresses {
                     for addr in addrs {
@@ -496,8 +580,13 @@ impl NetworkEventLoop {
                     "Added persisted peer addresses to Kademlia"
                 );
             }
-            // Protocol request/response actions
-            NetworkAction::SendStoreRequest {
+        }
+    }
+
+    /// Handle a data-plane protocol action.
+    fn handle_data_action(&mut self, action: NetworkDataAction) {
+        match action {
+            NetworkDataAction::SendStoreRequest {
                 peer,
                 operation_id,
                 request_data,
@@ -511,14 +600,14 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.store,
             ),
-            NetworkAction::SendStoreResponse { channel, message } => {
+            NetworkDataAction::SendStoreResponse { channel, message } => {
                 let _ = self
                     .swarm
                     .behaviour_mut()
                     .store
                     .send_response(channel, message);
             }
-            NetworkAction::SendGetRequest {
+            NetworkDataAction::SendGetRequest {
                 peer,
                 operation_id,
                 request_data,
@@ -532,14 +621,14 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.get,
             ),
-            NetworkAction::SendGetResponse { channel, message } => {
+            NetworkDataAction::SendGetResponse { channel, message } => {
                 let _ = self
                     .swarm
                     .behaviour_mut()
                     .get
                     .send_response(channel, message);
             }
-            NetworkAction::SendFinalityRequest {
+            NetworkDataAction::SendFinalityRequest {
                 peer,
                 operation_id,
                 request_data,
@@ -553,14 +642,14 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.finality,
             ),
-            NetworkAction::SendFinalityResponse { channel, message } => {
+            NetworkDataAction::SendFinalityResponse { channel, message } => {
                 let _ = self
                     .swarm
                     .behaviour_mut()
                     .finality
                     .send_response(channel, message);
             }
-            NetworkAction::SendBatchGetRequest {
+            NetworkDataAction::SendBatchGetRequest {
                 peer,
                 operation_id,
                 request_data,
@@ -574,7 +663,7 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.batch_get,
             ),
-            NetworkAction::SendBatchGetResponse { channel, message } => {
+            NetworkDataAction::SendBatchGetResponse { channel, message } => {
                 let _ = self
                     .swarm
                     .behaviour_mut()
@@ -582,6 +671,5 @@ impl NetworkEventLoop {
                     .send_response(channel, message);
             }
         }
-        true
     }
 }

@@ -14,10 +14,8 @@ use super::{
     },
 };
 
-/// Network action commands sent to the swarm event loop.
-pub(crate) enum NetworkAction {
-    /// Gracefully stop the network event loop.
-    Shutdown,
+/// Control-plane actions sent to the swarm event loop.
+pub(crate) enum NetworkControlAction {
     /// Discover peers via Kademlia DHT lookup (get_closest_peers).
     /// This queries the network for nodes closest to the given peer IDs,
     /// which populates the routing table with their addresses.
@@ -28,6 +26,10 @@ pub(crate) enum NetworkAction {
     AddAddresses {
         addresses: Vec<(PeerId, Vec<Multiaddr>)>,
     },
+}
+
+/// Data-plane protocol actions sent to the swarm event loop.
+pub(crate) enum NetworkDataAction {
     // Protocol-specific request actions
     // The response_tx is stored in PendingRequests and used to deliver the response directly
     SendStoreRequest {
