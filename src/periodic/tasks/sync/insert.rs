@@ -106,7 +106,7 @@ async fn insert_kcs_to_store(
             let kc_id = kc.kc_id;
             async move {
                 let result = ts
-                    .insert_knowledge_collection(&ual, &assertion, &metadata)
+                    .insert_knowledge_collection(&ual, &assertion, &metadata, None)
                     .await;
                 (kc_id, ual, result)
             }

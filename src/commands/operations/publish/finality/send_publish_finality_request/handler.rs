@@ -256,7 +256,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
 
         let total_triples = match self
             .triple_store_service
-            .insert_knowledge_collection(&ual, pending_data.dataset(), &Some(metadata))
+            .insert_knowledge_collection(&ual, pending_data.dataset(), &Some(metadata), None)
             .await
         {
             Ok(count) => {

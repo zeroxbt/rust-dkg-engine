@@ -314,13 +314,19 @@ impl TripleStoreService {
         knowledge_collection_ual: &str,
         dataset: &Assertion,
         metadata: &Option<KnowledgeCollectionMetadata>,
+        paranet_ual: Option<&str>,
     ) -> Result<usize, TripleStoreError> {
         // Build knowledge assets from the dataset
         let knowledge_assets = Self::build_knowledge_assets(knowledge_collection_ual, dataset);
 
         // Delegate to the triple store manager for RDF serialization and insertion
         self.triple_store_manager
-            .insert_knowledge_collection(knowledge_collection_ual, &knowledge_assets, metadata)
+            .insert_knowledge_collection(
+                knowledge_collection_ual,
+                &knowledge_assets,
+                metadata,
+                paranet_ual,
+            )
             .await
     }
 

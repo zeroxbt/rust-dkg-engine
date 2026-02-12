@@ -119,7 +119,7 @@ async fn insert_and_query_knowledge_collection() {
     );
 
     let inserted = manager
-        .insert_knowledge_collection(kc_ual, &[ka1.clone(), ka2.clone()], &Some(metadata))
+        .insert_knowledge_collection(kc_ual, &[ka1.clone(), ka2.clone()], &Some(metadata), None)
         .await
         .unwrap();
     assert!(inserted > 0);
@@ -213,7 +213,7 @@ async fn private_named_graph_only_contains_private_triples() {
     ]);
 
     manager
-        .insert_knowledge_collection(kc_ual, &[ka.clone()], &None)
+        .insert_knowledge_collection(kc_ual, &[ka.clone()], &None, None)
         .await
         .unwrap();
 
@@ -245,7 +245,7 @@ async fn get_metadata_without_metadata_is_empty() {
     );
 
     manager
-        .insert_knowledge_collection(kc_ual, &[ka], &None)
+        .insert_knowledge_collection(kc_ual, &[ka], &None, None)
         .await
         .unwrap();
 
@@ -278,7 +278,7 @@ async fn oxigraph_persists_across_reopen() {
         .await
         .unwrap();
     manager
-        .insert_knowledge_collection(kc_ual, &[ka], &None)
+        .insert_knowledge_collection(kc_ual, &[ka], &None, None)
         .await
         .unwrap();
 
@@ -311,7 +311,7 @@ async fn metadata_contains_expected_values() {
     );
 
     manager
-        .insert_knowledge_collection(kc_ual, &[ka], &Some(meta))
+        .insert_knowledge_collection(kc_ual, &[ka], &Some(meta), None)
         .await
         .unwrap();
 
@@ -336,7 +336,7 @@ async fn public_queries_do_not_return_private_triples() {
     ]);
 
     manager
-        .insert_knowledge_collection(kc_ual, &[ka], &None)
+        .insert_knowledge_collection(kc_ual, &[ka], &None, None)
         .await
         .unwrap();
 
@@ -450,7 +450,7 @@ async fn knowledge_collections_exist_batches_over_200() {
     );
 
     manager
-        .insert_knowledge_collection(kc_ual, &[ka], &None)
+        .insert_knowledge_collection(kc_ual, &[ka], &None, None)
         .await
         .unwrap();
 
@@ -486,7 +486,7 @@ async fn pagination_across_multiple_pages() {
     }
 
     manager
-        .insert_knowledge_collection(kc_ual, &assets, &None)
+        .insert_knowledge_collection(kc_ual, &assets, &None, None)
         .await
         .unwrap();
 
@@ -524,7 +524,7 @@ async fn get_named_graphs_all_burned_returns_empty() {
         .collect::<Vec<_>>();
 
     manager
-        .insert_knowledge_collection(kc_ual, &assets, &None)
+        .insert_knowledge_collection(kc_ual, &assets, &None, None)
         .await
         .unwrap();
 
@@ -548,7 +548,7 @@ async fn insert_invalid_triples_returns_error() {
     );
 
     let result = manager
-        .insert_knowledge_collection(kc_ual, &[ka], &None)
+        .insert_knowledge_collection(kc_ual, &[ka], &None, None)
         .await;
     assert!(result.is_err());
 }
@@ -725,7 +725,7 @@ async fn concurrency_limiter_serializes_updates() {
         let ka = ka.clone();
         tasks.push(tokio::spawn(async move {
             manager
-                .insert_knowledge_collection(kc_ual, &[ka], &None)
+                .insert_knowledge_collection(kc_ual, &[ka], &None, None)
                 .await
                 .unwrap();
         }));

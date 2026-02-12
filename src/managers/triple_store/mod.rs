@@ -202,6 +202,7 @@ impl TripleStoreManager {
     /// * `kc_ual` - The UAL of the knowledge collection
     /// * `knowledge_assets` - The list of knowledge assets with their triples
     /// * `metadata` - Metadata about the knowledge collection (publisher, block, tx, etc.)
+    /// * `paranet_ual` - Optional paranet UAL for creating paranet graph connections
     ///
     /// # Returns
     ///
@@ -211,8 +212,10 @@ impl TripleStoreManager {
         kc_ual: &str,
         knowledge_assets: &[KnowledgeAsset],
         metadata: &Option<KnowledgeCollectionMetadata>,
+        paranet_ual: Option<&str>,
     ) -> Result<usize> {
         let mut total_triples = 0;
+        let mut all_named_graphs: Vec<String> = Vec::new();
 
         // Build public named graphs
         let mut public_graphs_insert = String::new();
@@ -221,6 +224,7 @@ impl TripleStoreManager {
 
         for ka in knowledge_assets {
             let graph_uri = format!("{}/public", ka.ual());
+            all_named_graphs.push(graph_uri.clone());
 
             // GRAPH <ual/public> { triples }
             public_graphs_insert.push_str(&format!("  GRAPH <{}> {{\n", graph_uri));
@@ -265,6 +269,7 @@ impl TripleStoreManager {
                 && !private_triples.is_empty()
             {
                 let graph_uri = format!("{}/private", ka.ual());
+                all_named_graphs.push(graph_uri.clone());
 
                 private_graphs_insert.push_str(&format!("  GRAPH <{}> {{\n", graph_uri));
                 for triple in private_triples {
@@ -350,6 +355,24 @@ impl TripleStoreManager {
             ));
         }
 
+        // Optional paranet graph connections
+        let mut paranet_graph_insert = String::new();
+        if let Some(paranet_ual) = paranet_ual
+            && !all_named_graphs.is_empty()
+        {
+            paranet_graph_insert.push_str(&format!("  GRAPH <{}> {{\n", paranet_ual));
+            for graph_uri in &all_named_graphs {
+                paranet_graph_insert.push_str(&format!(
+                    "    <{}> <{}> <{}> .\n",
+                    paranet_ual,
+                    predicates::HAS_NAMED_GRAPH,
+                    graph_uri
+                ));
+            }
+            paranet_graph_insert.push_str("  }\n");
+            total_triples += all_named_graphs.len();
+        }
+
         // Build the final INSERT DATA query
         let insert_query = format!(
             r#"PREFIX schema: <http://schema.org/>
@@ -358,6 +381,7 @@ impl TripleStoreManager {
                 {}{}  }}
                 GRAPH <{}> {{
                 {}{}{}  }}
+                {}
                 }}"#,
             public_graphs_insert,
             private_graphs_insert,
@@ -368,6 +392,7 @@ impl TripleStoreManager {
             connection_public_metadata,
             connection_private_metadata,
             metadata_triples,
+            paranet_graph_insert,
         );
 
         tracing::trace!(
@@ -387,7 +412,6 @@ impl TripleStoreManager {
 
         Ok(total_triples)
     }
-
     // ========== Knowledge Asset Operations ==========
 
     /// Get knowledge asset from its named graph (public or private).

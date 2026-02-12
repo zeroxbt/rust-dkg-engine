@@ -55,7 +55,7 @@ async fn test_blazegraph_insert_and_query() {
     );
 
     manager
-        .insert_knowledge_collection(kc_ual, &[ka], &None)
+        .insert_knowledge_collection(kc_ual, &[ka], &None, None)
         .await
         .unwrap();
 
