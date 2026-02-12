@@ -15,6 +15,11 @@ use crate::{
     periodic::tasks::cleanup::CleanupConfig,
 };
 
+const PERIODIC_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(120);
+const COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(120);
+const NETWORK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+const HTTP_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+
 pub(crate) async fn run(
     context: Arc<Context>,
     command_executor: CommandExecutor,
@@ -34,10 +39,10 @@ pub(crate) async fn run(
     let (http_shutdown_tx, http_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
     // Spawn command executor task (executor is consumed)
-    let execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
+    let mut execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
 
     let periodic_shutdown = CancellationToken::new();
-    let periodic_handle = tokio::task::spawn(periodic::run_all(
+    let mut periodic_handle = tokio::task::spawn(periodic::run_all(
         Arc::clone(&context),
         cleanup_config,
         periodic_shutdown.clone(),
@@ -97,9 +102,17 @@ pub(crate) async fn run(
 
     // Step 3: Wait for periodic tasks to finish current iteration and exit
     tracing::info!("Waiting for periodic tasks to shut down...");
-    match periodic_handle.await {
-        Ok(()) => tracing::info!("Periodic tasks shut down cleanly"),
-        Err(e) => tracing::error!("Periodic tasks panicked: {:?}", e),
+    match tokio::time::timeout(PERIODIC_SHUTDOWN_TIMEOUT, &mut periodic_handle).await {
+        Ok(Ok(())) => tracing::info!("Periodic tasks shut down cleanly"),
+        Ok(Err(e)) => tracing::error!("Periodic tasks panicked: {:?}", e),
+        Err(_) => {
+            tracing::warn!(
+                timeout_secs = PERIODIC_SHUTDOWN_TIMEOUT.as_secs(),
+                "Periodic tasks shutdown timeout, aborting periodic task group"
+            );
+            periodic_handle.abort();
+            let _ = periodic_handle.await;
+        }
     }
 
     // Step 4: Signal command scheduler to stop accepting new commands
@@ -110,9 +123,22 @@ pub(crate) async fn run(
 
     // Step 6: Wait for command executor to drain pending commands
     tracing::info!("Waiting for command executor to drain...");
-    match execute_commands_task.await {
-        Ok(()) => tracing::info!("Command executor shut down cleanly"),
-        Err(e) => tracing::error!("Command executor task panicked: {:?}", e),
+    match tokio::time::timeout(
+        COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT,
+        &mut execute_commands_task,
+    )
+    .await
+    {
+        Ok(Ok(())) => tracing::info!("Command executor shut down cleanly"),
+        Ok(Err(e)) => tracing::error!("Command executor task panicked: {:?}", e),
+        Err(_) => {
+            tracing::warn!(
+                timeout_secs = COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT.as_secs(),
+                "Command executor shutdown timeout, aborting command executor task"
+            );
+            execute_commands_task.abort();
+            let _ = execute_commands_task.await;
+        }
     }
 
     // Step 7: Signal network manager event loop to stop
@@ -120,18 +146,24 @@ pub(crate) async fn run(
 
     // Step 8: Wait for network manager to exit
     tracing::info!("Waiting for network manager to shut down...");
-    match tokio::time::timeout(Duration::from_secs(5), network_event_loop_task).await {
+    match tokio::time::timeout(NETWORK_SHUTDOWN_TIMEOUT, network_event_loop_task).await {
         Ok(Ok(())) => tracing::info!("Network manager shut down cleanly"),
         Ok(Err(e)) => tracing::error!("Network task panicked: {:?}", e),
-        Err(_) => tracing::warn!("Network manager shutdown timeout"),
+        Err(_) => tracing::warn!(
+            timeout_secs = NETWORK_SHUTDOWN_TIMEOUT.as_secs(),
+            "Network manager shutdown timeout"
+        ),
     }
 
     // Step 9: Wait for HTTP server to finish in-flight requests
     tracing::info!("Waiting for HTTP server to shut down...");
-    match tokio::time::timeout(Duration::from_secs(5), handle_http_events_task).await {
+    match tokio::time::timeout(HTTP_SHUTDOWN_TIMEOUT, handle_http_events_task).await {
         Ok(Ok(())) => tracing::info!("HTTP server shut down cleanly"),
         Ok(Err(e)) => tracing::error!("HTTP task panicked: {:?}", e),
-        Err(_) => tracing::warn!("HTTP server shutdown timeout"),
+        Err(_) => tracing::warn!(
+            timeout_secs = HTTP_SHUTDOWN_TIMEOUT.as_secs(),
+            "HTTP server shutdown timeout"
+        ),
     }
 
     // Step 10: Flush OpenTelemetry traces
