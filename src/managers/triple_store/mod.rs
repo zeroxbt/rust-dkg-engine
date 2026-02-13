@@ -13,7 +13,10 @@ pub(crate) use config::{
 };
 use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
-pub(crate) use rdf::{extract_subject, group_triples_by_subject, parse_metadata_from_triples};
+pub(crate) use rdf::{
+    compare_js_default_string_order, extract_subject, group_triples_by_subject,
+    parse_metadata_from_triples,
+};
 use serde::Deserialize;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 pub(crate) use types::GraphVisibility;
@@ -593,6 +596,25 @@ impl TripleStoreManager {
         );
 
         self.backend_construct(&query, self.config.timeouts.query_timeout())
+            .await
+    }
+
+    /// Delete only the publishTime metadata triple for a knowledge collection.
+    ///
+    /// This is used by paranet sync before re-inserting metadata so publishTime reflects
+    /// the latest sync insert without duplicating historical values.
+    pub(crate) async fn delete_publish_time_metadata(&self, kc_ual: &str) -> Result<()> {
+        let query = format!(
+            r#"DELETE WHERE {{
+                GRAPH <{metadata}> {{
+                    <{kc_ual}> <{publish_time}> ?o .
+                }}
+            }}"#,
+            metadata = named_graphs::METADATA,
+            publish_time = predicates::PUBLISH_TIME,
+        );
+
+        self.backend_update(&query, self.config.timeouts.insert_timeout())
             .await
     }
 

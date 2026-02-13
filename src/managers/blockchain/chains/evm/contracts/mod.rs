@@ -23,7 +23,7 @@ pub(crate) use identity_storage::IdentityStorage;
 pub(crate) use kc_storage::KnowledgeCollectionStorage;
 pub(crate) use multicall::Multicall3;
 pub(crate) use params::ParametersStorage;
-pub(crate) use paranet::{ParanetsRegistry, PermissionedNode};
+pub(crate) use paranet::{Paranet, ParanetsRegistry, PermissionedNode};
 pub(crate) use profile::Profile;
 pub(crate) use random_sampling::RandomSampling;
 pub(crate) use random_sampling_storage::RandomSamplingStorage;
@@ -56,6 +56,7 @@ pub(crate) struct Contracts {
     sharding_table_storage: ShardingTableStorage::ShardingTableStorageInstance<BlockchainProvider>,
     token: Token::TokenInstance<BlockchainProvider>,
     chronos: Chronos::ChronosInstance<BlockchainProvider>,
+    paranet: Option<Paranet::ParanetInstance<BlockchainProvider>>,
     paranets_registry: Option<ParanetsRegistry::ParanetsRegistryInstance<BlockchainProvider>>,
     multicall3: Multicall3::Multicall3Instance<BlockchainProvider>,
     random_sampling: RandomSampling::RandomSamplingInstance<BlockchainProvider>,
@@ -123,6 +124,14 @@ impl Contracts {
         })
     }
 
+    pub(crate) fn paranet(
+        &self,
+    ) -> Result<&Paranet::ParanetInstance<BlockchainProvider>, BlockchainError> {
+        self.paranet.as_ref().ok_or_else(|| {
+            BlockchainError::Custom("Paranet contract is not initialized".to_string())
+        })
+    }
+
     pub(crate) fn multicall3(&self) -> &Multicall3::Multicall3Instance<BlockchainProvider> {
         &self.multicall3
     }
@@ -166,6 +175,13 @@ impl Contracts {
                     BlockchainError::Custom(
                         "No KnowledgeCollectionStorage contracts initialized".to_string(),
                     )
+                }),
+            ContractName::Paranet => self
+                .paranet
+                .as_ref()
+                .map(|paranet| *paranet.address())
+                .ok_or_else(|| {
+                    BlockchainError::Custom("Paranet contract is not initialized".to_string())
                 }),
             ContractName::ParanetsRegistry => self
                 .paranets_registry
@@ -240,6 +256,9 @@ impl Contracts {
             ContractName::ParanetsRegistry => {
                 self.paranets_registry =
                     Some(ParanetsRegistry::new(contract_address, provider.clone()));
+            }
+            ContractName::Paranet => {
+                self.paranet = Some(Paranet::new(contract_address, provider.clone()));
             }
         };
 
@@ -357,6 +376,15 @@ pub(crate) async fn initialize_contracts(
             ),
             provider.clone(),
         ),
+        paranet: Some(Paranet::new(
+            Address::from(
+                hub.getContractAddress("Paranet".to_string())
+                    .call()
+                    .await?
+                    .0,
+            ),
+            provider.clone(),
+        )),
         paranets_registry: Some(ParanetsRegistry::new(
             Address::from(
                 hub.getContractAddress("ParanetsRegistry".to_string())

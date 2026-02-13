@@ -7,7 +7,7 @@ use crate::{
     controllers::{http_api_controller::router::HttpApiConfig, rpc_controller::RpcConfig},
     logger::{LoggerConfig, TelemetryConfig},
     managers::{ManagersConfig, ManagersConfigRaw},
-    periodic::tasks::cleanup::CleanupConfig,
+    periodic::tasks::{cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, sync::SyncConfig},
 };
 
 /// Centralized application paths derived from the root data directory.
@@ -55,6 +55,8 @@ pub(crate) struct ConfigRaw {
     pub http_api: HttpApiConfig,
     pub rpc: RpcConfig,
     pub cleanup: CleanupConfig,
+    pub sync: SyncConfig,
+    pub paranet_sync: ParanetSyncConfig,
     pub logger: LoggerConfig,
     pub telemetry: TelemetryConfig,
 }
@@ -66,6 +68,8 @@ pub(crate) struct Config {
     pub http_api: HttpApiConfig,
     pub rpc: RpcConfig,
     pub cleanup: CleanupConfig,
+    pub sync: SyncConfig,
+    pub paranet_sync: ParanetSyncConfig,
     pub logger: LoggerConfig,
     pub telemetry: TelemetryConfig,
 }
@@ -78,6 +82,8 @@ impl ConfigRaw {
             http_api: self.http_api,
             rpc: self.rpc,
             cleanup: self.cleanup,
+            sync: self.sync,
+            paranet_sync: self.paranet_sync,
             logger: self.logger,
             telemetry: self.telemetry,
         })

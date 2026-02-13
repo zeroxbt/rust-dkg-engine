@@ -388,6 +388,16 @@ impl TripleStoreService {
             .unwrap_or_default()
     }
 
+    /// Remove publishTime metadata triple for a knowledge collection.
+    pub(crate) async fn delete_publish_time_metadata(
+        &self,
+        knowledge_collection_ual: &str,
+    ) -> Result<(), TripleStoreError> {
+        self.triple_store_manager
+            .delete_publish_time_metadata(knowledge_collection_ual)
+            .await
+    }
+
     /// Build knowledge assets from a dataset.
     ///
     /// This contains the DKG business logic:

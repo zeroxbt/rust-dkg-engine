@@ -5,7 +5,7 @@ use crate::{
         BlockchainManager,
         blockchain::{chains::evm::PermissionedNode, error::BlockchainError},
     },
-    types::{AccessPolicy, BlockchainId},
+    types::{AccessPolicy, BlockchainId, ParanetKcLocator},
 };
 
 impl BlockchainManager {
@@ -49,6 +49,32 @@ impl BlockchainManager {
         let blockchain_impl = self.chain(blockchain)?;
         blockchain_impl
             .is_knowledge_collection_registered(paranet_id, knowledge_collection_id)
+            .await
+    }
+
+    /// Get the total number of knowledge collections registered in a paranet.
+    pub(crate) async fn get_paranet_knowledge_collection_count(
+        &self,
+        blockchain: &BlockchainId,
+        paranet_id: B256,
+    ) -> Result<u64, BlockchainError> {
+        let blockchain_impl = self.chain(blockchain)?;
+        blockchain_impl
+            .get_paranet_knowledge_collection_count(paranet_id)
+            .await
+    }
+
+    /// Get knowledge collection locators from a paranet with pagination.
+    pub(crate) async fn get_paranet_knowledge_collection_locators_with_pagination(
+        &self,
+        blockchain: &BlockchainId,
+        paranet_id: B256,
+        offset: u64,
+        limit: u64,
+    ) -> Result<Vec<ParanetKcLocator>, BlockchainError> {
+        let blockchain_impl = self.chain(blockchain)?;
+        blockchain_impl
+            .get_paranet_knowledge_collection_locators_with_pagination(paranet_id, offset, limit)
             .await
     }
 }

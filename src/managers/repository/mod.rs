@@ -2,7 +2,7 @@ mod config;
 pub(crate) mod error;
 mod manager;
 mod migrations;
-mod models;
+pub(crate) mod models;
 mod repositories;
 mod types;
 

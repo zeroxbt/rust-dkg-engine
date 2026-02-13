@@ -7,7 +7,9 @@ use crate::{
         key_value_store::PublishTmpDatasetStore,
         network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
     },
-    services::{AssertionValidationService, PeerService, Services, TripleStoreService},
+    services::{
+        AssertionValidationService, GetFetchService, PeerService, Services, TripleStoreService,
+    },
     state::ResponseChannels,
 };
 
@@ -54,6 +56,10 @@ impl Context {
 
     pub(crate) fn assertion_validation_service(&self) -> &Arc<AssertionValidationService> {
         &self.services.assertion_validation
+    }
+
+    pub(crate) fn get_fetch_service(&self) -> &Arc<GetFetchService> {
+        &self.services.get_fetch
     }
 
     pub(crate) fn peer_service(&self) -> &Arc<PeerService> {

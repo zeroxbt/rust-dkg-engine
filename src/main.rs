@@ -91,6 +91,8 @@ async fn main() {
         controllers.rpc_router,
         controllers.http_router,
         config.cleanup.clone(),
+        config.sync.clone(),
+        config.paranet_sync.clone(),
     )
     .await;
 }

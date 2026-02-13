@@ -48,6 +48,7 @@ pub(crate) enum ContractName {
     Profile,
     ParametersStorage,
     KnowledgeCollectionStorage,
+    Paranet,
     ParanetsRegistry,
 }
 
@@ -62,6 +63,7 @@ impl ContractName {
             ContractName::Profile => "Profile",
             ContractName::ParametersStorage => "ParametersStorage",
             ContractName::KnowledgeCollectionStorage => "KnowledgeCollectionStorage",
+            ContractName::Paranet => "Paranet",
             ContractName::ParanetsRegistry => "ParanetsRegistry",
         }
     }
@@ -80,6 +82,7 @@ impl FromStr for ContractName {
             "Profile" => Ok(ContractName::Profile),
             "ParametersStorage" => Ok(ContractName::ParametersStorage),
             "KnowledgeCollectionStorage" => Ok(ContractName::KnowledgeCollectionStorage),
+            "Paranet" => Ok(ContractName::Paranet),
             "ParanetsRegistry" => Ok(ContractName::ParanetsRegistry),
             _ => Err(format!("'{}' is not a valid contract name", s)),
         }

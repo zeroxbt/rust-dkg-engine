@@ -31,6 +31,8 @@ use crate::{
         CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
         ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
     },
+    periodic::tasks::paranet_sync::ParanetSyncConfig,
+    periodic::tasks::sync::SyncConfig,
 };
 
 /// Returns the default [`ConfigRaw`] for the given environment name.
@@ -69,6 +71,36 @@ fn cleanup() -> CleanupConfig {
             ttl_secs: 604800,
             batch_size: 1000,
         },
+    }
+}
+
+fn paranet_sync() -> ParanetSyncConfig {
+    ParanetSyncConfig {
+        enabled: false,
+        interval_secs: 60,
+        batch_size: 50,
+        max_in_flight: 3,
+        retries_limit: 3,
+        retry_delay_secs: 60,
+        sync_paranets: Vec::new(),
+    }
+}
+
+fn sync() -> SyncConfig {
+    SyncConfig {
+        enabled: true,
+        period_catching_up_secs: 0,
+        period_idle_secs: 30,
+        no_peers_retry_delay_secs: 5,
+        max_retry_attempts: 2,
+        max_new_kcs_per_contract: 1000,
+        filter_batch_size: 100,
+        network_fetch_batch_size: 100,
+        max_assets_per_fetch_batch: 10_000,
+        pipeline_channel_buffer: 6,
+        retry_base_delay_secs: 5,
+        retry_max_delay_secs: 300,
+        retry_jitter_secs: 2,
     }
 }
 
@@ -165,6 +197,8 @@ fn development() -> ConfigRaw {
         },
         telemetry: telemetry(true),
         cleanup: cleanup(),
+        sync: sync(),
+        paranet_sync: paranet_sync(),
         http_api: http_api(),
         rpc: rpc(),
         managers: ManagersConfigRaw {
@@ -225,6 +259,8 @@ fn testnet() -> ConfigRaw {
         },
         telemetry: telemetry(false),
         cleanup: cleanup(),
+        sync: sync(),
+        paranet_sync: paranet_sync(),
         http_api: http_api(),
         rpc: rpc(),
         managers: ManagersConfigRaw {
@@ -304,6 +340,8 @@ fn mainnet() -> ConfigRaw {
         },
         telemetry: telemetry(false),
         cleanup: cleanup(),
+        sync: sync(),
+        paranet_sync: paranet_sync(),
         http_api: http_api(),
         rpc: rpc(),
         managers: ManagersConfigRaw {

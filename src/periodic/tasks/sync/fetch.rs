@@ -14,10 +14,7 @@ use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::{
-    MAX_ASSETS_PER_FETCH_BATCH, NETWORK_FETCH_BATCH_SIZE,
-    types::{FetchStats, FetchedKc, KcToSync},
-};
+use super::types::{FetchStats, FetchedKc, KcToSync};
 use crate::{
     commands::operations::batch_get::handle_batch_get_request::UAL_MAX_LIMIT,
     managers::{
@@ -51,6 +48,8 @@ pub(crate) const CONCURRENT_PEERS: usize = 3;
 )]
 pub(crate) async fn fetch_task(
     mut rx: mpsc::Receiver<Vec<KcToSync>>,
+    network_fetch_batch_size: usize,
+    max_assets_per_fetch_batch: u64,
     blockchain_id: BlockchainId,
     network_manager: Arc<NetworkManager>,
     assertion_validation_service: Arc<AssertionValidationService>,
@@ -58,6 +57,8 @@ pub(crate) async fn fetch_task(
     tx: mpsc::Sender<Vec<FetchedKc>>,
 ) -> FetchStats {
     let task_start = Instant::now();
+    let network_fetch_batch_size = network_fetch_batch_size.max(1);
+    let max_assets_per_fetch_batch = max_assets_per_fetch_batch.max(1);
     let mut failures: Vec<u64> = Vec::new();
     let mut total_fetched = 0usize;
     let mut total_received = 0usize;
@@ -129,7 +130,7 @@ pub(crate) async fn fetch_task(
         accumulated.extend(batch);
 
         // Process when we have enough KCs to start fetching, or when channel is empty
-        while accumulated.len() >= NETWORK_FETCH_BATCH_SIZE
+        while accumulated.len() >= network_fetch_batch_size
             || (!accumulated.is_empty() && rx.is_empty())
         {
             let mut assets_total = 0u64;
@@ -139,7 +140,7 @@ pub(crate) async fn fetch_task(
                     break;
                 }
                 let kc_assets = estimate_asset_count(&kc.token_ids);
-                if take > 0 && assets_total.saturating_add(kc_assets) > MAX_ASSETS_PER_FETCH_BATCH {
+                if take > 0 && assets_total.saturating_add(kc_assets) > max_assets_per_fetch_batch {
                     break;
                 }
                 assets_total = assets_total.saturating_add(kc_assets);

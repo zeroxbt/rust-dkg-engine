@@ -1,6 +1,6 @@
 //! RDF utilities for line-based triples (N-Triples/N-Quads).
 
-use std::collections::HashMap;
+use std::{cmp::Ordering, collections::HashMap};
 
 use super::query::predicates;
 use crate::types::KnowledgeCollectionMetadata;
@@ -78,10 +78,101 @@ pub(crate) fn group_triples_by_subject<'a>(triples: &[&'a str]) -> Vec<Vec<&'a s
     groups.sort_by(|a, b| {
         let subj_a = a.first().and_then(|t| extract_subject(t)).unwrap_or("");
         let subj_b = b.first().and_then(|t| extract_subject(t)).unwrap_or("");
-        subj_a.cmp(subj_b)
+        compare_subject_keys_js_locale_like(subj_a, subj_b)
     });
 
     groups
+}
+
+pub(crate) fn compare_js_default_string_order(a: &str, b: &str) -> Ordering {
+    let mut a_units = a.encode_utf16();
+    let mut b_units = b.encode_utf16();
+
+    loop {
+        match (a_units.next(), b_units.next()) {
+            (Some(au), Some(bu)) => match au.cmp(&bu) {
+                Ordering::Equal => {}
+                ord => return ord,
+            },
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (None, None) => return Ordering::Equal,
+        }
+    }
+}
+
+fn compare_subject_keys_js_locale_like(a: &str, b: &str) -> Ordering {
+    let mut a_units = a.encode_utf16();
+    let mut b_units = b.encode_utf16();
+
+    loop {
+        match (a_units.next(), b_units.next()) {
+            (Some(au), Some(bu)) => {
+                let al = ascii_lower_u16(au);
+                let bl = ascii_lower_u16(bu);
+
+                if al == bl {
+                    continue;
+                }
+
+                let a_class = ascii_sort_class(al);
+                let b_class = ascii_sort_class(bl);
+                match a_class.cmp(&b_class) {
+                    Ordering::Equal => match al.cmp(&bl) {
+                        Ordering::Equal => match au.cmp(&bu) {
+                            Ordering::Equal => {}
+                            ord => return ord,
+                        },
+                        ord => return ord,
+                    },
+                    ord => return ord,
+                }
+            }
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (None, None) => return Ordering::Equal,
+        }
+    }
+}
+
+fn ascii_sort_class(code_unit: u16) -> u8 {
+    if is_ascii_punctuation(code_unit) {
+        0
+    } else if is_ascii_digit(code_unit) {
+        1
+    } else if is_ascii_alpha(code_unit) {
+        2
+    } else {
+        3
+    }
+}
+
+fn ascii_lower_u16(code_unit: u16) -> u16 {
+    if is_ascii_upper(code_unit) {
+        code_unit + 32
+    } else {
+        code_unit
+    }
+}
+
+fn is_ascii_upper(code_unit: u16) -> bool {
+    (b'A' as u16..=b'Z' as u16).contains(&code_unit)
+}
+
+fn is_ascii_alpha(code_unit: u16) -> bool {
+    (b'A' as u16..=b'Z' as u16).contains(&code_unit)
+        || (b'a' as u16..=b'z' as u16).contains(&code_unit)
+}
+
+fn is_ascii_digit(code_unit: u16) -> bool {
+    (b'0' as u16..=b'9' as u16).contains(&code_unit)
+}
+
+fn is_ascii_punctuation(code_unit: u16) -> bool {
+    matches!(
+        code_unit,
+        0x21..=0x2F | 0x3A..=0x40 | 0x5B..=0x60 | 0x7B..=0x7E
+    )
 }
 
 /// Extract a quoted string value from an RDF triple.
@@ -307,6 +398,46 @@ mod tests {
         assert!(groups[0][0].contains("/a>"));
         assert!(groups[1][0].contains("/m>"));
         assert!(groups[2][0].contains("/z>"));
+    }
+
+    #[test]
+    fn test_group_triples_sorting_case_matches_js_locale_compare() {
+        // JS localeCompare sorts "<uuid:app...>" before "<uuid:D...>".
+        let triples = vec![
+            r#"<uuid:DzyraSwarm> <http://schema.org/name> "D.Zyra's Input" ."#,
+            r#"<uuid:appreciation> <http://schema.org/name> "Appreciation" ."#,
+        ];
+
+        let groups = group_triples_by_subject(&triples);
+        assert_eq!(groups.len(), 2);
+        assert!(groups[0][0].contains("<uuid:appreciation>"));
+        assert!(groups[1][0].contains("<uuid:DzyraSwarm>"));
+    }
+
+    #[test]
+    fn test_group_triples_sorting_punctuation_before_digits_matches_js() {
+        // JS localeCompare sorts "<uuid:gemini:2.0:flash>" before "<uuid:gemini2.0flash>".
+        let triples = vec![
+            r#"<uuid:gemini2.0flash> <http://schema.org/name> "Gemini 2.0 Flash" ."#,
+            r#"<uuid:gemini:2.0:flash> <http://schema.org/name> "Gemini 2.0 Flash" ."#,
+        ];
+
+        let groups = group_triples_by_subject(&triples);
+        assert_eq!(groups.len(), 2);
+        assert!(groups[0][0].contains("<uuid:gemini:2.0:flash>"));
+        assert!(groups[1][0].contains("<uuid:gemini2.0flash>"));
+    }
+
+    #[test]
+    fn test_compare_js_default_string_order_uses_utf16_code_units() {
+        // JS default Array.sort compares UTF-16 code units. This differs from Rust's
+        // scalar-value ordering for some non-BMP vs BMP cases.
+        let astral = "a\u{10000}";
+        let bmp_private_use = "a\u{E000}";
+        assert_eq!(
+            compare_js_default_string_order(astral, bmp_private_use),
+            Ordering::Less
+        );
     }
 
     #[test]

@@ -11,6 +11,7 @@ use crate::managers::repository::{
         blockchain_repository::BlockchainRepository,
         finality_status_repository::FinalityStatusRepository, kc_sync_repository::KcSyncRepository,
         operation_repository::OperationRepository,
+        paranet_kc_sync_repository::ParanetKcSyncRepository,
         proof_challenge_repository::ProofChallengeRepository,
         triples_insert_count_repository::TriplesInsertCountRepository,
     },
@@ -22,6 +23,7 @@ pub(crate) struct RepositoryManager {
     finality_status_repository: FinalityStatusRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
     kc_sync_repository: KcSyncRepository,
+    paranet_kc_sync_repository: ParanetKcSyncRepository,
     proof_challenge_repository: ProofChallengeRepository,
 }
 
@@ -63,6 +65,7 @@ impl RepositoryManager {
             finality_status_repository: FinalityStatusRepository::new(Arc::clone(&conn)),
             triples_insert_count_repository: TriplesInsertCountRepository::new(Arc::clone(&conn)),
             kc_sync_repository: KcSyncRepository::new(Arc::clone(&conn)),
+            paranet_kc_sync_repository: ParanetKcSyncRepository::new(Arc::clone(&conn)),
             proof_challenge_repository: ProofChallengeRepository::new(Arc::clone(&conn)),
         })
     }
@@ -85,6 +88,10 @@ impl RepositoryManager {
 
     pub(crate) fn kc_sync_repository(&self) -> &KcSyncRepository {
         &self.kc_sync_repository
+    }
+
+    pub(crate) fn paranet_kc_sync_repository(&self) -> &ParanetKcSyncRepository {
+        &self.paranet_kc_sync_repository
     }
 
     pub(crate) fn proof_challenge_repository(&self) -> &ProofChallengeRepository {

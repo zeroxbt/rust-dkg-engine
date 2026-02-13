@@ -4,7 +4,7 @@ use crate::{
     managers::{
         blockchain::BlockchainManager,
         triple_store::{
-            group_triples_by_subject,
+            compare_js_default_string_order, group_triples_by_subject,
             query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
             rdf::extract_quoted_string,
         },
@@ -121,7 +121,11 @@ impl AssertionValidationService {
                 return false;
             };
 
-            if !self.validate_public_assertion_with_root(&assertion.public, on_chain_root) {
+            if !self.validate_public_assertion_with_root(
+                &assertion.public,
+                on_chain_root,
+                parsed_ual,
+            ) {
                 tracing::debug!("Public assertion validation failed");
                 return false;
             }
@@ -152,13 +156,18 @@ impl AssertionValidationService {
         &self,
         public_triples: &[String],
         on_chain_root: &str,
+        parsed_ual: &ParsedUal,
     ) -> bool {
         let calculated_root = Self::calculate_public_merkle_root(public_triples);
 
         if calculated_root != on_chain_root {
+            let assertion_public = serialize_triples_for_log(public_triples);
             tracing::debug!(
+                kc_ual = %parsed_ual.knowledge_collection_ual(),
                 calculated = %calculated_root,
                 on_chain = %on_chain_root,
+                public_count = public_triples.len(),
+                assertion_public = %assertion_public,
                 "Merkle root mismatch"
             );
             return false;
@@ -169,17 +178,22 @@ impl AssertionValidationService {
 
     /// Calculate the merkle root for public triples.
     fn calculate_public_merkle_root(public_triples: &[String]) -> String {
+        // Network payloads can contain multiple triples per string entry.
+        // Normalize to one triple per line before grouping/sorting so hashing
+        // matches JS behavior and on-chain roots.
+        let normalized_public = Self::normalize_public_triples(public_triples);
+
         // Separate private-hash triples from regular public triples
         let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
 
         let mut filtered_public: Vec<&str> = Vec::new();
         let mut private_hash_triples: Vec<&str> = Vec::new();
 
-        for triple in public_triples {
+        for triple in &normalized_public {
             if triple.starts_with(&private_hash_prefix) {
-                private_hash_triples.push(triple);
+                private_hash_triples.push(triple.as_str());
             } else {
-                filtered_public.push(triple);
+                filtered_public.push(triple.as_str());
             }
         }
 
@@ -192,13 +206,22 @@ impl AssertionValidationService {
             .iter()
             .flat_map(|group| {
                 let mut sorted_group: Vec<&str> = group.to_vec();
-                sorted_group.sort();
+                sorted_group.sort_by(|a, b| compare_js_default_string_order(a, b));
                 sorted_group.into_iter().map(String::from)
             })
             .collect();
 
         // Calculate merkle root
         validation::calculate_merkle_root(&sorted_flat)
+    }
+
+    fn normalize_public_triples(public_triples: &[String]) -> Vec<String> {
+        public_triples
+            .iter()
+            .flat_map(|entry| entry.lines())
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect()
     }
 
     /// Validate public assertion against on-chain merkle root.
@@ -229,9 +252,13 @@ impl AssertionValidationService {
             .ok_or_else(|| "Knowledge collection not found on-chain".to_string())?;
 
         if calculated_root != on_chain_root {
+            let assertion_public = serialize_triples_for_log(public_triples);
             tracing::debug!(
+                kc_ual = %parsed_ual.knowledge_collection_ual(),
                 calculated = %calculated_root,
                 on_chain = %on_chain_root,
+                public_count = public_triples.len(),
+                assertion_public = %assertion_public,
                 "Merkle root mismatch"
             );
             return Ok(false);
@@ -270,7 +297,7 @@ impl AssertionValidationService {
 
         // Sort private triples and calculate merkle root
         let mut sorted_private: Vec<String> = private_triples.to_vec();
-        sorted_private.sort();
+        sorted_private.sort_by(|a, b| compare_js_default_string_order(a, b));
 
         let calculated_root = validation::calculate_merkle_root(&sorted_private);
 
@@ -300,6 +327,10 @@ fn extract_private_merkle_root(triple: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+fn serialize_triples_for_log(triples: &[String]) -> String {
+    serde_json::to_string(triples).unwrap_or_else(|e| format!("\"<serialization_error:{}>\"", e))
 }
 
 #[cfg(test)]
@@ -350,5 +381,71 @@ mod tests {
 
         let triples_no_private = vec![r#"<subject> <http://schema.org/name> "Test" ."#.to_string()];
         assert!(!assertion_has_private_merkle_root(&triples_no_private));
+    }
+
+    #[test]
+    fn test_calculate_public_merkle_root_matches_known_paranet_kc() {
+        let triples = sample_kc_4210492_public_triples();
+        let root = AssertionValidationService::calculate_public_merkle_root(&triples);
+        assert_eq!(
+            root,
+            "0xf0c149201a9eb5a3b28bfa18e804ba792776ec5ec18225a051a010b18253c97e"
+        );
+    }
+
+    #[test]
+    fn test_calculate_public_merkle_root_matches_known_paranet_kc_chunked_payload() {
+        let triples = sample_kc_4210492_public_triples();
+
+        // Mimic ACK payloads where each entry may contain multiple complete lines.
+        let chunked: Vec<String> = triples.chunks(4).map(|chunk| chunk.join("\n")).collect();
+
+        let root = AssertionValidationService::calculate_public_merkle_root(&chunked);
+        assert_eq!(
+            root,
+            "0xf0c149201a9eb5a3b28bfa18e804ba792776ec5ec18225a051a010b18253c97e"
+        );
+    }
+
+    #[test]
+    fn test_private_sort_uses_js_default_utf16_order() {
+        let mut triples = ["a\u{E000}", "a\u{10000}"]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<String>>();
+        triples.sort_by(|a, b| compare_js_default_string_order(a, b));
+        assert_eq!(
+            triples,
+            vec!["a\u{10000}".to_string(), "a\u{E000}".to_string()]
+        );
+    }
+
+    fn sample_kc_4210492_public_triples() -> Vec<String> {
+        vec![
+            r#"<uuid:4b2ab12a-8011-4bd1-8189-6c2da145ed66> <http://schema.org/about> <uuid:DzyraSwarm> ."#.to_string(),
+            r#"<uuid:4b2ab12a-8011-4bd1-8189-6c2da145ed66> <http://schema.org/articleBody> "@DzyraSwarm Appreciate you stopping by and sharing that." ."#.to_string(),
+            r#"<uuid:4b2ab12a-8011-4bd1-8189-6c2da145ed66> <http://schema.org/author> <uuid:ross:power> ."#.to_string(),
+            r#"<uuid:4b2ab12a-8011-4bd1-8189-6c2da145ed66> <http://schema.org/dateCreated> "2024-01-03T00:47:00Z" ."#.to_string(),
+            r#"<uuid:4b2ab12a-8011-4bd1-8189-6c2da145ed66> <http://schema.org/headline> "Ross Power appreciates D.Zyra's input." ."#.to_string(),
+            r#"<uuid:4b2ab12a-8011-4bd1-8189-6c2da145ed66> <http://schema.org/keywords> <uuid:appreciation> ."#.to_string(),
+            r#"<uuid:4b2ab12a-8011-4bd1-8189-6c2da145ed66> <http://schema.org/keywords> <uuid:sharing> ."#.to_string(),
+            r#"<uuid:4b2ab12a-8011-4bd1-8189-6c2da145ed66> <http://schema.org/mentions> <uuid:d6f78b11-d1eb-466f-83b8-f18bd3622fc7> ."#.to_string(),
+            r#"<uuid:4b2ab12a-8011-4bd1-8189-6c2da145ed66> <http://schema.org/url> <https://twitter.com/rosspower/status/1951288768821928391> ."#.to_string(),
+            r#"<uuid:4b2ab12a-8011-4bd1-8189-6c2da145ed66> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/SocialMediaPosting> ."#.to_string(),
+            r#"<uuid:DzyraSwarm> <http://schema.org/name> "D.Zyra's Input" ."#.to_string(),
+            r#"<uuid:DzyraSwarm> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/Thing> ."#.to_string(),
+            r#"<uuid:appreciation> <http://schema.org/name> "Appreciation" ."#.to_string(),
+            r#"<uuid:appreciation> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/Text> ."#.to_string(),
+            r#"<uuid:d6f78b11-d1eb-466f-83b8-f18bd3622fc7> <http://schema.org/identifier> "@DzyraSwarm" ."#.to_string(),
+            r#"<uuid:d6f78b11-d1eb-466f-83b8-f18bd3622fc7> <http://schema.org/name> "D.Zyra" ."#.to_string(),
+            r#"<uuid:d6f78b11-d1eb-466f-83b8-f18bd3622fc7> <http://schema.org/url> <https://twitter.com/DzyraSwarm> ."#.to_string(),
+            r#"<uuid:d6f78b11-d1eb-466f-83b8-f18bd3622fc7> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/Person> ."#.to_string(),
+            r#"<uuid:ross:power> <http://schema.org/identifier> "@rosspower" ."#.to_string(),
+            r#"<uuid:ross:power> <http://schema.org/name> "Ross Power" ."#.to_string(),
+            r#"<uuid:ross:power> <http://schema.org/url> <https://twitter.com/rosspower> ."#.to_string(),
+            r#"<uuid:ross:power> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/Person> ."#.to_string(),
+            r#"<uuid:sharing> <http://schema.org/name> "Sharing" ."#.to_string(),
+            r#"<uuid:sharing> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/Text> ."#.to_string(),
+        ]
     }
 }

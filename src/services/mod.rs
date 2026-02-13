@@ -1,4 +1,5 @@
 pub(crate) mod assertion_validation;
+pub(crate) mod get_fetch;
 pub(crate) mod operation_status;
 pub(crate) mod peer;
 pub(crate) mod triple_store;
@@ -6,6 +7,7 @@ pub(crate) mod triple_store;
 use std::sync::Arc;
 
 pub(crate) use assertion_validation::AssertionValidationService;
+pub(crate) use get_fetch::{GetFetchRequest, GetFetchService, GetFetchSource};
 pub(crate) use operation_status::OperationStatusService;
 pub(crate) use peer::{PeerAddressStore, PeerService};
 pub(crate) use triple_store::TripleStoreService;
@@ -50,6 +52,7 @@ pub(crate) struct Services {
 
     // Validation services
     pub assertion_validation: Arc<AssertionValidationService>,
+    pub get_fetch: Arc<GetFetchService>,
 
     // Infrastructure services
     pub peer_service: Arc<PeerService>,
@@ -94,6 +97,15 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
 
     // Infrastructure services
     let peer_service = Arc::new(PeerService::new());
+
+    let get_fetch = Arc::new(GetFetchService::new(
+        Arc::clone(&managers.blockchain),
+        Arc::clone(&triple_store),
+        Arc::clone(&managers.network),
+        Arc::clone(&assertion_validation),
+        Arc::clone(&peer_service),
+    ));
+
     let peer_address_store = Arc::new(
         managers
             .key_value_store
@@ -115,6 +127,7 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
         get_operation,
         triple_store,
         assertion_validation,
+        get_fetch,
         peer_service,
         peer_address_store,
         publish_tmp_dataset_store,

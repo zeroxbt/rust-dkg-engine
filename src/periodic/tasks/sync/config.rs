@@ -1,0 +1,19 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SyncConfig {
+    pub enabled: bool,
+    pub period_catching_up_secs: u64,
+    pub period_idle_secs: u64,
+    pub no_peers_retry_delay_secs: u64,
+    pub max_retry_attempts: u32,
+    pub max_new_kcs_per_contract: u64,
+    pub filter_batch_size: usize,
+    pub network_fetch_batch_size: usize,
+    pub max_assets_per_fetch_batch: u64,
+    pub pipeline_channel_buffer: usize,
+    pub retry_base_delay_secs: u64,
+    pub retry_max_delay_secs: u64,
+    pub retry_jitter_secs: u64,
+}

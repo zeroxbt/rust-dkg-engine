@@ -1,3 +1,5 @@
+use alloy::primitives::Address;
+
 /// Access policy for paranet nodes (matches on-chain enum).
 /// OPEN = 0: Any node can participate
 /// PERMISSIONED = 1: Only approved nodes can participate
@@ -15,4 +17,11 @@ impl From<u8> for AccessPolicy {
             _ => AccessPolicy::Open,
         }
     }
+}
+
+/// Locator for a knowledge collection registered in a paranet.
+#[derive(Debug, Clone)]
+pub(crate) struct ParanetKcLocator {
+    pub knowledge_collection_storage_contract: Address,
+    pub knowledge_collection_token_id: u128,
 }

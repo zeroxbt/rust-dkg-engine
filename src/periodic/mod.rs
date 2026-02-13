@@ -10,10 +10,11 @@ use tasks::{
     claim_rewards::ClaimRewardsTask,
     cleanup::{CleanupConfig, CleanupTask},
     dial_peers::DialPeersTask,
+    paranet_sync::{ParanetSyncConfig, ParanetSyncTask},
     proving::ProvingTask,
     save_peer_addresses::SavePeerAddressesTask,
     sharding_table_check::ShardingTableCheckTask,
-    sync::SyncTask,
+    sync::{SyncConfig, SyncTask},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -100,7 +101,6 @@ impl_global_periodic_task!(SavePeerAddressesTask);
 impl_blockchain_periodic_task!(
     ShardingTableCheckTask,
     BlockchainEventListenerTask,
-    SyncTask,
     ProvingTask,
     ClaimRewardsTask,
 );
@@ -115,6 +115,8 @@ impl_blockchain_periodic_task!(
 pub(crate) async fn run_all(
     context: Arc<Context>,
     cleanup_config: CleanupConfig,
+    sync_config: SyncConfig,
+    paranet_sync_config: ParanetSyncConfig,
     shutdown: CancellationToken,
 ) {
     let mut set = tokio::task::JoinSet::new();
@@ -139,6 +141,34 @@ pub(crate) async fn run_all(
 
     // Per-blockchain periodic tasks
     for blockchain_id in blockchain_ids {
+        // Per-blockchain sync task has dedicated config and does not fit
+        // the generic BlockchainPeriodicTask registry helper.
+        {
+            let ctx = Arc::clone(&context);
+            let shutdown = shutdown.clone();
+            let blockchain_id = blockchain_id.clone();
+            let config = sync_config.clone();
+            set.spawn(async move {
+                SyncTask::new(ctx, config)
+                    .run(&blockchain_id, shutdown)
+                    .await;
+            });
+        }
+
+        // Per-blockchain paranet sync task has dedicated config and does not fit
+        // the generic BlockchainPeriodicTask registry helper.
+        {
+            let ctx = Arc::clone(&context);
+            let shutdown = shutdown.clone();
+            let blockchain_id = blockchain_id.clone();
+            let config = paranet_sync_config.clone();
+            set.spawn(async move {
+                ParanetSyncTask::new(ctx, config)
+                    .run(&blockchain_id, shutdown)
+                    .await;
+            });
+        }
+
         spawn_registered_blockchain_tasks!(
             &mut set,
             &context,
@@ -146,7 +176,6 @@ pub(crate) async fn run_all(
             &blockchain_id,
             ShardingTableCheckTask,
             BlockchainEventListenerTask,
-            SyncTask,
             ProvingTask,
             ClaimRewardsTask,
         );

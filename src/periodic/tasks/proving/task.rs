@@ -25,7 +25,10 @@ use crate::{
             protocols::{GetProtocol, ProtocolSpec},
         },
         repository::{ChallengeState, RepositoryManager},
-        triple_store::{group_triples_by_subject, query::subjects::PRIVATE_HASH_SUBJECT_PREFIX},
+        triple_store::{
+            compare_js_default_string_order, group_triples_by_subject,
+            query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
+        },
     },
     periodic::runner::run_with_shutdown,
     services::{AssertionValidationService, PeerService, TripleStoreService},
@@ -90,7 +93,7 @@ impl ProvingTask {
             .iter()
             .flat_map(|group| {
                 let mut sorted_group: Vec<&str> = group.to_vec();
-                sorted_group.sort();
+                sorted_group.sort_by(|a, b| compare_js_default_string_order(a, b));
                 sorted_group.into_iter().map(String::from)
             })
             .collect()

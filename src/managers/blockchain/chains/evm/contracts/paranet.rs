@@ -1,4 +1,15 @@
 #[allow(clippy::too_many_arguments)]
+pub(crate) mod paranet {
+    use alloy::sol;
+
+    sol!(
+        #[sol(rpc)]
+        Paranet,
+        "abi/Paranet.json"
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) mod paranets_registry {
     use alloy::sol;
 
@@ -9,4 +20,5 @@ pub(crate) mod paranets_registry {
     );
 }
 
+pub(crate) use paranet::Paranet;
 pub(crate) use paranets_registry::{ParanetLib::Node as PermissionedNode, ParanetsRegistry};

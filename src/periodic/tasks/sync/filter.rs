@@ -13,10 +13,7 @@ use std::{sync::Arc, time::Instant};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::{
-    FILTER_BATCH_SIZE,
-    types::{FilterStats, KcToSync},
-};
+use super::types::{FilterStats, KcToSync};
 use crate::{
     managers::blockchain::{
         Address, BlockchainId, BlockchainManager,
@@ -40,6 +37,7 @@ use crate::{
 )]
 pub(crate) async fn filter_task(
     pending_kc_ids: Vec<u64>,
+    filter_batch_size: usize,
     blockchain_id: BlockchainId,
     contract_address: Address,
     contract_addr_str: String,
@@ -59,7 +57,8 @@ pub(crate) async fn filter_task(
         .await
         .ok();
 
-    for chunk in pending_kc_ids.chunks(FILTER_BATCH_SIZE) {
+    let filter_batch_size = filter_batch_size.max(1);
+    for chunk in pending_kc_ids.chunks(filter_batch_size) {
         let batch_result = process_filter_batch(
             chunk,
             &blockchain_id,

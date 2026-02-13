@@ -10,8 +10,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
 use super::{
-    MAX_NEW_KCS_PER_CONTRACT, MAX_RETRY_ATTEMPTS, PIPELINE_CHANNEL_BUFFER, SYNC_PERIOD_CATCHING_UP,
-    SYNC_PERIOD_IDLE,
+    SyncConfig,
     fetch::fetch_task,
     filter::filter_task,
     insert::insert_task,
@@ -29,6 +28,7 @@ use crate::{
 };
 
 pub(crate) struct SyncTask {
+    config: SyncConfig,
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
     triple_store_service: Arc<TripleStoreService>,
@@ -38,8 +38,9 @@ pub(crate) struct SyncTask {
 }
 
 impl SyncTask {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(context: Arc<Context>, config: SyncConfig) -> Self {
         Self {
+            config,
             blockchain_manager: Arc::clone(context.blockchain_manager()),
             repository_manager: Arc::clone(context.repository_manager()),
             triple_store_service: Arc::clone(context.triple_store_service()),
@@ -78,8 +79,9 @@ impl SyncTask {
             .get_pending_kcs_for_contract(
                 blockchain_id.as_str(),
                 &contract_addr_str,
-                MAX_RETRY_ATTEMPTS,
-                MAX_NEW_KCS_PER_CONTRACT,
+                chrono::Utc::now().timestamp(),
+                self.config.max_retry_attempts,
+                self.config.max_new_kcs_per_contract,
             )
             .await
             .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
@@ -87,8 +89,9 @@ impl SyncTask {
         // Step 2: Enqueue new KCs if needed
 
         let existing_count = pending_kcs.len() as u64;
-        let enqueued = if existing_count < MAX_NEW_KCS_PER_CONTRACT {
-            let needed = MAX_NEW_KCS_PER_CONTRACT - existing_count;
+        let max_new_kcs_per_contract = self.config.max_new_kcs_per_contract;
+        let enqueued = if existing_count < max_new_kcs_per_contract {
+            let needed = max_new_kcs_per_contract - existing_count;
             let newly_enqueued = self
                 .enqueue_new_kcs(blockchain_id, contract_address, &contract_addr_str, needed)
                 .await?;
@@ -100,8 +103,9 @@ impl SyncTask {
                     .get_pending_kcs_for_contract(
                         blockchain_id.as_str(),
                         &contract_addr_str,
-                        MAX_RETRY_ATTEMPTS,
-                        MAX_NEW_KCS_PER_CONTRACT,
+                        chrono::Utc::now().timestamp(),
+                        self.config.max_retry_attempts,
+                        max_new_kcs_per_contract,
                     )
                     .await
                     .map_err(|e| format!("Failed to fetch pending KCs after enqueue: {}", e))?;
@@ -185,9 +189,14 @@ impl SyncTask {
         contract_address: Address,
         contract_addr_str: String,
     ) -> Result<(FilterStats, FetchStats, InsertStats), String> {
+        let pipeline_channel_buffer = self.config.pipeline_channel_buffer.max(1);
+        let filter_batch_size = self.config.filter_batch_size.max(1);
+        let network_fetch_batch_size = self.config.network_fetch_batch_size.max(1);
+        let max_assets_per_fetch_batch = self.config.max_assets_per_fetch_batch.max(1);
+
         // Create pipeline channels
-        let (filter_tx, filter_rx) = mpsc::channel::<Vec<KcToSync>>(PIPELINE_CHANNEL_BUFFER);
-        let (fetch_tx, fetch_rx) = mpsc::channel::<Vec<FetchedKc>>(PIPELINE_CHANNEL_BUFFER);
+        let (filter_tx, filter_rx) = mpsc::channel::<Vec<KcToSync>>(pipeline_channel_buffer);
+        let (fetch_tx, fetch_rx) = mpsc::channel::<Vec<FetchedKc>>(pipeline_channel_buffer);
 
         // Spawn filter task (with current span as parent for trace propagation)
         let filter_handle = {
@@ -199,6 +208,7 @@ impl SyncTask {
                 async move {
                     filter_task(
                         pending_kc_ids,
+                        filter_batch_size,
                         blockchain_id,
                         contract_address,
                         contract_addr_str,
@@ -222,6 +232,8 @@ impl SyncTask {
                 async move {
                     fetch_task(
                         filter_rx,
+                        network_fetch_batch_size,
+                        max_assets_per_fetch_batch,
                         blockchain_id,
                         network_manager,
                         assertion_validation_service,
@@ -335,7 +347,14 @@ impl SyncTask {
 
         if !all_failed.is_empty()
             && let Err(e) = repo
-                .increment_retry_count(blockchain_id.as_str(), contract_addr_str, &all_failed)
+                .increment_retry_count(
+                    blockchain_id.as_str(),
+                    contract_addr_str,
+                    &all_failed,
+                    self.config.retry_base_delay_secs,
+                    self.config.retry_max_delay_secs,
+                    self.config.retry_jitter_secs,
+                )
                 .await
         {
             tracing::error!(
@@ -426,9 +445,6 @@ impl SyncTask {
     }
 }
 
-/// Delay before retrying sync when not enough peers are connected
-const SYNC_NO_PEERS_RETRY_DELAY: Duration = Duration::from_secs(5);
-
 impl SyncTask {
     pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
         run_with_shutdown("sync", shutdown, || self.execute(blockchain_id)).await;
@@ -440,6 +456,18 @@ impl SyncTask {
         fields(blockchain_id = %blockchain_id)
     )]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
+        let idle_period = Duration::from_secs(self.config.period_idle_secs);
+        let catching_up_period = Duration::from_secs(self.config.period_catching_up_secs);
+        let no_peers_retry_delay = Duration::from_secs(self.config.no_peers_retry_delay_secs);
+
+        if !self.config.enabled {
+            tracing::trace!(
+                blockchain_id = %blockchain_id,
+                "Sync task disabled by configuration"
+            );
+            return idle_period;
+        }
+
         // Check if we have identified enough shard peers before attempting sync
         let total_shard_peers = self.peer_service.shard_peer_count(blockchain_id);
         let identified_peers = self.peer_service.identified_shard_peer_count(blockchain_id);
@@ -453,7 +481,7 @@ impl SyncTask {
                 required = min_required,
                 "Not enough shard peers identified yet, retrying later"
             );
-            return SYNC_NO_PEERS_RETRY_DELAY;
+            return no_peers_retry_delay;
         }
 
         tracing::debug!(
@@ -475,7 +503,7 @@ impl SyncTask {
                     error = %e,
                     "Failed to get KC storage contract addresses"
                 );
-                return SYNC_PERIOD_IDLE;
+                return idle_period;
             }
         };
 
@@ -551,13 +579,13 @@ impl SyncTask {
                 total_enqueued,
                 "Still catching up, scheduling immediate resync"
             );
-            SYNC_PERIOD_CATCHING_UP
+            catching_up_period
         } else {
             tracing::debug!(
                 blockchain_id = %blockchain_id,
                 "Caught up, scheduling idle poll"
             );
-            SYNC_PERIOD_IDLE
+            idle_period
         }
     }
 }

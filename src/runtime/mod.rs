@@ -12,7 +12,7 @@ use crate::{
     logger,
     managers::network::NetworkEventLoop,
     periodic,
-    periodic::tasks::cleanup::CleanupConfig,
+    periodic::tasks::{cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, sync::SyncConfig},
 };
 
 const PERIODIC_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(120);
@@ -27,6 +27,8 @@ pub(crate) async fn run(
     rpc_router: RpcRouter,
     http_router: Option<HttpApiRouter>,
     cleanup_config: CleanupConfig,
+    sync_config: SyncConfig,
+    paranet_sync_config: ParanetSyncConfig,
 ) {
     let command_scheduler = context.command_scheduler().clone();
     let network_manager = Arc::clone(context.network_manager());
@@ -45,6 +47,8 @@ pub(crate) async fn run(
     let mut periodic_handle = tokio::task::spawn(periodic::run_all(
         Arc::clone(&context),
         cleanup_config,
+        sync_config,
+        paranet_sync_config,
         periodic_shutdown.clone(),
     ));
 
