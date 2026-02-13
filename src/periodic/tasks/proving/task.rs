@@ -70,33 +70,33 @@ impl ProvingTask {
 
     /// Prepare quads for Merkle proof calculation.
     /// Groups by subject, separates private-hash triples, sorts each group.
-    fn prepare_quads_for_proof(public_triples: &[String]) -> Vec<String> {
+    fn prepare_quads_for_proof(public_triples: &[String]) -> Result<Vec<String>, String> {
         let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
 
-        let mut filtered_public: Vec<&str> = Vec::new();
-        let mut private_hash_triples: Vec<&str> = Vec::new();
+        let mut filtered_public: Vec<String> = Vec::new();
+        let mut private_hash_triples: Vec<String> = Vec::new();
 
         for triple in public_triples {
             if triple.starts_with(&private_hash_prefix) {
-                private_hash_triples.push(triple);
+                private_hash_triples.push(triple.clone());
             } else {
-                filtered_public.push(triple);
+                filtered_public.push(triple.clone());
             }
         }
 
         // Group by subject, then append private-hash groups
-        let mut grouped = group_triples_by_subject(&filtered_public);
-        grouped.extend(group_triples_by_subject(&private_hash_triples));
+        let mut grouped = group_triples_by_subject(&filtered_public)?;
+        grouped.extend(group_triples_by_subject(&private_hash_triples)?);
 
         // Sort each group and flatten
-        grouped
+        Ok(grouped
             .iter()
             .flat_map(|group| {
-                let mut sorted_group: Vec<&str> = group.to_vec();
+                let mut sorted_group: Vec<&str> = group.iter().map(String::as_str).collect();
                 sorted_group.sort_by(|a, b| compare_js_default_string_order(a, b));
                 sorted_group.into_iter().map(String::from)
             })
-            .collect()
+            .collect())
     }
 
     /// Load shard peers for the given blockchain.
@@ -602,7 +602,13 @@ impl ProvingTask {
         };
 
         // 7. Calculate Merkle proof
-        let prepared_quads = Self::prepare_quads_for_proof(&assertion.public);
+        let prepared_quads = match Self::prepare_quads_for_proof(&assertion.public) {
+            Ok(quads) => quads,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to prepare quads for proof");
+                return PROVING_PERIOD;
+            }
+        };
 
         let proof_result = match validation::calculate_merkle_proof(&prepared_quads, chunk_index) {
             Ok(result) => result,

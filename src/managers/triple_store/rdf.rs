@@ -2,6 +2,11 @@
 
 use std::{cmp::Ordering, collections::HashMap};
 
+use oxigraph::{
+    io::{RdfFormat, RdfParser, RdfSerializer},
+    model::{NamedOrBlankNode, Quad},
+};
+
 use super::query::predicates;
 use crate::types::KnowledgeCollectionMetadata;
 
@@ -34,54 +39,52 @@ pub(crate) fn extract_subject(triple: &str) -> Option<&str> {
     }
 }
 
-/// Groups RDF lines by their subject, sorted alphabetically by subject.
+/// Groups RDF lines by parsed subject using an RDF parser+serializer roundtrip.
 ///
-/// Each group contains all triples that share the same subject.
-/// Groups are sorted alphabetically by subject key to match the JS implementation
-/// which uses `groupNquadsBySubject(triples, true)` with sorting enabled.
-///
-/// # Examples
-///
-/// ```
-/// use triple_store::rdf::group_triples_by_subject;
-///
-/// let triples = vec![
-///     r#"<http://example.org/s2> <http://example.org/p1> "v3" ."#,
-///     r#"<http://example.org/s1> <http://example.org/p1> "v1" ."#,
-///     r#"<http://example.org/s1> <http://example.org/p2> "v2" ."#,
-/// ];
-///
-/// let groups = group_triples_by_subject(&triples);
-/// assert_eq!(groups.len(), 2);
-/// // Groups are sorted: s1 comes before s2
-/// assert_eq!(groups[0].len(), 2); // s1 has 2 triples
-/// assert_eq!(groups[1].len(), 1); // s2 has 1 triple
-/// ```
-pub(crate) fn group_triples_by_subject<'a>(triples: &[&'a str]) -> Vec<Vec<&'a str>> {
-    let mut groups: Vec<Vec<&'a str>> = Vec::new();
-    let mut subject_to_index: HashMap<&str, usize> = HashMap::new();
+/// This is closer to JS `groupNquadsBySubject` behavior, which parses RDF quads
+/// and then serializes each quad back before sorting/hashing.
+pub(crate) fn group_triples_by_subject(triples: &[String]) -> Result<Vec<Vec<String>>, String> {
+    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+    let mut subject_to_index: HashMap<String, usize> = HashMap::new();
+    let parser = RdfParser::from_format(RdfFormat::NQuads).lenient();
+    let joined = triples.join("\n");
 
-    for triple in triples {
-        if let Some(subject) = extract_subject(triple) {
-            if let Some(&idx) = subject_to_index.get(subject) {
-                groups[idx].push(triple);
-            } else {
-                let idx = groups.len();
-                subject_to_index.insert(subject, idx);
-                groups.push(vec![triple]);
-            }
+    for parsed in parser.for_reader(joined.as_bytes()) {
+        let quad = parsed.map_err(|e| format!("Failed to parse triple for grouping: {}", e))?;
+        let subject_key = subject_key_from_quad(&quad);
+        let quad_string = serialize_quad_nquads(&quad)?;
+
+        if let Some(&idx) = subject_to_index.get(&subject_key) {
+            groups[idx].1.push(quad_string);
+        } else {
+            let idx = groups.len();
+            subject_to_index.insert(subject_key.clone(), idx);
+            groups.push((subject_key, vec![quad_string]));
         }
     }
 
-    // Sort groups alphabetically by subject to match JS behavior
-    // JS calls groupNquadsBySubject with sort=true, which sorts by subject key
-    groups.sort_by(|a, b| {
-        let subj_a = a.first().and_then(|t| extract_subject(t)).unwrap_or("");
-        let subj_b = b.first().and_then(|t| extract_subject(t)).unwrap_or("");
-        compare_subject_keys_js_locale_like(subj_a, subj_b)
-    });
+    groups.sort_by(|a, b| compare_subject_keys_js_locale_like(a.0.as_str(), b.0.as_str()));
+    Ok(groups.into_iter().map(|(_, quads)| quads).collect())
+}
 
-    groups
+fn subject_key_from_quad(quad: &Quad) -> String {
+    match &quad.subject {
+        NamedOrBlankNode::NamedNode(subject) => format!("<{}>", subject.as_str()),
+        NamedOrBlankNode::BlankNode(subject) => format!("<{}>", subject.as_str()),
+    }
+}
+
+fn serialize_quad_nquads(quad: &Quad) -> Result<String, String> {
+    let mut serializer = RdfSerializer::from_format(RdfFormat::NQuads).for_writer(Vec::new());
+    serializer
+        .serialize_quad(quad)
+        .map_err(|e| format!("Failed to serialize quad: {}", e))?;
+    let bytes = serializer
+        .finish()
+        .map_err(|e| format!("Failed to finish quad serialization: {}", e))?;
+    let text = String::from_utf8(bytes)
+        .map_err(|e| format!("Serialized quad is not valid UTF-8: {}", e))?;
+    Ok(text.trim_end_matches(['\n', '\r']).to_string())
 }
 
 pub(crate) fn compare_js_default_string_order(a: &str, b: &str) -> Ordering {
@@ -335,12 +338,16 @@ mod tests {
     #[test]
     fn test_group_triples_by_subject_simple() {
         let triples = vec![
-            r#"<http://example.org/subject1> <http://example.org/predicate1> "value1" ."#,
-            r#"<http://example.org/subject1> <http://example.org/predicate2> "value2" ."#,
-            r#"<http://example.org/subject2> <http://example.org/predicate1> "value3" ."#,
+            r#"<http://example.org/subject1> <http://example.org/predicate1> "value1" ."#
+                .to_string(),
+            r#"<http://example.org/subject1> <http://example.org/predicate2> "value2" ."#
+                .to_string(),
+            r#"<http://example.org/subject2> <http://example.org/predicate1> "value3" ."#
+                .to_string(),
         ];
 
-        let groups = group_triples_by_subject(&triples);
+        let groups = group_triples_by_subject(&triples)
+            .expect("Expected grouping to succeed for simple triples");
 
         assert_eq!(groups.len(), 2);
         assert_eq!(groups[0].len(), 2); // subject1 has 2 triples
@@ -355,14 +362,17 @@ mod tests {
         // Triples arrive in non-alphabetical order: person/1, person/2, organization/1
         // After sorting: organization/1, person/1, person/2
         let triples = vec![
-            r#"<http://example.org/person/1> <http://schema.org/name> "Alice" ."#,
-            r#"<http://example.org/person/1> <http://schema.org/age> "30" ."#,
-            r#"<http://example.org/person/2> <http://schema.org/name> "Bob" ."#,
-            r#"<http://example.org/organization/1> <http://schema.org/name> "Acme Corp" ."#,
-            r#"<http://example.org/person/1> <http://schema.org/worksFor> <http://example.org/organization/1> ."#,
+            r#"<http://example.org/person/1> <http://schema.org/name> "Alice" ."#.to_string(),
+            r#"<http://example.org/person/1> <http://schema.org/age> "30" ."#.to_string(),
+            r#"<http://example.org/person/2> <http://schema.org/name> "Bob" ."#.to_string(),
+            r#"<http://example.org/organization/1> <http://schema.org/name> "Acme Corp" ."#
+                .to_string(),
+            r#"<http://example.org/person/1> <http://schema.org/worksFor> <http://example.org/organization/1> ."#
+                .to_string(),
         ];
 
-        let groups = group_triples_by_subject(&triples);
+        let groups = group_triples_by_subject(&triples)
+            .expect("Expected grouping to succeed for sorted alphabetical test");
 
         // Should have 3 groups, sorted alphabetically by subject
         assert_eq!(groups.len(), 3);
@@ -387,12 +397,13 @@ mod tests {
         // Test that sorting matches JS behavior: alphabetical by subject key
         // Input order: z, a, m -> Output order: a, m, z
         let triples = vec![
-            r#"<http://example.org/z> <http://example.org/p> "z" ."#,
-            r#"<http://example.org/a> <http://example.org/p> "a" ."#,
-            r#"<http://example.org/m> <http://example.org/p> "m" ."#,
+            r#"<http://example.org/z> <http://example.org/p> "z" ."#.to_string(),
+            r#"<http://example.org/a> <http://example.org/p> "a" ."#.to_string(),
+            r#"<http://example.org/m> <http://example.org/p> "m" ."#.to_string(),
         ];
 
-        let groups = group_triples_by_subject(&triples);
+        let groups = group_triples_by_subject(&triples)
+            .expect("Expected grouping to succeed for JS sort match test");
 
         assert_eq!(groups.len(), 3);
         assert!(groups[0][0].contains("/a>"));
@@ -404,11 +415,12 @@ mod tests {
     fn test_group_triples_sorting_case_matches_js_locale_compare() {
         // JS localeCompare sorts "<uuid:app...>" before "<uuid:D...>".
         let triples = vec![
-            r#"<uuid:DzyraSwarm> <http://schema.org/name> "D.Zyra's Input" ."#,
-            r#"<uuid:appreciation> <http://schema.org/name> "Appreciation" ."#,
+            r#"<uuid:DzyraSwarm> <http://schema.org/name> "D.Zyra's Input" ."#.to_string(),
+            r#"<uuid:appreciation> <http://schema.org/name> "Appreciation" ."#.to_string(),
         ];
 
-        let groups = group_triples_by_subject(&triples);
+        let groups = group_triples_by_subject(&triples)
+            .expect("Expected grouping to succeed for case ordering test");
         assert_eq!(groups.len(), 2);
         assert!(groups[0][0].contains("<uuid:appreciation>"));
         assert!(groups[1][0].contains("<uuid:DzyraSwarm>"));
@@ -418,11 +430,12 @@ mod tests {
     fn test_group_triples_sorting_punctuation_before_digits_matches_js() {
         // JS localeCompare sorts "<uuid:gemini:2.0:flash>" before "<uuid:gemini2.0flash>".
         let triples = vec![
-            r#"<uuid:gemini2.0flash> <http://schema.org/name> "Gemini 2.0 Flash" ."#,
-            r#"<uuid:gemini:2.0:flash> <http://schema.org/name> "Gemini 2.0 Flash" ."#,
+            r#"<uuid:gemini2.0flash> <http://schema.org/name> "Gemini 2.0 Flash" ."#.to_string(),
+            r#"<uuid:gemini:2.0:flash> <http://schema.org/name> "Gemini 2.0 Flash" ."#.to_string(),
         ];
 
-        let groups = group_triples_by_subject(&triples);
+        let groups = group_triples_by_subject(&triples)
+            .expect("Expected grouping to succeed for punctuation ordering test");
         assert_eq!(groups.len(), 2);
         assert!(groups[0][0].contains("<uuid:gemini:2.0:flash>"));
         assert!(groups[1][0].contains("<uuid:gemini2.0flash>"));

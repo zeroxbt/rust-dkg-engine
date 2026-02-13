@@ -158,7 +158,13 @@ impl AssertionValidationService {
         on_chain_root: &str,
         parsed_ual: &ParsedUal,
     ) -> bool {
-        let calculated_root = Self::calculate_public_merkle_root(public_triples);
+        let calculated_root = match Self::calculate_public_merkle_root(public_triples) {
+            Ok(root) => root,
+            Err(e) => {
+                tracing::debug!(error = %e, "Failed to calculate public merkle root");
+                return false;
+            }
+        };
 
         if calculated_root != on_chain_root {
             let assertion_public = serialize_triples_for_log(public_triples);
@@ -177,7 +183,7 @@ impl AssertionValidationService {
     }
 
     /// Calculate the merkle root for public triples.
-    fn calculate_public_merkle_root(public_triples: &[String]) -> String {
+    fn calculate_public_merkle_root(public_triples: &[String]) -> Result<String, String> {
         // Network payloads can contain multiple triples per string entry.
         // Normalize to one triple per line before grouping/sorting so hashing
         // matches JS behavior and on-chain roots.
@@ -186,33 +192,33 @@ impl AssertionValidationService {
         // Separate private-hash triples from regular public triples
         let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
 
-        let mut filtered_public: Vec<&str> = Vec::new();
-        let mut private_hash_triples: Vec<&str> = Vec::new();
+        let mut filtered_public: Vec<String> = Vec::new();
+        let mut private_hash_triples: Vec<String> = Vec::new();
 
-        for triple in &normalized_public {
+        for triple in normalized_public {
             if triple.starts_with(&private_hash_prefix) {
-                private_hash_triples.push(triple.as_str());
+                private_hash_triples.push(triple);
             } else {
-                filtered_public.push(triple.as_str());
+                filtered_public.push(triple);
             }
         }
 
         // Group by subject, then append private-hash groups
-        let mut grouped = group_triples_by_subject(&filtered_public);
-        grouped.extend(group_triples_by_subject(&private_hash_triples));
+        let mut grouped = group_triples_by_subject(&filtered_public)?;
+        grouped.extend(group_triples_by_subject(&private_hash_triples)?);
 
         // Sort each group and flatten
         let sorted_flat: Vec<String> = grouped
             .iter()
             .flat_map(|group| {
-                let mut sorted_group: Vec<&str> = group.to_vec();
+                let mut sorted_group: Vec<&str> = group.iter().map(String::as_str).collect();
                 sorted_group.sort_by(|a, b| compare_js_default_string_order(a, b));
                 sorted_group.into_iter().map(String::from)
             })
             .collect();
 
         // Calculate merkle root
-        validation::calculate_merkle_root(&sorted_flat)
+        Ok(validation::calculate_merkle_root(&sorted_flat))
     }
 
     fn normalize_public_triples(public_triples: &[String]) -> Vec<String> {
@@ -237,7 +243,8 @@ impl AssertionValidationService {
         public_triples: &[String],
         parsed_ual: &ParsedUal,
     ) -> Result<bool, String> {
-        let calculated_root = Self::calculate_public_merkle_root(public_triples);
+        let calculated_root = Self::calculate_public_merkle_root(public_triples)
+            .map_err(|e| format!("Failed to calculate public merkle root: {}", e))?;
 
         // Get on-chain merkle root
         let on_chain_root = self
@@ -386,7 +393,8 @@ mod tests {
     #[test]
     fn test_calculate_public_merkle_root_matches_known_paranet_kc() {
         let triples = sample_kc_4210492_public_triples();
-        let root = AssertionValidationService::calculate_public_merkle_root(&triples);
+        let root = AssertionValidationService::calculate_public_merkle_root(&triples)
+            .expect("Expected merkle root calculation to succeed");
         assert_eq!(
             root,
             "0xf0c149201a9eb5a3b28bfa18e804ba792776ec5ec18225a051a010b18253c97e"
@@ -400,7 +408,8 @@ mod tests {
         // Mimic ACK payloads where each entry may contain multiple complete lines.
         let chunked: Vec<String> = triples.chunks(4).map(|chunk| chunk.join("\n")).collect();
 
-        let root = AssertionValidationService::calculate_public_merkle_root(&chunked);
+        let root = AssertionValidationService::calculate_public_merkle_root(&chunked)
+            .expect("Expected merkle root calculation to succeed");
         assert_eq!(
             root,
             "0xf0c149201a9eb5a3b28bfa18e804ba792776ec5ec18225a051a010b18253c97e"

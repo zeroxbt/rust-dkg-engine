@@ -317,7 +317,7 @@ impl TripleStoreService {
         paranet_ual: Option<&str>,
     ) -> Result<usize, TripleStoreError> {
         // Build knowledge assets from the dataset
-        let knowledge_assets = Self::build_knowledge_assets(knowledge_collection_ual, dataset);
+        let knowledge_assets = Self::build_knowledge_assets(knowledge_collection_ual, dataset)?;
 
         // Delegate to the triple store manager for RDF serialization and insertion
         self.triple_store_manager
@@ -408,14 +408,15 @@ impl TripleStoreService {
     fn build_knowledge_assets(
         knowledge_collection_ual: &str,
         dataset: &Assertion,
-    ) -> Vec<KnowledgeAsset> {
+    ) -> Result<Vec<KnowledgeAsset>, TripleStoreError> {
         let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
+        let normalized_public = normalize_triple_lines(&dataset.public);
 
         // Separate public triples: regular public vs private-hash triples
-        let mut filtered_public: Vec<&str> = Vec::new();
-        let mut private_hash_triples: Vec<&str> = Vec::new();
+        let mut filtered_public: Vec<String> = Vec::new();
+        let mut private_hash_triples: Vec<String> = Vec::new();
 
-        for triple in &dataset.public {
+        for triple in normalized_public {
             if triple.starts_with(&private_hash_prefix) {
                 private_hash_triples.push(triple);
             } else {
@@ -424,8 +425,21 @@ impl TripleStoreService {
         }
 
         // Group public triples by subject, then append private-hash groups
-        let mut public_ka_triples_grouped = group_triples_by_subject(&filtered_public);
-        public_ka_triples_grouped.extend(group_triples_by_subject(&private_hash_triples));
+        let mut public_ka_triples_grouped = group_triples_by_subject(&filtered_public)
+            .map_err(|e| {
+                TripleStoreError::Other(format!(
+                    "Failed to group public triples by parsed subject: {}",
+                    e
+                ))
+            })?;
+        public_ka_triples_grouped.extend(
+            group_triples_by_subject(&private_hash_triples).map_err(|e| {
+                TripleStoreError::Other(format!(
+                    "Failed to group private-hash triples by parsed subject: {}",
+                    e
+                ))
+            })?,
+        );
 
         // Generate UALs for each public knowledge asset: {kc_ual}/1, {kc_ual}/2, ...
         let public_ka_uals: Vec<String> = (0..public_ka_triples_grouped.len())
@@ -436,26 +450,30 @@ impl TripleStoreService {
         let mut knowledge_assets: Vec<KnowledgeAsset> = public_ka_triples_grouped
             .iter()
             .zip(public_ka_uals.iter())
-            .map(|(triples, ual)| {
-                KnowledgeAsset::new(ual.clone(), triples.iter().map(|s| s.to_string()).collect())
-            })
+            .map(|(triples, ual)| KnowledgeAsset::new(ual.clone(), triples.to_vec()))
             .collect();
 
         // Match and attach private triples if present
         if let Some(private_triples) = &dataset.private
             && !private_triples.is_empty()
         {
-            let private_refs: Vec<&str> = private_triples.iter().map(|s| s.as_str()).collect();
-            let private_ka_triples_grouped = group_triples_by_subject(&private_refs);
+            let normalized_private = normalize_triple_lines(private_triples);
+            let private_ka_triples_grouped = group_triples_by_subject(&normalized_private)
+                .map_err(|e| {
+                    TripleStoreError::Other(format!(
+                        "Failed to group private triples by parsed subject: {}",
+                        e
+                    ))
+                })?;
 
             // Build a map from public subject -> index for matching
-            let public_subject_map: HashMap<&str, usize> = public_ka_triples_grouped
+            let public_subject_map: HashMap<String, usize> = public_ka_triples_grouped
                 .iter()
                 .enumerate()
                 .filter_map(|(idx, group)| {
                     group
                         .first()
-                        .and_then(|triple| extract_subject(triple).map(|subj| (subj, idx)))
+                        .and_then(|triple| extract_subject(triple).map(|subj| (subj.to_string(), idx)))
                 })
                 .collect();
 
@@ -484,8 +502,7 @@ impl TripleStoreService {
 
                     // Attach private triples to the matched knowledge asset (append if already set)
                     if let Some(idx) = matched_idx {
-                        let private_strings: Vec<String> =
-                            private_group.iter().map(|s| s.to_string()).collect();
+                        let private_strings: Vec<String> = private_group.to_vec();
                         match knowledge_assets[idx].private_triples.as_mut() {
                             Some(existing) => existing.extend(private_strings),
                             None => knowledge_assets[idx].set_private_triples(private_strings),
@@ -495,8 +512,17 @@ impl TripleStoreService {
             }
         }
 
-        knowledge_assets
+        Ok(knowledge_assets)
     }
+}
+
+fn normalize_triple_lines(triples: &[String]) -> Vec<String> {
+    triples
+        .iter()
+        .flat_map(|entry| entry.lines())
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 #[cfg(test)]
@@ -526,7 +552,8 @@ mod tests {
             private: None,
         };
 
-        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset);
+        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset)
+            .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs (grouped by subject)
         assert_eq!(kas.len(), 2);
@@ -555,7 +582,8 @@ mod tests {
             private: None,
         };
 
-        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset);
+        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset)
+            .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs (regular subject + hash subject)
         assert_eq!(kas.len(), 2);
@@ -583,7 +611,8 @@ mod tests {
             ]),
         };
 
-        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset);
+        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset)
+            .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs, each with matched private triples
         assert_eq!(kas.len(), 2);
@@ -623,7 +652,8 @@ mod tests {
             private: Some(vec![private_triple]),
         };
 
-        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset);
+        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset)
+            .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs, private matches to second (hash placeholder)
         assert_eq!(kas.len(), 2);
@@ -653,7 +683,8 @@ mod tests {
             ]),
         };
 
-        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset);
+        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset)
+            .expect("Expected knowledge asset build to succeed");
 
         // Expected: 3 KAs sorted alphabetically by subject:
         // 1. organization/1 (comes first alphabetically)
