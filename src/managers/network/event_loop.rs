@@ -586,7 +586,7 @@ impl NetworkEventLoop {
     /// Handle a data-plane protocol action.
     fn handle_data_action(&mut self, action: NetworkDataAction) {
         match action {
-            NetworkDataAction::SendStoreRequest {
+            NetworkDataAction::StoreRequest {
                 peer,
                 operation_id,
                 request_data,
@@ -600,14 +600,14 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.store,
             ),
-            NetworkDataAction::SendStoreResponse { channel, message } => {
+            NetworkDataAction::StoreResponse { channel, message } => {
                 let _ = self
                     .swarm
                     .behaviour_mut()
                     .store
                     .send_response(channel, message);
             }
-            NetworkDataAction::SendGetRequest {
+            NetworkDataAction::GetRequest {
                 peer,
                 operation_id,
                 request_data,
@@ -621,14 +621,14 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.get,
             ),
-            NetworkDataAction::SendGetResponse { channel, message } => {
+            NetworkDataAction::GetResponse { channel, message } => {
                 let _ = self
                     .swarm
                     .behaviour_mut()
                     .get
                     .send_response(channel, message);
             }
-            NetworkDataAction::SendFinalityRequest {
+            NetworkDataAction::FinalityRequest {
                 peer,
                 operation_id,
                 request_data,
@@ -642,14 +642,14 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.finality,
             ),
-            NetworkDataAction::SendFinalityResponse { channel, message } => {
+            NetworkDataAction::FinalityResponse { channel, message } => {
                 let _ = self
                     .swarm
                     .behaviour_mut()
                     .finality
                     .send_response(channel, message);
             }
-            NetworkDataAction::SendBatchGetRequest {
+            NetworkDataAction::BatchGetRequest {
                 peer,
                 operation_id,
                 request_data,
@@ -663,7 +663,7 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.batch_get,
             ),
-            NetworkDataAction::SendBatchGetResponse { channel, message } => {
+            NetworkDataAction::BatchGetResponse { channel, message } => {
                 let _ = self
                     .swarm
                     .behaviour_mut()

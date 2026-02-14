@@ -149,7 +149,7 @@ impl NetworkManager {
         request_data: StoreRequestData,
     ) -> Result<StoreResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
-        self.enqueue_data_action(NetworkDataAction::SendStoreRequest {
+        self.enqueue_data_action(NetworkDataAction::StoreRequest {
             peer,
             operation_id,
             request_data,
@@ -165,7 +165,7 @@ impl NetworkManager {
         channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
         message: ResponseMessage<StoreAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_data_action(NetworkDataAction::SendStoreResponse { channel, message })
+        self.enqueue_data_action(NetworkDataAction::StoreResponse { channel, message })
             .await
     }
 
@@ -177,7 +177,7 @@ impl NetworkManager {
         request_data: GetRequestData,
     ) -> Result<GetResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
-        self.enqueue_data_action(NetworkDataAction::SendGetRequest {
+        self.enqueue_data_action(NetworkDataAction::GetRequest {
             peer,
             operation_id,
             request_data,
@@ -193,7 +193,7 @@ impl NetworkManager {
         channel: request_response::ResponseChannel<ResponseMessage<GetAck>>,
         message: ResponseMessage<GetAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_data_action(NetworkDataAction::SendGetResponse { channel, message })
+        self.enqueue_data_action(NetworkDataAction::GetResponse { channel, message })
             .await
     }
 
@@ -205,7 +205,7 @@ impl NetworkManager {
         request_data: FinalityRequestData,
     ) -> Result<FinalityResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
-        self.enqueue_data_action(NetworkDataAction::SendFinalityRequest {
+        self.enqueue_data_action(NetworkDataAction::FinalityRequest {
             peer,
             operation_id,
             request_data,
@@ -221,7 +221,7 @@ impl NetworkManager {
         channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
         message: ResponseMessage<FinalityAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_data_action(NetworkDataAction::SendFinalityResponse { channel, message })
+        self.enqueue_data_action(NetworkDataAction::FinalityResponse { channel, message })
             .await
     }
 
@@ -238,7 +238,7 @@ impl NetworkManager {
         request_data: BatchGetRequestData,
     ) -> Result<BatchGetResponseData, NetworkError> {
         let (tx, rx) = oneshot::channel();
-        self.enqueue_data_action(NetworkDataAction::SendBatchGetRequest {
+        self.enqueue_data_action(NetworkDataAction::BatchGetRequest {
             peer,
             operation_id,
             request_data,
@@ -254,7 +254,7 @@ impl NetworkManager {
         channel: request_response::ResponseChannel<ResponseMessage<BatchGetAck>>,
         message: ResponseMessage<BatchGetAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_data_action(NetworkDataAction::SendBatchGetResponse { channel, message })
+        self.enqueue_data_action(NetworkDataAction::BatchGetResponse { channel, message })
             .await
     }
 }

@@ -32,44 +32,44 @@ pub(crate) enum NetworkControlAction {
 pub(crate) enum NetworkDataAction {
     // Protocol-specific request actions
     // The response_tx is stored in PendingRequests and used to deliver the response directly
-    SendStoreRequest {
+    StoreRequest {
         peer: PeerId,
         operation_id: Uuid,
         request_data: StoreRequestData,
         response_tx: oneshot::Sender<Result<StoreResponseData, NetworkError>>,
     },
-    SendGetRequest {
+    GetRequest {
         peer: PeerId,
         operation_id: Uuid,
         request_data: GetRequestData,
         response_tx: oneshot::Sender<Result<GetResponseData, NetworkError>>,
     },
-    SendFinalityRequest {
+    FinalityRequest {
         peer: PeerId,
         operation_id: Uuid,
         request_data: FinalityRequestData,
         response_tx: oneshot::Sender<Result<FinalityResponseData, NetworkError>>,
     },
-    SendBatchGetRequest {
+    BatchGetRequest {
         peer: PeerId,
         operation_id: Uuid,
         request_data: BatchGetRequestData,
         response_tx: oneshot::Sender<Result<BatchGetResponseData, NetworkError>>,
     },
     // Protocol-specific response actions
-    SendStoreResponse {
+    StoreResponse {
         channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
         message: ResponseMessage<StoreAck>,
     },
-    SendGetResponse {
+    GetResponse {
         channel: request_response::ResponseChannel<ResponseMessage<GetAck>>,
         message: ResponseMessage<GetAck>,
     },
-    SendFinalityResponse {
+    FinalityResponse {
         channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
         message: ResponseMessage<FinalityAck>,
     },
-    SendBatchGetResponse {
+    BatchGetResponse {
         channel: request_response::ResponseChannel<ResponseMessage<BatchGetAck>>,
         message: ResponseMessage<BatchGetAck>,
     },
