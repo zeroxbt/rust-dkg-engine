@@ -3,6 +3,7 @@ use alloy::sol;
 sol! {
     /// Multicall3 contract for batching multiple calls into a single RPC request.
     /// See: https://www.multicall3.com/
+    #[derive(Debug)]
     #[sol(rpc)]
     contract Multicall3 {
         struct Call3 {

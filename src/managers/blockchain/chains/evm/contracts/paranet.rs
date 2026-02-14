@@ -3,6 +3,7 @@ pub(crate) mod paranet {
     use alloy::sol;
 
     sol!(
+        #[derive(Debug)]
         #[sol(rpc)]
         Paranet,
         "abi/Paranet.json"
@@ -14,6 +15,7 @@ pub(crate) mod paranets_registry {
     use alloy::sol;
 
     sol!(
+        #[derive(Debug)]
         #[sol(rpc)]
         ParanetsRegistry,
         "abi/ParanetsRegistry.json"

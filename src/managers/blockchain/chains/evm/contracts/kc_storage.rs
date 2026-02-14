@@ -4,6 +4,7 @@ pub(crate) mod knowledge_collection_storage {
     use alloy::sol;
 
     sol!(
+        #[derive(Debug)]
         #[sol(rpc)]
         KnowledgeCollectionStorage,
         "abi/KnowledgeCollectionStorage.json"

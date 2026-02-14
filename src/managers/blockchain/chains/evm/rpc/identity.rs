@@ -4,7 +4,7 @@ use alloy::{
 };
 
 use crate::managers::blockchain::{
-    chains::evm::{EvmChain, contracts::Profile},
+    chains::evm::{EvmChain, contracts::Profile, error_decode::decode_contract_error},
     error::BlockchainError,
 };
 
@@ -115,9 +115,14 @@ impl EvmChain {
                 }
 
                 // Log detailed error for other cases
-                tracing::error!("Profile creation failed: {:?}", err);
+                let decoded_error = decode_contract_error(&err);
+                tracing::error!(
+                    decoded_error = ?decoded_error,
+                    "Profile creation failed: {:?}",
+                    err
+                );
                 Err(BlockchainError::ProfileCreation {
-                    reason: format!("{:?}", err),
+                    reason: decoded_error.unwrap_or_else(|| format!("{:?}", err)),
                 })
             }
         }
@@ -175,11 +180,16 @@ impl EvmChain {
                 {
                     Ok(())
                 } else {
-                    tracing::error!("Set ask failed: {:?}", err);
+                    let decoded_error = decode_contract_error(&err);
+                    tracing::error!(
+                        decoded_error = ?decoded_error,
+                        "Set ask failed: {:?}",
+                        err
+                    );
                     Err(BlockchainError::TransactionFailed {
                         contract: "Profile".to_string(),
                         function: "updateAsk".to_string(),
-                        reason: format!("{:?}", err),
+                        reason: decoded_error.unwrap_or_else(|| format!("{:?}", err)),
                     })
                 }
             }

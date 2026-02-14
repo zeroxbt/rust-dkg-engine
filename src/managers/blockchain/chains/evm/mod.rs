@@ -22,6 +22,7 @@ use crate::managers::blockchain::{
     substrate::validate_evm_wallets,
 };
 mod contracts;
+mod error_decode;
 mod gas;
 mod multicall;
 mod provider;
@@ -31,6 +32,7 @@ pub(crate) use contracts::{
     Hub, KnowledgeCollectionStorage, Multicall3, ParametersStorage, PermissionedNode,
     ShardingTableLib, ShardingTableLib::NodeInfo,
 };
+use error_decode::decode_contract_error;
 pub(crate) use gas::GasConfig;
 pub(crate) use provider::initialize_provider_with_wallet;
 pub(crate) use rpc::random_sampling::{NodeChallenge, ProofPeriodStatus};
@@ -329,11 +331,13 @@ impl EvmChain {
                             attempt,
                             contract_error_backoff_hint(&err),
                         );
+                        let decoded_error = decode_contract_error(&err);
                         tracing::warn!(
                             attempt,
                             max_attempts = self.tx_retry_policy.max_attempts,
                             delay_ms = delay.as_millis(),
                             error = %err,
+                            decoded_error = ?decoded_error,
                             "Gas estimation failed; retrying"
                         );
                         tokio::time::sleep(delay).await;
@@ -381,11 +385,13 @@ impl EvmChain {
                         attempt,
                         contract_error_backoff_hint(&err),
                     );
+                    let decoded_error = decode_contract_error(&err);
                     tracing::warn!(
                         attempt,
                         max_attempts = self.tx_retry_policy.max_attempts,
                         delay_ms = delay.as_millis(),
                         error = %err,
+                        decoded_error = ?decoded_error,
                         "Transaction submission failed; retrying"
                     );
                     tokio::time::sleep(delay).await;
@@ -434,11 +440,13 @@ impl EvmChain {
                             attempt,
                             contract_error_backoff_hint(&err),
                         );
+                        let decoded_error = decode_contract_error(&err);
                         tracing::warn!(
                             attempt,
                             max_attempts = self.tx_retry_policy.max_attempts,
                             delay_ms = delay.as_millis(),
                             error = %err,
+                            decoded_error = ?decoded_error,
                             "Gas estimation failed; retrying"
                         );
                         tokio::time::sleep(delay).await;
@@ -485,11 +493,13 @@ impl EvmChain {
                         attempt,
                         contract_error_backoff_hint(&err),
                     );
+                    let decoded_error = decode_contract_error(&err);
                     tracing::warn!(
                         attempt,
                         max_attempts = self.tx_retry_policy.max_attempts,
                         delay_ms = delay.as_millis(),
                         error = %err,
+                        decoded_error = ?decoded_error,
                         "Transaction submission failed; retrying"
                     );
                     tokio::time::sleep(delay).await;
@@ -550,7 +560,12 @@ impl EvmChain {
                 }
             }
             Err(err) => {
-                tracing::error!("Contract call failed: {:?}", err);
+                let decoded_error = decode_contract_error(&err);
+                tracing::error!(
+                    decoded_error = ?decoded_error,
+                    "Contract call failed: {:?}",
+                    err
+                );
                 Err(BlockchainError::Contract(err))
             }
         }

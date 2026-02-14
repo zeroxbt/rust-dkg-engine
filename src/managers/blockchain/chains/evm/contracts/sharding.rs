@@ -3,6 +3,7 @@ pub(crate) mod sharding_table {
     use alloy::sol;
 
     sol!(
+        #[derive(Debug)]
         #[sol(rpc)]
         ShardingTable,
         "abi/ShardingTable.json"
@@ -13,6 +14,7 @@ pub(crate) mod sharding_table_storage {
     use alloy::sol;
 
     sol!(
+        #[derive(Debug)]
         #[sol(rpc)]
         ShardingTableStorage,
         "abi/ShardingTableStorage.json"

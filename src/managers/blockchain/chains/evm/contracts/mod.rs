@@ -1,6 +1,7 @@
 pub(crate) mod chronos;
 pub(crate) mod delegators_info;
 pub(crate) mod hub;
+pub(crate) mod identity;
 pub(crate) mod identity_storage;
 pub(crate) mod kc_storage;
 pub(crate) mod multicall;
@@ -19,6 +20,7 @@ use alloy::primitives::Address;
 pub(crate) use chronos::Chronos;
 pub(crate) use delegators_info::DelegatorsInfo;
 pub(crate) use hub::Hub;
+pub(crate) use identity::Identity;
 pub(crate) use identity_storage::IdentityStorage;
 pub(crate) use kc_storage::KnowledgeCollectionStorage;
 pub(crate) use multicall::Multicall3;
