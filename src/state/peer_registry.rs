@@ -8,14 +8,6 @@ use libp2p::{Multiaddr, PeerId, StreamProtocol};
 
 use crate::{managers::network::IdentifyInfo, types::BlockchainId};
 
-#[derive(Clone, Debug)]
-#[allow(dead_code)] // Used in diagnostics via `tracing` debug formatting.
-pub(crate) struct PeerShardInfo {
-    pub peer_id: PeerId,
-    pub shard_membership: Vec<BlockchainId>,
-    pub identified: bool,
-}
-
 // Performance tracking constants
 const HISTORY_SIZE: usize = 20;
 const FAILURE_LATENCY_MS: u64 = 15_000;
@@ -239,30 +231,6 @@ impl PeerRegistry {
                 })
             })
             .collect()
-    }
-
-    /// Debug helper: snapshot the whole registry with shard membership info.
-    /// Intended for diagnostics in production logs.
-    pub(crate) fn dump_peers_with_shards(&self) -> Vec<PeerShardInfo> {
-        let mut out: Vec<PeerShardInfo> = self
-            .peers
-            .iter()
-            .map(|entry| {
-                let mut shard_membership: Vec<BlockchainId> =
-                    entry.shard_membership.iter().cloned().collect();
-                shard_membership.sort_by(|a, b| a.as_str().cmp(b.as_str()));
-
-                PeerShardInfo {
-                    peer_id: *entry.key(),
-                    shard_membership,
-                    identified: entry.identify.is_some(),
-                }
-            })
-            .collect();
-
-        // Stable ordering helps comparing dumps across nodes/timestamps.
-        out.sort_by(|a, b| a.peer_id.to_base58().cmp(&b.peer_id.to_base58()));
-        out
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
