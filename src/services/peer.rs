@@ -92,6 +92,10 @@ impl PeerService {
         self.registry.get_all_addresses()
     }
 
+    pub(crate) fn dump_peer_registry(&self) -> Vec<crate::state::peer_registry::PeerShardInfo> {
+        self.registry.dump_peers_with_shards()
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────
     // Performance methods
     // ─────────────────────────────────────────────────────────────────────────────

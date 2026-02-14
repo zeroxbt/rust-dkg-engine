@@ -11,6 +11,7 @@ use tasks::{
     cleanup::{CleanupConfig, CleanupTask},
     dial_peers::DialPeersTask,
     paranet_sync::{ParanetSyncConfig, ParanetSyncTask},
+    peer_registry_dump::PeerRegistryDumpTask,
     proving::ProvingTask,
     save_peer_addresses::SavePeerAddressesTask,
     sharding_table_check::ShardingTableCheckTask,
@@ -97,6 +98,7 @@ macro_rules! spawn_registered_blockchain_tasks {
 impl_global_periodic_task!(DialPeersTask);
 impl_global_periodic_task!(CleanupTask, CleanupConfig);
 impl_global_periodic_task!(SavePeerAddressesTask);
+impl_global_periodic_task!(PeerRegistryDumpTask);
 
 impl_blockchain_periodic_task!(
     ShardingTableCheckTask,
@@ -129,6 +131,7 @@ pub(crate) async fn run_all(
         DialPeersTask => (),
         CleanupTask => cleanup_config,
         SavePeerAddressesTask => (),
+        PeerRegistryDumpTask => (),
     );
 
     // Collect blockchain IDs for periodic tasks
