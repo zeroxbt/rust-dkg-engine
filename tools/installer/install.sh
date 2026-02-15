@@ -785,17 +785,15 @@ EOF
 
   if [[ "$enable_gnosis" == "y" || "$enable_gnosis" == "Y" ]]; then
     enabled_count=$((enabled_count + 1))
-    local bc_id hub_addr default_rpc gas_oracle
+    local bc_id hub_addr default_rpc
     if [[ "$environment" == "mainnet" ]]; then
       bc_id="gnosis:100"
       hub_addr="0x882D0BF07F956b1b94BBfe9E77F47c6fc7D4EC8f"
       default_rpc=""
-      gas_oracle="https://gnosis.blockscout.com/api/v1/gas-price-oracle"
     else
       bc_id="gnosis:10200"
       hub_addr="0x2c08AC4B630c009F709521e56Ac385A6af70650f"
       default_rpc="https://rpc.chiadochain.net"
-      gas_oracle="https://blockscout.chiadochain.net/api/v1/gas-price-oracle"
     fi
     local rpc_csv op_priv mgmt_addr
     rpc_csv="$(prompt_rpc_endpoints_csv "Gnosis RPC endpoints" "$default_rpc")"
@@ -818,7 +816,6 @@ hub_contract_address = "${hub_addr}"
 rpc_endpoints = [
 $rpc_lines
 ]
-gas_price_oracle_url = "${gas_oracle}"
 operator_fee = ${operator_fee}
 evm_operational_wallet_private_key = "${op_priv_esc}"
 evm_management_wallet_address = "${mgmt_addr_esc}"

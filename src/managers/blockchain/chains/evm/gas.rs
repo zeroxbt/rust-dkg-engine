@@ -1,27 +1,27 @@
-//! Gas price management for EVM transactions.
+//! EVM fee management for transactions.
 //!
 //! Supports:
-//! - Gas price oracle fetching (configurable URL)
-//! - Blockchain-specific default gas prices
-//! - Gas price bumping for transaction retries
-
-use std::time::Duration;
+//! - EIP-1559 fee estimation (max fee + priority fee) when RPC supports it
+//! - Legacy gas price fallback when EIP-1559 is unsupported or fails
+//! - Short TTL caching of fee quotes
+//! - Fee bumping for transaction retries
 
 use alloy::{primitives::U256, providers::Provider};
-use serde::Deserialize;
 
-use crate::managers::blockchain::chains::evm::EvmChain;
+use super::EvmChain;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chain defaults (caps, floors, retry bump factor)
+// ─────────────────────────────────────────────────────────────────────────────
 
 /// Gas price configuration for a blockchain.
 #[derive(Debug, Clone)]
 pub(crate) struct GasConfig {
-    /// URL for gas price oracle (optional).
-    pub oracle_url: Option<String>,
-    /// Default gas price in wei if oracle fails.
+    /// Default legacy gas price in wei (floor for provider values).
     pub default_gas_price: U256,
-    /// Multiplier for gas price bumps on retry (e.g., 1.2 = 20% increase).
+    /// Multiplier for fee bumps on retry (e.g., 1.2 = 20% increase).
     pub bump_factor: f64,
-    /// Maximum gas price in wei (cap for bumping).
+    /// Maximum fee in wei (cap for legacy gasPrice and EIP-1559 maxFeePerGas).
     pub max_gas_price: U256,
 }
 
@@ -29,7 +29,6 @@ pub(crate) struct GasConfig {
 impl Default for GasConfig {
     fn default() -> Self {
         Self {
-            oracle_url: None,
             // Default: 1 gwei
             default_gas_price: U256::from(1_000_000_000u64),
             bump_factor: 1.2,
@@ -40,204 +39,158 @@ impl Default for GasConfig {
 }
 
 impl GasConfig {
-    /// Create a new gas config for Hardhat (local testing).
     pub(crate) fn hardhat() -> Self {
         Self {
-            oracle_url: None,
             default_gas_price: U256::from(20u64), // 20 wei for hardhat
             bump_factor: 1.2,
             max_gas_price: U256::from(1_000_000_000u64), // 1 gwei max for testing
         }
     }
 
-    /// Create a new gas config for Gnosis chain.
-    pub(crate) fn gnosis(oracle_url: Option<String>) -> Self {
+    pub(crate) fn gnosis() -> Self {
         Self {
-            oracle_url,
             default_gas_price: U256::from(1_000_000_000u64), // 1 gwei
             bump_factor: 1.2,
             max_gas_price: U256::from(100_000_000_000u64), // 100 gwei
         }
     }
 
-    /// Create a new gas config for NeuroWeb (OT Parachain).
-    pub(crate) fn neuroweb(oracle_url: Option<String>) -> Self {
+    pub(crate) fn neuroweb() -> Self {
         Self {
-            oracle_url,
             default_gas_price: U256::from(8u64), // 8 wei
             bump_factor: 1.2,
             max_gas_price: U256::from(1_000_000_000u64), // 1 gwei
         }
     }
 
-    /// Create a new gas config for Base (Coinbase L2).
-    ///
-    /// Base uses the provider's gas price estimate (no oracle).
-    /// JS implementation: base-service.js just calls provider.getGasPrice()
-    pub(crate) fn base(oracle_url: Option<String>) -> Self {
+    pub(crate) fn base() -> Self {
         Self {
-            oracle_url,
             default_gas_price: U256::from(1_000_000_000u64), // 1 gwei fallback
             bump_factor: 1.2,
             max_gas_price: U256::from(500_000_000_000u64), // 500 gwei (L2 can spike)
         }
     }
 
-    /// Calculate bumped gas price for retry.
-    /// Returns None if the bumped price would exceed max_gas_price.
-    pub(crate) fn bump_gas_price(&self, current_price: U256) -> Option<U256> {
-        // Convert to u128 for floating point math, then back
-        let current = current_price.to::<u128>() as f64;
+    pub(crate) fn bump_wei(&self, current: U256) -> Option<U256> {
+        let current = current.to::<u128>() as f64;
         let bumped = (current * self.bump_factor).ceil() as u128;
-        let bumped_price = U256::from(bumped);
-
-        if bumped_price <= self.max_gas_price {
-            Some(bumped_price)
-        } else {
-            None
-        }
+        let bumped = U256::from(bumped);
+        (bumped <= self.max_gas_price).then_some(bumped)
     }
 }
 
-/// Response format for standard gas price oracles.
-/// Supports multiple oracle response formats.
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum OracleResponse {
-    /// Standard format with maxFee in gwei (e.g., EthGasStation-style)
-    Standard(StandardOracleResponse),
-    /// Blockscout format with average in gwei
-    Blockscout(BlockscoutResponse),
-    /// Gnosisscan/Etherscan format with result in wei
-    Etherscan(EtherscanResponse),
+// ─────────────────────────────────────────────────────────────────────────────
+// Fee quoting (legacy vs EIP-1559)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FeeSource {
+    Provider,
+    Default,
 }
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct StandardOracleResponse {
-    pub standard: StandardGasData,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum FeeQuote {
+    Legacy {
+        gas_price: U256,
+        source: FeeSource,
+    },
+    Eip1559 {
+        max_fee_per_gas: U256,
+        max_priority_fee_per_gas: U256,
+        source: FeeSource,
+    },
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct StandardGasData {
-    pub max_fee: f64,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct BlockscoutResponse {
-    pub average: f64,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct EtherscanResponse {
-    pub result: String,
-}
-
-impl OracleResponse {
-    /// Convert oracle response to gas price in wei.
-    pub(crate) fn to_wei(&self) -> Option<U256> {
+impl FeeQuote {
+    pub(crate) fn bump(&self, gas_config: &GasConfig) -> Option<Self> {
         match self {
-            OracleResponse::Standard(resp) => {
-                // maxFee is in gwei, convert to wei
-                let wei = (resp.standard.max_fee * 1e9).round() as u128;
-                Some(U256::from(wei))
+            FeeQuote::Legacy { gas_price, source } => {
+                gas_config
+                    .bump_wei(*gas_price)
+                    .map(|gas_price| FeeQuote::Legacy {
+                        gas_price,
+                        source: *source,
+                    })
             }
-            OracleResponse::Blockscout(resp) => {
-                // average is in gwei, convert to wei
-                let wei = (resp.average * 1e9).round() as u128;
-                Some(U256::from(wei))
-            }
-            OracleResponse::Etherscan(resp) => {
-                // result is already in wei as a string
-                resp.result.parse::<u128>().ok().map(U256::from)
+            FeeQuote::Eip1559 {
+                max_fee_per_gas,
+                max_priority_fee_per_gas,
+                source,
+            } => {
+                let bumped_max = gas_config.bump_wei(*max_fee_per_gas)?;
+                let bumped_tip = gas_config.bump_wei(*max_priority_fee_per_gas)?;
+                let max_priority_fee_per_gas = bumped_tip.min(bumped_max);
+                Some(FeeQuote::Eip1559 {
+                    max_fee_per_gas: bumped_max,
+                    max_priority_fee_per_gas,
+                    source: *source,
+                })
             }
         }
     }
 }
 
-/// Fetch gas price from an oracle URL.
-async fn fetch_gas_price_from_oracle(url: &str) -> Result<U256, GasOracleError> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .map_err(|e| GasOracleError::HttpClient(e.to_string()))?;
+// ─────────────────────────────────────────────────────────────────────────────
+// EvmChain fee quote (with caching)
+// ─────────────────────────────────────────────────────────────────────────────
 
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| GasOracleError::Request(e.to_string()))?;
-
-    if !response.status().is_success() {
-        return Err(GasOracleError::HttpStatus(response.status().as_u16()));
-    }
-
-    let oracle_response: OracleResponse = response
-        .json()
-        .await
-        .map_err(|e| GasOracleError::ParseResponse(e.to_string()))?;
-
-    oracle_response
-        .to_wei()
-        .ok_or(GasOracleError::InvalidResponse)
+fn clamp_eip1559(max_fee: U256, max_priority: U256, cap: U256, floor: U256) -> (U256, U256) {
+    let max_fee = max_fee.max(floor).min(cap);
+    let max_priority = max_priority.min(max_fee);
+    (max_fee, max_priority)
 }
 
-/// Errors that can occur when fetching gas prices from an oracle.
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum GasOracleError {
-    #[error("Failed to create HTTP client: {0}")]
-    HttpClient(String),
-
-    #[error("Request failed: {0}")]
-    Request(String),
-
-    #[error("HTTP error status: {0}")]
-    HttpStatus(u16),
-
-    #[error("Failed to parse response: {0}")]
-    ParseResponse(String),
-
-    #[error("Invalid response format")]
-    InvalidResponse,
+fn clamp_legacy(gas_price: U256, cap: U256, floor: U256) -> U256 {
+    gas_price.max(floor).min(cap)
 }
 
 impl EvmChain {
-    /// Get the current gas price.
-    ///
-    /// Tries sources in order:
-    /// 1. Gas price oracle (if configured) - only used if price > default
-    /// 2. Provider's gas price estimate - only used if price >= default
-    /// 3. Default gas price from config
-    ///
-    /// This matches the JS implementation behavior where:
-    /// - Gnosis validates oracle price > default before using it
-    /// - Provider price must be >= default to be used
-    pub(crate) async fn get_gas_price(&self) -> U256 {
-        let default_price = self.gas_config.default_gas_price;
-
-        // Try oracle first if configured
-        if let Some(oracle_url) = self.gas_config.oracle_url.as_deref() {
-            match fetch_gas_price_from_oracle(oracle_url).await {
-                Ok(price) => {
-                    tracing::debug!("Gas price from oracle: {} wei", price);
-                    // JS behavior: only use oracle price if > default (uses .gt(), not .gte())
-                    // See gnosis-service.js: gasPrice.gt(this.defaultGasPrice)
-                    if price > default_price {
-                        return price;
-                    }
-                    tracing::debug!(
-                        "Oracle price {} <= default {}, using default",
-                        price,
-                        default_price
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to fetch gas price from oracle: {}", e);
-                }
-            }
+    pub(crate) async fn get_fee_quote(&self) -> FeeQuote {
+        match self.try_get_eip1559_fee_quote().await {
+            Some(quote) => quote,
+            None => self.get_legacy_fee_quote().await,
         }
+    }
 
-        // Try provider's gas price estimate
+    async fn try_get_eip1559_fee_quote(&self) -> Option<FeeQuote> {
+        let default_floor = self.gas_config.default_gas_price;
+        let cap = self.gas_config.max_gas_price;
+
+        let est = match self
+            .rpc_call(|| async {
+                let provider = self.provider().await;
+                provider.estimate_eip1559_fees().await
+            })
+            .await
+        {
+            Ok(est) => est,
+            Err(e) => {
+                tracing::debug!(
+                    blockchain = %self.blockchain_id(),
+                    error = %e,
+                    "EIP-1559 fee estimation failed; falling back to legacy gasPrice"
+                );
+                return None;
+            }
+        };
+
+        let mut max_fee = U256::from(est.max_fee_per_gas);
+        let mut max_priority = U256::from(est.max_priority_fee_per_gas);
+        (max_fee, max_priority) = clamp_eip1559(max_fee, max_priority, cap, default_floor);
+
+        Some(FeeQuote::Eip1559 {
+            max_fee_per_gas: max_fee,
+            max_priority_fee_per_gas: max_priority,
+            source: FeeSource::Provider,
+        })
+    }
+
+    async fn get_legacy_fee_quote(&self) -> FeeQuote {
+        let default_floor = self.gas_config.default_gas_price;
+        let cap = self.gas_config.max_gas_price;
+
+        // Provider gasPrice (only if >= default floor)
         match self
             .rpc_call(|| async {
                 let provider = self.provider().await;
@@ -246,290 +199,101 @@ impl EvmChain {
             .await
         {
             Ok(price) => {
-                let price = U256::from(price);
-                tracing::debug!("Gas price from provider: {} wei", price);
-                // Ensure we don't return less than the default
-                if price >= default_price {
-                    return price;
+                let gas_price = U256::from(price);
+                if gas_price >= default_floor {
+                    return FeeQuote::Legacy {
+                        gas_price: clamp_legacy(gas_price, cap, default_floor),
+                        source: FeeSource::Provider,
+                    };
                 }
                 tracing::debug!(
-                    "Provider price {} < default {}, using default",
-                    price,
-                    default_price
+                    blockchain = %self.blockchain_id(),
+                    provider_price = %gas_price,
+                    default_floor = %default_floor,
+                    "Provider gasPrice < default floor; using default"
                 );
             }
             Err(e) => {
-                tracing::warn!("Failed to get gas price from provider: {}", e);
+                tracing::warn!(
+                    blockchain = %self.blockchain_id(),
+                    error = %e,
+                    "Failed to get provider gasPrice; using default"
+                );
             }
         }
 
-        // Fall back to default
-        tracing::debug!("Using default gas price: {} wei", default_price);
-        default_price
+        FeeQuote::Legacy {
+            gas_price: clamp_legacy(default_floor, cap, default_floor),
+            source: FeeSource::Default,
+        }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests
+// ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
+
     use super::*;
 
-    // =========================================================================
-    // GasConfig Default Values Tests
-    // These tests verify our Rust implementation matches the JS implementation's
-    // default gas prices for each blockchain.
-    // =========================================================================
-
     #[test]
-    fn test_hardhat_defaults_match_js() {
-        // JS: ethers.utils.parseUnits('20', 'wei') = 20 wei
-        let config = GasConfig::hardhat();
-        assert_eq!(
-            config.default_gas_price,
-            U256::from(20u64),
-            "Hardhat default should be 20 wei (matching JS hardhat-service.js)"
-        );
-    }
-
-    #[test]
-    fn test_gnosis_defaults_match_js() {
-        // JS: GNOSIS_DEFAULT_GAS_PRICE = { TESTNET: 1, MAINNET: 1 } (in gwei)
-        // JS: ethers.utils.parseUnits('1', 'gwei') = 1_000_000_000 wei
-        let config = GasConfig::gnosis(None);
-        assert_eq!(
-            config.default_gas_price,
-            U256::from(1_000_000_000u64),
-            "Gnosis default should be 1 gwei = 1,000,000,000 wei (matching JS constants.js)"
-        );
-    }
-
-    #[test]
-    fn test_neuroweb_defaults_match_js() {
-        // JS: NEURO_DEFAULT_GAS_PRICE = { TESTNET: 8, MAINNET: 8 } (in wei)
-        // JS: ethers.utils.parseUnits('8', 'wei') = 8 wei
-        let config = GasConfig::neuroweb(None);
-        assert_eq!(
-            config.default_gas_price,
-            U256::from(8u64),
-            "NeuroWeb default should be 8 wei (matching JS constants.js)"
-        );
-    }
-
-    // =========================================================================
-    // Gas Price Bumping Tests
-    // JS uses 1.2x multiplier for nonce error retries (web3-service.js line 630)
-    // =========================================================================
-
-    #[test]
-    fn test_bump_gas_price() {
-        let config = GasConfig {
-            oracle_url: None,
-            default_gas_price: U256::from(1_000_000_000u64),
+    fn test_bump_legacy_and_eip1559_invariants() {
+        let gas_config = GasConfig {
+            default_gas_price: U256::from(1u64),
             bump_factor: 1.2,
-            max_gas_price: U256::from(2_000_000_000u64),
+            max_gas_price: U256::from(200u64),
         };
 
-        // 1 gwei bumped by 20% = 1.2 gwei
-        // JS: Math.ceil(gasPrice * 1.2)
-        let bumped = config.bump_gas_price(U256::from(1_000_000_000u64));
-        assert_eq!(bumped, Some(U256::from(1_200_000_000u64)));
-
-        // 1.8 gwei bumped would be 2.16 gwei, exceeds max
-        let bumped = config.bump_gas_price(U256::from(1_800_000_000u64));
-        assert_eq!(bumped, None);
-    }
-
-    #[test]
-    fn test_bump_factor_matches_js() {
-        // JS: gasPrice = Math.ceil(gasPrice * 1.2) in web3-service.js
-        let config = GasConfig::gnosis(None);
-        assert_eq!(
-            config.bump_factor, 1.2,
-            "Bump factor should be 1.2 (20% increase)"
-        );
-
-        // Test the actual calculation matches JS behavior
-        // JS: Math.ceil(1000000000 * 1.2) = Math.ceil(1200000000) = 1200000000
-        let original = U256::from(1_000_000_000u64);
-        let bumped = config.bump_gas_price(original).unwrap();
+        let legacy = FeeQuote::Legacy {
+            gas_price: U256::from(100u64),
+            source: FeeSource::Provider,
+        };
+        let bumped = legacy.bump(&gas_config).unwrap();
         assert_eq!(
             bumped,
-            U256::from(1_200_000_000u64),
-            "1 gwei * 1.2 should equal 1.2 gwei"
+            FeeQuote::Legacy {
+                gas_price: U256::from(120u64),
+                source: FeeSource::Provider
+            }
         );
-    }
 
-    // =========================================================================
-    // Oracle Response Parsing Tests
-    // These test the different oracle response formats used by different chains.
-    // =========================================================================
-
-    #[test]
-    fn test_oracle_response_parsing() {
-        // Standard format (used by Web3Service base class)
-        // JS: Math.round(response.data.standard.maxFee * 1e9)
-        let json = r#"{"standard": {"maxFee": 50.5}}"#;
-        let resp: OracleResponse = serde_json::from_str(json).unwrap();
-        let wei = resp.to_wei().unwrap();
-        assert_eq!(wei, U256::from(50_500_000_000u64));
-
-        // Blockscout format (used by Gnosis)
-        // JS: ethers.utils.parseUnits(gasPrice.toString(), 'gwei')
-        let json = r#"{"average": 1.5}"#;
-        let resp: OracleResponse = serde_json::from_str(json).unwrap();
-        let wei = resp.to_wei().unwrap();
-        assert_eq!(wei, U256::from(1_500_000_000u64));
-
-        // Etherscan format (result is already in wei)
-        // JS: Number(response.data.result, 10)
-        let json = r#"{"result": "1000000000"}"#;
-        let resp: OracleResponse = serde_json::from_str(json).unwrap();
-        let wei = resp.to_wei().unwrap();
-        assert_eq!(wei, U256::from(1_000_000_000u64));
+        let eip = FeeQuote::Eip1559 {
+            max_fee_per_gas: U256::from(100u64),
+            max_priority_fee_per_gas: U256::from(10u64),
+            source: FeeSource::Provider,
+        };
+        let bumped = eip.bump(&gas_config).unwrap();
+        match bumped {
+            FeeQuote::Eip1559 {
+                max_fee_per_gas,
+                max_priority_fee_per_gas,
+                ..
+            } => {
+                assert_eq!(max_fee_per_gas, U256::from(120u64));
+                assert_eq!(max_priority_fee_per_gas, U256::from(12u64));
+                assert!(max_priority_fee_per_gas <= max_fee_per_gas);
+            }
+            _ => panic!("expected eip1559"),
+        }
     }
 
     #[test]
-    fn test_blockscout_gnosis_mainnet_format() {
-        // Actual response from https://gnosis.blockscout.com/api/v1/gas-price-oracle
-        // {"slow": 0.11, "average": 0.52, "fast": 3.92}
-        let json = r#"{"slow": 0.11, "average": 0.52, "fast": 3.92}"#;
-        let resp: OracleResponse = serde_json::from_str(json).unwrap();
-        let wei = resp.to_wei().unwrap();
-        // 0.52 gwei = 520,000,000 wei
+    fn test_clamps() {
+        let floor = U256::from(10u64);
+        let cap = U256::from(100u64);
+
+        assert_eq!(clamp_legacy(U256::from(1u64), cap, floor), floor);
         assert_eq!(
-            wei,
-            U256::from(520_000_000u64),
-            "Blockscout 0.52 gwei should parse to 520,000,000 wei"
+            clamp_legacy(U256::from(50u64), cap, floor),
+            U256::from(50u64)
         );
-    }
+        assert_eq!(clamp_legacy(U256::from(500u64), cap, floor), cap);
 
-    #[test]
-    fn test_blockscout_low_gas_price() {
-        // Test case: oracle returns price lower than default
-        // JS behavior: only use oracle price if > default
-        // This test documents the oracle parsing, not the validation logic
-        let json = r#"{"average": 0.1}"#;
-        let resp: OracleResponse = serde_json::from_str(json).unwrap();
-        let wei = resp.to_wei().unwrap();
-        // 0.1 gwei = 100,000,000 wei (less than 1 gwei default)
-        assert_eq!(wei, U256::from(100_000_000u64));
-    }
-
-    // =========================================================================
-    // Gas Price Validation Tests
-    // JS Gnosis service validates: only use oracle price if > default
-    // =========================================================================
-
-    #[test]
-    fn test_oracle_price_validation_logic() {
-        // This test documents the JS gnosis-service.js validation behavior:
-        // if (gasPrice && ethers.utils.parseUnits(gasPrice.toString(),
-        // 'gwei').gt(this.defaultGasPrice))     return gasPrice;
-        // return this.defaultGasPrice;
-
-        let config = GasConfig::gnosis(None);
-        let default = config.default_gas_price; // 1 gwei = 1,000,000,000 wei
-
-        // Case 1: Oracle returns 0.52 gwei (from actual mainnet response)
-        let oracle_price = U256::from(520_000_000u64);
-        // JS behavior: 520,000,000 < 1,000,000,000, so use default
-        assert!(
-            oracle_price < default,
-            "0.52 gwei oracle price should be less than 1 gwei default"
-        );
-
-        // Case 2: Oracle returns 2.5 gwei
-        let oracle_price_high = U256::from(2_500_000_000u64);
-        // JS behavior: 2,500,000,000 > 1,000,000,000, so use oracle
-        assert!(
-            oracle_price_high > default,
-            "2.5 gwei oracle price should be greater than 1 gwei default"
-        );
-
-        // Case 3: Oracle returns exactly 1 gwei (equal to default)
-        let oracle_price_equal = U256::from(1_000_000_000u64);
-        // JS behavior: uses .gt() (greater than), not .gte() (greater than or equal)
-        // So equal values should still use default
-        assert!(
-            (oracle_price_equal <= default),
-            "1 gwei oracle price should NOT be greater than 1 gwei default (JS uses .gt())"
-        );
-    }
-
-    // =========================================================================
-    // Blockchain-specific Configuration Tests
-    // =========================================================================
-
-    #[test]
-    fn test_config_presets_complete() {
-        // Hardhat: no oracle, fixed 20 wei
-        let hardhat = GasConfig::hardhat();
-        assert!(hardhat.oracle_url.is_none());
-        assert_eq!(hardhat.default_gas_price, U256::from(20u64));
-
-        // Gnosis: can have oracle, default 1 gwei
-        let gnosis_no_oracle = GasConfig::gnosis(None);
-        assert!(gnosis_no_oracle.oracle_url.is_none());
-        assert_eq!(
-            gnosis_no_oracle.default_gas_price,
-            U256::from(1_000_000_000u64)
-        );
-
-        let gnosis_with_oracle = GasConfig::gnosis(Some(
-            "https://gnosis.blockscout.com/api/v1/gas-price-oracle".into(),
-        ));
-        assert!(gnosis_with_oracle.oracle_url.is_some());
-        assert_eq!(
-            gnosis_with_oracle.default_gas_price,
-            U256::from(1_000_000_000u64)
-        );
-
-        // NeuroWeb: can have oracle, default 8 wei
-        let neuro = GasConfig::neuroweb(None);
-        assert!(neuro.oracle_url.is_none());
-        assert_eq!(neuro.default_gas_price, U256::from(8u64));
-
-        // Base: can have oracle, default 1 gwei (provider-based)
-        let base_no_oracle = GasConfig::base(None);
-        assert!(base_no_oracle.oracle_url.is_none());
-        assert_eq!(
-            base_no_oracle.default_gas_price,
-            U256::from(1_000_000_000u64)
-        );
-
-        let base_with_oracle = GasConfig::base(Some("https://example.com/gas".into()));
-        assert!(base_with_oracle.oracle_url.is_some());
-    }
-
-    #[test]
-    fn test_max_gas_price_caps() {
-        // Hardhat: low max (1 gwei) since it's for testing
-        let hardhat = GasConfig::hardhat();
-        assert_eq!(hardhat.max_gas_price, U256::from(1_000_000_000u64));
-
-        // Gnosis: higher max (100 gwei) for mainnet
-        let gnosis = GasConfig::gnosis(None);
-        assert_eq!(gnosis.max_gas_price, U256::from(100_000_000_000u64));
-
-        // NeuroWeb: low max (1 gwei) since gas is cheap
-        let neuro = GasConfig::neuroweb(None);
-        assert_eq!(neuro.max_gas_price, U256::from(1_000_000_000u64));
-
-        // Base: high max (500 gwei) since L2 gas can spike
-        let base = GasConfig::base(None);
-        assert_eq!(base.max_gas_price, U256::from(500_000_000_000u64));
-    }
-
-    #[test]
-    fn test_base_defaults_match_js() {
-        // JS base-service.js: uses provider.getGasPrice() with no special defaults
-        // We use 1 gwei as a sensible fallback
-        let config = GasConfig::base(None);
-        assert_eq!(
-            config.default_gas_price,
-            U256::from(1_000_000_000u64),
-            "Base default should be 1 gwei fallback"
-        );
-        assert_eq!(config.bump_factor, 1.2, "Bump factor should be 1.2");
+        let (mf, tip) = clamp_eip1559(U256::from(1u64), U256::from(999u64), cap, floor);
+        assert_eq!(mf, floor);
+        assert_eq!(tip, floor);
     }
 }

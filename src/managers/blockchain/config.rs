@@ -55,10 +55,6 @@ pub(crate) struct BlockchainConfigRaw {
     /// This identifies the node on the network.
     pub(crate) node_name: String,
 
-    /// URL for gas price oracle (optional).
-    /// Used by Gnosis to fetch current gas prices from Blockscout.
-    pub(crate) gas_price_oracle_url: Option<String>,
-
     /// Operator fee percentage for delegators (0-100).
     /// This is the percentage of rewards kept by the node operator.
     /// Only required on first profile creation.
@@ -164,7 +160,6 @@ impl BlockchainConfigRaw {
             hub_contract_address: self.hub_contract_address,
             rpc_endpoints: self.rpc_endpoints,
             node_name: self.node_name,
-            gas_price_oracle_url: self.gas_price_oracle_url,
             operator_fee: self.operator_fee,
             substrate_rpc_endpoints: self.substrate_rpc_endpoints,
             max_rpc_requests_per_second: self.max_rpc_requests_per_second,
@@ -184,7 +179,6 @@ pub(crate) struct BlockchainConfig {
     pub(crate) hub_contract_address: String,
     pub(crate) rpc_endpoints: Vec<String>,
     pub(crate) node_name: String,
-    pub(crate) gas_price_oracle_url: Option<String>,
     pub(crate) operator_fee: Option<u8>,
     pub(crate) substrate_rpc_endpoints: Option<Vec<String>>,
     pub(crate) max_rpc_requests_per_second: Option<u32>,
@@ -324,12 +318,11 @@ impl Blockchain {
 
     /// Creates the appropriate gas configuration based on blockchain type.
     pub(crate) fn gas_config(&self) -> GasConfig {
-        let oracle_url = self.get_config().gas_price_oracle_url.clone();
         match self {
             Blockchain::Hardhat(_) => GasConfig::hardhat(),
-            Blockchain::Gnosis(_) => GasConfig::gnosis(oracle_url),
-            Blockchain::NeuroWeb(_) => GasConfig::neuroweb(oracle_url),
-            Blockchain::Base(_) => GasConfig::base(oracle_url),
+            Blockchain::Gnosis(_) => GasConfig::gnosis(),
+            Blockchain::NeuroWeb(_) => GasConfig::neuroweb(),
+            Blockchain::Base(_) => GasConfig::base(),
         }
     }
 
@@ -415,7 +408,6 @@ mod tests {
             hub_contract_address: "0x0000000000000000000000000000000000000002".to_string(),
             rpc_endpoints: vec!["http://localhost:8545".to_string()],
             node_name: "test-node".to_string(),
-            gas_price_oracle_url: None,
             operator_fee: Some(0),
             substrate_rpc_endpoints: None,
             max_rpc_requests_per_second,

@@ -34,7 +34,7 @@ pub(crate) use contracts::{
     sharding::sharding_table_storage::ShardingTableLib::Node as ShardingTableNode,
 };
 use error_decode::decode_contract_error;
-pub(crate) use gas::GasConfig;
+pub(crate) use gas::{FeeQuote, GasConfig};
 pub(crate) use provider::initialize_provider_with_wallet;
 pub(crate) use rpc::random_sampling::{NodeChallenge, ProofPeriodStatus};
 
@@ -299,18 +299,23 @@ impl EvmChain {
         let _guard = self.tx_mutex.lock().await;
 
         let mut attempt = 1;
-        let mut gas_price = self.get_gas_price().await;
-        if gas_price > self.gas_config.max_gas_price {
-            gas_price = self.gas_config.max_gas_price;
-        }
+        let mut fee_quote = self.get_fee_quote().await;
 
         let mut cached_gas_limit: Option<u64> = None;
 
         loop {
             let contracts = self.contracts().await;
-            let mut call = build_call(&contracts)
-                .with_cloned_provider()
-                .gas_price(gas_price.to::<u128>());
+            let mut call = build_call(&contracts).with_cloned_provider();
+            call = match &fee_quote {
+                FeeQuote::Legacy { gas_price, .. } => call.gas_price(gas_price.to::<u128>()),
+                FeeQuote::Eip1559 {
+                    max_fee_per_gas,
+                    max_priority_fee_per_gas,
+                    ..
+                } => call
+                    .max_fee_per_gas(max_fee_per_gas.to::<u128>())
+                    .max_priority_fee_per_gas(max_priority_fee_per_gas.to::<u128>()),
+            };
             drop(contracts);
 
             if cached_gas_limit.is_none() {
@@ -375,8 +380,8 @@ impl EvmChain {
                     }
 
                     if bump_needed {
-                        match self.gas_config.bump_gas_price(gas_price) {
-                            Some(bumped) => gas_price = bumped,
+                        match fee_quote.bump(&self.gas_config) {
+                            Some(bumped) => fee_quote = bumped,
                             None => return Err(err),
                         }
                     }
@@ -413,15 +418,22 @@ impl EvmChain {
         let _guard = self.tx_mutex.lock().await;
 
         let mut attempt = 1;
-        let mut gas_price = self.get_gas_price().await;
-        if gas_price > self.gas_config.max_gas_price {
-            gas_price = self.gas_config.max_gas_price;
-        }
+        let mut fee_quote = self.get_fee_quote().await;
 
         let mut cached_gas_limit: Option<u64> = None;
 
         loop {
-            let mut call = build_call().gas_price(gas_price.to::<u128>());
+            let mut call = build_call();
+            call = match &fee_quote {
+                FeeQuote::Legacy { gas_price, .. } => call.gas_price(gas_price.to::<u128>()),
+                FeeQuote::Eip1559 {
+                    max_fee_per_gas,
+                    max_priority_fee_per_gas,
+                    ..
+                } => call
+                    .max_fee_per_gas(max_fee_per_gas.to::<u128>())
+                    .max_priority_fee_per_gas(max_priority_fee_per_gas.to::<u128>()),
+            };
 
             if cached_gas_limit.is_none() {
                 self.rpc_rate_limiter.acquire().await;
@@ -483,8 +495,8 @@ impl EvmChain {
                     }
 
                     if bump_needed {
-                        match self.gas_config.bump_gas_price(gas_price) {
-                            Some(bumped) => gas_price = bumped,
+                        match fee_quote.bump(&self.gas_config) {
+                            Some(bumped) => fee_quote = bumped,
                             None => return Err(err),
                         }
                     }
