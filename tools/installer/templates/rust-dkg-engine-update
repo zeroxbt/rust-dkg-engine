@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_OWNER="zeroxbt"
+REPO_NAME="rust-dkg-engine"
+SERVICE_NAME="rust-dkg-engine"
+
+INSTALL_ROOT="/opt/rust-dkg-engine"
+RELEASES_DIR="$INSTALL_ROOT/releases"
+CURRENT_LINK="$INSTALL_ROOT/current"
+
+log() { printf '%s\n' "$*"; }
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+detect_arch_tag() {
+  local m
+  m="$(uname -m)"
+  case "$m" in
+    x86_64|amd64) echo "x86_64" ;;
+    aarch64|arm64) echo "aarch64" ;;
+    *) die "Unsupported architecture: $m" ;;
+  esac
+}
+
+github_api_get_release_json() {
+  local version="$1"
+  local api="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}"
+  if [[ "$version" == "latest" ]]; then
+    curl -fsSL -H "Accept: application/vnd.github+json" "${api}/releases/latest"
+  else
+    curl -fsSL -H "Accept: application/vnd.github+json" "${api}/releases/tags/${version}"
+  fi
+}
+
+current_version() {
+  if [[ -f "${CURRENT_LINK}/VERSION" ]]; then
+    cat "${CURRENT_LINK}/VERSION" | tr -d '\r\n' || true
+  else
+    echo ""
+  fi
+}
+
+parse_args() {
+  REQUESTED_VERSION="latest"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --version)
+        [[ $# -ge 2 ]] || die "--version requires an argument"
+        REQUESTED_VERSION="$2"
+        shift 2
+        ;;
+      -h|--help)
+        cat <<EOF
+Usage: rust-dkg-engine-update [--version latest|<tag>]
+
+Default updates to the latest GitHub Release and restarts ${SERVICE_NAME}.
+EOF
+        exit 0
+        ;;
+      *)
+        die "Unknown argument: $1"
+        ;;
+    esac
+  done
+}
+
+main() {
+  parse_args "$@"
+
+  command -v curl >/dev/null 2>&1 || die "curl not found"
+  command -v jq >/dev/null 2>&1 || die "jq not found"
+  command -v tar >/dev/null 2>&1 || die "tar not found"
+  command -v sha256sum >/dev/null 2>&1 || die "sha256sum not found"
+  command -v systemctl >/dev/null 2>&1 || die "systemctl not found"
+  command -v flock >/dev/null 2>&1 || die "flock not found"
+
+  mkdir -p "$RELEASES_DIR"
+
+  local lock="/var/lock/rust-dkg-engine-update.lock"
+  exec 9>"$lock"
+  flock -n 9 || { log "Another update is already running. Exiting."; exit 0; }
+
+  local arch_tag requested current json tag checksum_url asset_name asset_url
+  arch_tag="$(detect_arch_tag)"
+  requested="${REQUESTED_VERSION}"
+  current="$(current_version)"
+
+  log "Checking for updates (requested=${requested}, current=${current:-none}, arch=${arch_tag})..."
+  json="$(github_api_get_release_json "$requested")"
+  tag="$(jq -r '.tag_name' <<<"$json")"
+  [[ -n "$tag" && "$tag" != "null" ]] || die "Failed to resolve release tag_name."
+
+  if [[ -n "$current" && "$tag" == "$current" ]]; then
+    log "Already up to date: ${tag}"
+    exit 0
+  fi
+
+  checksum_url="$(jq -r '.assets[] | select(.name=="SHA256SUMS") | .browser_download_url' <<<"$json" | head -n 1 || true)"
+  [[ -n "$checksum_url" ]] || die "Release is missing SHA256SUMS asset."
+
+  asset_name="rust-dkg-engine_${tag}_linux_${arch_tag}.tar.gz"
+  asset_url="$(jq -r --arg name "$asset_name" '.assets[] | select(.name==$name) | .browser_download_url' <<<"$json" | head -n 1 || true)"
+  [[ -n "$asset_url" ]] || die "Release is missing asset: ${asset_name}"
+
+  local tmp
+  tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" EXIT
+
+  log "Downloading ${asset_name}..."
+  curl -fsSL -o "$tmp/$asset_name" "$asset_url"
+  log "Downloading SHA256SUMS..."
+  curl -fsSL -o "$tmp/SHA256SUMS" "$checksum_url"
+
+  grep " ${asset_name}\$" "$tmp/SHA256SUMS" >"$tmp/SHA256SUMS.one" || die "SHA256SUMS missing entry for ${asset_name}"
+  (cd "$tmp" && sha256sum -c "SHA256SUMS.one") >/dev/null
+
+  local release_dir="$RELEASES_DIR/$tag"
+  if [[ -x "$release_dir/rust-dkg-engine" && -f "$release_dir/VERSION" ]]; then
+    log "Release already installed at ${release_dir}"
+  else
+    rm -rf "$release_dir.tmp"
+    mkdir -p "$release_dir.tmp"
+    tar -xzf "$tmp/$asset_name" -C "$release_dir.tmp"
+    [[ -f "$release_dir.tmp/rust-dkg-engine" ]] || die "Archive missing rust-dkg-engine"
+    [[ -f "$release_dir.tmp/VERSION" ]] || die "Archive missing VERSION"
+    chmod 0755 "$release_dir.tmp/rust-dkg-engine"
+    mv -f "$release_dir.tmp" "$release_dir"
+    log "Installed ${tag} to ${release_dir}"
+  fi
+
+  local prev=""
+  prev="$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)"
+  ln -sfn "$release_dir" "$CURRENT_LINK"
+
+  log "Restarting ${SERVICE_NAME}.service..."
+  systemctl restart "${SERVICE_NAME}.service"
+
+  if systemctl is-active --quiet "${SERVICE_NAME}.service"; then
+    log "Update complete: now running ${tag}"
+    exit 0
+  fi
+
+  log "Service failed after update. Attempting rollback..."
+  if [[ -n "$prev" && -d "$prev" ]]; then
+    ln -sfn "$prev" "$CURRENT_LINK"
+    systemctl restart "${SERVICE_NAME}.service" || true
+  fi
+
+  systemctl is-active --quiet "${SERVICE_NAME}.service" || die "Rollback failed; ${SERVICE_NAME}.service is not active."
+  log "Rolled back to previous version."
+}
+
+main "$@"
+

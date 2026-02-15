@@ -9,6 +9,7 @@ This folder contains a single script that installs and configures `rust-dkg-engi
 - Downloads `rust-dkg-engine` from GitHub Releases, verifies `SHA256SUMS`, installs under `/opt/rust-dkg-engine/releases/<version>/`, and sets `/opt/rust-dkg-engine/current`.
 - Writes `/etc/rust-dkg-engine/config.toml` (mode `0640`, `root:rustdkg`) including secrets.
 - Installs and starts a systemd service using `StateDirectory=rust-dkg-engine` (data under `/var/lib/rust-dkg-engine`).
+- Optionally enables an auto-updater systemd timer (downloads latest release and restarts the service).
 
 ## Usage
 Recommended (no repo clone): run the bootstrap from the latest GitHub Release:
@@ -47,4 +48,17 @@ If you installed Blazegraph:
 ```bash
 systemctl status blazegraph
 journalctl -u blazegraph -f
+```
+
+## Auto-updater
+If enabled, the installer sets up:
+- `rust-dkg-engine-update.service` (oneshot)
+- `rust-dkg-engine-update.timer` (hourly by default)
+
+Helpful commands:
+```bash
+systemctl status rust-dkg-engine-update.timer
+systemctl list-timers | rg rust-dkg-engine-update || true
+systemctl start rust-dkg-engine-update.service
+journalctl -u rust-dkg-engine-update.service -f
 ```

@@ -264,9 +264,9 @@ install_base_deps() {
   pm_update "$pm"
 
   case "$pm" in
-    apt) pm_install "$pm" curl jq tar ca-certificates coreutils ;;
-    dnf|yum) pm_install "$pm" curl jq tar ca-certificates coreutils ;;
-    pacman) pm_install "$pm" curl jq tar ca-certificates coreutils ;;
+    apt) pm_install "$pm" curl jq tar ca-certificates coreutils util-linux ;;
+    dnf|yum) pm_install "$pm" curl jq tar ca-certificates coreutils util-linux ;;
+    pacman) pm_install "$pm" curl jq tar ca-certificates coreutils util-linux ;;
     *) die "Unsupported package manager: $pm" ;;
   esac
 }
@@ -899,6 +899,34 @@ install_rust_service() {
   systemctl is-active --quiet "${SERVICE_NAME}.service" || die "${SERVICE_NAME}.service is not active."
 }
 
+install_auto_updater() {
+  # Script + units shipped inside installer bundle under templates/.
+  install -m 0755 "$SCRIPT_DIR/templates/rust-dkg-engine-update" "${BIN_DIR}/rust-dkg-engine-update"
+  chown root:root "${BIN_DIR}/rust-dkg-engine-update"
+
+  install -m 0644 "$SCRIPT_DIR/templates/rust-dkg-engine-update.service" /etc/systemd/system/rust-dkg-engine-update.service
+  install -m 0644 "$SCRIPT_DIR/templates/rust-dkg-engine-update.timer" /etc/systemd/system/rust-dkg-engine-update.timer
+
+  systemctl daemon-reload
+  systemctl enable --now rust-dkg-engine-update.timer
+  systemctl is-enabled --quiet rust-dkg-engine-update.timer || die "Failed to enable rust-dkg-engine-update.timer"
+}
+
+maybe_enable_auto_updates_prompt() {
+  local choice
+  choice="$(prompt "Enable auto-updates via systemd timer? (y/N)" "n")"
+  case "$choice" in
+    y|Y|yes|YES)
+      install_auto_updater
+      log "Auto-updates enabled: systemctl status rust-dkg-engine-update.timer"
+      ;;
+    *)
+      log "Auto-updates not enabled. You can enable later with:"
+      log "  systemctl enable --now rust-dkg-engine-update.timer"
+      ;;
+  esac
+}
+
 main() {
   parse_args "$@"
   require_root
@@ -954,6 +982,7 @@ main() {
     after_units="$(echo "$after_units" | xargs || true)"
 
     install_rust_service "$wants_units" "$after_units"
+    maybe_enable_auto_updates_prompt
 
     log ""
     log "Install complete."
@@ -1039,6 +1068,7 @@ main() {
     after_units="${after_units} blazegraph.service"
   fi
   install_rust_service "$wants_units" "$after_units"
+  maybe_enable_auto_updates_prompt
 
   log ""
   log "Install complete."

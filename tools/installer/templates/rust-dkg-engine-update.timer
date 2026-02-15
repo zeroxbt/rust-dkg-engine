@@ -1,0 +1,14 @@
+[Unit]
+Description=rust-dkg-engine auto-updater timer
+
+[Timer]
+# Default cadence is hourly. If you want every 15 minutes, change this to:
+# OnUnitActiveSec=15m
+OnBootSec=5m
+OnUnitActiveSec=1h
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

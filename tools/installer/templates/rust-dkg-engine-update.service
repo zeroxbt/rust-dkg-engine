@@ -1,0 +1,12 @@
+[Unit]
+Description=rust-dkg-engine auto-updater (oneshot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+
+ExecStart=/opt/rust-dkg-engine/bin/rust-dkg-engine-update
+

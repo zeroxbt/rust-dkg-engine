@@ -46,8 +46,9 @@ jobs:
           mkdir -p installer/templates
           cp tools/installer/install.sh installer/install.sh
           cp tools/installer/README.md installer/README.md
-          cp tools/installer/templates/*.service installer/templates/
+          cp tools/installer/templates/* installer/templates/
           chmod 0755 installer/install.sh
+          chmod 0755 installer/templates/rust-dkg-engine-update || true
           INSTALLER_TAR="installer.tar.gz"
           tar -czf "$INSTALLER_TAR" installer
 
