@@ -51,13 +51,6 @@ pub(crate) struct RepositoryManagerConfig {
 }
 
 impl RepositoryManagerConfig {
-    pub(crate) fn root_connection_string(&self) -> String {
-        format!(
-            "mysql://{}:{}@{}:{}",
-            self.user, self.password, self.host, self.port
-        )
-    }
-
     pub(crate) fn connection_string(&self) -> String {
         format!(
             "mysql://{}:{}@{}:{}/{}",

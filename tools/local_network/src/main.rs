@@ -11,7 +11,7 @@ use clap::{Arg, ArgAction, Command, value_parser};
 use libp2p::{PeerId, identity};
 
 use crate::{
-    cleanup::{clear_rust_node_data, delete_blazegraph_namespaces, drop_database},
+    cleanup::{clear_rust_node_data, create_database, delete_blazegraph_namespaces, drop_database},
     config_gen::{JsConfigContext, RustConfigContext, render_js_config, render_rust_config},
     constants::{
         BOOTSTRAP_KEY_PATH, BOOTSTRAP_NODE_INDEX, DEFAULT_JS_NODES, DEFAULT_NODES,
@@ -163,6 +163,8 @@ fn cleanup_nodes(plans: &[NodePlan], js_first: bool) {
     for plan in plans {
         // Drop MySQL database (used by JS nodes)
         drop_database(&plan.database_name);
+        // rust-dkg-engine no longer creates the database automatically on startup.
+        create_database(&plan.database_name);
 
         // Delete Blazegraph namespaces for all nodes (JS nodes use Blazegraph)
         delete_blazegraph_namespaces(plan.index);

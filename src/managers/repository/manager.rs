@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
+use sea_orm::{ConnectOptions, Database};
 use sea_orm_migration::MigratorTrait;
 
 pub(crate) use crate::managers::repository::config::RepositoryManagerConfig;
@@ -33,20 +33,9 @@ impl RepositoryManager {
     /// # Errors
     ///
     /// Returns `RepositoryError` if:
-    /// - Database connection fails
-    /// - Database creation fails
+    /// - Database connection fails (e.g. database missing, bad credentials)
     /// - Migrations fail
     pub(crate) async fn connect(config: &RepositoryManagerConfig) -> Result<Self, RepositoryError> {
-        // Connect to MySQL server
-        let conn = Database::connect(config.root_connection_string()).await?;
-
-        // Create the database if it doesn't exist
-        conn.execute(Statement::from_string(
-            DbBackend::MySql,
-            format!("CREATE DATABASE IF NOT EXISTS {}", config.database),
-        ))
-        .await?;
-
         let mut opt = ConnectOptions::new(config.connection_string());
         opt.max_connections(config.max_connections)
             .min_connections(config.min_connections)

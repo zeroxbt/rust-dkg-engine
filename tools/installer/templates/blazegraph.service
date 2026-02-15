@@ -1,0 +1,19 @@
+[Unit]
+Description=Blazegraph (local) for rust-dkg-engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=blazegraph
+Group=blazegraph
+
+StateDirectory=blazegraph
+WorkingDirectory=/var/lib/blazegraph
+
+ExecStart=/usr/bin/java -jar /opt/rust-dkg-engine/blazegraph/blazegraph.jar
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

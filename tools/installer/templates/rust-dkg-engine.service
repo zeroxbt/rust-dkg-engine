@@ -1,0 +1,28 @@
+[Unit]
+Description=rust-dkg-engine node
+After=network-online.target @AFTER_UNITS@
+Wants=network-online.target @WANTS_UNITS@
+
+[Service]
+Type=simple
+User=rustdkg
+Group=rustdkg
+
+StateDirectory=rust-dkg-engine
+WorkingDirectory=/var/lib/rust-dkg-engine
+
+ExecStart=/opt/rust-dkg-engine/current/rust-dkg-engine --config /etc/rust-dkg-engine/config.toml
+
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=30
+
+# Basic hardening (tighten later as needed)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/rust-dkg-engine
+
+[Install]
+WantedBy=multi-user.target

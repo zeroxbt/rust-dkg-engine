@@ -18,6 +18,22 @@ pub(crate) fn drop_database(database_name: &str) {
     }
 }
 
+pub(crate) fn create_database(database_name: &str) {
+    let create_command = format!(
+        "echo \"CREATE DATABASE IF NOT EXISTS {}\" | mysql -u root",
+        database_name
+    );
+    let output = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(&create_command)
+        .output()
+        .expect("Failed to execute create database command");
+
+    if !output.status.success() {
+        eprintln!("Failed to create database '{}'.", database_name);
+    }
+}
+
 pub(crate) fn clear_rust_node_data(data_folder: &str, preserve_network_key: bool) {
     let data_path = Path::new(data_folder);
 

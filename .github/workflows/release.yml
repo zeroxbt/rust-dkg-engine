@@ -1,0 +1,51 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.92.0
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build (release)
+        run: cargo build --release --locked
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          ARCH="x86_64"
+          OUT="dist"
+          BIN="target/release/rust-dkg-engine"
+          test -f "$BIN"
+          rm -rf "$OUT"
+          mkdir -p "$OUT"
+          cp "$BIN" "$OUT/rust-dkg-engine"
+          chmod 0755 "$OUT/rust-dkg-engine"
+          printf '%s\n' "$TAG" > "$OUT/VERSION"
+          TAR="rust-dkg-engine_${TAG}_linux_${ARCH}.tar.gz"
+          (cd "$OUT" && tar -czf "../$TAR" rust-dkg-engine VERSION)
+          sha256sum "$TAR" > SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            rust-dkg-engine_*.tar.gz
+            SHA256SUMS
+
