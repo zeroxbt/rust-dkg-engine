@@ -21,7 +21,19 @@ OVERWRITE_CONFIG="0"
 REQUESTED_VERSION="$DEFAULT_VERSION"
 
 log() { printf '%s\n' "$*"; }
+warn() { printf '%s\n' "$*" >&2; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+toml_escape_basic_string() {
+  # Escape for TOML basic strings (double-quoted).
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
 
 require_root() {
   [[ "${EUID}" -eq 0 ]] || die "This installer must be run as root (use sudo)."
@@ -114,7 +126,7 @@ prompt_secret() {
   local msg="$1"
   local out=""
   read -r -s -p "$msg: " out
-  echo
+  echo >&2
   printf '%s' "$out"
 }
 
@@ -124,9 +136,22 @@ prompt_secret_confirm_minlen() {
   local p1="" p2=""
   while true; do
     p1="$(prompt_secret "$label")"
-    [[ "${#p1}" -ge "$min_len" ]] || { log "Password must be at least ${min_len} characters."; continue; }
+    [[ "${#p1}" -ge "$min_len" ]] || { warn "Invalid input: '${label}' must be at least ${min_len} characters."; continue; }
     p2="$(prompt_secret "Confirm $label")"
-    [[ "$p1" == "$p2" ]] || { log "Passwords do not match. Try again."; continue; }
+    [[ "$p1" == "$p2" ]] || { warn "Invalid input: '${label}' values do not match. Try again."; continue; }
+    printf '%s' "$p1"
+    return 0
+  done
+}
+
+prompt_secret_confirm_nonempty() {
+  local label="$1"
+  local p1="" p2=""
+  while true; do
+    p1="$(prompt_secret "$label")"
+    [[ -n "$p1" ]] || { warn "Invalid input: '${label}' cannot be empty."; continue; }
+    p2="$(prompt_secret "Confirm $label")"
+    [[ "$p1" == "$p2" ]] || { warn "Invalid input: '${label}' values do not match. Try again."; continue; }
     printf '%s' "$p1"
     return 0
   done
@@ -211,14 +236,39 @@ install_and_start_mariadb_if_missing() {
 
 mysql_exec_root_socket() {
   local sql="$1"
-  mysql -u root -e "$sql" >/dev/null 2>&1
+  mysql -u root -e "$sql"
 }
 
 mysql_exec_admin() {
   local admin_user="$1"
   local admin_pass="$2"
   local sql="$3"
-  MYSQL_PWD="$admin_pass" mysql -u "$admin_user" -e "$sql" >/dev/null 2>&1
+  MYSQL_PWD="$admin_pass" mysql -u "$admin_user" -e "$sql"
+}
+
+wait_for_mysql_root_socket() {
+  local tries=30
+  while (( tries > 0 )); do
+    if mysql -u root -e "SELECT 1" >/dev/null 2>&1; then
+      return 0
+    fi
+    tries=$((tries - 1))
+    sleep 1
+  done
+  return 1
+}
+
+is_simple_identifier() {
+  local v="$1"
+  [[ "$v" =~ ^[A-Za-z0-9_]+$ ]]
+}
+
+sql_escape_password() {
+  # Escape for single-quoted MySQL string literal.
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\'/\'\'}"
+  printf '%s' "$s"
 }
 
 provision_database() {
@@ -226,26 +276,36 @@ provision_database() {
   local app_user="$2"
   local app_pass="$3"
 
+  is_simple_identifier "$db_name" || die "Database name must match [A-Za-z0-9_]+ (got: $db_name)"
+  is_simple_identifier "$app_user" || die "Database username must match [A-Za-z0-9_]+ (got: $app_user)"
+
+  local esc_pass
+  esc_pass="$(sql_escape_password "$app_pass")"
+
+  # No backticks needed if we restrict db_name to a safe identifier.
   local sql
   sql=$(
     cat <<EOF
-CREATE DATABASE IF NOT EXISTS \\\`$db_name\\\`;
-CREATE USER IF NOT EXISTS '$app_user'@'localhost' IDENTIFIED BY '$app_pass';
-ALTER USER '$app_user'@'localhost' IDENTIFIED BY '$app_pass';
-GRANT ALL PRIVILEGES ON \\\`$db_name\\\`.* TO '$app_user'@'localhost';
+CREATE DATABASE IF NOT EXISTS $db_name;
+CREATE USER IF NOT EXISTS '$app_user'@'localhost' IDENTIFIED BY '$esc_pass';
+ALTER USER '$app_user'@'localhost' IDENTIFIED BY '$esc_pass';
+GRANT ALL PRIVILEGES ON $db_name.* TO '$app_user'@'localhost';
 FLUSH PRIVILEGES;
 EOF
   )
 
-  if mysql_exec_root_socket "$sql"; then
+  # Give the service a moment to come up after installation/start.
+  wait_for_mysql_root_socket || true
+
+  if mysql_exec_root_socket "$sql" >/dev/null 2>&1; then
     return 0
   fi
 
-  log "Root socket auth failed; please provide DB admin credentials to provision DB/user."
+  log "Root socket provisioning failed; please provide DB admin credentials to provision DB/user."
   local admin_user admin_pass
   admin_user="$(prompt "DB admin username" "root")"
   admin_pass="$(prompt_secret "DB admin password")"
-  mysql_exec_admin "$admin_user" "$admin_pass" "$sql" || die "Failed to provision database with provided admin credentials."
+  mysql_exec_admin "$admin_user" "$admin_pass" "$sql" >/dev/null 2>&1 || die "Failed to provision database with provided admin credentials."
 }
 
 install_blazegraph() {
@@ -299,15 +359,33 @@ download_and_install_binary() {
 
   asset_url="$(jq -r --arg arch "$arch_tag" '
     .assets[]
-    | select((.name|test("linux";"i")) and (.name|test($arch;"i")))
-    | select((.name|test("\\\\.(tar\\\\.gz|tgz|tar\\\\.xz)$")) or (.name=="rust-dkg-engine"))
+    | select(
+        (.name | ascii_downcase | contains("linux"))
+        and
+        (.name | ascii_downcase | contains($arch))
+      )
+    | select(
+        (.name | endswith(".tar.gz"))
+        or (.name | endswith(".tgz"))
+        or (.name | endswith(".tar.xz"))
+        or (.name == "rust-dkg-engine")
+      )
     | .browser_download_url
   ' <<<"$json" | head -n 1 || true)"
 
   asset_name="$(jq -r --arg arch "$arch_tag" '
     .assets[]
-    | select((.name|test("linux";"i")) and (.name|test($arch;"i")))
-    | select((.name|test("\\\\.(tar\\\\.gz|tgz|tar\\\\.xz)$")) or (.name=="rust-dkg-engine"))
+    | select(
+        (.name | ascii_downcase | contains("linux"))
+        and
+        (.name | ascii_downcase | contains($arch))
+      )
+    | select(
+        (.name | endswith(".tar.gz"))
+        or (.name | endswith(".tgz"))
+        or (.name | endswith(".tar.xz"))
+        or (.name == "rust-dkg-engine")
+      )
     | .name
   ' <<<"$json" | head -n 1 || true)"
 
@@ -319,7 +397,9 @@ download_and_install_binary() {
 
   local tmp
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  # Avoid `set -u` issues: embed the path into the trap command at definition time.
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" EXIT
 
   log "Downloading ${asset_name}..."
   curl -fsSL -o "$tmp/$asset_name" "$asset_url"
@@ -372,6 +452,9 @@ write_config_toml() {
 
   umask 077
   mkdir -p "$ETC_DIR"
+  # Allow the service user (Group=rustdkg) to read the config without making it world-readable.
+  chown root:rustdkg "$ETC_DIR"
+  chmod 0750 "$ETC_DIR"
 
   if [[ -f "$CONFIG_PATH" && "$OVERWRITE_CONFIG" != "1" ]]; then
     die "Config already exists at ${CONFIG_PATH}. Re-run with --overwrite-config to replace it."
@@ -379,16 +462,25 @@ write_config_toml() {
 
   local tmp
   tmp="$(mktemp)"
+  local environment_esc db_host_esc db_name_esc db_user_esc db_pass_esc external_ip_esc triple_url_esc
+  environment_esc="$(toml_escape_basic_string "$environment")"
+  db_host_esc="$(toml_escape_basic_string "$db_host")"
+  db_name_esc="$(toml_escape_basic_string "$db_name")"
+  db_user_esc="$(toml_escape_basic_string "$db_user")"
+  db_pass_esc="$(toml_escape_basic_string "$db_pass")"
+  external_ip_esc="$(toml_escape_basic_string "$external_ip")"
+  triple_url_esc="$(toml_escape_basic_string "$triple_url")"
+
   cat >"$tmp" <<EOF
-environment = "${environment}"
+environment = "${environment_esc}"
 app_data_path = "/var/lib/rust-dkg-engine"
 
 [managers.repository]
-host = "${db_host}"
+host = "${db_host_esc}"
 port = ${db_port}
-database = "${db_name}"
-user = "${db_user}"
-password = "${db_pass}"
+database = "${db_name_esc}"
+user = "${db_user_esc}"
+password = "${db_pass_esc}"
 max_connections = 120
 min_connections = 1
 
@@ -398,7 +490,7 @@ idle_connection_timeout_secs = 300
 EOF
 
   if [[ -n "$external_ip" ]]; then
-    printf 'external_ip = "%s"\n' "$external_ip" >>"$tmp"
+    printf 'external_ip = "%s"\n' "$external_ip_esc" >>"$tmp"
   fi
 
   if [[ -n "$bootstrap_lines" ]]; then
@@ -413,7 +505,7 @@ EOF
 
 [managers.triple_store]
 backend = "${triple_backend}"
-url = "${triple_url}"
+url = "${triple_url_esc}"
 connect_max_retries = 10
 connect_retry_frequency_ms = 10000
 max_concurrent_operations = 25
@@ -443,7 +535,8 @@ enabled = true
 ip_whitelist = ["127.0.0.1", "::1"]
 EOF
 
-  install -m 0600 "$tmp" "$CONFIG_PATH"
+  install -m 0640 "$tmp" "$CONFIG_PATH"
+  chown root:rustdkg "$CONFIG_PATH"
   rm -f "$tmp"
   log "Wrote ${CONFIG_PATH}"
 }
@@ -458,16 +551,16 @@ prompt_environment() {
 }
 
 prompt_triple_store() {
-  log ""
-  log "Triple store selection:"
-  log "  1) Oxigraph (embedded, default)"
-  log "  2) Blazegraph (local service)"
+  warn ""
+  warn "Triple store selection:"
+  warn "  [1] Oxigraph (embedded, default)"
+  warn "  [2] Blazegraph (local service)"
   local choice
-  choice="$(prompt "Select triple store" "1")"
+  choice="$(prompt "Select triple store (1/2 or oxigraph/blazegraph)" "1")"
   case "$choice" in
-    1) echo "oxigraph" ;;
-    2) echo "blazegraph" ;;
-    *) die "Invalid triple store choice: $choice" ;;
+    1|oxigraph|Oxigraph|OXIGRAPH) echo "oxigraph" ;;
+    2|blazegraph|Blazegraph|BLAZEGRAPH) echo "blazegraph" ;;
+    *) die "Invalid triple store choice: $choice (use 1=oxigraph or 2=blazegraph)" ;;
   esac
 }
 
@@ -482,9 +575,17 @@ prompt_external_ip() {
 }
 
 prompt_bootstrap_list() {
+  local environment="${1:-}"
   local bootstrap_csv
   bootstrap_csv="$(prompt "Bootstrap multiaddrs (comma-separated, blank to use defaults)" "")"
   if [[ -z "$bootstrap_csv" ]]; then
+    # Defaults taken from src/config/defaults.rs (mainnet). Testnet defaults are empty.
+    if [[ "$environment" == "mainnet" ]]; then
+      printf '%s\n' \
+        '    "/ip4/157.230.96.194/tcp/9000/p2p/QmZFcns6eGUosD96beHyevKu1jGJ1bA56Reg2f1J4q59Jt",' \
+        '    "/ip4/18.132.135.102/tcp/9000/p2p/QmemqyXyvrTAm7PwrcTcFiEEFx69efdR92GSZ1oQprbdja",'
+      return 0
+    fi
     echo ""
     return 0
   fi
@@ -493,6 +594,7 @@ prompt_bootstrap_list() {
   for v in "${arr[@]}"; do
     v="$(echo "$v" | xargs)"
     [[ -z "$v" ]] && continue
+    v="$(toml_escape_basic_string "$v")"
     out+="    \"${v}\",\n"
   done
   # strip last newline
@@ -515,8 +617,8 @@ prompt_u16() {
   local v=""
   while true; do
     v="$(prompt "$label" "$def")"
-    [[ "$v" =~ ^[0-9]+$ ]] || { log "Enter a number."; continue; }
-    (( v >= 1 && v <= 65535 )) || { log "Enter a value in range 1-65535."; continue; }
+    [[ "$v" =~ ^[0-9]+$ ]] || { warn "Invalid input: enter a number."; continue; }
+    (( v >= 1 && v <= 65535 )) || { warn "Invalid input: enter a value in range 1-65535."; continue; }
     echo "$v"
     return 0
   done
@@ -526,8 +628,8 @@ prompt_operator_fee() {
   local v=""
   while true; do
     v="$(prompt "Operator fee (0-100)" "0")"
-    [[ "$v" =~ ^[0-9]+$ ]] || { log "Enter a number."; continue; }
-    (( v >= 0 && v <= 100 )) || { log "Enter a value in range 0-100."; continue; }
+    [[ "$v" =~ ^[0-9]+$ ]] || { warn "Invalid input: enter a number."; continue; }
+    (( v >= 0 && v <= 100 )) || { warn "Invalid input: enter a value in range 0-100."; continue; }
     echo "$v"
     return 0
   done
@@ -540,6 +642,7 @@ toml_array_lines_from_csv() {
   for v in "${arr[@]}"; do
     v="$(echo "$v" | xargs)"
     [[ -z "$v" ]] && continue
+    v="$(toml_escape_basic_string "$v")"
     out+="    \"${v}\",\n"
   done
   printf "%b" "$out"
@@ -570,12 +673,15 @@ build_chain_blocks() {
       hub_addr="0xe233b5b78853a62b1e11ebe88bf083e25b0a57a6"
       default_rpc="https://lofar-testnet.origin-trail.network,https://lofar-testnet.origintrail.network"
     fi
-    local rpc_csv op_priv mgmt_addr mgmt_priv
+    local rpc_csv op_priv mgmt_addr
     rpc_csv="$(prompt_rpc_endpoints_csv "NeuroWeb RPC endpoints" "$default_rpc")"
     op_priv="$(prompt_secret_confirm_minlen "NeuroWeb operational wallet private key" 8)"
     mgmt_addr="$(prompt "NeuroWeb management wallet address (0x...)" "")"
     [[ -n "$mgmt_addr" ]] || die "Management wallet address is required."
-    mgmt_priv="$(prompt_secret "NeuroWeb management wallet private key (optional, blank to skip)")"
+    local op_priv_esc mgmt_addr_esc node_name_esc
+    op_priv_esc="$(toml_escape_basic_string "$op_priv")"
+    mgmt_addr_esc="$(toml_escape_basic_string "$mgmt_addr")"
+    node_name_esc="$(toml_escape_basic_string "$node_name")"
     local rpc_lines
     rpc_lines="$(toml_array_lines_from_csv "$rpc_csv")"
     blocks+=$(
@@ -589,21 +695,16 @@ rpc_endpoints = [
 $rpc_lines
 ]
 operator_fee = ${operator_fee}
-    evm_operational_wallet_private_key = "${op_priv}"
-evm_management_wallet_address = "${mgmt_addr}"
-EOF
-    )
-    if [[ -n "$mgmt_priv" ]]; then
-      blocks+=$'\n'"evm_management_wallet_private_key = \"${mgmt_priv}\""$'\n'
-    fi
-    blocks+=$(
-      cat <<EOF
-node_name = "${node_name}"
+evm_operational_wallet_private_key = "${op_priv_esc}"
+evm_management_wallet_address = "${mgmt_addr_esc}"
+node_name = "${node_name_esc}"
 tx_confirmations = 1
 tx_receipt_timeout_ms = 300000
 
 EOF
     )
+    # Command substitutions strip trailing newlines; ensure block separation explicitly.
+    blocks+=$'\n'
   fi
 
   if [[ "$enable_gnosis" == "y" || "$enable_gnosis" == "Y" ]]; then
@@ -620,12 +721,15 @@ EOF
       default_rpc="https://rpc.chiadochain.net"
       gas_oracle="https://blockscout.chiadochain.net/api/v1/gas-price-oracle"
     fi
-    local rpc_csv op_priv mgmt_addr mgmt_priv
+    local rpc_csv op_priv mgmt_addr
     rpc_csv="$(prompt_rpc_endpoints_csv "Gnosis RPC endpoints" "$default_rpc")"
     op_priv="$(prompt_secret_confirm_minlen "Gnosis operational wallet private key" 8)"
     mgmt_addr="$(prompt "Gnosis management wallet address (0x...)" "")"
     [[ -n "$mgmt_addr" ]] || die "Management wallet address is required."
-    mgmt_priv="$(prompt_secret "Gnosis management wallet private key (optional, blank to skip)")"
+    local op_priv_esc mgmt_addr_esc node_name_esc
+    op_priv_esc="$(toml_escape_basic_string "$op_priv")"
+    mgmt_addr_esc="$(toml_escape_basic_string "$mgmt_addr")"
+    node_name_esc="$(toml_escape_basic_string "$node_name")"
     local rpc_lines
     rpc_lines="$(toml_array_lines_from_csv "$rpc_csv")"
     blocks+=$(
@@ -640,21 +744,15 @@ $rpc_lines
 ]
 gas_price_oracle_url = "${gas_oracle}"
 operator_fee = ${operator_fee}
-evm_operational_wallet_private_key = "${op_priv}"
-evm_management_wallet_address = "${mgmt_addr}"
-EOF
-    )
-    if [[ -n "$mgmt_priv" ]]; then
-      blocks+=$'\n'"evm_management_wallet_private_key = \"${mgmt_priv}\""$'\n'
-    fi
-    blocks+=$(
-      cat <<EOF
-node_name = "${node_name}"
+evm_operational_wallet_private_key = "${op_priv_esc}"
+evm_management_wallet_address = "${mgmt_addr_esc}"
+node_name = "${node_name_esc}"
 tx_confirmations = 1
 tx_receipt_timeout_ms = 300000
 
 EOF
     )
+    blocks+=$'\n'
   fi
 
   if [[ "$enable_base" == "y" || "$enable_base" == "Y" ]]; then
@@ -669,12 +767,15 @@ EOF
       hub_addr="0xf21CE8f8b01548D97DCFb36869f1ccB0814a4e05"
       default_rpc="https://sepolia.base.org"
     fi
-    local rpc_csv op_priv mgmt_addr mgmt_priv
+    local rpc_csv op_priv mgmt_addr
     rpc_csv="$(prompt_rpc_endpoints_csv "Base RPC endpoints" "$default_rpc")"
     op_priv="$(prompt_secret_confirm_minlen "Base operational wallet private key" 8)"
     mgmt_addr="$(prompt "Base management wallet address (0x...)" "")"
     [[ -n "$mgmt_addr" ]] || die "Management wallet address is required."
-    mgmt_priv="$(prompt_secret "Base management wallet private key (optional, blank to skip)")"
+    local op_priv_esc mgmt_addr_esc node_name_esc
+    op_priv_esc="$(toml_escape_basic_string "$op_priv")"
+    mgmt_addr_esc="$(toml_escape_basic_string "$mgmt_addr")"
+    node_name_esc="$(toml_escape_basic_string "$node_name")"
     local rpc_lines
     rpc_lines="$(toml_array_lines_from_csv "$rpc_csv")"
     blocks+=$(
@@ -688,25 +789,19 @@ rpc_endpoints = [
 $rpc_lines
 ]
 operator_fee = ${operator_fee}
-evm_operational_wallet_private_key = "${op_priv}"
-evm_management_wallet_address = "${mgmt_addr}"
-EOF
-    )
-    if [[ -n "$mgmt_priv" ]]; then
-      blocks+=$'\n'"evm_management_wallet_private_key = \"${mgmt_priv}\""$'\n'
-    fi
-    blocks+=$(
-      cat <<EOF
-node_name = "${node_name}"
+evm_operational_wallet_private_key = "${op_priv_esc}"
+evm_management_wallet_address = "${mgmt_addr_esc}"
+node_name = "${node_name_esc}"
 tx_confirmations = 1
 tx_receipt_timeout_ms = 300000
 
 EOF
     )
+    blocks+=$'\n'
   fi
 
   [[ "$enabled_count" -ge 1 ]] || die "You must enable at least one blockchain."
-  printf '%s' "$blocks"
+  printf '%s\n' "$blocks"
 }
 
 install_rust_service() {
@@ -747,7 +842,7 @@ main() {
   environment="$(prompt_environment)"
   p2p_port="$(prompt_u16 "P2P port" "9000")"
   external_ip="$(prompt_external_ip)"
-  bootstrap_lines="$(prompt_bootstrap_list)"
+  bootstrap_lines="$(prompt_bootstrap_list "$environment")"
 
   # 2) Triple store selection
   local triple_backend triple_url
@@ -770,7 +865,7 @@ main() {
     db_name="$(prompt "Database name" "rust_dkg_engine_testnet")"
   fi
   db_user="$(prompt "Database username" "rustdkg_db")"
-  db_pass="$(prompt_secret_confirm_minlen "Database user password" 8)"
+  db_pass="$(prompt_secret_confirm_nonempty "Database user password")"
   provision_database "$db_name" "$db_user" "$db_pass"
 
   # 4) Download/install binary
@@ -814,6 +909,9 @@ main() {
   log ""
   log "Install complete."
   log "Service: systemctl status ${SERVICE_NAME}"
+  log "Start:   systemctl start ${SERVICE_NAME}"
+  log "Stop:    systemctl stop ${SERVICE_NAME}"
+  log "Restart: systemctl restart ${SERVICE_NAME}"
   log "Logs:    journalctl -u ${SERVICE_NAME} -f"
   if [[ "$triple_backend" == "blazegraph" ]]; then
     log "Blazegraph: systemctl status blazegraph"

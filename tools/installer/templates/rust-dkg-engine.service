@@ -15,7 +15,7 @@ ExecStart=/opt/rust-dkg-engine/current/rust-dkg-engine --config /etc/rust-dkg-en
 
 Restart=on-failure
 RestartSec=2
-TimeoutStopSec=30
+TimeoutStopSec=120
 
 # Basic hardening (tighten later as needed)
 NoNewPrivileges=true

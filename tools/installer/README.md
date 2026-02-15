@@ -31,6 +31,9 @@ Optional flags:
 ## Helpful commands
 ```bash
 systemctl status rust-dkg-engine
+systemctl start rust-dkg-engine
+systemctl stop rust-dkg-engine
+systemctl restart rust-dkg-engine
 journalctl -u rust-dkg-engine -f
 ```
 

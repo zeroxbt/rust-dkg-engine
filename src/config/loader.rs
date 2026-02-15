@@ -93,7 +93,7 @@ fn resolve_environment(custom_config_path: Option<&str>) -> Result<String, Confi
         return Err(ConfigError::MissingConfig(config_path.to_string()));
     }
 
-    let env = read_environment_from(config_path).ok_or_else(|| {
+    let env = read_environment_from(config_path)?.ok_or_else(|| {
         ConfigError::MissingEnvironment(
             "set environment = \"development|testnet|mainnet\" in your config".to_string(),
         )
@@ -108,16 +108,15 @@ fn resolve_environment(custom_config_path: Option<&str>) -> Result<String, Confi
     Ok(env)
 }
 
-fn read_environment_from(path: &str) -> Option<String> {
+fn read_environment_from(path: &str) -> Result<Option<String>, ConfigError> {
     if !Path::new(path).exists() {
-        return None;
+        return Ok(None);
     }
 
-    Figment::from(Toml::file(path))
-        .extract::<EnvironmentConfig>()
-        .ok()
-        .and_then(|config| config.environment)
-        .map(normalize_env)
+    let config: EnvironmentConfig = Figment::from(Toml::file(path))
+        .extract()
+        .map_err(Box::new)?;
+    Ok(config.environment.map(normalize_env))
 }
 
 fn normalize_env(env: String) -> String {
