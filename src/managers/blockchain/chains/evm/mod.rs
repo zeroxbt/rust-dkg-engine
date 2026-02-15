@@ -32,6 +32,7 @@ pub(crate) use contracts::{
     Hub, KnowledgeCollectionStorage, Multicall3, ParametersStorage, PermissionedNode,
     ShardingTableLib, ShardingTableLib::NodeInfo,
 };
+pub(crate) use contracts::sharding::sharding_table_storage::ShardingTableLib::Node as ShardingTableNode;
 use error_decode::decode_contract_error;
 pub(crate) use gas::GasConfig;
 pub(crate) use provider::initialize_provider_with_wallet;

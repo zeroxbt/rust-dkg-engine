@@ -62,7 +62,12 @@ async fn main() {
     let services = services::initialize(&managers);
 
     // Seed peer registry with sharding tables before commands start
-    seed_sharding_tables(&managers.blockchain, &services.peer_service).await;
+    seed_sharding_tables(
+        &managers.blockchain,
+        &services.peer_service,
+        managers.network.peer_id(),
+    )
+    .await;
 
     // Load persisted peer addresses and inject into Kademlia routing table.
     // This must happen after sharding table seeding so dial_peers knows who to connect to.

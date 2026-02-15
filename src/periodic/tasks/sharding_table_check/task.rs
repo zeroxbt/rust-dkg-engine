@@ -34,11 +34,13 @@ const SEED_MAX_BACKOFF: Duration = Duration::from_secs(30);
 pub(crate) async fn seed_sharding_tables(
     blockchain_manager: &BlockchainManager,
     peer_service: &PeerService,
+    local_peer_id: &PeerId,
 ) {
     let blockchain_ids = blockchain_manager.get_blockchain_ids();
 
     for blockchain in blockchain_ids {
-        seed_blockchain_with_retry(blockchain_manager, peer_service, blockchain).await;
+        seed_blockchain_with_retry(blockchain_manager, peer_service, blockchain, local_peer_id)
+            .await;
     }
 }
 
@@ -46,6 +48,7 @@ async fn seed_blockchain_with_retry(
     blockchain_manager: &BlockchainManager,
     peer_service: &PeerService,
     blockchain: &BlockchainId,
+    local_peer_id: &PeerId,
 ) {
     let mut backoff = SEED_INITIAL_BACKOFF;
 
@@ -57,6 +60,14 @@ async fn seed_blockchain_with_retry(
                     peer_count = count,
                     "Seeded sharding table"
                 );
+
+                validate_local_peer_id_matches_sharding_table(
+                    blockchain_manager,
+                    blockchain,
+                    local_peer_id,
+                )
+                .await;
+
                 return;
             }
             Err(error) => {
@@ -81,6 +92,84 @@ async fn seed_blockchain_with_retry(
                 backoff = (backoff * 2).min(SEED_MAX_BACKOFF);
             }
         }
+    }
+}
+
+async fn validate_local_peer_id_matches_sharding_table(
+    blockchain_manager: &BlockchainManager,
+    blockchain: &BlockchainId,
+    local_peer_id: &PeerId,
+) {
+    let identity_id = blockchain_manager.identity_id(blockchain);
+
+    let exists = match blockchain_manager
+        .sharding_table_node_exists(blockchain, identity_id)
+        .await
+    {
+        Ok(exists) => exists,
+        Err(err) => {
+            tracing::warn!(
+                blockchain = %blockchain,
+                identity_id = identity_id,
+                error = %err,
+                "Failed to check sharding table membership for local identity"
+            );
+            return;
+        }
+    };
+
+    if !exists {
+        return;
+    }
+
+    let node = match blockchain_manager
+        .get_sharding_table_node(blockchain, identity_id)
+        .await
+    {
+        Ok(Some(node)) => node,
+        Ok(None) => return,
+        Err(err) => {
+            tracing::warn!(
+                blockchain = %blockchain,
+                identity_id = identity_id,
+                error = %err,
+                "Failed to fetch sharding table node for local identity"
+            );
+            return;
+        }
+    };
+
+    let peer_id_str = match std::str::from_utf8(&node.nodeId) {
+        Ok(s) => s,
+        Err(err) => {
+            panic!(
+                "Fatal: local identity_id={} is present in sharding table for blockchain {}, \
+but stored nodeId is not valid UTF-8 (error: {}). This node cannot safely operate as a shard node.",
+                identity_id, blockchain, err
+            );
+        }
+    };
+
+    let expected_peer_id: PeerId = match peer_id_str.parse() {
+        Ok(peer_id) => peer_id,
+        Err(err) => {
+            panic!(
+                "Fatal: local identity_id={} is present in sharding table for blockchain {}, \
+but stored nodeId is not a valid libp2p PeerId (nodeId='{}', parse error: {}). \
+This node cannot safely operate as a shard node.",
+                identity_id, blockchain, peer_id_str, err
+            );
+        }
+    };
+
+    if &expected_peer_id != local_peer_id {
+        panic!(
+            "Fatal: local identity_id={} is present in sharding table for blockchain {}, \
+but local network PeerId does not match sharding table nodeId (expected_peer_id={}, local_peer_id={}). \
+This is usually caused by using the wrong network key / data directory, or a key rotation without \
+updating the chain sharding table.",
+            identity_id, blockchain, expected_peer_id, local_peer_id
+        );
     }
 }
 

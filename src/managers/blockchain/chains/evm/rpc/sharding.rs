@@ -1,5 +1,5 @@
 use crate::managers::blockchain::{
-    chains::evm::{EvmChain, NodeInfo},
+    chains::evm::{EvmChain, NodeInfo, ShardingTableNode},
     error::BlockchainError,
 };
 
@@ -47,5 +47,47 @@ impl EvmChain {
             .await?;
 
         Ok(nodes)
+    }
+
+    pub(crate) async fn sharding_table_node_exists(
+        &self,
+        identity_id: u128,
+    ) -> Result<bool, BlockchainError> {
+        use alloy::primitives::Uint;
+        let exists: bool = self
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
+                contracts
+                    .sharding_table_storage()
+                    .nodeExists(Uint::<72, 2>::from(identity_id))
+                    .call()
+                    .await
+            })
+            .await?;
+        Ok(exists)
+    }
+
+    pub(crate) async fn get_sharding_table_node(
+        &self,
+        identity_id: u128,
+    ) -> Result<Option<ShardingTableNode>, BlockchainError> {
+        use alloy::primitives::Uint;
+
+        if !self.sharding_table_node_exists(identity_id).await? {
+            return Ok(None);
+        }
+
+        let node: ShardingTableNode = self
+            .rpc_call(|| async {
+                let contracts = self.contracts().await;
+                contracts
+                    .sharding_table_storage()
+                    .getNode(Uint::<72, 2>::from(identity_id))
+                    .call()
+                    .await
+            })
+            .await?;
+
+        Ok(Some(node))
     }
 }
