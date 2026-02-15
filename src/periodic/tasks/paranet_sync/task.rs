@@ -388,19 +388,6 @@ impl ParanetSyncTask {
                                 .as_ref()
                                 .and_then(|triples| parse_metadata_from_triples(triples));
 
-                            if let Err(e) = triple_store_service
-                                .delete_publish_time_metadata(&row.kc_ual)
-                                .await
-                            {
-                                tracing::debug!(
-                                    blockchain_id = %blockchain_id,
-                                    paranet = %row.paranet_ual,
-                                    kc_ual = %row.kc_ual,
-                                    error = %e,
-                                    "Failed to delete publishTime metadata before upsert"
-                                );
-                            }
-
                             match triple_store_service
                                 .insert_knowledge_collection(
                                     &row.kc_ual,

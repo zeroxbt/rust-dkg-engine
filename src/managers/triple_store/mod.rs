@@ -172,6 +172,13 @@ impl TripleStoreManager {
         self.backend.update(query, timeout).await
     }
 
+    #[cfg(test)]
+    pub(crate) async fn raw_update_for_tests(&self, query: &str) -> Result<()> {
+        // Convenience wrapper for tests that need to inject raw triples.
+        self.backend_update(query, self.config.timeouts.insert_timeout())
+            .await
+    }
+
     /// Execute a SPARQL CONSTRUCT with concurrency limiting
     async fn backend_construct(&self, query: &str, timeout: Duration) -> Result<String> {
         let _permit = self.acquire_permit().await?;
@@ -376,9 +383,50 @@ impl TripleStoreManager {
             total_triples += all_named_graphs.len();
         }
 
-        // Build the final INSERT DATA query
-        let insert_query = format!(
-            r#"PREFIX schema: <http://schema.org/>
+        // Build final SPARQL update query.
+        //
+        // If metadata is present, ensure publishTime is unique by deleting any prior values before
+        // inserting the new publishTime. Without this, repeated inserts can accumulate multiple
+        // publishTime values (since it uses Utc::now()).
+        let insert_query = if metadata.is_some() {
+            format!(
+                r#"PREFIX schema: <http://schema.org/>
+                DELETE {{
+                  GRAPH <{metadata_graph}> {{
+                    <{kc_ual}> <{publish_time}> ?old_publish_time .
+                  }}
+                }}
+                INSERT {{
+                {public_graphs}{private_graphs}  GRAPH <{current_graph}> {{
+                {current_public}{current_private}  }}
+                GRAPH <{metadata_graph}> {{
+                {conn_public}{conn_private}{meta_triples}  }}
+                {paranet_graph}
+                }}
+                WHERE {{
+                  OPTIONAL {{
+                    GRAPH <{metadata_graph}> {{
+                      <{kc_ual}> <{publish_time}> ?old_publish_time .
+                    }}
+                  }}
+                }}"#,
+                kc_ual = kc_ual,
+                publish_time = predicates::PUBLISH_TIME,
+                public_graphs = public_graphs_insert,
+                private_graphs = private_graphs_insert,
+                current_graph = named_graphs::CURRENT,
+                current_public = current_public_metadata,
+                current_private = current_private_metadata,
+                metadata_graph = named_graphs::METADATA,
+                conn_public = connection_public_metadata,
+                conn_private = connection_private_metadata,
+                meta_triples = metadata_triples,
+                paranet_graph = paranet_graph_insert,
+            )
+        } else {
+            // No publishTime is inserted when metadata is absent; keep a simpler INSERT DATA.
+            format!(
+                r#"PREFIX schema: <http://schema.org/>
                 INSERT DATA {{
                 {}{}  GRAPH <{}> {{
                 {}{}  }}
@@ -386,17 +434,18 @@ impl TripleStoreManager {
                 {}{}{}  }}
                 {}
                 }}"#,
-            public_graphs_insert,
-            private_graphs_insert,
-            named_graphs::CURRENT,
-            current_public_metadata,
-            current_private_metadata,
-            named_graphs::METADATA,
-            connection_public_metadata,
-            connection_private_metadata,
-            metadata_triples,
-            paranet_graph_insert,
-        );
+                public_graphs_insert,
+                private_graphs_insert,
+                named_graphs::CURRENT,
+                current_public_metadata,
+                current_private_metadata,
+                named_graphs::METADATA,
+                connection_public_metadata,
+                connection_private_metadata,
+                metadata_triples,
+                paranet_graph_insert,
+            )
+        };
 
         tracing::trace!(
             kc_ual = %kc_ual,
@@ -596,25 +645,6 @@ impl TripleStoreManager {
         );
 
         self.backend_construct(&query, self.config.timeouts.query_timeout())
-            .await
-    }
-
-    /// Delete only the publishTime metadata triple for a knowledge collection.
-    ///
-    /// This is used by paranet sync before re-inserting metadata so publishTime reflects
-    /// the latest sync insert without duplicating historical values.
-    pub(crate) async fn delete_publish_time_metadata(&self, kc_ual: &str) -> Result<()> {
-        let query = format!(
-            r#"DELETE WHERE {{
-                GRAPH <{metadata}> {{
-                    <{kc_ual}> <{publish_time}> ?o .
-                }}
-            }}"#,
-            metadata = named_graphs::METADATA,
-            publish_time = predicates::PUBLISH_TIME,
-        );
-
-        self.backend_update(&query, self.config.timeouts.insert_timeout())
             .await
     }
 

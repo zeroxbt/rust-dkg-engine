@@ -15,7 +15,9 @@ use tempfile::TempDir;
 use crate::{
     managers::triple_store::{
         GraphVisibility, TripleStoreBackend, TripleStoreBackendType, TripleStoreManager,
-        TripleStoreManagerConfig, config::TimeoutConfig, query::predicates,
+        TripleStoreManagerConfig,
+        config::TimeoutConfig,
+        query::{named_graphs, predicates},
     },
     types::{KnowledgeAsset, KnowledgeCollectionMetadata},
 };
@@ -257,6 +259,65 @@ async fn get_metadata_without_metadata_is_empty() {
     assert!(!metadata.contains(predicates::PUBLISH_TX));
     assert!(!metadata.contains(predicates::PUBLISH_TIME));
     assert!(!metadata.contains(predicates::BLOCK_TIME));
+}
+
+#[tokio::test]
+async fn insert_replaces_publish_time_metadata() {
+    let (manager, _temp_dir) = setup_manager().await;
+
+    let kc_ual = "did:dkg:kc/publish-time-upsert";
+    let ka = KnowledgeAsset::new(
+        format!("{}/1", kc_ual),
+        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
+    );
+    let meta = KnowledgeCollectionMetadata::new(
+        "0xabc".to_string(),
+        777,
+        "0xdeadbeef".to_string(),
+        1_700_000_000,
+    );
+
+    manager
+        .insert_knowledge_collection(kc_ual, &[ka.clone()], &Some(meta.clone()), None)
+        .await
+        .unwrap();
+
+    // Deterministically introduce an extra publishTime value to simulate historical behavior
+    // (multiple publishTime triples for the same KC).
+    let inject_query = format!(
+        r#"INSERT DATA {{
+            GRAPH <{metadata}> {{
+                <{kc_ual}> <{publish_time}> "2000-01-01T00:00:00.000Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
+            }}
+        }}"#,
+        metadata = named_graphs::METADATA,
+        kc_ual = kc_ual,
+        publish_time = predicates::PUBLISH_TIME,
+    );
+    manager.raw_update_for_tests(&inject_query).await.unwrap();
+
+    let before = manager.get_metadata(kc_ual).await.unwrap();
+    let before_count = before
+        .lines()
+        .filter(|line| line.contains(predicates::PUBLISH_TIME))
+        .count();
+    assert!(
+        before_count >= 2,
+        "expected at least 2 publishTime triples after injection, got {before_count}"
+    );
+
+    // Re-inserting with metadata should remove all prior publishTime values and insert exactly one.
+    manager
+        .insert_knowledge_collection(kc_ual, &[ka], &Some(meta), None)
+        .await
+        .unwrap();
+
+    let after = manager.get_metadata(kc_ual).await.unwrap();
+    let after_count = after
+        .lines()
+        .filter(|line| line.contains(predicates::PUBLISH_TIME))
+        .count();
+    assert_eq!(after_count, 1);
 }
 
 #[tokio::test]
