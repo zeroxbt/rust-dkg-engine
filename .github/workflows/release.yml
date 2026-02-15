@@ -40,12 +40,28 @@ jobs:
           printf '%s\n' "$TAG" > "$OUT/VERSION"
           TAR="rust-dkg-engine_${TAG}_linux_${ARCH}.tar.gz"
           (cd "$OUT" && tar -czf "../$TAR" rust-dkg-engine VERSION)
-          sha256sum "$TAR" > SHA256SUMS
+
+          # Package installer bundle (script + templates) as a small release asset.
+          rm -rf installer
+          mkdir -p installer/templates
+          cp tools/installer/install.sh installer/install.sh
+          cp tools/installer/README.md installer/README.md
+          cp tools/installer/templates/*.service installer/templates/
+          chmod 0755 installer/install.sh
+          INSTALLER_TAR="installer.tar.gz"
+          tar -czf "$INSTALLER_TAR" installer
+
+          # Bootstrap entrypoint (optional, tiny).
+          cp tools/installer/bootstrap.sh bootstrap.sh
+          chmod 0755 bootstrap.sh
+
+          sha256sum "$TAR" "$INSTALLER_TAR" > SHA256SUMS
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             rust-dkg-engine_*.tar.gz
+            installer.tar.gz
+            bootstrap.sh
             SHA256SUMS
-

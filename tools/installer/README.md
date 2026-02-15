@@ -11,7 +11,13 @@ This folder contains a single script that installs and configures `rust-dkg-engi
 - Installs and starts a systemd service using `StateDirectory=rust-dkg-engine` (data under `/var/lib/rust-dkg-engine`).
 
 ## Usage
-Copy the repo (or just this folder) to the VPS, then run:
+Recommended (no repo clone): run the bootstrap from the latest GitHub Release:
+
+```bash
+curl -fsSL https://github.com/zeroxbt/rust-dkg-engine/releases/latest/download/bootstrap.sh | sudo bash -s -- --version latest
+```
+
+Manual (repo checkout): run from the repo:
 
 ```bash
 sudo bash tools/installer/install.sh
