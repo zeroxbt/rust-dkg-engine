@@ -32,6 +32,7 @@ use crate::{
         ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
     },
     periodic::tasks::paranet_sync::ParanetSyncConfig,
+    periodic::tasks::proving::ProvingConfig,
     periodic::tasks::sync::SyncConfig,
 };
 
@@ -84,6 +85,10 @@ fn paranet_sync() -> ParanetSyncConfig {
         retry_delay_secs: 60,
         sync_paranets: Vec::new(),
     }
+}
+
+fn proving() -> ProvingConfig {
+    ProvingConfig { enabled: true }
 }
 
 fn sync() -> SyncConfig {
@@ -199,6 +204,7 @@ fn development() -> ConfigRaw {
         cleanup: cleanup(),
         sync: sync(),
         paranet_sync: paranet_sync(),
+        proving: proving(),
         http_api: http_api(),
         rpc: rpc(),
         managers: ManagersConfigRaw {
@@ -261,6 +267,7 @@ fn testnet() -> ConfigRaw {
         cleanup: cleanup(),
         sync: sync(),
         paranet_sync: paranet_sync(),
+        proving: proving(),
         http_api: http_api(),
         rpc: rpc(),
         managers: ManagersConfigRaw {
@@ -342,6 +349,7 @@ fn mainnet() -> ConfigRaw {
         cleanup: cleanup(),
         sync: sync(),
         paranet_sync: paranet_sync(),
+        proving: proving(),
         http_api: http_api(),
         rpc: rpc(),
         managers: ManagersConfigRaw {

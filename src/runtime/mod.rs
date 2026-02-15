@@ -12,11 +12,14 @@ use crate::{
     logger,
     managers::network::NetworkEventLoop,
     periodic,
-    periodic::tasks::{cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, sync::SyncConfig},
+    periodic::tasks::{
+        cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, proving::ProvingConfig,
+        sync::SyncConfig,
+    },
 };
 
-const PERIODIC_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(120);
-const COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(120);
+const PERIODIC_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
+const COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
 const NETWORK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const HTTP_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -29,6 +32,7 @@ pub(crate) async fn run(
     cleanup_config: CleanupConfig,
     sync_config: SyncConfig,
     paranet_sync_config: ParanetSyncConfig,
+    proving_config: ProvingConfig,
 ) {
     let command_scheduler = context.command_scheduler().clone();
     let network_manager = Arc::clone(context.network_manager());
@@ -49,6 +53,7 @@ pub(crate) async fn run(
         cleanup_config,
         sync_config,
         paranet_sync_config,
+        proving_config,
         periodic_shutdown.clone(),
     ));
 

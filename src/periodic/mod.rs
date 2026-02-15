@@ -11,6 +11,7 @@ use tasks::{
     cleanup::{CleanupConfig, CleanupTask},
     dial_peers::DialPeersTask,
     paranet_sync::{ParanetSyncConfig, ParanetSyncTask},
+    proving::ProvingConfig,
     proving::ProvingTask,
     save_peer_addresses::SavePeerAddressesTask,
     sharding_table_check::ShardingTableCheckTask,
@@ -117,6 +118,7 @@ pub(crate) async fn run_all(
     cleanup_config: CleanupConfig,
     sync_config: SyncConfig,
     paranet_sync_config: ParanetSyncConfig,
+    proving_config: ProvingConfig,
     shutdown: CancellationToken,
 ) {
     let mut set = tokio::task::JoinSet::new();
@@ -176,9 +178,15 @@ pub(crate) async fn run_all(
             &blockchain_id,
             ShardingTableCheckTask,
             BlockchainEventListenerTask,
-            ProvingTask,
             ClaimRewardsTask,
         );
+
+        if proving_config.enabled {
+            let ctx = Arc::clone(&context);
+            let shutdown = shutdown.clone();
+            let blockchain_id = blockchain_id.clone();
+            set.spawn(async move { ProvingTask::new(ctx).run(&blockchain_id, shutdown).await });
+        }
     }
 
     // Wait for tasks — log panics immediately as they happen.

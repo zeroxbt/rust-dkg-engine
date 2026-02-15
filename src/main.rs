@@ -98,6 +98,7 @@ async fn main() {
         config.cleanup.clone(),
         config.sync.clone(),
         config.paranet_sync.clone(),
+        config.proving.clone(),
     )
     .await;
 }

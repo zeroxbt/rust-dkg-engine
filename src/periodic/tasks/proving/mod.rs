@@ -8,10 +8,12 @@
 //! 4. Calculate Merkle proof for the challenged chunk
 //! 5. Submit proof to blockchain
 
+mod config;
 mod task;
 
 use std::time::Duration;
 
+pub(crate) use config::ProvingConfig;
 pub(crate) use task::ProvingTask;
 
 /// Interval between proving cycles (5 minutes)

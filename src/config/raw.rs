@@ -8,6 +8,7 @@ use crate::{
     logger::{LoggerConfig, TelemetryConfig},
     managers::{ManagersConfig, ManagersConfigRaw},
     periodic::tasks::{cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, sync::SyncConfig},
+    periodic::tasks::proving::ProvingConfig,
 };
 
 /// Centralized application paths derived from the root data directory.
@@ -57,6 +58,7 @@ pub(crate) struct ConfigRaw {
     pub cleanup: CleanupConfig,
     pub sync: SyncConfig,
     pub paranet_sync: ParanetSyncConfig,
+    pub proving: ProvingConfig,
     pub logger: LoggerConfig,
     pub telemetry: TelemetryConfig,
 }
@@ -70,6 +72,7 @@ pub(crate) struct Config {
     pub cleanup: CleanupConfig,
     pub sync: SyncConfig,
     pub paranet_sync: ParanetSyncConfig,
+    pub proving: ProvingConfig,
     pub logger: LoggerConfig,
     pub telemetry: TelemetryConfig,
 }
@@ -84,6 +87,7 @@ impl ConfigRaw {
             cleanup: self.cleanup,
             sync: self.sync,
             paranet_sync: self.paranet_sync,
+            proving: self.proving,
             logger: self.logger,
             telemetry: self.telemetry,
         })
