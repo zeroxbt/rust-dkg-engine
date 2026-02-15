@@ -8,6 +8,9 @@ Type=simple
 User=rustdkg
 Group=rustdkg
 
+# Oxigraph/RocksDB can open many files (SSTs, WALs). Prevent "Too many open files" under load.
+LimitNOFILE=1048576
+
 StateDirectory=rust-dkg-engine
 WorkingDirectory=/var/lib/rust-dkg-engine
 
