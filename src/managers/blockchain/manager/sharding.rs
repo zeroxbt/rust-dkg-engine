@@ -49,7 +49,9 @@ impl BlockchainManager {
         identity_id: u128,
     ) -> Result<bool, BlockchainError> {
         let blockchain_impl = self.chain(blockchain)?;
-        blockchain_impl.sharding_table_node_exists(identity_id).await
+        blockchain_impl
+            .sharding_table_node_exists(identity_id)
+            .await
     }
 
     pub(crate) async fn get_sharding_table_node(

@@ -27,13 +27,15 @@ use crate::{
         repository::RepositoryManagerConfigRaw,
         triple_store::{TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig},
     },
-    periodic::tasks::cleanup::{
-        CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
-        ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
+    periodic::tasks::{
+        cleanup::{
+            CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
+            ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
+        },
+        paranet_sync::ParanetSyncConfig,
+        proving::ProvingConfig,
+        sync::SyncConfig,
     },
-    periodic::tasks::paranet_sync::ParanetSyncConfig,
-    periodic::tasks::proving::ProvingConfig,
-    periodic::tasks::sync::SyncConfig,
 };
 
 /// Returns the default [`ConfigRaw`] for the given environment name.

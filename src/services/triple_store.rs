@@ -425,21 +425,21 @@ impl TripleStoreService {
         }
 
         // Group public triples by subject, then append private-hash groups
-        let mut public_ka_triples_grouped = group_triples_by_subject(&filtered_public)
-            .map_err(|e| {
+        let mut public_ka_triples_grouped =
+            group_triples_by_subject(&filtered_public).map_err(|e| {
                 TripleStoreError::Other(format!(
                     "Failed to group public triples by parsed subject: {}",
                     e
                 ))
             })?;
-        public_ka_triples_grouped.extend(
-            group_triples_by_subject(&private_hash_triples).map_err(|e| {
+        public_ka_triples_grouped.extend(group_triples_by_subject(&private_hash_triples).map_err(
+            |e| {
                 TripleStoreError::Other(format!(
                     "Failed to group private-hash triples by parsed subject: {}",
                     e
                 ))
-            })?,
-        );
+            },
+        )?);
 
         // Generate UALs for each public knowledge asset: {kc_ual}/1, {kc_ual}/2, ...
         let public_ka_uals: Vec<String> = (0..public_ka_triples_grouped.len())
@@ -471,9 +471,9 @@ impl TripleStoreService {
                 .iter()
                 .enumerate()
                 .filter_map(|(idx, group)| {
-                    group
-                        .first()
-                        .and_then(|triple| extract_subject(triple).map(|subj| (subj.to_string(), idx)))
+                    group.first().and_then(|triple| {
+                        extract_subject(triple).map(|subj| (subj.to_string(), idx))
+                    })
                 })
                 .collect();
 

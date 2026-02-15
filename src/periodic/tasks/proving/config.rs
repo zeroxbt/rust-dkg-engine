@@ -5,4 +5,3 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct ProvingConfig {
     pub enabled: bool,
 }
-

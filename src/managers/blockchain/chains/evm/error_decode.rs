@@ -2,7 +2,7 @@ use alloy::{
     contract::Error as ContractError,
     hex,
     primitives::Bytes,
-    sol_types::{decode_revert_reason, SolInterface},
+    sol_types::{SolInterface, decode_revert_reason},
 };
 
 fn spelunk_hex_revert(value: &serde_json::Value) -> Option<Bytes> {
