@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use libp2p::PeerId;
 use tracing::instrument;
@@ -8,7 +11,7 @@ use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
     managers::network::{NetworkManager, messages::BatchGetAck},
-    services::TripleStoreService,
+    services::{PeerService, TripleStoreService},
     state::ResponseChannels,
     types::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual},
 };
@@ -47,6 +50,7 @@ impl HandleBatchGetRequestCommandData {
 pub(crate) struct HandleBatchGetRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
     triple_store_service: Arc<TripleStoreService>,
+    peer_service: Arc<PeerService>,
     response_channels: Arc<ResponseChannels<BatchGetAck>>,
 }
 
@@ -55,6 +59,7 @@ impl HandleBatchGetRequestCommandHandler {
         Self {
             network_manager: Arc::clone(context.network_manager()),
             triple_store_service: Arc::clone(context.triple_store_service()),
+            peer_service: Arc::clone(context.peer_service()),
             response_channels: Arc::clone(context.batch_get_response_channels()),
         }
     }
@@ -96,6 +101,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
 
         // Parse UALs and pair with token IDs
         let mut uals_with_token_ids: Vec<(ParsedUal, TokenIds)> = Vec::new();
+        let mut blockchains = HashSet::new();
 
         for ual in &uals {
             let parsed_ual = match parse_ual(ual) {
@@ -118,7 +124,28 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
                 .cloned()
                 .unwrap_or_else(|| TokenIds::single(1));
 
+            blockchains.insert(parsed_ual.blockchain.clone());
             uals_with_token_ids.push((parsed_ual, token_ids));
+        }
+
+        // Only serve batch get requests if this node is part of the shard for every requested
+        // blockchain (derived from successfully parsed UALs).
+        let local_peer_id = self.network_manager.peer_id();
+        for blockchain in &blockchains {
+            if !self
+                .peer_service
+                .is_peer_in_shard(blockchain, local_peer_id)
+            {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    local_peer_id = %local_peer_id,
+                    blockchain = %blockchain,
+                    "Local node not found in shard - sending NACK"
+                );
+                self.send_nack(channel, operation_id, "Local node not in shard")
+                    .await;
+                return CommandOutcome::Completed;
+            }
         }
 
         // Query local triple store in batch

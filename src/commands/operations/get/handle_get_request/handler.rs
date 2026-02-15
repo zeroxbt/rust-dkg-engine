@@ -11,7 +11,7 @@ use crate::{
         blockchain::BlockchainManager,
         network::{NetworkManager, messages::GetAck},
     },
-    services::TripleStoreService,
+    services::{PeerService, TripleStoreService},
     state::ResponseChannels,
     types::{TokenIds, parse_ual},
 };
@@ -50,6 +50,7 @@ impl HandleGetRequestCommandData {
 pub(crate) struct HandleGetRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
     triple_store_service: Arc<TripleStoreService>,
+    peer_service: Arc<PeerService>,
     response_channels: Arc<ResponseChannels<GetAck>>,
     pub(super) blockchain_manager: Arc<BlockchainManager>,
 }
@@ -59,6 +60,7 @@ impl HandleGetRequestCommandHandler {
         Self {
             network_manager: Arc::clone(context.network_manager()),
             triple_store_service: Arc::clone(context.triple_store_service()),
+            peer_service: Arc::clone(context.peer_service()),
             response_channels: Arc::clone(context.get_response_channels()),
             blockchain_manager: Arc::clone(context.blockchain_manager()),
         }
@@ -113,6 +115,24 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
                 return CommandOutcome::Completed;
             }
         };
+
+        // Only serve get requests if this node is part of the shard for the request's blockchain.
+        let local_peer_id = self.network_manager.peer_id();
+        let blockchain = &parsed_ual.blockchain;
+        if !self
+            .peer_service
+            .is_peer_in_shard(blockchain, local_peer_id)
+        {
+            tracing::warn!(
+                operation_id = %operation_id,
+                local_peer_id = %local_peer_id,
+                blockchain = %blockchain,
+                "Local node not found in shard - sending NACK"
+            );
+            self.send_nack(channel, operation_id, "Local node not in shard")
+                .await;
+            return CommandOutcome::Completed;
+        }
 
         // Determine effective visibility based on paranet authorization
         // For PERMISSIONED paranets where both peers are authorized, returns All visibility

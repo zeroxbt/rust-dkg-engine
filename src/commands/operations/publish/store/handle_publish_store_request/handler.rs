@@ -102,25 +102,28 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandOutcome::Completed;
         };
 
-        // Validate that the remote peer is in our shard
+        // Validate that *this node* is in the shard for the given blockchain.
+        // (The sender being in shard is not the relevant check here.)
+        let local_peer_id = self.network_manager.peer_id();
         if self
             .peer_service
-            .is_peer_in_shard(blockchain, remote_peer_id)
+            .is_peer_in_shard(blockchain, local_peer_id)
         {
             tracing::debug!(
                 operation_id = %operation_id,
-                remote_peer_id = %remote_peer_id,
-                "Remote peer validated against peer service"
+                local_peer_id = %local_peer_id,
+                blockchain = %blockchain,
+                "Local node validated against shard membership"
             );
         } else {
             tracing::warn!(
                 operation_id = %operation_id,
-                remote_peer_id = %remote_peer_id,
+                local_peer_id = %local_peer_id,
                 blockchain = %blockchain,
-                "Remote peer not found in shard - sending NACK"
+                "Local node not found in shard - sending NACK"
             );
 
-            self.send_nack(channel, operation_id, "Invalid neighbourhood")
+            self.send_nack(channel, operation_id, "Local node not in shard")
                 .await;
 
             return CommandOutcome::Completed;
