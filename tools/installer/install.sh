@@ -19,6 +19,7 @@ DEFAULT_VERSION="latest"
 
 OVERWRITE_CONFIG="0"
 REQUESTED_VERSION="$DEFAULT_VERSION"
+USE_EXISTING_CONFIG="0"
 
 log() { printf '%s\n' "$*"; }
 warn() { printf '%s\n' "$*" >&2; }
@@ -109,6 +110,24 @@ EOF
   done
 }
 
+maybe_handle_existing_config() {
+  # If a config already exists and the user didn't explicitly pass --overwrite-config,
+  # ask what to do to avoid the annoying "rerun with --overwrite-config" loop.
+  if [[ -f "$CONFIG_PATH" && "$OVERWRITE_CONFIG" != "1" ]]; then
+    warn "Config already exists at ${CONFIG_PATH}"
+    local choice
+    choice="$(prompt "Overwrite existing config? (y/N)" "n")"
+    case "${choice}" in
+      y|Y|yes|YES)
+        OVERWRITE_CONFIG="1"
+        ;;
+      *)
+        USE_EXISTING_CONFIG="1"
+        ;;
+    esac
+  fi
+}
+
 prompt() {
   local msg="$1"
   local def="${2:-}"
@@ -167,6 +186,53 @@ detect_arch_tag() {
   esac
 }
 
+trim() {
+  local s="$1"
+  # Trim leading/trailing whitespace.
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+strip_quotes() {
+  local s
+  s="$(trim "$1")"
+  if [[ "$s" == \"*\" && "$s" == *\" ]]; then
+    s="${s#\"}"
+    s="${s%\"}"
+  fi
+  printf '%s' "$s"
+}
+
+toml_get_top_value() {
+  # Read a key from the top-level (before the first [section]).
+  local file="$1"
+  local key="$2"
+  awk -v k="$key" '
+    /^\s*\[/ { exit }
+    $0 ~ "^[[:space:]]*" k "[[:space:]]*=" {
+      sub("^[[:space:]]*" k "[[:space:]]*=[[:space:]]*", "", $0)
+      print $0
+      exit
+    }
+  ' "$file"
+}
+
+toml_get_section_value() {
+  # Read a key from a specific section like "managers.repository" (matches [managers.repository]).
+  local file="$1"
+  local section="$2"
+  local key="$3"
+  awk -v s="[$section]" -v k="$key" '
+    /^\s*\[/ { in_section = ($0 == s) }
+    in_section && $0 ~ "^[[:space:]]*" k "[[:space:]]*=" {
+      sub("^[[:space:]]*" k "[[:space:]]*=[[:space:]]*", "", $0)
+      print $0
+      exit
+    }
+  ' "$file"
+}
+
 ensure_user() {
   local user="$1"
   local group="$2"
@@ -181,6 +247,16 @@ ensure_user() {
 ensure_dirs() {
   mkdir -p "$RELEASES_DIR" "$BIN_DIR" "$ETC_DIR"
   chmod 0755 "$INSTALL_ROOT" "$RELEASES_DIR" "$BIN_DIR" "$ETC_DIR"
+}
+
+fix_config_permissions_for_service() {
+  # Systemd runs the node as rustdkg; allow group-read access to the config.
+  if [[ -f "$CONFIG_PATH" ]]; then
+    chown root:rustdkg "$ETC_DIR" 2>/dev/null || true
+    chmod 0750 "$ETC_DIR" 2>/dev/null || true
+    chown root:rustdkg "$CONFIG_PATH" 2>/dev/null || true
+    chmod 0640 "$CONFIG_PATH" 2>/dev/null || true
+  fi
 }
 
 install_base_deps() {
@@ -827,6 +903,7 @@ main() {
   parse_args "$@"
   require_root
   require_systemd
+  maybe_handle_existing_config
 
   local pm
   pm="$(detect_pkg_manager)"
@@ -836,6 +913,63 @@ main() {
 
   ensure_user "rustdkg" "rustdkg"
   ensure_dirs
+
+  if [[ "$USE_EXISTING_CONFIG" == "1" ]]; then
+    warn "Using existing config (no prompts)."
+    fix_config_permissions_for_service
+
+    local environment triple_backend db_host
+    environment="$(strip_quotes "$(toml_get_top_value "$CONFIG_PATH" "environment" || true)")"
+    triple_backend="$(strip_quotes "$(toml_get_section_value "$CONFIG_PATH" "managers.triple_store" "backend" || true)")"
+    db_host="$(strip_quotes "$(toml_get_section_value "$CONFIG_PATH" "managers.repository" "host" || true)")"
+
+    triple_backend="$(echo "${triple_backend:-}" | tr '[:upper:]' '[:lower:]')"
+    db_host="$(echo "${db_host:-}" | tr '[:upper:]' '[:lower:]')"
+
+    # Optional dependency installs based on config.
+    local db_unit=""
+    if [[ "$db_host" == "localhost" || "$db_host" == "127.0.0.1" || "$db_host" == "::1" || -z "$db_host" ]]; then
+      db_unit="$(install_and_start_mariadb_if_missing "$pm")"
+    fi
+
+    if [[ "$triple_backend" == "blazegraph" ]]; then
+      install_blazegraph "$pm"
+    fi
+
+    # Download/install binary + (re)install service
+    local arch_tag
+    arch_tag="$(detect_arch_tag)"
+    download_and_install_binary "$REQUESTED_VERSION" "$arch_tag"
+
+    local wants_units="" after_units=""
+    if [[ -n "$db_unit" ]]; then
+      wants_units="${db_unit}.service"
+      after_units="${db_unit}.service"
+    fi
+    if [[ "$triple_backend" == "blazegraph" ]]; then
+      wants_units="${wants_units} blazegraph.service"
+      after_units="${after_units} blazegraph.service"
+    fi
+    wants_units="$(echo "$wants_units" | xargs || true)"
+    after_units="$(echo "$after_units" | xargs || true)"
+
+    install_rust_service "$wants_units" "$after_units"
+
+    log ""
+    log "Install complete."
+    if [[ -n "$environment" ]]; then
+      log "Environment: ${environment}"
+    fi
+    log "Service: systemctl status ${SERVICE_NAME}"
+    log "Logs:    journalctl -u ${SERVICE_NAME} -f"
+    if [[ "$triple_backend" == "blazegraph" ]]; then
+      log "Blazegraph: systemctl status blazegraph"
+    fi
+    log "Config:   ${CONFIG_PATH}"
+    log "Data dir: /var/lib/rust-dkg-engine"
+    log "Binary:   ${CURRENT_LINK}/rust-dkg-engine"
+    return 0
+  fi
 
   # 1) Prompt environment + basic network
   local environment p2p_port external_ip bootstrap_lines
