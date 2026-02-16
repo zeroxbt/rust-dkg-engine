@@ -20,3 +20,12 @@ pub(crate) enum ConfigError {
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
 }
+
+impl From<dkg_blockchain::ConfigError> for ConfigError {
+    fn from(value: dkg_blockchain::ConfigError) -> Self {
+        match value {
+            dkg_blockchain::ConfigError::MissingSecret(message) => Self::MissingSecret(message),
+            dkg_blockchain::ConfigError::InvalidConfig(message) => Self::InvalidConfig(message),
+        }
+    }
+}

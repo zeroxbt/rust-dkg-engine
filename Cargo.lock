@@ -2323,6 +2323,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "dkg-blockchain"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "dkg-domain",
+ "futures",
+ "governor",
+ "jsonrpsee",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "subxt",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower 0.5.3",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "dkg-domain"
 version = "0.1.0"
 dependencies = [
@@ -6006,6 +6026,7 @@ dependencies = [
  "chrono",
  "clap",
  "dashmap",
+ "dkg-blockchain",
  "dkg-domain",
  "dkg-network",
  "figment",

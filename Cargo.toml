@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 dkg-domain = { path = "crates/dkg-domain" }
+dkg-blockchain = { path = "crates/dkg-blockchain" }
 dkg-network = { path = "crates/dkg-network" }
 tokio = { workspace = true, features = [
     "macros",
@@ -114,7 +115,12 @@ dbg_macro = "warn"
 unwrap_used = "warn"
 
 [workspace]
-members = ["tools/local_network", "crates/dkg-domain", "crates/dkg-network"]
+members = [
+    "tools/local_network",
+    "crates/dkg-domain",
+    "crates/dkg-network",
+    "crates/dkg-blockchain",
+]
 default-members = ["."]
 
 [workspace.dependencies]

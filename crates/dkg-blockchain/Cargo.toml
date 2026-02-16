@@ -1,0 +1,34 @@
+[package]
+name = "dkg-blockchain"
+version = "0.1.0"
+rust-version = "1.92.0"
+edition = "2024"
+
+[dependencies]
+dkg-domain = { path = "../dkg-domain" }
+alloy = { workspace = true, features = [
+    "std",
+    "contract",
+    "network",
+    "providers",
+    "provider-http",
+    "provider-ws",
+    "reqwest",
+    "reqwest-rustls-tls",
+    "rpc-client",
+    "rpc-types",
+    "signer-local",
+    "sol-types",
+] }
+futures = "0.3.31"
+jsonrpsee = { version = "0.24.10", default-features = false, features = ["http-client"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = "0.10"
+subxt = "0.44.2"
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tracing = "0.1.44"
+tower = "0.5.3"
+governor = "0.10"
+url = "2.5.2"
