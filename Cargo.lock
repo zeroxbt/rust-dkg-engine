@@ -2374,6 +2374,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dkg-repository"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "thiserror 2.0.18",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6030,6 +6043,7 @@ dependencies = [
  "dkg-blockchain",
  "dkg-domain",
  "dkg-network",
+ "dkg-repository",
  "figment",
  "futures",
  "governor",

@@ -1,7 +1,0 @@
-pub(crate) mod blockchain_repository;
-pub(crate) mod finality_status_repository;
-pub(crate) mod kc_sync_repository;
-pub(crate) mod operation_repository;
-pub(crate) mod paranet_kc_sync_repository;
-pub(crate) mod proof_challenge_repository;
-pub(crate) mod triples_insert_count_repository;

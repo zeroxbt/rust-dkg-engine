@@ -29,3 +29,12 @@ impl From<dkg_blockchain::ConfigError> for ConfigError {
         }
     }
 }
+
+impl From<dkg_repository::ConfigError> for ConfigError {
+    fn from(value: dkg_repository::ConfigError) -> Self {
+        match value {
+            dkg_repository::ConfigError::MissingSecret(message) => Self::MissingSecret(message),
+            dkg_repository::ConfigError::InvalidConfig(message) => Self::InvalidConfig(message),
+        }
+    }
+}

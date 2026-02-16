@@ -8,6 +8,7 @@ edition = "2024"
 dkg-domain = { path = "crates/dkg-domain" }
 dkg-blockchain = { path = "crates/dkg-blockchain" }
 dkg-network = { path = "crates/dkg-network" }
+dkg-repository = { path = "crates/dkg-repository" }
 tokio = { workspace = true, features = [
     "macros",
     "rt-multi-thread",
@@ -120,6 +121,7 @@ members = [
     "crates/dkg-domain",
     "crates/dkg-network",
     "crates/dkg-blockchain",
+    "crates/dkg-repository",
 ]
 default-members = ["."]
 
