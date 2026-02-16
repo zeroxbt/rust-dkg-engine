@@ -9,7 +9,7 @@ pub(crate) enum NodeError {
 
     /// Network-related errors
     #[error("Network error: {0}")]
-    Network(#[from] crate::managers::network::error::NetworkError),
+    Network(#[from] crate::managers::network::NetworkError),
 
     /// Database/repository errors
     #[error("Repository error: {0}")]

@@ -2,7 +2,7 @@ use dkg_domain::{
     AccessPolicy, ParsedUal, Visibility, construct_knowledge_collection_onchain_id,
     construct_paranet_id, parse_ual,
 };
-use libp2p::PeerId;
+use dkg_network::PeerId;
 
 use super::handler::HandleGetRequestCommandHandler;
 

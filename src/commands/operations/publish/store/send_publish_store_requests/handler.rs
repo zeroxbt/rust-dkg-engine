@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use dkg_domain::Assertion;
+use dkg_network::PeerId;
 use futures::{StreamExt, stream::FuturesUnordered};
-use libp2p::PeerId;
 use tracing::instrument;
 use uuid::Uuid;
 

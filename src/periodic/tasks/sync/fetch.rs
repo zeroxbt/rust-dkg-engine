@@ -252,7 +252,7 @@ fn get_shard_peers(
     blockchain_id: &BlockchainId,
     network_manager: &NetworkManager,
     peer_service: &PeerService,
-) -> (std::vec::Vec<libp2p::PeerId>, PeerSelectionStats) {
+) -> (std::vec::Vec<dkg_network::PeerId>, PeerSelectionStats) {
     let my_peer_id = network_manager.peer_id();
 
     // Get shard peers that support BatchGetProtocol, excluding self

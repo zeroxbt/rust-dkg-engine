@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use dkg_domain::Assertion;
-use libp2p::PeerId;
+use dkg_network::PeerId;
 use tracing::instrument;
 use uuid::Uuid;
 

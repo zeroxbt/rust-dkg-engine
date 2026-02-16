@@ -4,8 +4,8 @@ use dkg_domain::{
     Assertion, ParsedUal, TokenIds, Visibility, construct_knowledge_collection_onchain_id,
     construct_paranet_id, parse_ual,
 };
+use dkg_network::PeerId;
 use futures::{StreamExt, stream::FuturesUnordered};
-use libp2p::PeerId;
 use uuid::Uuid;
 
 use crate::{

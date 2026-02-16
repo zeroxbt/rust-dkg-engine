@@ -4,7 +4,7 @@ use std::{
 };
 
 use dkg_domain::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual};
-use libp2p::PeerId;
+use dkg_network::PeerId;
 use tracing::instrument;
 use uuid::Uuid;
 

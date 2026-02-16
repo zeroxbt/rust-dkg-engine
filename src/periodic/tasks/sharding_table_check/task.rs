@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use libp2p::PeerId;
+use dkg_network::PeerId;
 use tokio_util::sync::CancellationToken;
 
 use crate::{

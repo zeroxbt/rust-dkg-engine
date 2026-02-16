@@ -6083,7 +6083,6 @@ dependencies = [
  "futures",
  "governor",
  "hyper",
- "libp2p",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",

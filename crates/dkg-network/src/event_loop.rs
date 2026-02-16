@@ -16,15 +16,16 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
-    IdentifyInfo, ImmediateResponse, InboundDecision, JsCompatCodec, NetworkError,
-    NetworkEventHandler, NetworkManagerConfig, PeerEvent, PendingRequests, RequestContext,
-    RequestMessage, RequestOutcome, RequestOutcomeKind, ResponseMessage,
+    IdentifyInfo, ImmediateResponse, InboundDecision, NetworkError, NetworkEventHandler,
+    NetworkManagerConfig, PeerEvent, RequestMessage, RequestOutcome, RequestOutcomeKind,
+    ResponseMessage,
     actions::{NetworkControlAction, NetworkDataAction},
     behaviour::{NodeBehaviour, NodeBehaviourEvent},
     message::{RequestMessageHeader, RequestMessageType},
+    pending_requests::{PendingRequests, RequestContext},
     protocols::{
         BatchGetProtocol, BatchGetResponseData, FinalityProtocol, FinalityResponseData,
-        GetProtocol, GetResponseData, ProtocolResponse, ProtocolSpec, StoreProtocol,
+        GetProtocol, GetResponseData, JsCompatCodec, ProtocolResponse, ProtocolSpec, StoreProtocol,
         StoreResponseData,
     },
 };

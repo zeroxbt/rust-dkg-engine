@@ -44,18 +44,6 @@ validator = { workspace = true }
 validator_derive = { workspace = true }
 figment = { version = "0.10", features = ["toml"] }
 thiserror = { workspace = true }
-libp2p = { workspace = true, features = [
-    "macros",
-    "kad",
-    "identify",
-    "request-response",
-    "json",
-    "noise",
-    "tcp",
-    "tokio",
-    "rsa",
-    "yamux",
-] }
 alloy = { workspace = true, features = [
     "std",
     "contract",

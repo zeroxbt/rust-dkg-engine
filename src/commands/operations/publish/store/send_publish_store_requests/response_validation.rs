@@ -1,4 +1,4 @@
-use libp2p::PeerId;
+use dkg_network::PeerId;
 use uuid::Uuid;
 
 use super::handler::SendPublishStoreRequestsCommandHandler;

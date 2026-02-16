@@ -5,7 +5,7 @@ use std::{
 
 use dashmap::DashMap;
 use dkg_domain::BlockchainId;
-use libp2p::{Multiaddr, PeerId, StreamProtocol};
+use dkg_network::{Multiaddr, PeerId, StreamProtocol};
 
 use crate::managers::network::IdentifyInfo;
 

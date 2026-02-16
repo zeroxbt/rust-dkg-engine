@@ -8,8 +8,8 @@
 mod actions;
 mod behaviour;
 mod config;
-pub mod error;
-pub mod event_loop;
+mod error;
+mod event_loop;
 mod handle;
 mod handler;
 mod key_manager;
@@ -29,9 +29,8 @@ pub use handle::NetworkManager;
 pub use handler::{ImmediateResponse, InboundDecision, NetworkEventHandler};
 pub use key_manager::KeyManager;
 // Re-export libp2p types for application use
-pub use libp2p::{PeerId, request_response};
+pub use libp2p::identity::Keypair;
+pub use libp2p::{Multiaddr, PeerId, StreamProtocol, request_response};
 // Re-export message types
 pub use message::{RequestMessage, ResponseMessage};
-pub use pending_requests::{PendingRequests, RequestContext};
-pub use protocols::JsCompatCodec;
 pub use request_outcome::{IdentifyInfo, PeerEvent, RequestOutcome, RequestOutcomeKind};

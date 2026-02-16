@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use dkg_domain::BlockchainId;
-use libp2p::{Multiaddr, PeerId};
+use dkg_network::{Multiaddr, PeerId};
 use tokio::sync::broadcast;
 
 pub(crate) use crate::managers::key_value_store::PeerAddressStore;

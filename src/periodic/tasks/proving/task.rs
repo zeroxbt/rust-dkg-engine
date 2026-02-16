@@ -8,8 +8,8 @@ use std::{
 use alloy::primitives::U256;
 use chrono::Utc;
 use dkg_domain::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual};
+use dkg_network::PeerId;
 use futures::{StreamExt, stream::FuturesUnordered};
-use libp2p::PeerId;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 

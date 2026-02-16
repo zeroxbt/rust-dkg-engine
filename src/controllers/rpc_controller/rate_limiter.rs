@@ -1,12 +1,12 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use dashmap::DashMap;
+use dkg_network::PeerId;
 use governor::{
     Quota, RateLimiter,
     clock::DefaultClock,
     state::{InMemoryState, NotKeyed},
 };
-use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 
 type PeerLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;

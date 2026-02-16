@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 pub(crate) use blockchain::BlockchainManager;
 pub(crate) use config::{ManagersConfig, ManagersConfigRaw};
+use dkg_network::Keypair;
 pub(crate) use key_value_store::KeyValueStoreManager;
-use libp2p::identity::Keypair;
 pub(crate) use network::{NetworkEventLoop, NetworkManager};
 pub(crate) use repository::RepositoryManager;
 pub(crate) use triple_store::TripleStoreManager;
