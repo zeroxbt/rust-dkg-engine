@@ -2359,7 +2359,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "dkg-domain",
- "libp2p",
  "redb",
  "serde",
  "serde_json",
@@ -4379,7 +4378,7 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "clap",
- "libp2p",
+ "dkg-network",
  "serde",
  "serde_json",
  "tokio",

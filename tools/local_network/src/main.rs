@@ -8,7 +8,7 @@ mod local_blockchain;
 use std::{fs, net::TcpStream, path::Path, time::Duration};
 
 use clap::{Arg, ArgAction, Command, value_parser};
-use libp2p::{PeerId, identity};
+use dkg_network::{KeyManager, PeerId};
 
 use crate::{
     cleanup::{clear_rust_node_data, create_database, delete_blazegraph_namespaces, drop_database},
@@ -40,33 +40,16 @@ struct NodePlan {
     key_index: usize,
 }
 
-fn ensure_bootstrap_peer_id(data_folder: &str) -> PeerId {
+async fn ensure_bootstrap_peer_id(data_folder: &str) -> PeerId {
     let key_path = Path::new(data_folder).join(BOOTSTRAP_KEY_PATH);
-
-    let keypair = if key_path.exists() {
-        let mut key_bytes = fs::read(&key_path).expect("Failed to read bootstrap key file");
-        let ed25519_keypair = identity::ed25519::Keypair::try_from_bytes(&mut key_bytes)
-            .expect("Failed to parse bootstrap key file");
-        ed25519_keypair.into()
-    } else {
-        // Ensure parent directories exist (data_folder/network/)
-        if let Some(parent) = key_path.parent() {
-            fs::create_dir_all(parent).expect("Failed to create bootstrap key directory");
-        }
-        let keypair = identity::Keypair::generate_ed25519();
-        let ed25519_keypair = keypair
-            .clone()
-            .try_into_ed25519()
-            .expect("Failed to convert bootstrap keypair");
-        fs::write(&key_path, ed25519_keypair.to_bytes())
-            .expect("Failed to write bootstrap key file");
-        keypair
-    };
+    let keypair = KeyManager::load_or_generate(&key_path)
+        .await
+        .expect("Failed to load or generate bootstrap key");
 
     PeerId::from(keypair.public())
 }
 
-fn bootstrap_info(js_first: bool) -> (String, bool) {
+async fn bootstrap_info(js_first: bool) -> (String, bool) {
     if js_first {
         let multiaddr = format!(
             "/ip4/127.0.0.1/tcp/{}/p2p/{}",
@@ -77,7 +60,7 @@ fn bootstrap_info(js_first: bool) -> (String, bool) {
         (multiaddr, true)
     } else {
         let bootstrap_data_folder = format!("data{}", BOOTSTRAP_NODE_INDEX);
-        let bootstrap_peer_id = ensure_bootstrap_peer_id(&bootstrap_data_folder);
+        let bootstrap_peer_id = ensure_bootstrap_peer_id(&bootstrap_data_folder).await;
         let multiaddr = format!(
             "/ip4/127.0.0.1/tcp/{}/p2p/{}",
             NETWORK_PORT_BASE + BOOTSTRAP_NODE_INDEX,
@@ -396,7 +379,7 @@ async fn main() {
         println!();
     }
 
-    let (bootstrap_multiaddr, bootstrap_is_js) = bootstrap_info(js_first);
+    let (bootstrap_multiaddr, bootstrap_is_js) = bootstrap_info(js_first).await;
 
     cleanup_nodes(&plans, js_first);
     generate_configs(

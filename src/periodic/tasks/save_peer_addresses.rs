@@ -40,7 +40,16 @@ impl SavePeerAddressesTask {
         tracing::Span::current().record("peers", addresses.len());
 
         if !addresses.is_empty() {
-            self.address_store.save_all(&addresses).await;
+            let persisted_addresses = addresses
+                .into_iter()
+                .map(|(peer_id, addrs)| {
+                    (
+                        peer_id.to_string(),
+                        addrs.into_iter().map(|addr| addr.to_string()).collect(),
+                    )
+                })
+                .collect();
+            self.address_store.save_all(&persisted_addresses).await;
         }
 
         SAVE_PEER_ADDRESSES_PERIOD

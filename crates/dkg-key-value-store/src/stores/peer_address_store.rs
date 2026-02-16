@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
-use libp2p::{Multiaddr, PeerId};
-
 use crate::{KeyValueStoreError, KeyValueStoreManager, Table};
 
 const TABLE_NAME: &str = "peer_addresses";
 const MAX_PEERS_TO_PERSIST: usize = 500;
 
+pub type PersistedPeerAddresses = HashMap<String, Vec<String>>;
+
 /// Persistent store for peer addresses.
 ///
-/// Saves `PeerId → Vec<Multiaddr>` to a KVS table so the node can
+/// Saves `peer_id_string -> Vec<multiaddr_string>` to a KVS table so the node can
 /// restore known peer addresses on restart without relying solely on
 /// bootstrap nodes for discovery.
 pub struct PeerAddressStore {
@@ -22,7 +22,7 @@ impl PeerAddressStore {
         Ok(Self { table })
     }
 
-    pub async fn load_all(&self) -> HashMap<PeerId, Vec<Multiaddr>> {
+    pub async fn load_all(&self) -> PersistedPeerAddresses {
         let entries = match self.table.get_all().await {
             Ok(entries) => entries,
             Err(e) => {
@@ -33,18 +33,17 @@ impl PeerAddressStore {
 
         let mut result = HashMap::new();
         for (key_bytes, addr_strings) in entries {
-            let peer_id: PeerId = match String::from_utf8(key_bytes)
-                .ok()
-                .and_then(|s| s.parse().ok())
-            {
-                Some(id) => id,
-                None => continue,
+            let peer_id = match String::from_utf8(key_bytes) {
+                Ok(id) => id,
+                Err(_) => continue,
             };
 
-            let addrs: Vec<Multiaddr> =
-                addr_strings.iter().filter_map(|s| s.parse().ok()).collect();
+            let addrs: Vec<String> = addr_strings
+                .into_iter()
+                .filter(|addr| !addr.is_empty())
+                .collect();
 
-            if !addrs.is_empty() {
+            if !peer_id.is_empty() && !addrs.is_empty() {
                 result.insert(peer_id, addrs);
             }
         }
@@ -52,7 +51,7 @@ impl PeerAddressStore {
         result
     }
 
-    pub async fn save_all(&self, peers: &HashMap<PeerId, Vec<Multiaddr>>) {
+    pub async fn save_all(&self, peers: &PersistedPeerAddresses) {
         if let Err(e) = self.table.clear().await {
             tracing::warn!(error = %e, "Failed to clear peer address table");
             return;
@@ -64,13 +63,16 @@ impl PeerAddressStore {
                 break;
             }
 
-            let value: Vec<String> = addrs.iter().map(|a| a.to_string()).collect();
+            let value: Vec<String> = addrs
+                .iter()
+                .filter(|addr| !addr.is_empty())
+                .cloned()
+                .collect();
+            if value.is_empty() {
+                continue;
+            }
 
-            if let Err(e) = self
-                .table
-                .store(peer_id.to_string().as_bytes().to_vec(), value)
-                .await
-            {
+            if let Err(e) = self.table.store(peer_id.as_bytes().to_vec(), value).await {
                 tracing::warn!(
                     peer_id = %peer_id,
                     error = %e,
@@ -109,16 +111,15 @@ mod tests {
             .unwrap();
         let store = PeerAddressStore::new(&kv_store).unwrap();
 
-        let peer1 = PeerId::random();
-        let peer2 = PeerId::random();
-
-        let addr1: Multiaddr = "/ip4/192.168.1.1/tcp/4001".parse().unwrap();
-        let addr2: Multiaddr = "/ip4/10.0.0.1/tcp/4001".parse().unwrap();
-        let addr3: Multiaddr = "/ip4/172.16.0.1/tcp/4001".parse().unwrap();
+        let peer1 = "12D3KooWJ6b8uMzkA4q7hCkC4DKf8YqthpF9q2Mce3rLrFK2dP8V".to_string();
+        let peer2 = "12D3KooWLA1M67Yf7dU6jMqZPyfSgh2pJf5ZQvWrcxNf4t8i3QpM".to_string();
+        let addr1 = "/ip4/192.168.1.1/tcp/4001".to_string();
+        let addr2 = "/ip4/10.0.0.1/tcp/4001".to_string();
+        let addr3 = "/ip4/172.16.0.1/tcp/4001".to_string();
 
         let mut peers = HashMap::new();
-        peers.insert(peer1, vec![addr1.clone(), addr2.clone()]);
-        peers.insert(peer2, vec![addr3.clone()]);
+        peers.insert(peer1.clone(), vec![addr1.clone(), addr2.clone()]);
+        peers.insert(peer2.clone(), vec![addr3.clone()]);
 
         store.save_all(&peers).await;
 
@@ -139,17 +140,16 @@ mod tests {
             .unwrap();
         let store = PeerAddressStore::new(&kv_store).unwrap();
 
-        let peer1 = PeerId::random();
-        let peer2 = PeerId::random();
-
-        let addr: Multiaddr = "/ip4/192.168.1.1/tcp/4001".parse().unwrap();
+        let peer1 = "12D3KooWJ6b8uMzkA4q7hCkC4DKf8YqthpF9q2Mce3rLrFK2dP8V".to_string();
+        let peer2 = "12D3KooWLA1M67Yf7dU6jMqZPyfSgh2pJf5ZQvWrcxNf4t8i3QpM".to_string();
+        let addr = "/ip4/192.168.1.1/tcp/4001".to_string();
 
         let mut first = HashMap::new();
-        first.insert(peer1, vec![addr.clone()]);
+        first.insert(peer1.clone(), vec![addr.clone()]);
         store.save_all(&first).await;
 
         let mut second = HashMap::new();
-        second.insert(peer2, vec![addr]);
+        second.insert(peer2.clone(), vec![addr]);
         store.save_all(&second).await;
 
         let loaded = store.load_all().await;

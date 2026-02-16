@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use commands::{executor::CommandExecutor, scheduler::CommandScheduler};
 use context::Context;
+use dkg_network::{Multiaddr, PeerId};
 use managers::network::KeyManager;
 use periodic::seed_sharding_tables;
 
@@ -70,13 +71,30 @@ pub async fn run() {
     // This must happen after sharding table seeding so dial_peers knows who to connect to.
     let persisted_addresses = services.peer_address_store.load_all().await;
     if !persisted_addresses.is_empty() {
-        let addresses: Vec<_> = persisted_addresses.into_iter().collect();
-        tracing::info!(
-            peers = addresses.len(),
-            "Loading persisted peer addresses into Kademlia"
-        );
-        if let Err(e) = managers.network.add_addresses(addresses).await {
-            tracing::warn!(error = %e, "Failed to inject persisted peer addresses");
+        let addresses: Vec<_> = persisted_addresses
+            .into_iter()
+            .filter_map(|(peer_id_string, addr_strings)| {
+                let peer_id: PeerId = peer_id_string.parse().ok()?;
+                let addrs: Vec<Multiaddr> = addr_strings
+                    .into_iter()
+                    .filter_map(|addr| addr.parse().ok())
+                    .collect();
+                if addrs.is_empty() {
+                    None
+                } else {
+                    Some((peer_id, addrs))
+                }
+            })
+            .collect();
+
+        if !addresses.is_empty() {
+            tracing::info!(
+                peers = addresses.len(),
+                "Loading persisted peer addresses into Kademlia"
+            );
+            if let Err(e) = managers.network.add_addresses(addresses).await {
+                tracing::warn!(error = %e, "Failed to inject persisted peer addresses");
+            }
         }
     }
 
