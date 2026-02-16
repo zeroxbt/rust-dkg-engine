@@ -1,25 +1,23 @@
 mod backend;
 mod config;
-pub(crate) mod error;
-pub(crate) mod query;
-pub(crate) mod rdf;
-pub(crate) mod types;
+pub mod error;
+pub mod query;
+pub mod rdf;
+pub mod types;
 use std::{collections::HashSet, path::Path, sync::Arc, time::Duration};
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 use chrono::{DateTime, SecondsFormat, Utc};
-pub(crate) use config::{
-    DKG_REPOSITORY, TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig,
-};
+pub use config::{DKG_REPOSITORY, TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig};
 use error::{Result, TripleStoreError};
 use query::{named_graphs, predicates};
-pub(crate) use rdf::{
+pub use rdf::{
     compare_js_default_string_order, extract_subject, group_triples_by_subject,
     parse_metadata_from_triples,
 };
 use serde::Deserialize;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-pub(crate) use types::GraphVisibility;
+pub use types::GraphVisibility;
 
 use dkg_domain::{KnowledgeAsset, KnowledgeCollectionMetadata};
 
@@ -30,7 +28,7 @@ mod tests;
 ///
 /// Provides high-level operations for managing RDF data in the DKG triple store.
 /// Supports knowledge collection and asset operations with SPARQL.
-pub(crate) struct TripleStoreManager {
+pub struct TripleStoreManager {
     backend: Box<dyn TripleStoreBackend>,
     config: TripleStoreManagerConfig,
     /// Semaphore for limiting concurrent operations
@@ -46,10 +44,7 @@ impl TripleStoreManager {
     /// # Arguments
     /// * `config` - Triple store configuration
     /// * `data_path` - Path for Oxigraph persistent storage (ignored for Blazegraph)
-    pub(crate) async fn connect(
-        config: &TripleStoreManagerConfig,
-        data_path: &Path,
-    ) -> Result<Self> {
+    pub async fn connect(config: &TripleStoreManagerConfig, data_path: &Path) -> Result<Self> {
         let backend: Box<dyn TripleStoreBackend> = match config.backend {
             TripleStoreBackendType::Blazegraph => Box::new(BlazegraphBackend::new(config.clone())?),
             TripleStoreBackendType::Oxigraph => {
@@ -145,7 +140,7 @@ impl TripleStoreManager {
     }
 
     /// Ensure the repository exists, creating it if necessary
-    pub(crate) async fn ensure_repository(&self) -> Result<()> {
+    pub async fn ensure_repository(&self) -> Result<()> {
         if !self.backend.repository_exists().await? {
             tracing::info!(
                 repository = %DKG_REPOSITORY,
@@ -173,7 +168,7 @@ impl TripleStoreManager {
     }
 
     #[cfg(test)]
-    pub(crate) async fn raw_update_for_tests(&self, query: &str) -> Result<()> {
+    pub async fn raw_update_for_tests(&self, query: &str) -> Result<()> {
         // Convenience wrapper for tests that need to inject raw triples.
         self.backend_update(query, self.config.timeouts.insert_timeout())
             .await
@@ -217,7 +212,7 @@ impl TripleStoreManager {
     /// # Returns
     ///
     /// The total number of triples inserted (data triples + metadata triples).
-    pub(crate) async fn insert_knowledge_collection(
+    pub async fn insert_knowledge_collection(
         &self,
         kc_ual: &str,
         knowledge_assets: &[KnowledgeAsset],
@@ -471,7 +466,7 @@ impl TripleStoreManager {
     /// This queries the actual named graph `{ual}/public` or `{ual}/private`.
     ///
     /// Returns RDF lines (N-Triples/N-Quads).
-    pub(crate) async fn get_knowledge_asset_named_graph(
+    pub async fn get_knowledge_asset_named_graph(
         &self,
         ual: &str,
         visibility: GraphVisibility,
@@ -504,7 +499,7 @@ impl TripleStoreManager {
     /// Uses VALUES clause for efficient querying with pagination to handle
     /// large collections (matching JS implementation which uses MAX_TOKEN_ID_PER_GET_PAGE = 50).
     /// Returns RDF lines (N-Triples/N-Quads) for the specified visibility.
-    pub(crate) async fn get_knowledge_collection_named_graphs(
+    pub async fn get_knowledge_collection_named_graphs(
         &self,
         kc_ual: &str,
         start_token_id: u64,
@@ -571,10 +566,7 @@ impl TripleStoreManager {
     ///
     /// Checks for the existence of the named graph `{ka_ual}`.
     /// The ka_ual should include the visibility suffix (e.g., `did:dkg:.../1/public`).
-    pub(crate) async fn knowledge_asset_exists(
-        &self,
-        ka_ual_with_visibility: &str,
-    ) -> Result<bool> {
+    pub async fn knowledge_asset_exists(&self, ka_ual_with_visibility: &str) -> Result<bool> {
         let query = format!(
             r#"ASK {{
                 GRAPH <{ka_ual_with_visibility}> {{
@@ -590,7 +582,7 @@ impl TripleStoreManager {
     /// Check which knowledge collections exist by UAL (batched).
     ///
     /// Returns the subset of UALs that exist in the metadata graph.
-    pub(crate) async fn knowledge_collections_exist_by_uals(
+    pub async fn knowledge_collections_exist_by_uals(
         &self,
         kc_uals: &[String],
     ) -> Result<HashSet<String>> {
@@ -633,7 +625,7 @@ impl TripleStoreManager {
     /// Get metadata for a knowledge collection from the metadata graph
     ///
     /// Returns N-Triples with metadata predicates (publishedBy, publishedAtBlock, etc.)
-    pub(crate) async fn get_metadata(&self, kc_ual: &str) -> Result<String> {
+    pub async fn get_metadata(&self, kc_ual: &str) -> Result<String> {
         let query = format!(
             r#"CONSTRUCT {{ <{kc_ual}> ?p ?o . }}
                 WHERE {{
@@ -659,7 +651,7 @@ impl TripleStoreManager {
 
 #[cfg(test)]
 impl TripleStoreManager {
-    pub(crate) fn from_backend_for_tests(
+    pub fn from_backend_for_tests(
         backend: Box<dyn TripleStoreBackend>,
         config: TripleStoreManagerConfig,
     ) -> Self {

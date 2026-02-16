@@ -2,7 +2,7 @@ use thiserror::Error;
 
 /// Triple store specific errors
 #[derive(Error, Debug)]
-pub(crate) enum TripleStoreError {
+pub enum TripleStoreError {
     /// Semaphore closed
     #[error("Semaphore closed")]
     SemaphoreClosed,
@@ -33,4 +33,4 @@ pub(crate) enum TripleStoreError {
 }
 
 /// Convenient Result type alias
-pub(crate) type Result<T> = std::result::Result<T, TripleStoreError>;
+pub type Result<T> = std::result::Result<T, TripleStoreError>;

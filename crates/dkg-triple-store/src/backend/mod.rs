@@ -4,17 +4,17 @@ mod oxigraph_backend;
 use std::time::Duration;
 
 use async_trait::async_trait;
-pub(crate) use blazegraph::BlazegraphBackend;
-pub(crate) use oxigraph_backend::OxigraphBackend;
+pub use blazegraph::BlazegraphBackend;
+pub use oxigraph_backend::OxigraphBackend;
 
-use crate::managers::triple_store::error::Result;
+use crate::error::Result;
 
 /// Trait for triple store backends
 ///
 /// Implementations provide the low-level SPARQL execution against
 /// specific triple store systems (Blazegraph, Fuseki, GraphDB, etc.)
 #[async_trait]
-pub(crate) trait TripleStoreBackend: Send + Sync {
+pub trait TripleStoreBackend: Send + Sync {
     /// Backend name for logging/debugging
     fn name(&self) -> &'static str;
 

@@ -5,7 +5,7 @@
 /// The triple store manager operates on individual graphs, so it only
 /// accepts `Public` or `Private` - never both at once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GraphVisibility {
+pub enum GraphVisibility {
     /// Public named graph (`{ual}/public`)
     Public,
     /// Private named graph (`{ual}/private`)
@@ -14,7 +14,7 @@ pub(crate) enum GraphVisibility {
 
 impl GraphVisibility {
     /// Get the graph suffix string for SPARQL queries
-    pub(crate) fn as_suffix(&self) -> &'static str {
+    pub fn as_suffix(&self) -> &'static str {
         match self {
             GraphVisibility::Public => "public",
             GraphVisibility::Private => "private",

@@ -3,12 +3,12 @@ use serde::{Deserialize, Serialize};
 /// The fixed repository/namespace name used by the DKG.
 /// For Blazegraph: namespace name
 /// For Oxigraph: subdirectory name under data_path
-pub(crate) const DKG_REPOSITORY: &str = "DKG";
+pub const DKG_REPOSITORY: &str = "DKG";
 
 /// Backend type for the triple store
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum TripleStoreBackendType {
+pub enum TripleStoreBackendType {
     /// Blazegraph HTTP-based backend (requires running Blazegraph server)
     Blazegraph,
     /// Oxigraph embedded Rust-native backend (faster, no external service needed)
@@ -18,7 +18,7 @@ pub(crate) enum TripleStoreBackendType {
 /// Configuration for the Triple Store Manager
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct TripleStoreManagerConfig {
+pub struct TripleStoreManagerConfig {
     /// Backend type to use.
     pub backend: TripleStoreBackendType,
 
@@ -50,7 +50,7 @@ pub(crate) struct TripleStoreManagerConfig {
 /// Timeout configuration for different SPARQL operations
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct TimeoutConfig {
+pub struct TimeoutConfig {
     /// Timeout for CONSTRUCT/SELECT queries in milliseconds
     pub query_ms: u64,
 
@@ -63,29 +63,29 @@ pub(crate) struct TimeoutConfig {
 
 impl TimeoutConfig {
     /// Get query timeout as Duration
-    pub(crate) fn query_timeout(&self) -> std::time::Duration {
+    pub fn query_timeout(&self) -> std::time::Duration {
         std::time::Duration::from_millis(self.query_ms)
     }
 
     /// Get insert timeout as Duration
-    pub(crate) fn insert_timeout(&self) -> std::time::Duration {
+    pub fn insert_timeout(&self) -> std::time::Duration {
         std::time::Duration::from_millis(self.insert_ms)
     }
 
     /// Get ask timeout as Duration
-    pub(crate) fn ask_timeout(&self) -> std::time::Duration {
+    pub fn ask_timeout(&self) -> std::time::Duration {
         std::time::Duration::from_millis(self.ask_ms)
     }
 }
 
 impl TripleStoreManagerConfig {
     /// Get connect retry frequency as Duration
-    pub(crate) fn connect_retry_frequency(&self) -> std::time::Duration {
+    pub fn connect_retry_frequency(&self) -> std::time::Duration {
         std::time::Duration::from_millis(self.connect_retry_frequency_ms)
     }
 
     /// Get the SPARQL endpoint URL for the DKG repository
-    pub(crate) fn sparql_endpoint(&self) -> String {
+    pub fn sparql_endpoint(&self) -> String {
         format!(
             "{}/blazegraph/namespace/{}/sparql",
             self.url.trim_end_matches('/'),
@@ -94,12 +94,12 @@ impl TripleStoreManagerConfig {
     }
 
     /// Get the namespace management endpoint URL
-    pub(crate) fn namespace_endpoint(&self) -> String {
+    pub fn namespace_endpoint(&self) -> String {
         format!("{}/blazegraph/namespace", self.url.trim_end_matches('/'))
     }
 
     /// Get the status endpoint URL
-    pub(crate) fn status_endpoint(&self) -> String {
+    pub fn status_endpoint(&self) -> String {
         format!("{}/blazegraph/status", self.url.trim_end_matches('/'))
     }
 }

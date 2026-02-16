@@ -6,20 +6,20 @@ use reqwest::Client;
 use serde::Deserialize;
 
 use super::TripleStoreBackend;
-use crate::managers::triple_store::{
+use crate::{
     config::{DKG_REPOSITORY, TripleStoreManagerConfig},
     error::{Result, TripleStoreError},
 };
 
 /// Blazegraph triple store backend implementation
-pub(crate) struct BlazegraphBackend {
+pub struct BlazegraphBackend {
     client: Client,
     config: TripleStoreManagerConfig,
 }
 
 impl BlazegraphBackend {
     /// Create a new Blazegraph backend
-    pub(crate) fn new(config: TripleStoreManagerConfig) -> Result<Self> {
+    pub fn new(config: TripleStoreManagerConfig) -> Result<Self> {
         let client = Client::builder()
             // Connection pooling: keep up to 10 idle connections per host
             .pool_max_idle_per_host(10)

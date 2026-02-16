@@ -4,7 +4,7 @@
 //! for organizing RDF data.
 
 /// Metadata graph storing KC/KA metadata
-pub(crate) const METADATA: &str = "metadata:graph";
+pub const METADATA: &str = "metadata:graph";
 
 /// Current graph tracking active named graphs
-pub(crate) const CURRENT: &str = "current:graph";
+pub const CURRENT: &str = "current:graph";

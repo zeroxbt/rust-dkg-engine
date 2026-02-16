@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use dkg_domain::{KnowledgeAsset, KnowledgeCollectionMetadata};
 use tempfile::TempDir;
 
-use crate::managers::triple_store::{
+use crate::{
     GraphVisibility, TripleStoreBackend, TripleStoreBackendType, TripleStoreManager,
     TripleStoreManagerConfig,
     config::TimeoutConfig,
@@ -424,69 +424,37 @@ impl TripleStoreBackend for TimeoutBackend {
         "timeout-backend"
     }
 
-    async fn health_check(&self) -> crate::managers::triple_store::error::Result<bool> {
+    async fn health_check(&self) -> crate::error::Result<bool> {
         Ok(true)
     }
 
-    async fn repository_exists(&self) -> crate::managers::triple_store::error::Result<bool> {
+    async fn repository_exists(&self) -> crate::error::Result<bool> {
         Ok(true)
     }
 
-    async fn create_repository(&self) -> crate::managers::triple_store::error::Result<()> {
+    async fn create_repository(&self) -> crate::error::Result<()> {
         Ok(())
     }
 
     #[cfg(test)]
-    async fn delete_repository(&self) -> crate::managers::triple_store::error::Result<()> {
+    async fn delete_repository(&self) -> crate::error::Result<()> {
         Ok(())
     }
 
-    async fn update(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<()> {
-        Err(
-            crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
-                attempts: 1,
-            },
-        )
+    async fn update(&self, _query: &str, _timeout: Duration) -> crate::error::Result<()> {
+        Err(crate::error::TripleStoreError::ConnectionFailed { attempts: 1 })
     }
 
-    async fn construct(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<String> {
-        Err(
-            crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
-                attempts: 1,
-            },
-        )
+    async fn construct(&self, _query: &str, _timeout: Duration) -> crate::error::Result<String> {
+        Err(crate::error::TripleStoreError::ConnectionFailed { attempts: 1 })
     }
 
-    async fn ask(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<bool> {
-        Err(
-            crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
-                attempts: 1,
-            },
-        )
+    async fn ask(&self, _query: &str, _timeout: Duration) -> crate::error::Result<bool> {
+        Err(crate::error::TripleStoreError::ConnectionFailed { attempts: 1 })
     }
 
-    async fn select(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<String> {
-        Err(
-            crate::managers::triple_store::error::TripleStoreError::ConnectionFailed {
-                attempts: 1,
-            },
-        )
+    async fn select(&self, _query: &str, _timeout: Duration) -> crate::error::Result<String> {
+        Err(crate::error::TripleStoreError::ConnectionFailed { attempts: 1 })
     }
 }
 
@@ -634,28 +602,24 @@ impl TripleStoreBackend for TestBackend {
         "test"
     }
 
-    async fn health_check(&self) -> crate::managers::triple_store::error::Result<bool> {
+    async fn health_check(&self) -> crate::error::Result<bool> {
         Ok(true)
     }
 
-    async fn repository_exists(&self) -> crate::managers::triple_store::error::Result<bool> {
+    async fn repository_exists(&self) -> crate::error::Result<bool> {
         Ok(true)
     }
 
-    async fn create_repository(&self) -> crate::managers::triple_store::error::Result<()> {
+    async fn create_repository(&self) -> crate::error::Result<()> {
         Ok(())
     }
 
     #[cfg(test)]
-    async fn delete_repository(&self) -> crate::managers::triple_store::error::Result<()> {
+    async fn delete_repository(&self) -> crate::error::Result<()> {
         Ok(())
     }
 
-    async fn update(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<()> {
+    async fn update(&self, _query: &str, _timeout: Duration) -> crate::error::Result<()> {
         let current = self.current.fetch_add(1, Ordering::SeqCst) + 1;
         self.max_observed.fetch_max(current, Ordering::SeqCst);
         tokio::time::sleep(self.hold).await;
@@ -663,27 +627,15 @@ impl TripleStoreBackend for TestBackend {
         Ok(())
     }
 
-    async fn construct(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<String> {
+    async fn construct(&self, _query: &str, _timeout: Duration) -> crate::error::Result<String> {
         Ok(String::new())
     }
 
-    async fn ask(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<bool> {
+    async fn ask(&self, _query: &str, _timeout: Duration) -> crate::error::Result<bool> {
         Ok(false)
     }
 
-    async fn select(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<String> {
+    async fn select(&self, _query: &str, _timeout: Duration) -> crate::error::Result<String> {
         Ok("{\"results\":{\"bindings\":[]}}".to_string())
     }
 }
@@ -696,52 +648,36 @@ impl TripleStoreBackend for InvalidSelectBackend {
         "invalid-select"
     }
 
-    async fn health_check(&self) -> crate::managers::triple_store::error::Result<bool> {
+    async fn health_check(&self) -> crate::error::Result<bool> {
         Ok(true)
     }
 
-    async fn repository_exists(&self) -> crate::managers::triple_store::error::Result<bool> {
+    async fn repository_exists(&self) -> crate::error::Result<bool> {
         Ok(true)
     }
 
-    async fn create_repository(&self) -> crate::managers::triple_store::error::Result<()> {
+    async fn create_repository(&self) -> crate::error::Result<()> {
         Ok(())
     }
 
     #[cfg(test)]
-    async fn delete_repository(&self) -> crate::managers::triple_store::error::Result<()> {
+    async fn delete_repository(&self) -> crate::error::Result<()> {
         Ok(())
     }
 
-    async fn update(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<()> {
+    async fn update(&self, _query: &str, _timeout: Duration) -> crate::error::Result<()> {
         Ok(())
     }
 
-    async fn construct(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<String> {
+    async fn construct(&self, _query: &str, _timeout: Duration) -> crate::error::Result<String> {
         Ok(String::new())
     }
 
-    async fn ask(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<bool> {
+    async fn ask(&self, _query: &str, _timeout: Duration) -> crate::error::Result<bool> {
         Ok(false)
     }
 
-    async fn select(
-        &self,
-        _query: &str,
-        _timeout: Duration,
-    ) -> crate::managers::triple_store::error::Result<String> {
+    async fn select(&self, _query: &str, _timeout: Duration) -> crate::error::Result<String> {
         Ok("not-json".to_string())
     }
 }

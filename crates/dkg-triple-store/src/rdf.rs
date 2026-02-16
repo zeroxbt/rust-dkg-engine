@@ -28,7 +28,7 @@ use dkg_domain::KnowledgeCollectionMetadata;
 /// let blank = r#"_:b0 <http://example.org/pred> "value" ."#;
 /// assert_eq!(extract_subject(blank), Some("_:b0"));
 /// ```
-pub(crate) fn extract_subject(triple: &str) -> Option<&str> {
+pub fn extract_subject(triple: &str) -> Option<&str> {
     let triple = triple.trim();
     if triple.starts_with('<') {
         // IRI subject: find the closing '>'
@@ -43,7 +43,7 @@ pub(crate) fn extract_subject(triple: &str) -> Option<&str> {
 ///
 /// This is closer to JS `groupNquadsBySubject` behavior, which parses RDF quads
 /// and then serializes each quad back before sorting/hashing.
-pub(crate) fn group_triples_by_subject(triples: &[String]) -> Result<Vec<Vec<String>>, String> {
+pub fn group_triples_by_subject(triples: &[String]) -> Result<Vec<Vec<String>>, String> {
     let mut groups: Vec<(String, Vec<String>)> = Vec::new();
     let mut subject_to_index: HashMap<String, usize> = HashMap::new();
     let parser = RdfParser::from_format(RdfFormat::NQuads).lenient();
@@ -87,7 +87,7 @@ fn serialize_quad_nquads(quad: &Quad) -> Result<String, String> {
     Ok(text.trim_end_matches(['\n', '\r']).to_string())
 }
 
-pub(crate) fn compare_js_default_string_order(a: &str, b: &str) -> Ordering {
+pub fn compare_js_default_string_order(a: &str, b: &str) -> Ordering {
     let mut a_units = a.encode_utf16();
     let mut b_units = b.encode_utf16();
 
@@ -192,7 +192,7 @@ fn is_ascii_punctuation(code_unit: u16) -> bool {
 ///     Some("hello world".to_string())
 /// );
 /// ```
-pub(crate) fn extract_quoted_string(triple: &str) -> Option<String> {
+pub fn extract_quoted_string(triple: &str) -> Option<String> {
     // Find the last quote (closing quote of the value)
     let end = triple.rfind('"')?;
     // Find the opening quote
@@ -216,7 +216,7 @@ pub(crate) fn extract_quoted_string(triple: &str) -> Option<String> {
 /// let triple = r#"<http://example.org/s> <http://example.org/p> "12345" ."#;
 /// assert_eq!(extract_quoted_integer(triple), Some(12345));
 /// ```
-pub(crate) fn extract_quoted_integer(triple: &str) -> Option<u64> {
+pub fn extract_quoted_integer(triple: &str) -> Option<u64> {
     extract_quoted_string(triple)?.parse().ok()
 }
 
@@ -230,7 +230,7 @@ pub(crate) fn extract_quoted_integer(triple: &str) -> Option<u64> {
 /// let triple = r#"<http://example.org/s> <http://example.org/p> "2024-01-15T10:30:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> ."#;
 /// assert_eq!(extract_datetime_as_unix(triple), Some(1705315800));
 /// ```
-pub(crate) fn extract_datetime_as_unix(triple: &str) -> Option<u64> {
+pub fn extract_datetime_as_unix(triple: &str) -> Option<u64> {
     let datetime_str = extract_quoted_string(triple)?;
     parse_iso_datetime(&datetime_str)
 }
@@ -238,7 +238,7 @@ pub(crate) fn extract_datetime_as_unix(triple: &str) -> Option<u64> {
 /// Parse an ISO 8601 datetime string to unix timestamp.
 ///
 /// Handles formats like "2024-01-15T10:30:00Z" or "2024-01-15T10:30:00.000Z"
-pub(crate) fn parse_iso_datetime(s: &str) -> Option<u64> {
+pub fn parse_iso_datetime(s: &str) -> Option<u64> {
     use chrono::{DateTime, Utc};
     // Try parsing as RFC 3339 (which includes ISO 8601 with timezone)
     if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
@@ -257,7 +257,7 @@ pub(crate) fn parse_iso_datetime(s: &str) -> Option<u64> {
 /// `<ual> <publishedBy> <did:dkg:publisherKey/0x123...> .`
 ///
 /// Call with `prefix = "did:dkg:publisherKey/"` to get `"0x123..."`.
-pub(crate) fn extract_uri_suffix(triple: &str, prefix: &str) -> Option<String> {
+pub fn extract_uri_suffix(triple: &str, prefix: &str) -> Option<String> {
     let prefix_pos = triple.find(prefix)?;
     let after_prefix = &triple[prefix_pos + prefix.len()..];
     // URI ends at '>' or whitespace
@@ -273,9 +273,7 @@ pub(crate) fn extract_uri_suffix(triple: &str, prefix: &str) -> Option<String> {
 /// Parse metadata from network RDF triples.
 ///
 /// Returns KnowledgeCollectionMetadata if all required fields are found, None otherwise.
-pub(crate) fn parse_metadata_from_triples(
-    triples: &[String],
-) -> Option<KnowledgeCollectionMetadata> {
+pub fn parse_metadata_from_triples(triples: &[String]) -> Option<KnowledgeCollectionMetadata> {
     let mut publisher_address: Option<String> = None;
     let mut block_number: Option<u64> = None;
     let mut transaction_hash: Option<String> = None;

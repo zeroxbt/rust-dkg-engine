@@ -2404,6 +2404,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "dkg-triple-store"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "dkg-domain",
+ "oxigraph",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6062,6 +6079,7 @@ dependencies = [
  "dkg-key-value-store",
  "dkg-network",
  "dkg-repository",
+ "dkg-triple-store",
  "figment",
  "futures",
  "governor",

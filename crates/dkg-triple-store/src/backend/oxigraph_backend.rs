@@ -8,19 +8,19 @@ use oxigraph::{
 use serde_json::json;
 
 use super::TripleStoreBackend;
-use crate::managers::triple_store::error::{Result, TripleStoreError};
+use crate::error::{Result, TripleStoreError};
 
 /// Oxigraph embedded triple store backend
 ///
 /// Provides a Rust-native triple store with significantly lower latency
 /// than HTTP-based backends like Blazegraph (~1-5ms vs ~50-100ms).
-pub(crate) struct OxigraphBackend {
+pub struct OxigraphBackend {
     store: Store,
 }
 
 impl OxigraphBackend {
     /// Create a new Oxigraph backend with persistent storage
-    pub(crate) fn open(path: impl AsRef<Path>) -> Result<Self> {
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let store = Store::open(&path).map_err(|e| {
             TripleStoreError::Other(format!("Failed to open Oxigraph store: {}", e))
         })?;

@@ -8,7 +8,7 @@
 use dkg_domain::KnowledgeAsset;
 use tempfile::TempDir;
 
-use crate::managers::triple_store::{
+use crate::{
     TripleStoreBackendType, TripleStoreManager, TripleStoreManagerConfig, config::TimeoutConfig,
 };
 
