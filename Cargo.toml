@@ -70,30 +70,12 @@ alloy = { workspace = true, features = [
     "signer-local",
     "sol-types",
 ] }
-sha2 = "0.10"
-subxt = "0.44.2"
-jsonrpsee = { version = "0.24.10", default-features = false, features = [
-    "http-client",
-] }
-url = "2.5.2"
-reqwest = { workspace = true, features = ["json", "rustls-tls"] }
 dashmap = "6.1.0"
-async-trait = "0.1"
-redb = "3.1.0"
-sea-orm = { version = "1.1.19", features = [
-    "sqlx-mysql",
-    "runtime-tokio-rustls",
-    "macros",
-] }
-sea-orm-migration = "1.1.19"
-void = "1.0.2"
-oxigraph = { version = "0.5.4" }
 rustls = { version = "0.23.36", default-features = false, features = [
     "ring",
     "std",
     "tls12",
 ] }
-unsigned-varint = { version = "0.8.0", features = ["futures"] }
 
 clap = { workspace = true, features = ["derive"] }
 
