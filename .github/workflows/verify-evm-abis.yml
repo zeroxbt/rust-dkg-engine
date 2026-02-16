@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   verify-abis:
@@ -14,4 +14,3 @@ jobs:
 
       - name: Verify abi/ matches dkg-evm-module.lock
         run: bash tools/evm/scripts/sync_abis.sh --check
-
