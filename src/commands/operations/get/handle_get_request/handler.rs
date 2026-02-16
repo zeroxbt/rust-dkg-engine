@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use dkg_domain::{TokenIds, parse_ual};
 use libp2p::PeerId;
 use tracing::instrument;
 use uuid::Uuid;
@@ -13,7 +14,6 @@ use crate::{
     },
     services::{PeerService, TripleStoreService},
     state::ResponseChannels,
-    types::{TokenIds, parse_ual},
 };
 
 /// Command data for handling incoming get requests.

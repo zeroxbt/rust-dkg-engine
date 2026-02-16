@@ -21,7 +21,7 @@ use serde::Deserialize;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 pub(crate) use types::GraphVisibility;
 
-use crate::types::{KnowledgeAsset, KnowledgeCollectionMetadata};
+use dkg_domain::{KnowledgeAsset, KnowledgeCollectionMetadata};
 
 #[cfg(test)]
 mod tests;

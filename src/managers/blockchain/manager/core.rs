@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
+use dkg_domain::BlockchainId;
+
 use super::super::chains::evm::EvmChain;
-use crate::{
-    managers::blockchain::{BlockchainManager, BlockchainManagerConfig, error::BlockchainError},
-    types::BlockchainId,
+use crate::managers::blockchain::{
+    BlockchainManager, BlockchainManagerConfig, error::BlockchainError,
 };
 
 impl BlockchainManager {

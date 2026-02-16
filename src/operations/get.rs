@@ -1,6 +1,7 @@
+use dkg_domain::Assertion;
 use serde::{Deserialize, Serialize};
 
-use crate::{operations::OperationKind, types::Assertion};
+use crate::operations::OperationKind;
 
 /// Result stored after successful Get operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]

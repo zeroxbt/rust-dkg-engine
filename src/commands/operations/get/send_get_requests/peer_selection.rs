@@ -5,7 +5,7 @@ use super::handler::SendGetRequestsCommandHandler;
 use crate::{
     commands::executor::CommandOutcome,
     managers::network::protocols::{GetProtocol, ProtocolSpec},
-    types::ParsedUal,
+    dkg_domain::ParsedUal,
 };
 
 impl SendGetRequestsCommandHandler {

@@ -1,16 +1,14 @@
 use std::sync::Arc;
 
-use crate::{
-    managers::{
-        blockchain::BlockchainManager,
-        triple_store::{
-            compare_js_default_string_order, group_triples_by_subject,
-            query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
-            rdf::extract_quoted_string,
-        },
+use dkg_domain::{Assertion, ParsedUal, Visibility};
+
+use crate::managers::{
+    blockchain::BlockchainManager,
+    triple_store::{
+        compare_js_default_string_order, group_triples_by_subject,
+        query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
+        rdf::extract_quoted_string,
     },
-    types::{Assertion, ParsedUal, Visibility},
-    utils::validation,
 };
 
 /// Service for validating assertion responses.
@@ -218,7 +216,7 @@ impl AssertionValidationService {
             .collect();
 
         // Calculate merkle root
-        Ok(validation::calculate_merkle_root(&sorted_flat))
+        Ok(dkg_domain::calculate_merkle_root(&sorted_flat))
     }
 
     fn normalize_public_triples(public_triples: &[String]) -> Vec<String> {
@@ -306,7 +304,7 @@ impl AssertionValidationService {
         let mut sorted_private: Vec<String> = private_triples.to_vec();
         sorted_private.sort_by(|a, b| compare_js_default_string_order(a, b));
 
-        let calculated_root = validation::calculate_merkle_root(&sorted_private);
+        let calculated_root = dkg_domain::calculate_merkle_root(&sorted_private);
 
         if calculated_root != expected_root {
             tracing::debug!(

@@ -1,11 +1,9 @@
 use alloy::primitives::B256;
+use dkg_domain::{AccessPolicy, BlockchainId, ParanetKcLocator};
 
-use crate::{
-    managers::{
-        BlockchainManager,
-        blockchain::{chains::evm::PermissionedNode, error::BlockchainError},
-    },
-    types::{AccessPolicy, BlockchainId, ParanetKcLocator},
+use crate::managers::{
+    BlockchainManager,
+    blockchain::{chains::evm::PermissionedNode, error::BlockchainError},
 };
 
 impl BlockchainManager {

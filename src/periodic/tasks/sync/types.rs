@@ -1,5 +1,5 @@
 //! Shared types for the sync pipeline stages.
-use crate::types::{Assertion, KnowledgeCollectionMetadata, TokenIds};
+use dkg_domain::{Assertion, KnowledgeCollectionMetadata, TokenIds};
 
 /// KC that needs to be fetched from the network (output of filter stage)
 #[derive(Clone)]

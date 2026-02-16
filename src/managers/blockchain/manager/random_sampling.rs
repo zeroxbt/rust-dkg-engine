@@ -1,14 +1,12 @@
 use alloy::primitives::U256;
+use dkg_domain::BlockchainId;
 
-use crate::{
-    managers::{
-        BlockchainManager,
-        blockchain::{
-            chains::evm::{NodeChallenge, ProofPeriodStatus},
-            error::BlockchainError,
-        },
+use crate::managers::{
+    BlockchainManager,
+    blockchain::{
+        chains::evm::{NodeChallenge, ProofPeriodStatus},
+        error::BlockchainError,
     },
-    types::BlockchainId,
 };
 
 impl BlockchainManager {

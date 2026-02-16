@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use alloy::{primitives::Address, signers::local::PrivateKeySigner};
+use dkg_domain::BlockchainId;
 use serde::{Deserialize, Serialize};
 
 use super::chains::evm::GasConfig;
-use crate::{config::ConfigError, types::BlockchainId};
+use crate::config::ConfigError;
 
 /// Configuration for a blockchain network.
 ///

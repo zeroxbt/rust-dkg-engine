@@ -1,12 +1,10 @@
+use dkg_domain::{Assertion, BlockchainId};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::{Validate as _, ValidationError};
 use validator_derive::Validate;
 
-use crate::{
-    controllers::http_api_controller::validators::validate_blockchain_id_format,
-    managers::blockchain::BlockchainId, types::Assertion,
-};
+use crate::controllers::http_api_controller::validators::validate_blockchain_id_format;
 
 /// Validates BlockchainId format at the DTO level.
 fn validate_blockchain_id(id: &BlockchainId) -> Result<(), ValidationError> {

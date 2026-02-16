@@ -1,8 +1,9 @@
 //! Finality protocol message types.
 
+use dkg_domain::BlockchainId;
 use serde::{Deserialize, Serialize};
 
-use crate::{managers::network::message::ResponseBody, types::BlockchainId};
+use crate::managers::network::message::ResponseBody;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]

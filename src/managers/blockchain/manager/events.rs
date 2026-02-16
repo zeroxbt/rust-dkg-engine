@@ -1,11 +1,9 @@
 use alloy::primitives::{Address, B256, FixedBytes};
+use dkg_domain::BlockchainId;
 
-use crate::{
-    managers::{
-        BlockchainManager,
-        blockchain::{ContractLog, ContractName, error::BlockchainError},
-    },
-    types::BlockchainId,
+use crate::managers::{
+    BlockchainManager,
+    blockchain::{ContractLog, ContractName, error::BlockchainError},
 };
 
 impl BlockchainManager {

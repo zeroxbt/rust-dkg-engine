@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// privacy annotations.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum Visibility {
+pub enum Visibility {
     /// Only public triples (excludes those with "private" label)
     Public,
     /// Only private triples (those with "private" label)

@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use super::handler::SendGetRequestsCommandHandler;
-use crate::types::{ParsedUal, TokenIds};
+use dkg_domain::{ParsedUal, TokenIds};
 
 impl SendGetRequestsCommandHandler {
     pub(crate) async fn resolve_token_ids(

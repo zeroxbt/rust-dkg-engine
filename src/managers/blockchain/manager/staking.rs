@@ -1,7 +1,6 @@
-use crate::{
-    managers::{BlockchainManager, blockchain::error::BlockchainError},
-    types::{BlockchainId, SignatureComponents},
-};
+use dkg_domain::{BlockchainId, SignatureComponents};
+
+use crate::managers::{BlockchainManager, blockchain::error::BlockchainError};
 
 impl BlockchainManager {
     pub(crate) async fn sign_message(

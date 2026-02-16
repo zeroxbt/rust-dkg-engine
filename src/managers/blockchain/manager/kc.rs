@@ -1,11 +1,9 @@
 use alloy::primitives::Address;
+use dkg_domain::BlockchainId;
 
-use crate::{
-    managers::{
-        BlockchainManager,
-        blockchain::{error::BlockchainError, multicall},
-    },
-    types::BlockchainId,
+use crate::managers::{
+    BlockchainManager,
+    blockchain::{error::BlockchainError, multicall},
 };
 
 impl BlockchainManager {

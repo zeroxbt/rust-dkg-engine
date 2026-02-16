@@ -10,6 +10,7 @@
 
 use std::{sync::Arc, time::Instant};
 
+use dkg_domain::{TokenIds, derive_ual};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
@@ -20,7 +21,6 @@ use crate::{
         multicall::{MulticallBatch, MulticallRequest, encoders},
     },
     services::TripleStoreService,
-    types::{TokenIds, derive_ual},
 };
 
 /// Filter task: processes pending KCs in batches, checking local existence first,

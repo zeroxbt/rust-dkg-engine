@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use dkg_domain::BlockchainId;
 use libp2p::{Multiaddr, PeerId};
 use tokio::sync::broadcast;
 
@@ -10,7 +11,6 @@ use crate::{
         protocols::{BatchGetProtocol, GetProtocol, ProtocolSpec},
     },
     state::PeerRegistry,
-    types::BlockchainId,
 };
 
 pub(crate) struct PeerService {

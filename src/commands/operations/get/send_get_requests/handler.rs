@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use dkg_domain::Visibility;
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -10,7 +11,6 @@ use crate::{
     services::{
         GetFetchRequest, operation_status::OperationStatusService as GenericOperationService,
     },
-    types::Visibility,
 };
 
 /// Maximum number of in-flight peer requests for GET network fetch.

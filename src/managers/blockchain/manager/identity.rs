@@ -1,7 +1,6 @@
-use crate::{
-    managers::{BlockchainManager, blockchain::error::BlockchainError},
-    types::BlockchainId,
-};
+use dkg_domain::BlockchainId;
+
+use crate::managers::{BlockchainManager, blockchain::error::BlockchainError};
 
 impl BlockchainManager {
     pub(crate) fn identity_id(&self, blockchain: &BlockchainId) -> u128 {

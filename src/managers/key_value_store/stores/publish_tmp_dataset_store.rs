@@ -1,13 +1,11 @@
 use std::time::Duration;
 
 use chrono::Utc;
+use dkg_domain::Assertion;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-    managers::key_value_store::{KeyValueStoreError, KeyValueStoreManager, Table},
-    types::Assertion,
-};
+use crate::managers::key_value_store::{KeyValueStoreError, KeyValueStoreManager, Table};
 
 /// Table name for publish temporary datasets.
 const TABLE_NAME: &str = "publish_tmp_dataset";

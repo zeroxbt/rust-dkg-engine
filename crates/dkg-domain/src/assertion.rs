@@ -17,7 +17,7 @@ fn validate_public_non_empty(public: &[String]) -> Result<(), ValidationError> {
 /// This is the core data structure for knowledge assets in the DKG,
 /// containing RDF lines (N-Triples/N-Quads) for public and private data.
 #[derive(Debug, Serialize, Deserialize, Clone, Default, Validate)]
-pub(crate) struct Assertion {
+pub struct Assertion {
     /// Public triples (required, at least one triple)
     #[validate(custom(function = "validate_public_non_empty"))]
     pub public: Vec<String>,
@@ -27,12 +27,12 @@ pub(crate) struct Assertion {
 
 impl Assertion {
     /// Create a new assertion with public and optional private triples.
-    pub(crate) fn new(public: Vec<String>, private: Option<Vec<String>>) -> Self {
+    pub fn new(public: Vec<String>, private: Option<Vec<String>>) -> Self {
         Self { public, private }
     }
 
     /// Check if the assertion has any data.
-    pub(crate) fn has_data(&self) -> bool {
+    pub fn has_data(&self) -> bool {
         !self.public.is_empty() || self.private.as_ref().is_some_and(|p| !p.is_empty())
     }
 }

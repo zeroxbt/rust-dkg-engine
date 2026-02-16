@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use dkg_domain::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual};
 use libp2p::PeerId;
 use tracing::instrument;
 use uuid::Uuid;
@@ -13,7 +14,6 @@ use crate::{
     managers::network::{NetworkManager, messages::BatchGetAck},
     services::{PeerService, TripleStoreService},
     state::ResponseChannels,
-    types::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual},
 };
 
 /// Maximum number of UALs allowed in a single batch get request.

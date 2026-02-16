@@ -1,9 +1,8 @@
-use crate::{
-    managers::{
-        BlockchainManager,
-        blockchain::{chains::evm::NodeInfo, error::BlockchainError},
-    },
-    types::BlockchainId,
+use dkg_domain::BlockchainId;
+
+use crate::managers::{
+    BlockchainManager,
+    blockchain::{chains::evm::NodeInfo, error::BlockchainError},
 };
 
 impl BlockchainManager {

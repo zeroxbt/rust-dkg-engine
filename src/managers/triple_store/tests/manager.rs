@@ -10,16 +10,14 @@ use std::{
 };
 
 use async_trait::async_trait;
+use dkg_domain::{KnowledgeAsset, KnowledgeCollectionMetadata};
 use tempfile::TempDir;
 
-use crate::{
-    managers::triple_store::{
-        GraphVisibility, TripleStoreBackend, TripleStoreBackendType, TripleStoreManager,
-        TripleStoreManagerConfig,
-        config::TimeoutConfig,
-        query::{named_graphs, predicates},
-    },
-    types::{KnowledgeAsset, KnowledgeCollectionMetadata},
+use crate::managers::triple_store::{
+    GraphVisibility, TripleStoreBackend, TripleStoreBackendType, TripleStoreManager,
+    TripleStoreManagerConfig,
+    config::TimeoutConfig,
+    query::{named_graphs, predicates},
 };
 
 #[derive(Clone, Copy)]

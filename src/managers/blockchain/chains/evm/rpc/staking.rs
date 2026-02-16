@@ -1,15 +1,13 @@
 use alloy::hex;
+use dkg_domain::SignatureComponents;
 
-use crate::{
-    managers::blockchain::{
-        chains::evm::{
-            EvmChain,
-            contracts::{Staking, Token},
-            initialize_provider_with_wallet,
-        },
-        error::BlockchainError,
+use crate::managers::blockchain::{
+    chains::evm::{
+        EvmChain,
+        contracts::{Staking, Token},
+        initialize_provider_with_wallet,
     },
-    types::SignatureComponents,
+    error::BlockchainError,
 };
 
 impl EvmChain {

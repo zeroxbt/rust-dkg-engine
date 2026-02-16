@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use dkg_domain::{Assertion, BlockchainId, SignatureComponents, TokenIds};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -7,12 +8,9 @@ use super::{
     BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
     StoreAck, StoreRequestData,
 };
-use crate::{
-    managers::network::message::{
-        RequestMessage, RequestMessageHeader, RequestMessageType, ResponseBody, ResponseMessage,
-        ResponseMessageHeader, ResponseMessageType,
-    },
-    types::{Assertion, BlockchainId, SignatureComponents, TokenIds},
+use crate::managers::network::message::{
+    RequestMessage, RequestMessageHeader, RequestMessageType, ResponseBody, ResponseMessage,
+    ResponseMessageHeader, ResponseMessageType,
 };
 
 fn parse_json(input: &str) -> Value {

@@ -1,12 +1,12 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use alloy::primitives::Address;
+use dkg_domain::BlockchainId;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     context::Context, managers::blockchain::BlockchainManager, periodic::runner::run_with_shutdown,
-    types::BlockchainId,
 };
 
 /// Interval between claim rewards cycles (1 hour).

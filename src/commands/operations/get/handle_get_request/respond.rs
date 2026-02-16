@@ -1,3 +1,4 @@
+use dkg_domain::Assertion;
 use uuid::Uuid;
 
 use crate::{
@@ -8,7 +9,6 @@ use crate::{
         messages::GetAck,
         request_response::ResponseChannel,
     },
-    types::Assertion,
 };
 
 impl HandleGetRequestCommandHandler {

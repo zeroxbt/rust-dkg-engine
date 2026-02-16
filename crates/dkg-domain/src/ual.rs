@@ -1,10 +1,10 @@
 use alloy::primitives::Address;
 use thiserror::Error;
 
-use crate::types::BlockchainId;
+use crate::BlockchainId;
 
 #[derive(Debug, Error)]
-pub(crate) enum UalParseError {
+pub enum UalParseError {
     #[error("Invalid UAL format: {0}")]
     Format(String),
     #[error("Invalid contract address: {0}")]
@@ -17,7 +17,7 @@ pub(crate) enum UalParseError {
 
 /// Parsed UAL (Universal Asset Locator) components
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedUal {
+pub struct ParsedUal {
     /// Blockchain identifier string as it appears in the UAL (e.g., "base:84532")
     pub blockchain: BlockchainId,
     /// Contract address
@@ -32,7 +32,7 @@ impl ParsedUal {
     /// Get the knowledge collection UAL (without asset ID).
     ///
     /// Example: `did:dkg:base:84532/0x1234.../123`
-    pub(crate) fn knowledge_collection_ual(&self) -> String {
+    pub fn knowledge_collection_ual(&self) -> String {
         format!(
             "did:dkg:{}/{:?}/{}",
             self.blockchain.as_str().to_lowercase(),
@@ -44,7 +44,7 @@ impl ParsedUal {
     /// Get the knowledge asset UAL for a specific token ID.
     ///
     /// Example: `did:dkg:base:84532/0x1234.../123/1`
-    pub(crate) fn knowledge_asset_ual(&self, token_id: u128) -> String {
+    pub fn knowledge_asset_ual(&self, token_id: u128) -> String {
         format!("{}/{}", self.knowledge_collection_ual(), token_id)
     }
 
@@ -52,7 +52,7 @@ impl ParsedUal {
     ///
     /// If `knowledge_asset_id` is set, returns the asset UAL.
     /// Otherwise returns the collection UAL.
-    pub(crate) fn to_ual_string(&self) -> String {
+    pub fn to_ual_string(&self) -> String {
         match self.knowledge_asset_id {
             Some(asset_id) => self.knowledge_asset_ual(asset_id),
             None => self.knowledge_collection_ual(),
@@ -61,7 +61,7 @@ impl ParsedUal {
 }
 
 /// Derive a UAL string from its components
-pub(crate) fn derive_ual(
+pub fn derive_ual(
     blockchain: &BlockchainId,
     contract: &Address,
     knowledge_collection_id: u128,
@@ -87,7 +87,7 @@ pub(crate) fn derive_ual(
 /// Examples:
 /// - `did:dkg:base:84532/0x1234.../123` - Knowledge collection
 /// - `did:dkg:base:84532/0x1234.../123/1` - Knowledge asset
-pub(crate) fn parse_ual(ual: &str) -> Result<ParsedUal, UalParseError> {
+pub fn parse_ual(ual: &str) -> Result<ParsedUal, UalParseError> {
     // Remove the "did:" and "dkg:" prefixes
     let stripped = ual
         .strip_prefix("did:")

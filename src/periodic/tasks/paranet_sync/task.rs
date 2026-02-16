@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use dkg_domain::{AccessPolicy, construct_paranet_id, derive_ual, parse_ual};
 use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -13,8 +14,6 @@ use crate::{
     },
     periodic::runner::run_with_shutdown,
     services::{GetFetchRequest, GetFetchSource},
-    types::{AccessPolicy, derive_ual, parse_ual},
-    utils::paranet::construct_paranet_id,
 };
 
 pub(crate) struct ParanetSyncTask {
@@ -360,8 +359,8 @@ impl ParanetSyncTask {
                     };
 
                     let visibility = match target.access_policy {
-                        AccessPolicy::Open => crate::types::Visibility::Public,
-                        AccessPolicy::Permissioned => crate::types::Visibility::All,
+                        AccessPolicy::Open => dkg_domain::Visibility::Public,
+                        AccessPolicy::Permissioned => dkg_domain::Visibility::All,
                     };
 
                     let request = GetFetchRequest {

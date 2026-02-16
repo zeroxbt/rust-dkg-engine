@@ -1,11 +1,9 @@
 //! Get protocol message types.
 
+use dkg_domain::{Assertion, BlockchainId, TokenIds};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    managers::network::message::ResponseBody,
-    types::{Assertion, BlockchainId, TokenIds},
-};
+use crate::managers::network::message::ResponseBody;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

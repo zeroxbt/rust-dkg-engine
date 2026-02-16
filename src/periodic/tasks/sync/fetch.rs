@@ -10,6 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use dkg_domain::{ParsedUal, TokenIds, Visibility, parse_ual};
 use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
@@ -28,7 +29,6 @@ use crate::{
         triple_store::parse_metadata_from_triples,
     },
     services::{AssertionValidationService, PeerService},
-    types::{ParsedUal, TokenIds, Visibility, parse_ual},
 };
 
 /// Maximum number of in-flight peer requests for this operation.

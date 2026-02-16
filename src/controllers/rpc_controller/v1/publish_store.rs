@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use dkg_domain::Assertion;
+
 use super::inbound_request::store_channel_and_try_schedule;
 use crate::{
     commands::{
@@ -15,7 +17,6 @@ use crate::{
         request_response,
     },
     state::ResponseChannels,
-    types::Assertion,
 };
 
 pub(crate) struct PublishStoreRpcController {

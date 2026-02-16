@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use dkg_domain::{KnowledgeCollectionMetadata, derive_ual};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -18,8 +19,6 @@ use crate::{
         repository::RepositoryManager,
     },
     services::{PeerService, TripleStoreService},
-    types::{KnowledgeCollectionMetadata, derive_ual},
-    utils::validation,
 };
 
 /// Raw event data from KnowledgeCollectionCreated event.
@@ -216,7 +215,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         }
 
         // Validate byte size matches
-        let calculated_size = validation::calculate_assertion_size(&pending_data.dataset().public);
+        let calculated_size = dkg_domain::calculate_assertion_size(&pending_data.dataset().public);
         if data.byte_size != calculated_size as u128 {
             tracing::error!(
                 operation_id = %operation_id,

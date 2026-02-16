@@ -8,7 +8,7 @@ use oxigraph::{
 };
 
 use super::query::predicates;
-use crate::types::KnowledgeCollectionMetadata;
+use dkg_domain::KnowledgeCollectionMetadata;
 
 /// Extracts the subject from an RDF line (N-Triples/N-Quads).
 ///

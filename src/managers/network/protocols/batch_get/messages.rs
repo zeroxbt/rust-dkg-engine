@@ -2,12 +2,10 @@
 
 use std::collections::HashMap;
 
+use dkg_domain::{Assertion, TokenIds};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    managers::network::message::ResponseBody,
-    types::{Assertion, TokenIds},
-};
+use crate::managers::network::message::ResponseBody;
 
 /// Request data for batch get protocol.
 ///

@@ -46,7 +46,7 @@ impl HandlePublishStoreRequestCommandHandler {
         channel: ResponseChannel<ResponseMessage<StoreAck>>,
         operation_id: Uuid,
         identity_id: u128,
-        signature: crate::types::SignatureComponents,
+        signature: dkg_domain::SignatureComponents,
     ) {
         let message = ResponseMessage {
             header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),

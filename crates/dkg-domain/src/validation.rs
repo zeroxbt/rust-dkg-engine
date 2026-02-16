@@ -5,7 +5,7 @@ use alloy::{
 
 const CHUNK_SIZE: usize = 32;
 
-pub(crate) fn calculate_merkle_root(quads: &[String]) -> String {
+pub fn calculate_merkle_root(quads: &[String]) -> String {
     let chunks = split_into_chunks(quads);
 
     let mut leaves: Vec<B256> = chunks
@@ -59,7 +59,7 @@ pub(crate) fn calculate_merkle_root(quads: &[String]) -> String {
 /// 2. Encode as UTF-8 bytes
 /// 3. numberOfChunks = ceil(totalBytes / CHUNK_SIZE)
 /// 4. byteSize = numberOfChunks * CHUNK_SIZE
-pub(crate) fn calculate_assertion_size(quads: &[String]) -> usize {
+pub fn calculate_assertion_size(quads: &[String]) -> usize {
     let concatenated = quads.join("\n");
     let total_bytes = concatenated.len();
     let num_chunks = total_bytes.div_ceil(CHUNK_SIZE);
@@ -68,7 +68,7 @@ pub(crate) fn calculate_assertion_size(quads: &[String]) -> usize {
 
 /// Result of Merkle proof calculation.
 #[derive(Debug)]
-pub(crate) struct MerkleProofResult {
+pub struct MerkleProofResult {
     /// The chunk content (string)
     pub chunk: String,
     /// The Merkle proof path (32-byte hashes)
@@ -78,7 +78,7 @@ pub(crate) struct MerkleProofResult {
 /// Calculate Merkle proof for a specific chunk.
 ///
 /// Returns the chunk content and proof path, or an error if chunk_index is out of range.
-pub(crate) fn calculate_merkle_proof(
+pub fn calculate_merkle_proof(
     quads: &[String],
     chunk_index: usize,
 ) -> Result<MerkleProofResult, String> {

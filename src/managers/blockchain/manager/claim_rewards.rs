@@ -1,9 +1,7 @@
 use alloy::primitives::Address;
+use dkg_domain::BlockchainId;
 
-use crate::{
-    managers::{BlockchainManager, blockchain::error::BlockchainError},
-    types::BlockchainId,
-};
+use crate::managers::{BlockchainManager, blockchain::error::BlockchainError};
 
 impl BlockchainManager {
     pub(crate) async fn get_delegators(

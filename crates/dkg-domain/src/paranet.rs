@@ -5,7 +5,7 @@ use alloy::primitives::Address;
 /// PERMISSIONED = 1: Only approved nodes can participate
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum AccessPolicy {
+pub enum AccessPolicy {
     Open = 0,
     Permissioned = 1,
 }
@@ -21,7 +21,7 @@ impl From<u8> for AccessPolicy {
 
 /// Locator for a knowledge collection registered in a paranet.
 #[derive(Debug, Clone)]
-pub(crate) struct ParanetKcLocator {
+pub struct ParanetKcLocator {
     pub knowledge_collection_storage_contract: Address,
     pub knowledge_collection_token_id: u128,
 }

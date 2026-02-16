@@ -1,10 +1,10 @@
+use dkg_domain::{Assertion, Visibility};
 use serde::Serialize;
 use uuid::Uuid;
 use validator_derive::Validate;
 
-use crate::{
-    controllers::http_api_controller::validators::{validate_optional_ual, validate_ual_format},
-    types::{Assertion, Visibility},
+use crate::controllers::http_api_controller::validators::{
+    validate_optional_ual, validate_ual_format,
 };
 
 #[derive(serde::Deserialize, Debug, Validate)]

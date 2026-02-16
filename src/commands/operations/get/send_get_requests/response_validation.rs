@@ -5,7 +5,7 @@ use super::handler::SendGetRequestsCommandHandler;
 use crate::{
     managers::network::{message::ResponseBody, messages::GetResponseData},
     operations::GetOperationResult,
-    types::{Assertion, ParsedUal, Visibility},
+    dkg_domain::{Assertion, ParsedUal, Visibility},
 };
 
 impl SendGetRequestsCommandHandler {

@@ -1,16 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
+use dkg_domain::{
+    Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility,
+};
 use futures::future::join_all;
 use tracing::instrument;
 
-use crate::{
-    managers::triple_store::{
-        GraphVisibility, TripleStoreManager, error::TripleStoreError, extract_subject,
-        group_triples_by_subject, query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
-    },
-    types::{
-        Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility,
-    },
+use crate::managers::triple_store::{
+    GraphVisibility, TripleStoreManager, error::TripleStoreError, extract_subject,
+    group_triples_by_subject, query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
 };
 
 /// Result of querying assertion data from the triple store.

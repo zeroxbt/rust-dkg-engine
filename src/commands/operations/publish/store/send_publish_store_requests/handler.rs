@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use dkg_domain::Assertion;
 use futures::{StreamExt, stream::FuturesUnordered};
 use libp2p::PeerId;
 use tracing::instrument;
@@ -19,7 +20,6 @@ use crate::{
     },
     operations::{PublishStoreOperation, PublishStoreOperationResult},
     services::{PeerService, operation_status::OperationStatusService as GenericOperationService},
-    types::Assertion,
 };
 
 /// Maximum number of in-flight peer requests for this operation.

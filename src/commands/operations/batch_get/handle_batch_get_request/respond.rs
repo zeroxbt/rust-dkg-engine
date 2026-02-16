@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use dkg_domain::Assertion;
 use uuid::Uuid;
 
 use crate::{
@@ -10,7 +11,6 @@ use crate::{
         messages::BatchGetAck,
         request_response::ResponseChannel,
     },
-    types::Assertion,
 };
 
 impl HandleBatchGetRequestCommandHandler {

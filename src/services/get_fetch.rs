@@ -1,5 +1,9 @@
 use std::sync::Arc;
 
+use dkg_domain::{
+    Assertion, ParsedUal, TokenIds, Visibility, construct_knowledge_collection_onchain_id,
+    construct_paranet_id, parse_ual,
+};
 use futures::{StreamExt, stream::FuturesUnordered};
 use libp2p::PeerId;
 use uuid::Uuid;
@@ -15,8 +19,6 @@ use crate::{
         },
     },
     services::{AssertionValidationService, PeerService, TripleStoreService},
-    types::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual},
-    utils::paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
 };
 
 const CONCURRENT_PEERS: usize = 3;
@@ -375,7 +377,7 @@ impl GetFetchService {
         }
 
         match policy {
-            crate::types::AccessPolicy::Permissioned => {
+            dkg_domain::AccessPolicy::Permissioned => {
                 let permissioned_nodes = self
                     .blockchain_manager
                     .get_permissioned_nodes(&target_ual.blockchain, paranet_id)
@@ -396,7 +398,7 @@ impl GetFetchService {
                     .filter(|peer_id| permissioned_peer_ids.contains(peer_id))
                     .collect())
             }
-            crate::types::AccessPolicy::Open => Ok(all_shard_peers),
+            dkg_domain::AccessPolicy::Open => Ok(all_shard_peers),
         }
     }
 }

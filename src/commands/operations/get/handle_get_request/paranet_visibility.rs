@@ -1,10 +1,10 @@
+use dkg_domain::{
+    AccessPolicy, ParsedUal, Visibility, construct_knowledge_collection_onchain_id,
+    construct_paranet_id, parse_ual,
+};
 use libp2p::PeerId;
 
 use super::handler::HandleGetRequestCommandHandler;
-use crate::{
-    types::{AccessPolicy, ParsedUal, Visibility, parse_ual},
-    utils::paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
-};
 
 impl HandleGetRequestCommandHandler {
     /// Determine effective visibility based on paranet authorization.

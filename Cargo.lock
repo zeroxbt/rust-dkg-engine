@@ -2354,6 +2354,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dkg-domain"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "serde",
+ "thiserror 2.0.18",
+ "validator",
+ "validator_derive",
+]
+
+[[package]]
 name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6065,6 +6076,7 @@ dependencies = [
  "chrono",
  "clap",
  "dashmap",
+ "dkg-domain",
  "figment",
  "futures",
  "governor",

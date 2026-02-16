@@ -7,6 +7,7 @@ use std::{
 
 use alloy::primitives::U256;
 use chrono::Utc;
+use dkg_domain::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual};
 use futures::{StreamExt, stream::FuturesUnordered};
 use libp2p::PeerId;
 use tokio_util::sync::CancellationToken;
@@ -32,8 +33,6 @@ use crate::{
     },
     periodic::runner::run_with_shutdown,
     services::{AssertionValidationService, PeerService, TripleStoreService},
-    types::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual},
-    utils::validation,
 };
 
 pub(crate) struct ProvingTask {
@@ -511,7 +510,7 @@ impl ProvingTask {
             None,
         );
 
-        let parsed_ual = match crate::types::parse_ual(&ual) {
+        let parsed_ual = match dkg_domain::parse_ual(&ual) {
             Ok(u) => u,
             Err(e) => {
                 tracing::warn!(error = %e, ual = %ual, "Failed to parse UAL");
@@ -610,7 +609,7 @@ impl ProvingTask {
             }
         };
 
-        let proof_result = match validation::calculate_merkle_proof(&prepared_quads, chunk_index) {
+        let proof_result = match dkg_domain::calculate_merkle_proof(&prepared_quads, chunk_index) {
             Ok(result) => result,
             Err(e) => {
                 tracing::warn!(error = %e, chunk_index, "Failed to calculate Merkle proof");

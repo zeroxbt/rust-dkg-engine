@@ -5,13 +5,11 @@
 //! These tests require a running Blazegraph instance for Blazegraph tests.
 //! Start it with: `docker run -d -p 9999:9999 blazegraph/blazegraph:2.1.5`
 
+use dkg_domain::KnowledgeAsset;
 use tempfile::TempDir;
 
-use crate::{
-    managers::triple_store::{
-        TripleStoreBackendType, TripleStoreManager, TripleStoreManagerConfig, config::TimeoutConfig,
-    },
-    types::KnowledgeAsset,
+use crate::managers::triple_store::{
+    TripleStoreBackendType, TripleStoreManager, TripleStoreManagerConfig, config::TimeoutConfig,
 };
 
 fn blazegraph_config() -> TripleStoreManagerConfig {

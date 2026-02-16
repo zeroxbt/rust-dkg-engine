@@ -3,13 +3,11 @@ use alloy::{
     primitives::{B256, U256},
     transports::TransportErrorKind,
 };
+use dkg_domain::{AccessPolicy, ParanetKcLocator};
 
-use crate::{
-    managers::blockchain::{
-        chains::evm::{EvmChain, contracts::PermissionedNode},
-        error::BlockchainError,
-    },
-    types::{AccessPolicy, ParanetKcLocator},
+use crate::managers::blockchain::{
+    chains::evm::{EvmChain, contracts::PermissionedNode},
+    error::BlockchainError,
 };
 
 impl EvmChain {

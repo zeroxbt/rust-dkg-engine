@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use dkg_domain::Assertion;
 use libp2p::PeerId;
 use tracing::instrument;
 use uuid::Uuid;
@@ -14,8 +15,6 @@ use crate::{
     },
     services::PeerService,
     state::ResponseChannels,
-    types::Assertion,
-    utils::validation,
 };
 
 /// Command data for handling incoming publish store requests.
@@ -129,7 +128,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandOutcome::Completed;
         }
 
-        let computed_dataset_root = validation::calculate_merkle_root(&dataset.public);
+        let computed_dataset_root = dkg_domain::calculate_merkle_root(&dataset.public);
 
         tracing::debug!(
             operation_id = %operation_id,

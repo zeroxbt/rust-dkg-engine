@@ -4,9 +4,10 @@ use std::{
 };
 
 use dashmap::DashMap;
+use dkg_domain::BlockchainId;
 use libp2p::{Multiaddr, PeerId, StreamProtocol};
 
-use crate::{managers::network::IdentifyInfo, types::BlockchainId};
+use crate::managers::network::IdentifyInfo;
 
 // Performance tracking constants
 const HISTORY_SIZE: usize = 20;

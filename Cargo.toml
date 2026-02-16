@@ -5,6 +5,7 @@ rust-version = "1.92.0"
 edition = "2024"
 
 [dependencies]
+dkg-domain = { path = "crates/dkg-domain" }
 tokio = { version = "1.49.0", features = [
     "macros",
     "rt-multi-thread",
@@ -113,5 +114,5 @@ dbg_macro = "warn"
 unwrap_used = "warn"
 
 [workspace]
-members = ["tools/local_network"]
+members = ["tools/local_network", "crates/dkg-domain"]
 default-members = ["."]

@@ -3,8 +3,8 @@ use uuid::Uuid;
 
 use super::handler::SendGetRequestsCommandHandler;
 use crate::{
-    types::{AccessPolicy, ParsedUal, parse_ual},
-    utils::paranet::{construct_knowledge_collection_onchain_id, construct_paranet_id},
+    dkg_domain::{AccessPolicy, ParsedUal, parse_ual},
+    dkg_domain::{construct_knowledge_collection_onchain_id, construct_paranet_id},
 };
 
 impl SendGetRequestsCommandHandler {
