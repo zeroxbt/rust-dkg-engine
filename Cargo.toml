@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 dkg-domain = { path = "crates/dkg-domain" }
+dkg-network = { path = "crates/dkg-network" }
 tokio = { workspace = true, features = [
     "macros",
     "rt-multi-thread",
@@ -81,7 +82,6 @@ sea-orm = { version = "1.1.19", features = [
     "macros",
 ] }
 sea-orm-migration = "1.1.19"
-libp2p-mplex = "0.43.1"
 void = "1.0.2"
 oxigraph = { version = "0.5.4" }
 rustls = { version = "0.23.36", default-features = false, features = [
@@ -114,7 +114,7 @@ dbg_macro = "warn"
 unwrap_used = "warn"
 
 [workspace]
-members = ["tools/local_network", "crates/dkg-domain"]
+members = ["tools/local_network", "crates/dkg-domain", "crates/dkg-network"]
 default-members = ["."]
 
 [workspace.dependencies]

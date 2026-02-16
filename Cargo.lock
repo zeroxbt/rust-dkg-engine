@@ -2334,6 +2334,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "dkg-network"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "dkg-domain",
+ "futures",
+ "libp2p",
+ "libp2p-mplex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "unsigned-varint 0.8.0",
+ "uuid",
+]
+
+[[package]]
 name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5988,13 +6007,13 @@ dependencies = [
  "clap",
  "dashmap",
  "dkg-domain",
+ "dkg-network",
  "figment",
  "futures",
  "governor",
  "hyper",
  "jsonrpsee",
  "libp2p",
- "libp2p-mplex",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",

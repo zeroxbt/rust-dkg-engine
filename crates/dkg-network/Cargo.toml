@@ -1,0 +1,31 @@
+[package]
+name = "dkg-network"
+version = "0.1.0"
+rust-version = "1.92.0"
+edition = "2024"
+
+[dependencies]
+dkg-domain = { path = "../dkg-domain" }
+async-trait = "0.1"
+futures = "0.3.31"
+libp2p = { workspace = true, features = [
+    "macros",
+    "kad",
+    "identify",
+    "request-response",
+    "json",
+    "noise",
+    "tcp",
+    "tokio",
+    "rsa",
+    "yamux",
+] }
+libp2p-mplex = "0.43.1"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "fs", "io-util"] }
+tokio-util = { version = "0.7", features = ["time"] }
+tracing = "0.1.44"
+unsigned-varint = { version = "0.8.0", features = ["futures"] }
+uuid = { version = "1.20.0", features = ["serde", "v4"] }
