@@ -1,0 +1,19 @@
+{
+    "name": "rust-dkg-engine-evm-tools",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "start:local_blockchain": "npm explore dkg-evm-module -- npm run dev -- --port",
+        "start:local_blockchain:v1": "npm explore dkg-evm-module -- npm run dev:v1 -- --port",
+        "start:local_blockchain:v2": "npm explore dkg-evm-module -- npm run dev:v2 -- --port",
+        "kill:local_blockchain": "npx kill-port --port",
+        "compile-contracts": "npm explore dkg-evm-module -- npm run compile"
+    },
+    "dependencies": {
+        "dkg-evm-module": "git+https://github.com/OriginTrail/dkg-evm-module.git#1088476e13c3c8b46f087f45cdea103959f2135c"
+    },
+    "devDependencies": {
+        "kill-port": "^2.0.1"
+    }
+}
+

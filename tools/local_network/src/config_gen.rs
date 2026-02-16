@@ -75,6 +75,7 @@ struct BlockchainEntry {
 
 #[derive(Serialize)]
 struct HardhatConfig {
+    enabled: bool,
     blockchain_id: String,
     hub_contract_address: String,
     evm_operational_wallet_address: String,
@@ -248,6 +249,7 @@ pub(crate) fn render_rust_config(ctx: &RustConfigContext) -> String {
             },
             blockchain: vec![BlockchainEntry {
                 hardhat: HardhatConfig {
+                    enabled: true,
                     blockchain_id: ctx.blockchain_id.clone(),
                     hub_contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3".to_string(),
                     evm_operational_wallet_address: ctx.operational_wallet_public.clone(),

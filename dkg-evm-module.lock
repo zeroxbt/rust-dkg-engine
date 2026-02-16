@@ -1,0 +1,7 @@
+# Pinned upstream for local EVM dev deploy + ABI sync.
+#
+# This repo treats dkg-evm-module as the source of truth for contract interfaces.
+# The scheduled sync workflow can bump this ref and update ./abi accordingly.
+repo=https://github.com/OriginTrail/dkg-evm-module.git
+ref=1088476e13c3c8b46f087f45cdea103959f2135c
+

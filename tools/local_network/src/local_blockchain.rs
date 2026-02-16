@@ -1,4 +1,6 @@
-use std::{fs::read_to_string, net::TcpStream, sync::Arc, time::Duration};
+use std::{
+    fs::read_to_string, net::TcpStream, path::Path, process::Command, sync::Arc, time::Duration,
+};
 
 use alloy::{
     network::EthereumWallet,
@@ -13,7 +15,6 @@ use crate::launch::open_terminal_with_command;
 const HUB_CONTRACT_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const MULTICALL3_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
 const PRIVATE_KEYS_PATH: &str = "./tools/local_network/src/private_keys.json";
-const LOCAL_BLOCKCHAIN_SCRIPT: &str = "tools/local-network-setup/run-local-blockchain.js";
 // Multicall3 runtime bytecode (compiled with evmVersion=london for local hardhat_setCode).
 const MULTICALL3_RUNTIME_BYTECODE: &str = "0x60806040526004361061001e5760003560e01c806382ad56cb14610023575b600080fd5b610036610031366004610256565b61004c565b60405161004391906102cd565b60405180910390f35b60608167ffffffffffffffff81111561006757610067610382565b6040519080825280602002602001820160405280156100ad57816020015b6040805180820190915260008152606060208201528152602001906001900390816100855790505b50905060005b8281101561024f576000808585848181106100d0576100d0610398565b90506020028101906100e291906103ae565b6100f09060208101906103ce565b6001600160a01b031686868581811061010b5761010b610398565b905060200281019061011d91906103ae565b61012b9060408101906103fe565b60405161013992919061044c565b6000604051808303816000865af19150503d8060008114610176576040519150601f19603f3d011682016040523d82523d6000602084013e61017b565b606091505b5091509150811580156101c0575085858481811061019b5761019b610398565b90506020028101906101ad91906103ae565b6101be90604081019060200161045c565b155b156102115760405162461bcd60e51b815260206004820152601760248201527f4d756c746963616c6c333a2063616c6c206661696c6564000000000000000000604482015260640160405180910390fd5b604051806040016040528083151581526020018281525084848151811061023a5761023a610398565b602090810291909101015250506001016100b3565b5092915050565b6000806020838503121561026957600080fd5b823567ffffffffffffffff81111561028057600080fd5b8301601f8101851361029157600080fd5b803567ffffffffffffffff8111156102a857600080fd5b8560208260051b84010111156102bd57600080fd5b6020919091019590945092505050565b6000602082016020835280845180835260408501915060408160051b86010192506020860160005b8281101561037657603f1987860301845281518051151586526020810151905060406020870152805180604088015260005b8181101561034457602081840181015160608a8401015201610327565b506000606082890101526060601f19601f830116880101965050506020820191506020840193506001810190506102f5565b50929695505050505050565b634e487b7160e01b600052604160045260246000fd5b634e487b7160e01b600052603260045260246000fd5b60008235605e198336030181126103c457600080fd5b9190910192915050565b6000602082840312156103e057600080fd5b81356001600160a01b03811681146103f757600080fd5b9392505050565b6000808335601e1984360301811261041557600080fd5b83018035915067ffffffffffffffff82111561043057600080fd5b60200191503681900382131561044557600080fd5b9250929050565b8183823760009101908152919050565b60006020828403121561046e57600080fd5b813580151581146103f757600080fdfea26469706673582212202861c764d6e871cf60841967336eb86709b7ae46bda5824079809f014415670164736f6c634300081a0033";
 
@@ -191,16 +192,39 @@ impl LocalBlockchain {
     }
 
     fn start_local_blockchain(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+        Self::ensure_evm_tools_installed()?;
+
         let current_dir = std::env::current_dir()?;
-        let dkg_engine_dir = current_dir.join("dkg-engine");
-        let dkg_engine_dir_str = dkg_engine_dir
-            .to_str()
-            .ok_or("Failed to read dkg-engine path")?;
+        let current_dir_str = current_dir.to_str().ok_or("Failed to read current dir")?;
+
+        // Contracts deploy for local dev is sourced from dkg-evm-module directly (via tools/evm),
+        // rather than relying on the vendored JS node repo under ./dkg-engine.
         let command = format!(
-            "cd {} && node {} {}",
-            dkg_engine_dir_str, LOCAL_BLOCKCHAIN_SCRIPT, port
+            "cd {} && npm --prefix tools/evm run start:local_blockchain -- {}",
+            current_dir_str, port
         );
         open_terminal_with_command(&command);
+
+        Ok(())
+    }
+
+    fn ensure_evm_tools_installed() -> Result<(), Box<dyn std::error::Error>> {
+        let module_package = Path::new("tools/evm/node_modules/dkg-evm-module/package.json");
+        if module_package.exists() {
+            return Ok(());
+        }
+
+        println!("Installing tools/evm dependencies (first run)...");
+        let status = Command::new("npm")
+            .args(["--prefix", "tools/evm", "install"])
+            .status()?;
+
+        if !status.success() {
+            return Err(
+                "Failed to install tools/evm dependencies. Try running `npm --prefix tools/evm install`."
+                    .into(),
+            );
+        }
 
         Ok(())
     }
@@ -218,7 +242,7 @@ impl LocalBlockchain {
     async fn wait_for_port(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         let address = format!("127.0.0.1:{port}");
         let timeout = Duration::from_millis(500);
-        let attempts = 120;
+        let attempts = 300;
 
         for _ in 0..attempts {
             if TcpStream::connect_timeout(

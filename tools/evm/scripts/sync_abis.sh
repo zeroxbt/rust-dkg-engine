@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+LOCK_FILE="${ROOT_DIR}/dkg-evm-module.lock"
+LOCAL_ABI_DIR="${ROOT_DIR}/abi"
+TOOLS_EVM_PKG_JSON="${ROOT_DIR}/tools/evm/package.json"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  tools/evm/scripts/sync_abis.sh [--check] [--ref <git-ref>] [--write-lock]
+
+Behavior:
+  - Default ref is read from dkg-evm-module.lock (ref=...).
+  - In sync mode (default), replaces ./abi with upstream ./abi (rsync --delete).
+  - In --check mode, verifies ./abi matches upstream and exits non-zero on mismatch.
+  - With --write-lock, updates dkg-evm-module.lock ref=<resolved-sha> and also updates
+    tools/evm/package.json to pin dkg-evm-module to that SHA.
+
+Examples:
+  tools/evm/scripts/sync_abis.sh --check
+  tools/evm/scripts/sync_abis.sh
+  tools/evm/scripts/sync_abis.sh --ref main --write-lock
+EOF
+}
+
+CHECK=0
+WRITE_LOCK=0
+REF=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --check) CHECK=1; shift ;;
+    --write-lock) WRITE_LOCK=1; shift ;;
+    --ref) REF="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown arg: $1" >&2; usage; exit 2 ;;
+  esac
+done
+
+if [[ ! -f "${LOCK_FILE}" ]]; then
+  echo "Missing ${LOCK_FILE}" >&2
+  exit 2
+fi
+
+REPO_URL="$(awk -F= '/^repo=/{print $2}' "${LOCK_FILE}" | tail -n 1 | tr -d '\r' || true)"
+LOCK_REF="$(awk -F= '/^ref=/{print $2}' "${LOCK_FILE}" | tail -n 1 | tr -d '\r' || true)"
+
+if [[ -z "${REPO_URL}" || -z "${LOCK_REF}" ]]; then
+  echo "Invalid ${LOCK_FILE}; expected repo=... and ref=..." >&2
+  exit 2
+fi
+
+if [[ -z "${REF}" ]]; then
+  REF="${LOCK_REF}"
+fi
+
+TMP_DIR="$(mktemp -d)"
+cleanup() { rm -rf "${TMP_DIR}"; }
+trap cleanup EXIT
+
+REPO_DIR="${TMP_DIR}/dkg-evm-module"
+git init -q "${REPO_DIR}"
+git -C "${REPO_DIR}" remote add origin "${REPO_URL}"
+git -C "${REPO_DIR}" fetch -q --depth 1 origin "${REF}"
+git -C "${REPO_DIR}" checkout -q --detach FETCH_HEAD
+
+RESOLVED_SHA="$(git -C "${REPO_DIR}" rev-parse HEAD)"
+UPSTREAM_ABI_DIR="${REPO_DIR}/abi"
+
+if [[ ! -d "${UPSTREAM_ABI_DIR}" ]]; then
+  echo "Upstream ref ${REF} (${RESOLVED_SHA}) has no abi/ directory" >&2
+  exit 2
+fi
+
+if [[ "${CHECK}" -eq 1 ]]; then
+  if ! diff -qr "${UPSTREAM_ABI_DIR}" "${LOCAL_ABI_DIR}" >/dev/null; then
+    echo "ABI mismatch: ${LOCAL_ABI_DIR} differs from ${REPO_URL}@${RESOLVED_SHA} (ref=${REF})" >&2
+    echo "Run: tools/evm/scripts/sync_abis.sh" >&2
+    diff -qr "${UPSTREAM_ABI_DIR}" "${LOCAL_ABI_DIR}" || true
+    exit 1
+  fi
+  exit 0
+fi
+
+rsync -a --delete "${UPSTREAM_ABI_DIR}/" "${LOCAL_ABI_DIR}/"
+
+if [[ "${WRITE_LOCK}" -eq 1 ]]; then
+  # Update lock file to the resolved commit SHA.
+  awk -v sha="${RESOLVED_SHA}" '
+    BEGIN { updated=0 }
+    /^ref=/ { print "ref=" sha; updated=1; next }
+    { print }
+    END { if (updated==0) print "ref=" sha }
+  ' "${LOCK_FILE}" >"${LOCK_FILE}.tmp"
+  mv "${LOCK_FILE}.tmp" "${LOCK_FILE}"
+
+  # Keep tools/evm/package.json pinned to the same SHA for local dev.
+  python3 - "${TOOLS_EVM_PKG_JSON}" "${RESOLVED_SHA}" <<'PY'
+import json, sys
+path = sys.argv[1]
+sha = sys.argv[2]
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+deps = data.get("dependencies") or {}
+deps["dkg-evm-module"] = f"git+https://github.com/OriginTrail/dkg-evm-module.git#{sha}"
+data["dependencies"] = deps
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=4)
+    f.write("\n")
+PY
+fi
+
+echo "Synced abi/ from ${REPO_URL}@${RESOLVED_SHA} (ref=${REF})"
+

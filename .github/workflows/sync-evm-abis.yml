@@ -1,0 +1,36 @@
+name: Sync EVM ABIs (Bot)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily at 06:00 UTC
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync abi/ from dkg-evm-module@main and bump lock
+        run: bash tools/evm/scripts/sync_abis.sh --ref main --write-lock
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(evm): sync ABIs from dkg-evm-module"
+          title: "chore(evm): sync ABIs from dkg-evm-module"
+          body: |
+            Automated ABI sync from `dkg-evm-module` (tracking `main`).
+
+            This PR updates:
+            - `abi/`
+            - `dkg-evm-module.lock` (pinned commit)
+            - `tools/evm/package.json` (pinned dependency)
+          branch: bot/sync-evm-abis
+          delete-branch: true
+
