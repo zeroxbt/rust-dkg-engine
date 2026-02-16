@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub(crate) enum KeyValueStoreError {
+pub enum KeyValueStoreError {
     #[error("Semaphore closed")]
     SemaphoreClosed,
 

@@ -2354,6 +2354,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "dkg-key-value-store"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dkg-domain",
+ "libp2p",
+ "redb",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "dkg-network"
 version = "0.1.0"
 dependencies = [
@@ -6042,6 +6059,7 @@ dependencies = [
  "dashmap",
  "dkg-blockchain",
  "dkg-domain",
+ "dkg-key-value-store",
  "dkg-network",
  "dkg-repository",
  "figment",

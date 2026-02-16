@@ -7,13 +7,13 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use super::KeyValueStoreError;
 
 /// Table definition type alias for string table names.
-pub(crate) type TableDef = TableDefinition<'static, &'static [u8], &'static [u8]>;
+pub type TableDef = TableDefinition<'static, &'static [u8], &'static [u8]>;
 
 /// A table handle with byte keys and JSON-serialized values.
 ///
 /// Keys are raw `&[u8]` — callers handle their own type conversions.
 /// Values are automatically serialized/deserialized as JSON.
-pub(crate) struct Table<V> {
+pub struct Table<V> {
     db: Arc<Database>,
     table_def: TableDef,
     concurrency_limiter: Arc<Semaphore>,
@@ -82,7 +82,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         .await?
     }
 
-    pub(crate) async fn store(&self, key: Vec<u8>, value: V) -> Result<(), KeyValueStoreError>
+    pub async fn store(&self, key: Vec<u8>, value: V) -> Result<(), KeyValueStoreError>
     where
         V: Send + Sync + 'static,
     {
@@ -104,7 +104,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         }
     }
 
-    pub(crate) async fn get(&self, key: Vec<u8>) -> Result<Option<V>, KeyValueStoreError>
+    pub async fn get(&self, key: Vec<u8>) -> Result<Option<V>, KeyValueStoreError>
     where
         V: Send + Sync + 'static,
     {
@@ -124,7 +124,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         Ok(removed)
     }
 
-    pub(crate) async fn remove(&self, key: Vec<u8>) -> Result<bool, KeyValueStoreError>
+    pub async fn remove(&self, key: Vec<u8>) -> Result<bool, KeyValueStoreError>
     where
         V: Send + Sync + 'static,
     {
@@ -168,7 +168,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         Ok(())
     }
 
-    pub(crate) async fn update<F>(
+    pub async fn update<F>(
         &self,
         key: Vec<u8>,
         default: V,
@@ -217,7 +217,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         Ok(keys)
     }
 
-    pub(crate) async fn collect_keys_matching<F>(
+    pub async fn collect_keys_matching<F>(
         &self,
         limit: usize,
         predicate: F,
@@ -245,7 +245,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         Ok(results)
     }
 
-    pub(crate) async fn get_all(&self) -> Result<Vec<(Vec<u8>, V)>, KeyValueStoreError>
+    pub async fn get_all(&self) -> Result<Vec<(Vec<u8>, V)>, KeyValueStoreError>
     where
         V: Send + Sync + 'static,
     {
@@ -271,7 +271,7 @@ impl<V: Serialize + DeserializeOwned> Table<V> {
         Ok(())
     }
 
-    pub(crate) async fn clear(&self) -> Result<(), KeyValueStoreError>
+    pub async fn clear(&self) -> Result<(), KeyValueStoreError>
     where
         V: Send + Sync + 'static,
     {
@@ -289,9 +289,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::Table;
-    use crate::managers::key_value_store::{
-        KeyValueStoreError, KeyValueStoreManager, KeyValueStoreManagerConfig,
-    };
+    use crate::{KeyValueStoreError, KeyValueStoreManager, KeyValueStoreManagerConfig};
 
     fn unique_key() -> Vec<u8> {
         static COUNTER: AtomicU64 = AtomicU64::new(0);

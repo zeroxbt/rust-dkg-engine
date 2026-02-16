@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use libp2p::{Multiaddr, PeerId};
 
-use crate::managers::key_value_store::{KeyValueStoreError, KeyValueStoreManager, Table};
+use crate::{KeyValueStoreError, KeyValueStoreManager, Table};
 
 const TABLE_NAME: &str = "peer_addresses";
 const MAX_PEERS_TO_PERSIST: usize = 500;
@@ -12,17 +12,17 @@ const MAX_PEERS_TO_PERSIST: usize = 500;
 /// Saves `PeerId → Vec<Multiaddr>` to a KVS table so the node can
 /// restore known peer addresses on restart without relying solely on
 /// bootstrap nodes for discovery.
-pub(crate) struct PeerAddressStore {
+pub struct PeerAddressStore {
     table: Table<Vec<String>>,
 }
 
 impl PeerAddressStore {
-    pub(crate) fn new(kv_store_manager: &KeyValueStoreManager) -> Result<Self, KeyValueStoreError> {
+    pub fn new(kv_store_manager: &KeyValueStoreManager) -> Result<Self, KeyValueStoreError> {
         let table = kv_store_manager.table(TABLE_NAME)?;
         Ok(Self { table })
     }
 
-    pub(crate) async fn load_all(&self) -> HashMap<PeerId, Vec<Multiaddr>> {
+    pub async fn load_all(&self) -> HashMap<PeerId, Vec<Multiaddr>> {
         let entries = match self.table.get_all().await {
             Ok(entries) => entries,
             Err(e) => {
@@ -52,7 +52,7 @@ impl PeerAddressStore {
         result
     }
 
-    pub(crate) async fn save_all(&self, peers: &HashMap<PeerId, Vec<Multiaddr>>) {
+    pub async fn save_all(&self, peers: &HashMap<PeerId, Vec<Multiaddr>>) {
         if let Err(e) = self.table.clear().await {
             tracing::warn!(error = %e, "Failed to clear peer address table");
             return;
@@ -92,7 +92,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::managers::key_value_store::KeyValueStoreManagerConfig;
+    use crate::KeyValueStoreManagerConfig;
 
     fn default_config() -> KeyValueStoreManagerConfig {
         KeyValueStoreManagerConfig {

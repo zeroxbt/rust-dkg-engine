@@ -5,13 +5,13 @@ use dkg_domain::Assertion;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::managers::key_value_store::{KeyValueStoreError, KeyValueStoreManager, Table};
+use crate::{KeyValueStoreError, KeyValueStoreManager, Table};
 
 /// Table name for publish temporary datasets.
 const TABLE_NAME: &str = "publish_tmp_dataset";
 
 #[derive(Serialize, Deserialize, Clone)]
-pub(crate) struct PublishTmpDataset {
+pub struct PublishTmpDataset {
     dataset_root: String,
     dataset: Assertion,
     publisher_peer_id: String,
@@ -20,7 +20,7 @@ pub(crate) struct PublishTmpDataset {
 }
 
 impl PublishTmpDataset {
-    pub(crate) fn new(dataset_root: String, dataset: Assertion, publisher_peer_id: String) -> Self {
+    pub fn new(dataset_root: String, dataset: Assertion, publisher_peer_id: String) -> Self {
         Self {
             dataset_root,
             dataset,
@@ -29,19 +29,19 @@ impl PublishTmpDataset {
         }
     }
 
-    pub(crate) fn dataset_root(&self) -> &str {
+    pub fn dataset_root(&self) -> &str {
         &self.dataset_root
     }
 
-    pub(crate) fn dataset(&self) -> &Assertion {
+    pub fn dataset(&self) -> &Assertion {
         &self.dataset
     }
 
-    pub(crate) fn publisher_peer_id(&self) -> &str {
+    pub fn publisher_peer_id(&self) -> &str {
         &self.publisher_peer_id
     }
 
-    pub(crate) fn stored_at(&self) -> i64 {
+    pub fn stored_at(&self) -> i64 {
         self.stored_at
     }
 }
@@ -51,17 +51,17 @@ fn default_stored_at() -> i64 {
 }
 
 /// Store for publish temporary datasets awaiting finality confirmation.
-pub(crate) struct PublishTmpDatasetStore {
+pub struct PublishTmpDatasetStore {
     table: Table<PublishTmpDataset>,
 }
 
 impl PublishTmpDatasetStore {
-    pub(crate) fn new(kv_store_manager: &KeyValueStoreManager) -> Result<Self, KeyValueStoreError> {
+    pub fn new(kv_store_manager: &KeyValueStoreManager) -> Result<Self, KeyValueStoreError> {
         let table = kv_store_manager.table(TABLE_NAME)?;
         Ok(Self { table })
     }
 
-    pub(crate) async fn store(
+    pub async fn store(
         &self,
         operation_id: Uuid,
         data: PublishTmpDataset,
@@ -71,18 +71,18 @@ impl PublishTmpDatasetStore {
             .await
     }
 
-    pub(crate) async fn get(
+    pub async fn get(
         &self,
         operation_id: Uuid,
     ) -> Result<Option<PublishTmpDataset>, KeyValueStoreError> {
         self.table.get(operation_id.as_bytes().to_vec()).await
     }
 
-    pub(crate) async fn remove(&self, operation_id: Uuid) -> Result<bool, KeyValueStoreError> {
+    pub async fn remove(&self, operation_id: Uuid) -> Result<bool, KeyValueStoreError> {
         self.table.remove(operation_id.as_bytes().to_vec()).await
     }
 
-    pub(crate) async fn remove_expired(
+    pub async fn remove_expired(
         &self,
         ttl: Duration,
         max_remove: usize,

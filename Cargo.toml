@@ -9,6 +9,7 @@ dkg-domain = { path = "crates/dkg-domain" }
 dkg-blockchain = { path = "crates/dkg-blockchain" }
 dkg-network = { path = "crates/dkg-network" }
 dkg-repository = { path = "crates/dkg-repository" }
+dkg-key-value-store = { path = "crates/dkg-key-value-store" }
 tokio = { workspace = true, features = [
     "macros",
     "rt-multi-thread",
@@ -122,6 +123,7 @@ members = [
     "crates/dkg-network",
     "crates/dkg-blockchain",
     "crates/dkg-repository",
+    "crates/dkg-key-value-store",
 ]
 default-members = ["."]
 

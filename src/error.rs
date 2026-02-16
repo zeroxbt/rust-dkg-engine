@@ -27,3 +27,9 @@ pub(crate) enum NodeError {
     #[error("{0}")]
     Other(String),
 }
+
+impl From<dkg_key_value_store::ResultStoreError> for NodeError {
+    fn from(err: dkg_key_value_store::ResultStoreError) -> Self {
+        Self::Other(err.to_string())
+    }
+}

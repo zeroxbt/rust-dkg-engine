@@ -14,13 +14,13 @@ use super::{
 ///
 /// Provides access to typed tables backed by redb.
 /// Each table stores values with automatic JSON serialization.
-pub(crate) struct KeyValueStoreManager {
+pub struct KeyValueStoreManager {
     db: Arc<Database>,
     concurrency_limiter: Arc<Semaphore>,
 }
 
 impl KeyValueStoreManager {
-    pub(crate) async fn connect(
+    pub async fn connect(
         path: impl AsRef<Path>,
         config: &KeyValueStoreManagerConfig,
     ) -> Result<Self, KeyValueStoreError> {
@@ -57,7 +57,7 @@ impl KeyValueStoreManager {
     /// The table is created if it doesn't exist.
     /// The type parameter V determines the value type (JSON-serialized).
     /// Keys are raw bytes (`&[u8]`).
-    pub(crate) fn table<V: Serialize + DeserializeOwned>(
+    pub fn table<V: Serialize + DeserializeOwned>(
         &self,
         name: &'static str,
     ) -> Result<Table<V>, KeyValueStoreError> {
@@ -77,19 +77,15 @@ impl KeyValueStoreManager {
         ))
     }
 
-    pub(crate) fn publish_tmp_dataset_store(
-        &self,
-    ) -> Result<PublishTmpDatasetStore, KeyValueStoreError> {
+    pub fn publish_tmp_dataset_store(&self) -> Result<PublishTmpDatasetStore, KeyValueStoreError> {
         PublishTmpDatasetStore::new(self)
     }
 
-    pub(crate) fn peer_address_store(&self) -> Result<PeerAddressStore, KeyValueStoreError> {
+    pub fn peer_address_store(&self) -> Result<PeerAddressStore, KeyValueStoreError> {
         PeerAddressStore::new(self)
     }
 
-    pub(crate) fn operation_result_store<R>(
-        &self,
-    ) -> Result<OperationResultStore<R>, ResultStoreError>
+    pub fn operation_result_store<R>(&self) -> Result<OperationResultStore<R>, ResultStoreError>
     where
         R: Serialize + DeserializeOwned + Send + Sync + 'static,
     {
