@@ -21,13 +21,13 @@ const MULTICALL3_RUNTIME_BYTECODE: &str = "0x60806040526004361061001e5760003560e
 sol!(
     #[sol(rpc)]
     Hub,
-    "../../abi/Hub.json"
+    "../../crates/dkg-blockchain/abi/Hub.json"
 );
 
 sol!(
     #[sol(rpc)]
     ParametersStorage,
-    "../../abi/ParametersStorage.json"
+    "../../crates/dkg-blockchain/abi/ParametersStorage.json"
 );
 
 pub(crate) struct TestParametersStorageParams {

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 LOCK_FILE="${ROOT_DIR}/dkg-evm-module.lock"
-LOCAL_ABI_DIR="${ROOT_DIR}/abi"
+LOCAL_ABI_DIR="${ROOT_DIR}/crates/dkg-blockchain/abi"
 TOOLS_EVM_PKG_JSON="${ROOT_DIR}/tools/evm/package.json"
 
 usage() {
@@ -13,8 +13,8 @@ Usage:
 
 Behavior:
   - Default ref is read from dkg-evm-module.lock (ref=...).
-  - Required ABI files are inferred from code references in src/ and tools/local_network/.
-  - In sync mode (default), syncs inferred ABI files from upstream into ./abi.
+  - Required ABI files are inferred from code references in crates/dkg-blockchain/src/ and tools/local_network/.
+  - In sync mode (default), syncs inferred ABI files from upstream into crates/dkg-blockchain/abi/.
   - In --check mode, verifies inferred ABI files match upstream and exits non-zero on mismatch.
   - With --write-lock, updates dkg-evm-module.lock ref=<resolved-sha> and also updates
     tools/evm/package.json to pin dkg-evm-module to that SHA.
@@ -50,10 +50,10 @@ infer_required_abis() {
   local matches
   if command -v rg >/dev/null 2>&1; then
     matches="$(rg -o --no-filename 'abi/[A-Za-z0-9_]+\.json' \
-      "${ROOT_DIR}/src" "${ROOT_DIR}/tools/local_network" || true)"
+      "${ROOT_DIR}/crates/dkg-blockchain/src" "${ROOT_DIR}/tools/local_network" || true)"
   else
     matches="$(grep -RhoE 'abi/[A-Za-z0-9_]+\.json' \
-      "${ROOT_DIR}/src" "${ROOT_DIR}/tools/local_network" || true)"
+      "${ROOT_DIR}/crates/dkg-blockchain/src" "${ROOT_DIR}/tools/local_network" || true)"
   fi
 
   mapfile -t REQUIRED_ABIS < <(
@@ -64,7 +64,7 @@ infer_required_abis() {
   )
 
   if [[ "${#REQUIRED_ABIS[@]}" -eq 0 ]]; then
-    echo "Could not infer required ABI files from src/ and tools/local_network/" >&2
+    echo "Could not infer required ABI files from crates/dkg-blockchain/src/ and tools/local_network/" >&2
     exit 2
   fi
 }
@@ -166,4 +166,4 @@ with open(path, "w", encoding="utf-8") as f:
 PY
 fi
 
-echo "Synced abi/ from ${REPO_URL}@${RESOLVED_SHA} (ref=${REF})"
+echo "Synced crates/dkg-blockchain/abi/ from ${REPO_URL}@${RESOLVED_SHA} (ref=${REF})"
