@@ -5,8 +5,8 @@ rust-version = "1.92.0"
 edition = "2024"
 
 [dependencies]
-serde = { version = "1.0.228", features = ["derive"] }
-validator = "0.20.0"
-validator_derive = "0.20.0"
-alloy = { version = "1.6.1", default-features = false, features = ["std", "sol-types"] }
-thiserror = "2.0.18"
+serde = { workspace = true, features = ["derive"] }
+validator = { workspace = true }
+validator_derive = { workspace = true }
+alloy = { workspace = true, features = ["std", "sol-types"] }
+thiserror = { workspace = true }
