@@ -29,3 +29,7 @@ tokio-util = { version = "0.7", features = ["time"] }
 tracing = "0.1.44"
 unsigned-varint = { version = "0.8.0", features = ["futures"] }
 uuid = { version = "1.20.0", features = ["serde", "v4"] }
+
+[dev-dependencies]
+tempfile = "3.24.0"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }
