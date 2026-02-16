@@ -6,9 +6,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     context::Context,
     error::NodeError,
-    managers::blockchain::{
-        BlockchainId, BlockchainManager, chains::evm::ShardingTableLib::NodeInfo,
-    },
+    managers::blockchain::{BlockchainId, BlockchainManager, NodeInfo},
     periodic::runner::run_with_shutdown,
     services::PeerService,
 };

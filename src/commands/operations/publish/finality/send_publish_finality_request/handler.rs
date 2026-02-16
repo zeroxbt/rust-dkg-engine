@@ -202,7 +202,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         // Validate merkle root matches
         let blockchain_merkle_root = format!(
             "0x{}",
-            crate::managers::blockchain::utils::to_hex_string(data.dataset_root)
+            crate::managers::blockchain::to_hex_string(data.dataset_root)
         );
         if blockchain_merkle_root != pending_data.dataset_root() {
             tracing::error!(

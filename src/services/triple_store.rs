@@ -481,7 +481,7 @@ impl TripleStoreService {
                         let hashed_subject = format!(
                             "<{}{}>",
                             PRIVATE_HASH_SUBJECT_PREFIX,
-                            crate::managers::blockchain::utils::sha256_hex(
+                            crate::managers::blockchain::sha256_hex(
                                 subject_without_brackets.as_bytes()
                             )
                         );
@@ -555,7 +555,7 @@ mod tests {
     fn test_with_private_hash_triples() {
         let kc_ual = "did:dkg:hardhat1:31337/0x456/2";
         let hashed_subject =
-            blockchain::utils::sha256_hex("http://example.org/private-subject".as_bytes());
+            blockchain::sha256_hex("http://example.org/private-subject".as_bytes());
         let hash_triple = format!(
             r#"<{}{}> <http://example.org/predicate1> "hashed_value" ."#,
             PRIVATE_HASH_SUBJECT_PREFIX, hashed_subject
@@ -619,7 +619,7 @@ mod tests {
     fn test_private_with_hashed_subject_match() {
         let kc_ual = "did:dkg:hardhat1:31337/0xabc/4";
         let private_subject = "http://example.org/hidden-asset";
-        let private_subject_hash = blockchain::utils::sha256_hex(private_subject.as_bytes());
+        let private_subject_hash = blockchain::sha256_hex(private_subject.as_bytes());
 
         let hash_triple = format!(
             r#"<{}{}> <http://example.org/hash> "hash_placeholder" ."#,

@@ -5,7 +5,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use alloy::primitives::U256;
 use chrono::Utc;
 use dkg_domain::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual};
 use dkg_network::PeerId;
@@ -17,7 +16,7 @@ use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
     context::Context,
     managers::{
-        blockchain::BlockchainManager,
+        blockchain::{BlockchainManager, U256},
         network::{
             NetworkError, NetworkManager,
             message::ResponseBody,

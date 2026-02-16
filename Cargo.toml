@@ -44,20 +44,6 @@ validator = { workspace = true }
 validator_derive = { workspace = true }
 figment = { version = "0.10", features = ["toml"] }
 thiserror = { workspace = true }
-alloy = { workspace = true, features = [
-    "std",
-    "contract",
-    "network",
-    "providers",
-    "provider-http",
-    "provider-ws",
-    "reqwest",
-    "reqwest-rustls-tls",
-    "rpc-client",
-    "rpc-types",
-    "signer-local",
-    "sol-types",
-] }
 dashmap = "6.1.0"
 rustls = { version = "0.23.36", default-features = false, features = [
     "ring",

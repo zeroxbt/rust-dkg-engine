@@ -137,20 +137,14 @@ fn display_rust_dkg_engine_ascii_art() {
 }
 
 async fn initialize_dev_environment(blockchain_manager: &Arc<managers::BlockchainManager>) {
-    use alloy::primitives::utils::parse_ether;
+    use crate::managers::blockchain::parse_ether_to_u128;
 
     tracing::info!("Initializing dev environment: setting stake and ask...");
 
     // 50,000 tokens for stake
-    let stake_wei: u128 = parse_ether("50000")
-        .expect("Failed to parse stake amount")
-        .try_into()
-        .expect("Stake amount too large");
+    let stake_wei: u128 = parse_ether_to_u128("50000").expect("Failed to parse stake amount");
     // 0.2 tokens for ask
-    let ask_wei: u128 = parse_ether("0.2")
-        .expect("Failed to parse ask amount")
-        .try_into()
-        .expect("Ask amount too large");
+    let ask_wei: u128 = parse_ether_to_u128("0.2").expect("Failed to parse ask amount");
 
     for blockchain_id in blockchain_manager.get_blockchain_ids() {
         if let Err(e) = blockchain_manager.set_stake(blockchain_id, stake_wei).await {

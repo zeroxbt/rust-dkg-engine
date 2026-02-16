@@ -3,7 +3,7 @@ use uuid::Uuid;
 use super::handler::SendPublishStoreRequestsCommandHandler;
 use crate::{
     error::NodeError,
-    managers::blockchain::{BlockchainId, H256, utils::keccak256_encode_packed},
+    managers::blockchain::{BlockchainId, H256, keccak256_encode_packed},
     operations::{PublishStoreOperationResult, PublishStoreSignatureData},
 };
 
@@ -72,7 +72,7 @@ impl SendPublishStoreRequestsCommandHandler {
                 blockchain,
                 &format!(
                     "0x{}",
-                    crate::managers::blockchain::utils::to_hex_string(message_hash)
+                    crate::managers::blockchain::to_hex_string(message_hash)
                 ),
             )
             .await?;

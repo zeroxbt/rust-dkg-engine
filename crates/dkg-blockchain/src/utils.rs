@@ -25,3 +25,8 @@ pub fn sha256_hex(input: &[u8]) -> String {
     let digest = hasher.finalize();
     to_hex_string(digest)
 }
+
+pub fn parse_ether_to_u128(amount: &str) -> Result<u128, String> {
+    let wei = alloy::primitives::utils::parse_ether(amount).map_err(|e| e.to_string())?;
+    wei.try_into().map_err(|_| "Amount too large".to_string())
+}

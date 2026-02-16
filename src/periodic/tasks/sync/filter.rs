@@ -17,8 +17,7 @@ use tracing::instrument;
 use super::types::{FilterStats, KcToSync};
 use crate::{
     managers::blockchain::{
-        Address, BlockchainId, BlockchainManager,
-        multicall::{MulticallBatch, MulticallRequest, encoders},
+        Address, BlockchainId, BlockchainManager, MulticallBatch, MulticallRequest, encoders,
     },
     services::TripleStoreService,
 };

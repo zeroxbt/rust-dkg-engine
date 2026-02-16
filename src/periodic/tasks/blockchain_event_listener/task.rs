@@ -18,11 +18,11 @@ use crate::{
     error::NodeError,
     managers::{
         blockchain::{
-            Address, AssetStorageChangedFilter, BlockchainId, BlockchainManager,
-            ContractChangedFilter, ContractLog, ContractName, Hub,
-            KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorage, NewAssetStorageFilter,
-            NewContractFilter, ParameterChangedFilter, ParametersStorage, error::BlockchainError,
-            utils::to_hex_string,
+            Address, AssetStorageChangedFilter, BlockchainError, BlockchainId, BlockchainManager,
+            ContractChangedFilter, ContractLog, ContractName, HubEvents,
+            KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorageEvents,
+            NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter,
+            ParametersStorageEvents, to_hex_string,
         },
         repository::RepositoryManager,
     },
@@ -303,34 +303,32 @@ impl BlockchainEventListenerTask {
         let log = event.log();
         match decode_contract_event(event.contract_name(), log) {
             Some(ContractEvent::KnowledgeCollectionStorage(decoded)) => {
-                if let KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents::KnowledgeCollectionCreated(
-                    filter,
-                ) = decoded
+                if let KnowledgeCollectionStorageEvents::KnowledgeCollectionCreated(filter) =
+                    decoded
                 {
                     self.handle_knowledge_collection_created_event(blockchain_id, &filter, log)
                         .await;
                 }
             }
             Some(ContractEvent::ParametersStorage(decoded)) => {
-                let ParametersStorage::ParametersStorageEvents::ParameterChanged(
-                    filter,
-                ) = decoded;
+                let ParametersStorageEvents::ParameterChanged(filter) = decoded;
                 self.handle_parameter_changed_event(blockchain_id, &filter)
                     .await?;
             }
             Some(ContractEvent::Hub(decoded)) => match decoded {
-                Hub::HubEvents::NewContract(filter) => {
-                    self.handle_new_contract_event(blockchain_id, &filter).await?;
+                HubEvents::NewContract(filter) => {
+                    self.handle_new_contract_event(blockchain_id, &filter)
+                        .await?;
                 }
-                Hub::HubEvents::ContractChanged(filter) => {
+                HubEvents::ContractChanged(filter) => {
                     self.handle_contract_changed_event(blockchain_id, &filter)
                         .await?;
                 }
-                Hub::HubEvents::NewAssetStorage(filter) => {
+                HubEvents::NewAssetStorage(filter) => {
                     self.handle_new_asset_storage_event(blockchain_id, &filter)
                         .await?;
                 }
-                Hub::HubEvents::AssetStorageChanged(filter) => {
+                HubEvents::AssetStorageChanged(filter) => {
                     self.handle_asset_storage_changed_event(blockchain_id, &filter)
                         .await?;
                 }
@@ -451,7 +449,7 @@ impl BlockchainEventListenerTask {
         &self,
         blockchain_id: &BlockchainId,
         filter: &KnowledgeCollectionCreatedFilter,
-        log: &alloy::rpc::types::Log,
+        log: &crate::managers::blockchain::Log,
     ) {
         tracing::info!(
             blockchain = %blockchain_id,

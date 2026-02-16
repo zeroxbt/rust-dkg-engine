@@ -30,7 +30,7 @@ mod rpc;
 mod wallets;
 pub use contracts::{
     Hub, KnowledgeCollectionStorage, Multicall3, ParametersStorage, PermissionedNode,
-    ShardingTableLib, ShardingTableLib::NodeInfo,
+    ShardingTableLib::NodeInfo,
     sharding::sharding_table_storage::ShardingTableLib::Node as ShardingTableNode,
 };
 use error_decode::decode_contract_error;

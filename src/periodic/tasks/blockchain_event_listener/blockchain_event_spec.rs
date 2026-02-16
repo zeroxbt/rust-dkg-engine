@@ -1,23 +1,19 @@
 use std::collections::HashMap;
 
-use alloy::{
-    primitives::B256,
-    sol_types::{SolEvent, SolEventInterface},
-};
-
 use crate::managers::blockchain::{
-    AssetStorageChangedFilter, ContractChangedFilter, ContractName, Hub,
-    KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorage, NewAssetStorageFilter,
-    NewContractFilter, ParameterChangedFilter, ParametersStorage,
+    AssetStorageChangedFilter, B256, ContractChangedFilter, ContractName, HubEvents,
+    KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorageEvents, Log, NewAssetStorageFilter,
+    NewContractFilter, ParameterChangedFilter, ParametersStorageEvents, SolEvent,
+    SolEventInterface,
 };
 
 pub(crate) enum ContractEvent {
-    Hub(Hub::HubEvents),
-    ParametersStorage(ParametersStorage::ParametersStorageEvents),
-    KnowledgeCollectionStorage(KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents),
+    Hub(HubEvents),
+    ParametersStorage(ParametersStorageEvents),
+    KnowledgeCollectionStorage(KnowledgeCollectionStorageEvents),
 }
 
-fn decode_event<E: SolEventInterface>(log: &alloy::rpc::types::Log) -> Option<E> {
+fn decode_event<E: SolEventInterface>(log: &Log) -> Option<E> {
     E::decode_log(log.as_ref()).ok().map(|decoded| decoded.data)
 }
 
@@ -46,16 +42,15 @@ pub(crate) fn monitored_contract_events() -> HashMap<ContractName, Vec<B256>> {
 
 pub(crate) fn decode_contract_event(
     contract_name: &ContractName,
-    log: &alloy::rpc::types::Log,
+    log: &Log,
 ) -> Option<ContractEvent> {
     match contract_name {
-        ContractName::Hub => decode_event::<Hub::HubEvents>(log).map(ContractEvent::Hub),
+        ContractName::Hub => decode_event::<HubEvents>(log).map(ContractEvent::Hub),
         ContractName::ParametersStorage => {
-            decode_event::<ParametersStorage::ParametersStorageEvents>(log)
-                .map(ContractEvent::ParametersStorage)
+            decode_event::<ParametersStorageEvents>(log).map(ContractEvent::ParametersStorage)
         }
         ContractName::KnowledgeCollectionStorage => {
-            decode_event::<KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents>(log)
+            decode_event::<KnowledgeCollectionStorageEvents>(log)
                 .map(ContractEvent::KnowledgeCollectionStorage)
         }
         _ => None,

@@ -5,7 +5,7 @@ use thiserror::Error;
 pub(crate) enum NodeError {
     /// Blockchain-related errors
     #[error("Blockchain error: {0}")]
-    Blockchain(#[from] crate::managers::blockchain::error::BlockchainError),
+    Blockchain(#[from] crate::managers::blockchain::BlockchainError),
 
     /// Network-related errors
     #[error("Network error: {0}")]

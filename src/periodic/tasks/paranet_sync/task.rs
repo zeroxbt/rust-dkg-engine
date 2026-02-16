@@ -498,7 +498,7 @@ impl ParanetSyncTask {
 struct ParanetSyncTarget {
     paranet_ual: String,
     paranet_id: String,
-    paranet_id_b256: alloy::primitives::B256,
+    paranet_id_b256: crate::managers::blockchain::B256,
     access_policy: AccessPolicy,
 }
 
