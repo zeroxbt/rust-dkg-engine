@@ -7,7 +7,9 @@ pub(crate) mod triple_store;
 use std::sync::Arc;
 
 pub(crate) use assertion_validation::AssertionValidationService;
-pub(crate) use get_fetch::{GetFetchRequest, GetFetchService, GetFetchSource};
+pub(crate) use get_fetch::{
+    GET_NETWORK_CONCURRENT_PEERS, GetFetchRequest, GetFetchService, GetFetchSource,
+};
 pub(crate) use operation_status::OperationStatusService;
 pub(crate) use peer::{PeerAddressStore, PeerService};
 pub(crate) use triple_store::TripleStoreService;

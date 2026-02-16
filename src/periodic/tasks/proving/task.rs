@@ -15,7 +15,6 @@ use uuid::Uuid;
 
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
-    commands::operations::get::send_get_requests::CONCURRENT_PEERS,
     context::Context,
     managers::{
         blockchain::BlockchainManager,
@@ -32,7 +31,9 @@ use crate::{
         },
     },
     periodic::runner::run_with_shutdown,
-    services::{AssertionValidationService, PeerService, TripleStoreService},
+    services::{
+        AssertionValidationService, GET_NETWORK_CONCURRENT_PEERS, PeerService, TripleStoreService,
+    },
 };
 
 pub(crate) struct ProvingTask {
@@ -163,7 +164,7 @@ impl ProvingTask {
         // Concurrent request pattern (same as GET command)
         let mut futures = FuturesUnordered::new();
         let mut peers_iter = peers.iter().cloned();
-        let limit = CONCURRENT_PEERS.max(1).min(peers.len());
+        let limit = GET_NETWORK_CONCURRENT_PEERS.max(1).min(peers.len());
 
         // Start initial batch of concurrent requests
         for _ in 0..limit {

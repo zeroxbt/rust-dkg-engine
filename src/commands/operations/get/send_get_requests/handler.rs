@@ -13,10 +13,6 @@ use crate::{
     },
 };
 
-/// Maximum number of in-flight peer requests for GET network fetch.
-/// Kept here for compatibility with sync task imports.
-pub(crate) const CONCURRENT_PEERS: usize = 3;
-
 /// Command data for sending get requests to network nodes.
 #[derive(Clone)]
 pub(crate) struct SendGetRequestsCommandData {

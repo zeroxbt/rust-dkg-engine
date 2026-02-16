@@ -17,14 +17,15 @@ use super::{
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
 use crate::{
-    commands::operations::get::send_get_requests::CONCURRENT_PEERS,
     context::Context,
     managers::{
         blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
         repository::RepositoryManager,
     },
     periodic::runner::run_with_shutdown,
-    services::{AssertionValidationService, PeerService, TripleStoreService},
+    services::{
+        AssertionValidationService, GET_NETWORK_CONCURRENT_PEERS, PeerService, TripleStoreService,
+    },
 };
 
 pub(crate) struct SyncTask {
@@ -471,7 +472,7 @@ impl SyncTask {
         // Check if we have identified enough shard peers before attempting sync
         let total_shard_peers = self.peer_service.shard_peer_count(blockchain_id);
         let identified_peers = self.peer_service.identified_shard_peer_count(blockchain_id);
-        let min_required = (total_shard_peers / 3).max(CONCURRENT_PEERS);
+        let min_required = (total_shard_peers / 3).max(GET_NETWORK_CONCURRENT_PEERS);
 
         if identified_peers < min_required {
             tracing::debug!(

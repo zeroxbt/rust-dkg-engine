@@ -21,7 +21,7 @@ use crate::{
     services::{AssertionValidationService, PeerService, TripleStoreService},
 };
 
-const CONCURRENT_PEERS: usize = 3;
+pub(crate) const GET_NETWORK_CONCURRENT_PEERS: usize = 3;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum GetFetchSource {
@@ -232,7 +232,7 @@ impl GetFetchService {
 
         let mut futures = FuturesUnordered::new();
         let mut peers_iter = peers.iter().cloned();
-        let limit = CONCURRENT_PEERS.max(1).min(peers.len());
+        let limit = GET_NETWORK_CONCURRENT_PEERS.max(1).min(peers.len());
         for _ in 0..limit {
             if let Some(peer) = peers_iter.next() {
                 futures.push(send_get_request_to_peer(
