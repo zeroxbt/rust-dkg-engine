@@ -13,8 +13,9 @@ Usage:
 
 Behavior:
   - Default ref is read from dkg-evm-module.lock (ref=...).
-  - In sync mode (default), replaces ./abi with upstream ./abi (rsync --delete).
-  - In --check mode, verifies ./abi matches upstream and exits non-zero on mismatch.
+  - Required ABI files are inferred from code references in src/ and tools/local_network/.
+  - In sync mode (default), syncs inferred ABI files from upstream into ./abi.
+  - In --check mode, verifies inferred ABI files match upstream and exits non-zero on mismatch.
   - With --write-lock, updates dkg-evm-module.lock ref=<resolved-sha> and also updates
     tools/evm/package.json to pin dkg-evm-module to that SHA.
 
@@ -28,6 +29,7 @@ EOF
 CHECK=0
 WRITE_LOCK=0
 REF=""
+REQUIRED_ABIS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -43,6 +45,31 @@ if [[ ! -f "${LOCK_FILE}" ]]; then
   echo "Missing ${LOCK_FILE}" >&2
   exit 2
 fi
+
+infer_required_abis() {
+  local matches
+  if command -v rg >/dev/null 2>&1; then
+    matches="$(rg -o --no-filename 'abi/[A-Za-z0-9_]+\.json' \
+      "${ROOT_DIR}/src" "${ROOT_DIR}/tools/local_network" || true)"
+  else
+    matches="$(grep -RhoE 'abi/[A-Za-z0-9_]+\.json' \
+      "${ROOT_DIR}/src" "${ROOT_DIR}/tools/local_network" || true)"
+  fi
+
+  mapfile -t REQUIRED_ABIS < <(
+    printf '%s\n' "${matches}" \
+      | sed -E 's#^abi/##' \
+      | sed '/^$/d' \
+      | sort -u
+  )
+
+  if [[ "${#REQUIRED_ABIS[@]}" -eq 0 ]]; then
+    echo "Could not infer required ABI files from src/ and tools/local_network/" >&2
+    exit 2
+  fi
+}
+
+infer_required_abis
 
 REPO_URL="$(awk -F= '/^repo=/{print $2}' "${LOCK_FILE}" | tail -n 1 | tr -d '\r' || true)"
 LOCK_REF="$(awk -F= '/^ref=/{print $2}' "${LOCK_FILE}" | tail -n 1 | tr -d '\r' || true)"
@@ -75,16 +102,43 @@ if [[ ! -d "${UPSTREAM_ABI_DIR}" ]]; then
 fi
 
 if [[ "${CHECK}" -eq 1 ]]; then
-  if ! diff -qr "${UPSTREAM_ABI_DIR}" "${LOCAL_ABI_DIR}" >/dev/null; then
-    echo "ABI mismatch: ${LOCAL_ABI_DIR} differs from ${REPO_URL}@${RESOLVED_SHA} (ref=${REF})" >&2
+  mismatch=0
+  for abi_file in "${REQUIRED_ABIS[@]}"; do
+    upstream_file="${UPSTREAM_ABI_DIR}/${abi_file}"
+    local_file="${LOCAL_ABI_DIR}/${abi_file}"
+
+    if [[ ! -f "${upstream_file}" ]]; then
+      echo "Missing upstream ABI: ${abi_file} (${REPO_URL}@${RESOLVED_SHA})" >&2
+      mismatch=1
+      continue
+    fi
+    if [[ ! -f "${local_file}" ]]; then
+      echo "Missing local ABI: ${abi_file} (${LOCAL_ABI_DIR})" >&2
+      mismatch=1
+      continue
+    fi
+    if ! diff -q "${upstream_file}" "${local_file}" >/dev/null; then
+      echo "ABI mismatch: ${abi_file}" >&2
+      mismatch=1
+    fi
+  done
+
+  if [[ "${mismatch}" -ne 0 ]]; then
     echo "Run: tools/evm/scripts/sync_abis.sh" >&2
-    diff -qr "${UPSTREAM_ABI_DIR}" "${LOCAL_ABI_DIR}" || true
     exit 1
   fi
   exit 0
 fi
 
-rsync -a --delete "${UPSTREAM_ABI_DIR}/" "${LOCAL_ABI_DIR}/"
+mkdir -p "${LOCAL_ABI_DIR}"
+for abi_file in "${REQUIRED_ABIS[@]}"; do
+  upstream_file="${UPSTREAM_ABI_DIR}/${abi_file}"
+  if [[ ! -f "${upstream_file}" ]]; then
+    echo "Missing upstream ABI: ${abi_file} (${REPO_URL}@${RESOLVED_SHA})" >&2
+    exit 2
+  fi
+  cp "${upstream_file}" "${LOCAL_ABI_DIR}/${abi_file}"
+done
 
 if [[ "${WRITE_LOCK}" -eq 1 ]]; then
   # Update lock file to the resolved commit SHA.
@@ -113,4 +167,3 @@ PY
 fi
 
 echo "Synced abi/ from ${REPO_URL}@${RESOLVED_SHA} (ref=${REF})"
-

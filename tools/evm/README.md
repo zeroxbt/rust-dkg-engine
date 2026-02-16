@@ -17,3 +17,5 @@ Then, from repo root:
 npm --prefix tools/evm run start:local_blockchain -- 8545
 ```
 
+ABI sync/check infers the required ABI subset from code references in `src/` and
+`tools/local_network/`.
