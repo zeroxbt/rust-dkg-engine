@@ -30,10 +30,10 @@ fn extract_revert_data_lossy(err: &ContractError) -> Option<Bytes> {
     let s = raw.get().trim();
 
     // Best-effort JSON parse first (works for the common `{ "data": "0x..." }` shapes).
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(s) {
-        if let Some(bytes) = spelunk_hex_revert(&value) {
-            return Some(bytes);
-        }
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(s)
+        && let Some(bytes) = spelunk_hex_revert(&value)
+    {
+        return Some(bytes);
     }
 
     // Selector-only / non-JSON `data` (we've seen `0xdeadbeef`).

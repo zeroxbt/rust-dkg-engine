@@ -213,7 +213,7 @@ async fn private_named_graph_only_contains_private_triples() {
     ]);
 
     manager
-        .insert_knowledge_collection(kc_ual, &[ka.clone()], &None, None)
+        .insert_knowledge_collection(kc_ual, std::slice::from_ref(&ka), &None, None)
         .await
         .unwrap();
 
@@ -276,7 +276,7 @@ async fn insert_replaces_publish_time_metadata() {
     );
 
     manager
-        .insert_knowledge_collection(kc_ual, &[ka.clone()], &Some(meta.clone()), None)
+        .insert_knowledge_collection(kc_ual, std::slice::from_ref(&ka), &Some(meta.clone()), None)
         .await
         .unwrap();
 

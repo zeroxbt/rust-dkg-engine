@@ -33,3 +33,6 @@ uuid = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }
+
+[lints]
+workspace = true

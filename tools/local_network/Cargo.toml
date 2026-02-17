@@ -24,3 +24,6 @@ alloy = { workspace = true, features = [
     "sol-types",
 ] }
 clap = { workspace = true }
+
+[lints]
+workspace = true

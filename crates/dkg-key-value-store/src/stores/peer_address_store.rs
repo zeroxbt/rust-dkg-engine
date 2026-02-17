@@ -33,9 +33,8 @@ impl PeerAddressStore {
 
         let mut result = HashMap::new();
         for (key_bytes, addr_strings) in entries {
-            let peer_id = match String::from_utf8(key_bytes) {
-                Ok(id) => id,
-                Err(_) => continue,
+            let Ok(peer_id) = String::from_utf8(key_bytes) else {
+                continue;
             };
 
             let addrs: Vec<String> = addr_strings

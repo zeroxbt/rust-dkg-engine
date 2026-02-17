@@ -22,6 +22,7 @@ const COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
 const NETWORK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const HTTP_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
     context: Arc<Context>,
     command_executor: CommandExecutor,

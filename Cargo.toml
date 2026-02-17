@@ -60,17 +60,8 @@ tempfile = { workspace = true }
 # See: https://github.com/libp2p/rust-libp2p/issues/5304
 libp2p-identity = { path = "patches/libp2p-identity" }
 
-[lints.rust]
-unreachable_pub = "warn"
-
-[lints.clippy]
-used_underscore_binding = "warn"
-pedantic = { level = "allow", priority = -1 }
-type_complexity = "allow"
-unnecessary_wraps = "warn"
-manual_let_else = "warn"
-dbg_macro = "warn"
-unwrap_used = "warn"
+[lints]
+workspace = true
 
 [workspace]
 members = [
@@ -104,6 +95,15 @@ tokio-util = { version = "0.7", features = ["time"] }
 tower = "0.5.3"
 tracing = "0.1.44"
 uuid = { version = "1.20.0", features = ["serde", "v4"] }
+
+[workspace.lints.clippy]
+used_underscore_binding = "warn"
+pedantic = { level = "allow", priority = -1 }
+type_complexity = "allow"
+unnecessary_wraps = "warn"
+manual_let_else = "warn"
+dbg_macro = "warn"
+unwrap_used = "warn"
 
 [profile.dev]
 debug = 1

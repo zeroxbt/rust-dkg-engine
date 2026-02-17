@@ -32,3 +32,6 @@ tracing = { workspace = true }
 tower = { workspace = true }
 governor = "0.10"
 url = "2.5.2"
+
+[lints]
+workspace = true

@@ -1,5 +1,5 @@
 #[allow(clippy::too_many_arguments)]
-pub mod paranet {
+pub mod paranet_contract {
     use alloy::sol;
 
     sol!(
@@ -22,5 +22,5 @@ pub mod paranets_registry {
     );
 }
 
-pub use paranet::Paranet;
+pub use paranet_contract::Paranet;
 pub use paranets_registry::{ParanetLib::Node as PermissionedNode, ParanetsRegistry};

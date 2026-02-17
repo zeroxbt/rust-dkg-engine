@@ -332,7 +332,7 @@ impl ProvingTask {
             let challenge_start_block = U256::from(challenge.proof_period_start_block as u64);
 
             if challenge_start_block == current_start_block {
-                let state = ChallengeState::from_str(&challenge.state);
+                let state = ChallengeState::from_db_value(&challenge.state);
 
                 match state {
                     ChallengeState::Finalized => {

@@ -74,7 +74,7 @@ impl NetworkEventHandler for RpcRouter {
         channel: ResponseHandle<StoreAck>,
     ) -> InboundDecision<StoreAck> {
         let operation_id = request.operation_id();
-        if !self.peer_rate_limiter.check(&request.peer_id()) {
+        if !self.peer_rate_limiter.check(request.peer_id()) {
             return InboundDecision::RespondNow(Self::store_busy_response(channel, operation_id));
         }
         if let Some(channel) = self.store_controller.handle_request(request, channel) {
@@ -89,7 +89,7 @@ impl NetworkEventHandler for RpcRouter {
         channel: ResponseHandle<GetAck>,
     ) -> InboundDecision<GetAck> {
         let operation_id = request.operation_id();
-        if !self.peer_rate_limiter.check(&request.peer_id()) {
+        if !self.peer_rate_limiter.check(request.peer_id()) {
             return InboundDecision::RespondNow(Self::get_busy_response(channel, operation_id));
         }
         if let Some(channel) = self.get_controller.handle_request(request, channel) {
@@ -104,7 +104,7 @@ impl NetworkEventHandler for RpcRouter {
         channel: ResponseHandle<FinalityAck>,
     ) -> InboundDecision<FinalityAck> {
         let operation_id = request.operation_id();
-        if !self.peer_rate_limiter.check(&request.peer_id()) {
+        if !self.peer_rate_limiter.check(request.peer_id()) {
             return InboundDecision::RespondNow(Self::finality_busy_response(
                 channel,
                 operation_id,
@@ -125,7 +125,7 @@ impl NetworkEventHandler for RpcRouter {
         channel: ResponseHandle<BatchGetAck>,
     ) -> InboundDecision<BatchGetAck> {
         let operation_id = request.operation_id();
-        if !self.peer_rate_limiter.check(&request.peer_id()) {
+        if !self.peer_rate_limiter.check(request.peer_id()) {
             return InboundDecision::RespondNow(Self::batch_get_busy_response(
                 channel,
                 operation_id,

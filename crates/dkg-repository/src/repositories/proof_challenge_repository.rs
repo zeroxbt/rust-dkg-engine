@@ -31,7 +31,7 @@ impl ChallengeState {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_db_value(s: &str) -> Self {
         match s {
             "submitted" => Self::Submitted,
             "finalized" => Self::Finalized,

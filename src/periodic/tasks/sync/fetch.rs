@@ -31,6 +31,7 @@ use crate::{
 pub(crate) const CONCURRENT_PEERS: usize = 3;
 
 /// Fetch task: receives filtered KCs, fetches from network, sends to insert stage.
+#[allow(clippy::too_many_arguments)]
 #[instrument(
     name = "sync_fetch",
     skip(

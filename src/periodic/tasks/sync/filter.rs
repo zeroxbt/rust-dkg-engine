@@ -23,6 +23,7 @@ use crate::services::TripleStoreService;
 /// Filter task: processes pending KCs in batches, checking local existence first,
 /// fetching token ranges and end epochs, then filtering expired KCs.
 /// Sends non-expired KCs that need syncing to fetch stage.
+#[allow(clippy::too_many_arguments)]
 #[instrument(
     name = "sync_filter",
     skip(pending_kc_ids, blockchain_manager, triple_store_service, tx),

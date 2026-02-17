@@ -10,3 +10,6 @@ validator = { workspace = true }
 validator_derive = { workspace = true }
 alloy = { workspace = true, features = ["sol-types"] }
 thiserror = { workspace = true }
+
+[lints]
+workspace = true

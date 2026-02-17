@@ -402,7 +402,7 @@ async fn main() {
 
     LocalBlockchain::run(HARDHAT_PORT, set_parameters)
         .await
-        .unwrap();
+        .expect("failed to start local blockchain");
 
     if js_first {
         launch_nodes(&plans, NodeKind::Js, &current_dir_str, &binary_path).await;

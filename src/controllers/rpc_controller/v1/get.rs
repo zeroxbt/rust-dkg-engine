@@ -37,7 +37,7 @@ impl GetRpcController {
         channel: ResponseHandle<GetAck>,
     ) -> Option<ResponseHandle<GetAck>> {
         let operation_id = request.operation_id();
-        let remote_peer_id = request.peer_id().clone();
+        let remote_peer_id = *request.peer_id();
         let data = request.into_data();
 
         tracing::trace!(
