@@ -1,5 +1,4 @@
 mod commands;
-mod controllers;
 mod paranet_sync;
 mod periodic;
 mod sync;
@@ -8,12 +7,6 @@ pub(crate) use commands::{
     HandleBatchGetRequestDeps, HandleGetRequestDeps, HandlePublishFinalityRequestDeps,
     HandlePublishStoreRequestDeps, SendGetRequestsDeps, SendPublishFinalityRequestDeps,
     SendPublishStoreRequestsDeps,
-};
-pub(crate) use controllers::{
-    BatchGetRpcControllerDeps, GetHttpApiControllerDeps, GetRpcControllerDeps, HttpApiDeps,
-    OperationResultHttpApiControllerDeps, PublishFinalityRpcControllerDeps,
-    PublishFinalityStatusHttpApiControllerDeps, PublishStoreHttpApiControllerDeps,
-    PublishStoreRpcControllerDeps, RpcRouterDeps,
 };
 pub(crate) use paranet_sync::ParanetSyncDeps;
 pub(crate) use periodic::{

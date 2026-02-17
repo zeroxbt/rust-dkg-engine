@@ -8,8 +8,10 @@ use crate::{
         operations::publish::store::send_publish_store_requests::SendPublishStoreRequestsCommandData,
         registry::Command,
     },
-    context::PublishStoreHttpApiControllerDeps,
-    controllers::http_api_controller::v1::dto::publish::{PublishRequest, PublishResponse},
+    controllers::http_api_controller::{
+        PublishStoreHttpApiControllerDeps,
+        v1::dto::publish::{PublishRequest, PublishResponse},
+    },
 };
 
 pub(crate) struct PublishStoreHttpApiController;

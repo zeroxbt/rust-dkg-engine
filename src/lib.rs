@@ -19,12 +19,18 @@ use commands::{
     scheduler::CommandScheduler,
 };
 use context::{
-    BatchGetRpcControllerDeps, BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps,
-    DialPeersDeps, GetRpcControllerDeps, HandleBatchGetRequestDeps, HandleGetRequestDeps,
-    HandlePublishFinalityRequestDeps, HandlePublishStoreRequestDeps, HttpApiDeps, ParanetSyncDeps,
-    ProvingDeps, PublishFinalityRpcControllerDeps, PublishStoreRpcControllerDeps, RpcRouterDeps,
-    SavePeerAddressesDeps, SendGetRequestsDeps, SendPublishFinalityRequestDeps,
-    SendPublishStoreRequestsDeps, ShardingTableCheckDeps, SyncDeps,
+    BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
+    HandleBatchGetRequestDeps, HandleGetRequestDeps, HandlePublishFinalityRequestDeps,
+    HandlePublishStoreRequestDeps, ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps,
+    SendGetRequestsDeps, SendPublishFinalityRequestDeps, SendPublishStoreRequestsDeps,
+    ShardingTableCheckDeps, SyncDeps,
+};
+use controllers::{
+    http_api_controller::HttpApiDeps,
+    rpc_controller::{
+        BatchGetRpcControllerDeps, GetRpcControllerDeps, PublishFinalityRpcControllerDeps,
+        PublishStoreRpcControllerDeps, RpcRouterDeps,
+    },
 };
 use dkg_network::{KeyManager, Multiaddr, PeerId};
 use periodic::seed_sharding_tables;

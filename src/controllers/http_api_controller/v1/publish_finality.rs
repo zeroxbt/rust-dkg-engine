@@ -6,11 +6,9 @@ use axum::{
 };
 use validator::Validate;
 
-use crate::{
-    context::PublishFinalityStatusHttpApiControllerDeps,
-    controllers::http_api_controller::v1::dto::finality::{
-        FinalityRequest, FinalityStatusErrorResponse, FinalityStatusResponse,
-    },
+use crate::controllers::http_api_controller::{
+    PublishFinalityStatusHttpApiControllerDeps,
+    v1::dto::finality::{FinalityRequest, FinalityStatusErrorResponse, FinalityStatusResponse},
 };
 
 pub(crate) struct PublishFinalityStatusHttpApiController;

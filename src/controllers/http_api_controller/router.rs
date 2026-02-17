@@ -15,6 +15,7 @@ use tokio::{
 use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
 
 use super::{
+    deps::HttpApiDeps,
     middleware::{AuthConfig, RateLimiterConfig},
     v1::{
         info::InfoHttpApiController, operation_result::OperationResultHttpApiController,
@@ -22,9 +23,7 @@ use super::{
         publish_store::PublishStoreHttpApiController,
     },
 };
-use crate::{
-    context::HttpApiDeps, controllers::http_api_controller::v1::get::GetHttpApiController,
-};
+use crate::controllers::http_api_controller::v1::get::GetHttpApiController;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

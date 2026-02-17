@@ -4,9 +4,9 @@ pub(crate) mod rpc_controller;
 pub(crate) use http_api_controller::router::{HttpApiConfig, HttpApiRouter};
 pub(crate) use rpc_controller::rpc_router::RpcRouter;
 
-use crate::{
-    context::{HttpApiDeps, RpcRouterDeps},
-    controllers::rpc_controller::config::RpcConfig,
+use crate::controllers::{
+    http_api_controller::HttpApiDeps,
+    rpc_controller::{RpcConfig, RpcRouterDeps},
 };
 
 /// Container for all initialized controllers.

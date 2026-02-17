@@ -10,7 +10,7 @@ use crate::{
         operations::publish::store::handle_publish_store_request::HandlePublishStoreRequestCommandData,
         registry::Command, scheduler::CommandScheduler,
     },
-    context::PublishStoreRpcControllerDeps,
+    controllers::rpc_controller::PublishStoreRpcControllerDeps,
     state::ResponseChannels,
 };
 

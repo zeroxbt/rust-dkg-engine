@@ -6,13 +6,11 @@ use dkg_network::{
     StoreAck, StoreRequestData,
 };
 
+use super::deps::RpcRouterDeps;
 use super::{PeerRateLimiter, RpcConfig};
-use crate::{
-    context::RpcRouterDeps,
-    controllers::rpc_controller::v1::{
-        batch_get::BatchGetRpcController, get::GetRpcController,
-        publish_finality::PublishFinalityRpcController, publish_store::PublishStoreRpcController,
-    },
+use crate::controllers::rpc_controller::v1::{
+    batch_get::BatchGetRpcController, get::GetRpcController,
+    publish_finality::PublishFinalityRpcController, publish_store::PublishStoreRpcController,
 };
 
 pub(crate) struct RpcRouter {

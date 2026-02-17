@@ -7,8 +7,10 @@ use crate::{
         executor::CommandExecutionRequest,
         operations::get::send_get_requests::SendGetRequestsCommandData, registry::Command,
     },
-    context::GetHttpApiControllerDeps,
-    controllers::http_api_controller::v1::dto::get::{GetRequest, GetResponse},
+    controllers::http_api_controller::{
+        GetHttpApiControllerDeps,
+        v1::dto::get::{GetRequest, GetResponse},
+    },
 };
 
 pub(crate) struct GetHttpApiController;

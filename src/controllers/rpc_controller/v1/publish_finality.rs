@@ -9,7 +9,7 @@ use crate::{
         operations::publish::finality::handle_publish_finality_request::HandlePublishFinalityRequestCommandData,
         registry::Command, scheduler::CommandScheduler,
     },
-    context::PublishFinalityRpcControllerDeps,
+    controllers::rpc_controller::PublishFinalityRpcControllerDeps,
     state::ResponseChannels,
 };
 

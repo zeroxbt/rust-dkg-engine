@@ -9,7 +9,7 @@ use crate::{
         operations::batch_get::handle_batch_get_request::HandleBatchGetRequestCommandData,
         registry::Command, scheduler::CommandScheduler,
     },
-    context::BatchGetRpcControllerDeps,
+    controllers::rpc_controller::BatchGetRpcControllerDeps,
     state::ResponseChannels,
 };
 
