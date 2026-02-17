@@ -1,6 +1,6 @@
 use dkg_domain::BlockchainId;
 
-use crate::{BlockchainManager, chains::evm::NodeInfo, error::BlockchainError};
+use crate::{BlockchainManager, NodeInfo, ShardingTableNode, error::BlockchainError};
 
 impl BlockchainManager {
     pub async fn get_sharding_table_head(
@@ -54,7 +54,7 @@ impl BlockchainManager {
         &self,
         blockchain: &BlockchainId,
         identity_id: u128,
-    ) -> Result<Option<crate::chains::evm::ShardingTableNode>, BlockchainError> {
+    ) -> Result<Option<ShardingTableNode>, BlockchainError> {
         let blockchain_impl = self.chain(blockchain)?;
         blockchain_impl.get_sharding_table_node(identity_id).await
     }

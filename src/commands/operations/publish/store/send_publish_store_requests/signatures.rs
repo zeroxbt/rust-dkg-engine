@@ -1,4 +1,4 @@
-use dkg_blockchain::{BlockchainId, H256, keccak256_encode_packed};
+use dkg_blockchain::{B256, BlockchainId, keccak256_encode_packed};
 use uuid::Uuid;
 
 use super::handler::SendPublishStoreRequestsCommandHandler;
@@ -52,7 +52,7 @@ impl SendPublishStoreRequestsCommandHandler {
         dataset_root: &str,
         identity_id: u128,
     ) -> Result<PublishStoreSignatureData, NodeError> {
-        let dataset_root_h256: H256 = dataset_root
+        let dataset_root_b256: B256 = dataset_root
             .parse()
             .map_err(|e| NodeError::Other(format!("Invalid dataset root hex: {e}")))?;
         // JS uses: keccak256EncodePacked(['uint72', 'bytes32'], [identityId, datasetRoot])
@@ -65,7 +65,7 @@ impl SendPublishStoreRequestsCommandHandler {
             out
         };
         let message_hash =
-            keccak256_encode_packed(&[&identity_bytes, dataset_root_h256.as_slice()]);
+            keccak256_encode_packed(&[&identity_bytes, dataset_root_b256.as_slice()]);
         let signature = self
             .blockchain_manager
             .sign_message(

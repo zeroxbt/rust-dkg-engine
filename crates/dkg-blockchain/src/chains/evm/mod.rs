@@ -9,7 +9,7 @@ use alloy::{
 use tokio::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
-    BlockchainConfig, BlockchainId, RpcRateLimiter,
+    BlockchainConfig, BlockchainId,
     chains::evm::{
         contracts::{Contracts, initialize_contracts},
         provider::{BlockchainProvider, initialize_provider},
@@ -19,6 +19,7 @@ use crate::{
         contract_error_backoff_hint, is_retryable_contract_error, should_bump_gas_price,
     },
     rpc_executor::{RetryPolicy, RetryableError, backoff_delay},
+    rpc_rate_limiter::RpcRateLimiter,
     substrate::validate_evm_wallets,
 };
 mod contracts;

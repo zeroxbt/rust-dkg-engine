@@ -23,13 +23,9 @@ pub use config_error::ConfigError;
 pub use contract_events::{ContractEvent, decode_contract_event, monitored_contract_events};
 pub use error::BlockchainError;
 pub use multicall::{MulticallBatch, MulticallRequest, MulticallResult, encoders};
-pub use rpc_rate_limiter::RpcRateLimiter;
 pub use utils::{keccak256_encode_packed, parse_ether_to_u128, sha256_hex, to_hex_string};
 
-pub use alloy::{
-    primitives::{Address, B256, B256 as H256, U256},
-    rpc::types::Log,
-};
+pub use alloy::primitives::{Address, B256, U256};
 // Re-export shared domain types from crate::types
 pub use dkg_domain::BlockchainId;
 

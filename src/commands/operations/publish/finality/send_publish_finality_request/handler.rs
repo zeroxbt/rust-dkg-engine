@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dkg_blockchain::{Address, BlockchainId, BlockchainManager, H256, U256};
+use dkg_blockchain::{Address, B256, BlockchainId, BlockchainManager, U256};
 use dkg_domain::{KnowledgeCollectionMetadata, derive_ual};
 use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{
@@ -31,9 +31,9 @@ pub(crate) struct SendPublishFinalityRequestCommandData {
     /// The byte size of the knowledge collection
     pub byte_size: u128,
     /// The merkle root (dataset root) of the knowledge collection
-    pub dataset_root: H256,
+    pub dataset_root: B256,
     /// The transaction hash (used to fetch publisher address)
-    pub transaction_hash: H256,
+    pub transaction_hash: B256,
     /// The block number where the event was emitted
     pub block_number: u64,
     /// The block timestamp (unix seconds)
@@ -48,8 +48,8 @@ impl SendPublishFinalityRequestCommandData {
         knowledge_collection_id: U256,
         knowledge_collection_storage_address: Address,
         byte_size: u128,
-        dataset_root: H256,
-        transaction_hash: H256,
+        dataset_root: B256,
+        transaction_hash: B256,
         block_number: u64,
         block_timestamp: u64,
     ) -> Self {
