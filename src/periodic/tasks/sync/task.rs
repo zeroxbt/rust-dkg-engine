@@ -18,7 +18,7 @@ use super::{
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
 use crate::{
-    context::SyncDeps, periodic::runner::run_with_shutdown, services::GET_NETWORK_CONCURRENT_PEERS,
+    periodic::SyncDeps, periodic::runner::run_with_shutdown, services::GET_NETWORK_CONCURRENT_PEERS,
 };
 
 pub(crate) struct SyncTask {

@@ -5,8 +5,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    commands::SendGetRequestsDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::SendGetRequestsDeps,
     operations::{GetOperation, GetOperationResult},
     services::{
         GetFetchRequest, operation_status::OperationStatusService as GenericOperationService,

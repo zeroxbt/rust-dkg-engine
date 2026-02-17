@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    context::SavePeerAddressesDeps,
+    periodic::SavePeerAddressesDeps,
     periodic::runner::run_with_shutdown,
     services::{PeerService, peer::PeerAddressStore},
 };

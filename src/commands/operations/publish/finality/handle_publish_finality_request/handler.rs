@@ -6,8 +6,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    commands::HandlePublishFinalityRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::HandlePublishFinalityRequestDeps,
     state::ResponseChannels,
 };
 

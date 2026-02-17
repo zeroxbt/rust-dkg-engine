@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
-    context::ProvingDeps,
+    periodic::ProvingDeps,
     periodic::runner::run_with_shutdown,
     services::{
         AssertionValidationService, GET_NETWORK_CONCURRENT_PEERS, PeerService, TripleStoreService,

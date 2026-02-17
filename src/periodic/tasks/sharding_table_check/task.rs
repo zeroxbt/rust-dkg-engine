@@ -5,7 +5,7 @@ use dkg_network::PeerId;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    context::ShardingTableCheckDeps, error::NodeError, periodic::runner::run_with_shutdown,
+    error::NodeError, periodic::ShardingTableCheckDeps, periodic::runner::run_with_shutdown,
     services::PeerService,
 };
 

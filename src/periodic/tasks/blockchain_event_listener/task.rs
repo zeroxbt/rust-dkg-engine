@@ -16,8 +16,8 @@ use crate::{
         registry::Command, scheduler::CommandScheduler,
     },
     config,
-    context::BlockchainEventListenerDeps,
     error::NodeError,
+    periodic::BlockchainEventListenerDeps,
     periodic::runner::run_with_shutdown,
 };
 

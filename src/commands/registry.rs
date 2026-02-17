@@ -27,13 +27,10 @@ use super::operations::{
         },
     },
 };
-use crate::{
-    commands::executor::CommandOutcome,
-    context::{
-        HandleBatchGetRequestDeps, HandleGetRequestDeps, HandlePublishFinalityRequestDeps,
-        HandlePublishStoreRequestDeps, SendGetRequestsDeps, SendPublishFinalityRequestDeps,
-        SendPublishStoreRequestsDeps,
-    },
+use crate::commands::{
+    HandleBatchGetRequestDeps, HandleGetRequestDeps, HandlePublishFinalityRequestDeps,
+    HandlePublishStoreRequestDeps, SendGetRequestsDeps, SendPublishFinalityRequestDeps,
+    SendPublishStoreRequestsDeps, executor::CommandOutcome,
 };
 
 macro_rules! command_registry {

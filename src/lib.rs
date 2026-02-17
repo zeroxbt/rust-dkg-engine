@@ -1,6 +1,5 @@
 mod commands;
 mod config;
-mod context;
 mod controllers;
 mod error;
 mod logger;
@@ -14,16 +13,12 @@ mod state;
 use std::sync::Arc;
 
 use commands::{
+    HandleBatchGetRequestDeps, HandleGetRequestDeps, HandlePublishFinalityRequestDeps,
+    HandlePublishStoreRequestDeps, SendGetRequestsDeps, SendPublishFinalityRequestDeps,
+    SendPublishStoreRequestsDeps,
     executor::CommandExecutor,
     registry::{CommandResolver, CommandResolverDeps},
     scheduler::CommandScheduler,
-};
-use context::{
-    BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
-    HandleBatchGetRequestDeps, HandleGetRequestDeps, HandlePublishFinalityRequestDeps,
-    HandlePublishStoreRequestDeps, ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps,
-    SendGetRequestsDeps, SendPublishFinalityRequestDeps, SendPublishStoreRequestsDeps,
-    ShardingTableCheckDeps, SyncDeps,
 };
 use controllers::{
     http_api_controller::HttpApiDeps,
@@ -33,7 +28,10 @@ use controllers::{
     },
 };
 use dkg_network::{KeyManager, Multiaddr, PeerId};
-use periodic::seed_sharding_tables;
+use periodic::{
+    BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, ParanetSyncDeps,
+    ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps, SyncDeps, seed_sharding_tables,
+};
 
 use crate::config::AppPaths;
 

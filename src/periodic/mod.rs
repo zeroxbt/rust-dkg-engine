@@ -4,7 +4,10 @@ mod runner;
 pub(crate) mod tasks;
 use std::sync::Arc;
 
-pub(crate) use deps::PeriodicDeps;
+pub(crate) use deps::{
+    BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, ParanetSyncDeps,
+    PeriodicDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps, SyncDeps,
+};
 use dkg_blockchain::BlockchainId;
 pub(crate) use tasks::sharding_table_check::seed_sharding_tables;
 use tasks::{

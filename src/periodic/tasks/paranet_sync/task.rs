@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use super::ParanetSyncConfig;
 use crate::{
-    context::ParanetSyncDeps,
+    periodic::ParanetSyncDeps,
     periodic::runner::run_with_shutdown,
     services::{GetFetchRequest, GetFetchSource},
 };

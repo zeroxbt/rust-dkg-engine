@@ -7,8 +7,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    commands::HandleGetRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::HandleGetRequestDeps,
     services::{PeerService, TripleStoreService},
     state::ResponseChannels,
 };

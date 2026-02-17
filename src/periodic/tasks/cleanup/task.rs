@@ -10,8 +10,8 @@ use super::{
     proof_challenges::cleanup_proof_challenges, publish_tmp_dataset::cleanup_publish_tmp_datasets,
 };
 use crate::{
-    context::CleanupDeps,
     operations::{GetOperation, PublishStoreOperation},
+    periodic::CleanupDeps,
     periodic::runner::run_with_shutdown,
     services::OperationStatusService,
     state::ResponseChannels,

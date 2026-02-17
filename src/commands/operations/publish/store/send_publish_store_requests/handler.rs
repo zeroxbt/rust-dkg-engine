@@ -12,8 +12,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    commands::SendPublishStoreRequestsDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::SendPublishStoreRequestsDeps,
     operations::{PublishStoreOperation, PublishStoreOperationResult},
     services::{PeerService, operation_status::OperationStatusService as GenericOperationService},
 };

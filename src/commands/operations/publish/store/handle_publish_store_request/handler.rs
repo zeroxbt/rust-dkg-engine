@@ -8,8 +8,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    commands::HandlePublishStoreRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::HandlePublishStoreRequestDeps,
     services::PeerService,
     state::ResponseChannels,
 };

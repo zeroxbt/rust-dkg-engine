@@ -11,8 +11,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    commands::SendPublishFinalityRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::SendPublishFinalityRequestDeps,
     services::{PeerService, TripleStoreService},
 };
 
