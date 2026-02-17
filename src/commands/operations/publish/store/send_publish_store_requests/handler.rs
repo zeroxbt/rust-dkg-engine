@@ -4,9 +4,8 @@ use dkg_blockchain::{BlockchainId, BlockchainManager};
 use dkg_domain::Assertion;
 use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
 use dkg_network::{
-    NetworkError, NetworkManager, PeerId,
+    NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_STORE,
     messages::{StoreRequestData, StoreResponseData},
-    protocols::{ProtocolSpec, StoreProtocol},
 };
 use futures::{StreamExt, stream::FuturesUnordered};
 use tracing::instrument;
@@ -126,7 +125,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         // Get remote peers that support the store protocol, excluding self
         let remote_peers = self.peer_service.select_shard_peers(
             blockchain,
-            StoreProtocol::STREAM_PROTOCOL,
+            STREAM_PROTOCOL_STORE,
             Some(&my_peer_id),
         );
 

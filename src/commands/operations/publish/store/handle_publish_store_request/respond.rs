@@ -1,60 +1,52 @@
-use dkg_network::{
-    ResponseMessage,
-    message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
-    messages::StoreAck,
-    request_response::ResponseChannel,
-};
+use dkg_network::{ResponseHandle, messages::StoreAck};
 use uuid::Uuid;
 
 use super::handler::HandlePublishStoreRequestCommandHandler;
 
 impl HandlePublishStoreRequestCommandHandler {
-    pub(crate) async fn send_response(
+    pub(crate) async fn send_nack(
         &self,
-        channel: ResponseChannel<ResponseMessage<StoreAck>>,
+        channel: ResponseHandle<StoreAck>,
         operation_id: Uuid,
-        message: ResponseMessage<StoreAck>,
+        error_message: &str,
     ) {
         if let Err(e) = self
             .network_manager
-            .send_store_response(channel, message)
+            .send_store_nack(channel, operation_id, error_message)
             .await
         {
             tracing::error!(
                 operation_id = %operation_id,
                 error = %e,
-                "Failed to send response"
+                "Failed to send store NACK response"
             );
         }
     }
 
-    pub(crate) async fn send_nack(
-        &self,
-        channel: ResponseChannel<ResponseMessage<StoreAck>>,
-        operation_id: Uuid,
-        error_message: &str,
-    ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: ResponseBody::error(error_message),
-        };
-        self.send_response(channel, operation_id, message).await;
-    }
-
     pub(crate) async fn send_ack(
         &self,
-        channel: ResponseChannel<ResponseMessage<StoreAck>>,
+        channel: ResponseHandle<StoreAck>,
         operation_id: Uuid,
         identity_id: u128,
         signature: dkg_domain::SignatureComponents,
     ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: ResponseBody::ack(StoreAck {
-                identity_id,
-                signature,
-            }),
-        };
-        self.send_response(channel, operation_id, message).await;
+        if let Err(e) = self
+            .network_manager
+            .send_store_ack(
+                channel,
+                operation_id,
+                StoreAck {
+                    identity_id,
+                    signature,
+                },
+            )
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send store ACK response"
+            );
+        }
     }
 }

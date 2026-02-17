@@ -4,10 +4,10 @@
 
 use std::{collections::HashMap, time::Instant};
 
-use libp2p::PeerId;
+use libp2p::{PeerId, request_response::OutboundRequestId};
 use tokio::sync::oneshot;
 
-use super::{error::NetworkError, request_response::OutboundRequestId};
+use super::error::NetworkError;
 
 /// Metadata captured when a request is sent, used for outcome tracking.
 pub struct RequestContext {

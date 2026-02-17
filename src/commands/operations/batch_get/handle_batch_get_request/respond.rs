@@ -1,63 +1,55 @@
 use std::collections::HashMap;
 
 use dkg_domain::Assertion;
-use dkg_network::{
-    ResponseMessage,
-    message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
-    messages::BatchGetAck,
-    request_response::ResponseChannel,
-};
+use dkg_network::{ResponseHandle, messages::BatchGetAck};
 use uuid::Uuid;
 
 use crate::commands::operations::batch_get::handle_batch_get_request::HandleBatchGetRequestCommandHandler;
 
 impl HandleBatchGetRequestCommandHandler {
-    async fn send_response(
+    pub(crate) async fn send_ack(
         &self,
-        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
+        channel: ResponseHandle<BatchGetAck>,
         operation_id: Uuid,
-        message: ResponseMessage<BatchGetAck>,
+        assertions: HashMap<String, Assertion>,
+        metadata: HashMap<String, Vec<String>>,
     ) {
         if let Err(e) = self
             .network_manager
-            .send_batch_get_response(channel, message)
+            .send_batch_get_ack(
+                channel,
+                operation_id,
+                BatchGetAck {
+                    assertions,
+                    metadata,
+                },
+            )
             .await
         {
             tracing::error!(
                 operation_id = %operation_id,
                 error = %e,
-                "Failed to send batch get response"
+                "Failed to send batch-get ACK response"
             );
         }
     }
 
-    pub(crate) async fn send_ack(
-        &self,
-        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
-        operation_id: Uuid,
-        assertions: HashMap<String, Assertion>,
-        metadata: HashMap<String, Vec<String>>,
-    ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: ResponseBody::ack(BatchGetAck {
-                assertions,
-                metadata,
-            }),
-        };
-        self.send_response(channel, operation_id, message).await;
-    }
-
     pub(crate) async fn send_nack(
         &self,
-        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
+        channel: ResponseHandle<BatchGetAck>,
         operation_id: Uuid,
         message: impl Into<String>,
     ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: ResponseBody::error(message),
-        };
-        self.send_response(channel, operation_id, message).await;
+        if let Err(e) = self
+            .network_manager
+            .send_batch_get_nack(channel, operation_id, message)
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send batch-get NACK response"
+            );
+        }
     }
 }

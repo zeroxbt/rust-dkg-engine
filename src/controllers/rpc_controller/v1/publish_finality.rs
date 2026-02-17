@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
 use dkg_network::{
-    PeerId,
-    message::{RequestMessage, ResponseMessage},
+    InboundRequest, ResponseHandle,
     messages::{FinalityAck, FinalityRequestData},
-    request_response,
 };
 
 use super::inbound_request::store_channel_and_try_schedule;
@@ -38,13 +36,12 @@ impl PublishFinalityRpcController {
     /// send a Busy response.
     pub(crate) fn handle_request(
         &self,
-        request: RequestMessage<FinalityRequestData>,
-        channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
-        remote_peer_id: PeerId,
-    ) -> Option<request_response::ResponseChannel<ResponseMessage<FinalityAck>>> {
-        let RequestMessage { header, data } = request;
-
-        let operation_id = header.operation_id();
+        request: InboundRequest<FinalityRequestData>,
+        channel: ResponseHandle<FinalityAck>,
+    ) -> Option<ResponseHandle<FinalityAck>> {
+        let operation_id = request.operation_id();
+        let remote_peer_id = request.peer_id().clone();
+        let data = request.into_data();
 
         tracing::trace!(
             operation_id = %operation_id,

@@ -1,5 +1,4 @@
-use dkg_network::{PeerId, ResponseMessage, request_response::ResponseChannel};
-use serde::{Serialize, de::DeserializeOwned};
+use dkg_network::{PeerId, ResponseHandle};
 use uuid::Uuid;
 
 use crate::{
@@ -16,12 +15,9 @@ pub(super) fn store_channel_and_try_schedule<T>(
     command_scheduler: &CommandScheduler,
     remote_peer_id: &PeerId,
     operation_id: Uuid,
-    channel: ResponseChannel<ResponseMessage<T>>,
+    channel: ResponseHandle<T>,
     command_request: CommandExecutionRequest,
-) -> Option<ResponseChannel<ResponseMessage<T>>>
-where
-    T: Serialize + DeserializeOwned + Send + Sync,
-{
+) -> Option<ResponseHandle<T>> {
     response_channels.store(remote_peer_id, operation_id, channel);
 
     if !command_scheduler.try_schedule(command_request) {

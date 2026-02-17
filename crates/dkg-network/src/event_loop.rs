@@ -16,12 +16,11 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
-    IdentifyInfo, ImmediateResponse, InboundDecision, NetworkError, NetworkEventHandler,
-    NetworkManagerConfig, PeerEvent, RequestMessage, RequestOutcome, RequestOutcomeKind,
-    ResponseMessage,
+    IdentifyInfo, InboundDecision, InboundRequest, NetworkError, NetworkEventHandler,
+    NetworkManagerConfig, PeerEvent, RequestOutcome, RequestOutcomeKind, ResponseHandle,
     actions::{NetworkControlAction, NetworkDataAction},
     behaviour::{NodeBehaviour, NodeBehaviourEvent},
-    message::{RequestMessageHeader, RequestMessageType},
+    message::{RequestMessage, RequestMessageHeader, RequestMessageType, ResponseMessage},
     pending_requests::{PendingRequests, RequestContext},
     protocols::{
         BatchGetProtocol, BatchGetResponseData, FinalityProtocol, FinalityResponseData,
@@ -72,19 +71,27 @@ fn handle_protocol_event<P, H>(
             }
             request_response::Message::Request {
                 request, channel, ..
-            } => match handler.handle_request(request, channel, peer) {
-                InboundDecision::Scheduled => {}
-                InboundDecision::RespondNow(ImmediateResponse { channel, message }) => {
-                    if let Err(response) = send_response(swarm, channel, message) {
-                        tracing::warn!(
-                            %peer,
-                            response_header = ?response.header,
-                            "{} immediate response could not be sent",
-                            P::NAME
-                        );
+            } => {
+                let operation_id = request.header.operation_id();
+                let inbound_request = InboundRequest::new(operation_id, peer, request.data);
+                let response = ResponseHandle::new(channel);
+
+                match handler.handle_request(inbound_request, response) {
+                    InboundDecision::Scheduled => {}
+                    InboundDecision::RespondNow(immediate_response) => {
+                        let (response, message) = immediate_response.into_parts();
+                        if let Err(response) = send_response(swarm, response.into_inner(), message)
+                        {
+                            tracing::warn!(
+                                %peer,
+                                response_header = ?response.header,
+                                "{} immediate response could not be sent",
+                                P::NAME
+                            );
+                        }
                     }
                 }
-            },
+            }
         },
         request_response::Event::OutboundFailure {
             request_id,
@@ -130,61 +137,48 @@ fn handle_protocol_event<P, H>(
 trait ProtocolHandler<P: ProtocolSpec>: Send + Sync {
     fn handle_request(
         &self,
-        request: RequestMessage<P::RequestData>,
-        channel: request_response::ResponseChannel<ResponseMessage<P::Ack>>,
-        peer: PeerId,
+        request: InboundRequest<P::RequestData>,
+        response: ResponseHandle<P::Ack>,
     ) -> InboundDecision<P::Ack>;
 }
 
 impl<H: NetworkEventHandler> ProtocolHandler<StoreProtocol> for H {
     fn handle_request(
         &self,
-        request: RequestMessage<<StoreProtocol as ProtocolSpec>::RequestData>,
-        channel: request_response::ResponseChannel<
-            ResponseMessage<<StoreProtocol as ProtocolSpec>::Ack>,
-        >,
-        peer: PeerId,
+        request: InboundRequest<<StoreProtocol as ProtocolSpec>::RequestData>,
+        response: ResponseHandle<<StoreProtocol as ProtocolSpec>::Ack>,
     ) -> InboundDecision<<StoreProtocol as ProtocolSpec>::Ack> {
-        self.on_store_request(request, channel, peer)
+        self.on_store_request(request, response)
     }
 }
 
 impl<H: NetworkEventHandler> ProtocolHandler<GetProtocol> for H {
     fn handle_request(
         &self,
-        request: RequestMessage<<GetProtocol as ProtocolSpec>::RequestData>,
-        channel: request_response::ResponseChannel<
-            ResponseMessage<<GetProtocol as ProtocolSpec>::Ack>,
-        >,
-        peer: PeerId,
+        request: InboundRequest<<GetProtocol as ProtocolSpec>::RequestData>,
+        response: ResponseHandle<<GetProtocol as ProtocolSpec>::Ack>,
     ) -> InboundDecision<<GetProtocol as ProtocolSpec>::Ack> {
-        self.on_get_request(request, channel, peer)
+        self.on_get_request(request, response)
     }
 }
 
 impl<H: NetworkEventHandler> ProtocolHandler<FinalityProtocol> for H {
     fn handle_request(
         &self,
-        request: RequestMessage<<FinalityProtocol as ProtocolSpec>::RequestData>,
-        channel: request_response::ResponseChannel<
-            ResponseMessage<<FinalityProtocol as ProtocolSpec>::Ack>,
-        >,
-        peer: PeerId,
+        request: InboundRequest<<FinalityProtocol as ProtocolSpec>::RequestData>,
+        response: ResponseHandle<<FinalityProtocol as ProtocolSpec>::Ack>,
     ) -> InboundDecision<<FinalityProtocol as ProtocolSpec>::Ack> {
-        self.on_finality_request(request, channel, peer)
+        self.on_finality_request(request, response)
     }
 }
 
 impl<H: NetworkEventHandler> ProtocolHandler<BatchGetProtocol> for H {
     fn handle_request(
         &self,
-        request: RequestMessage<<BatchGetProtocol as ProtocolSpec>::RequestData>,
-        channel: request_response::ResponseChannel<
-            ResponseMessage<<BatchGetProtocol as ProtocolSpec>::Ack>,
-        >,
-        peer: PeerId,
+        request: InboundRequest<<BatchGetProtocol as ProtocolSpec>::RequestData>,
+        response: ResponseHandle<<BatchGetProtocol as ProtocolSpec>::Ack>,
     ) -> InboundDecision<<BatchGetProtocol as ProtocolSpec>::Ack> {
-        self.on_batch_get_request(request, channel, peer)
+        self.on_batch_get_request(request, response)
     }
 }
 

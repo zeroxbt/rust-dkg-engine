@@ -8,7 +8,8 @@
 // Re-export from protocols for backwards compatibility
 pub use super::protocols::{
     BatchGetAck, BatchGetRequestData, BatchGetResponseData, FinalityAck, FinalityRequestData,
-    GetAck, GetRequestData, GetResponseData, StoreAck, StoreRequestData, StoreResponseData,
+    FinalityResponseData, GetAck, GetRequestData, GetResponseData, StoreAck, StoreRequestData,
+    StoreResponseData,
 };
 
 #[cfg(test)]

@@ -2,10 +2,8 @@ use std::sync::Arc;
 
 use dkg_domain::Assertion;
 use dkg_network::{
-    PeerId,
-    message::{RequestMessage, ResponseMessage},
+    InboundRequest, ResponseHandle,
     messages::{StoreAck, StoreRequestData},
-    request_response,
 };
 
 use super::inbound_request::store_channel_and_try_schedule;
@@ -39,13 +37,12 @@ impl PublishStoreRpcController {
     /// send a Busy response.
     pub(crate) fn handle_request(
         &self,
-        request: RequestMessage<StoreRequestData>,
-        channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
-        remote_peer_id: PeerId,
-    ) -> Option<request_response::ResponseChannel<ResponseMessage<StoreAck>>> {
-        let RequestMessage { header, data } = request;
-
-        let operation_id = header.operation_id();
+        request: InboundRequest<StoreRequestData>,
+        channel: ResponseHandle<StoreAck>,
+    ) -> Option<ResponseHandle<StoreAck>> {
+        let operation_id = request.operation_id();
+        let remote_peer_id = request.peer_id().clone();
+        let data = request.into_data();
 
         tracing::trace!(
             operation_id = %operation_id,

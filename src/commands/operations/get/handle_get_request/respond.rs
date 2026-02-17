@@ -1,61 +1,53 @@
 use dkg_domain::Assertion;
-use dkg_network::{
-    ResponseMessage,
-    message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
-    messages::GetAck,
-    request_response::ResponseChannel,
-};
+use dkg_network::{ResponseHandle, messages::GetAck};
 use uuid::Uuid;
 
 use crate::commands::operations::get::handle_get_request::HandleGetRequestCommandHandler;
 
 impl HandleGetRequestCommandHandler {
-    async fn send_response(
+    pub(crate) async fn send_nack(
         &self,
-        channel: ResponseChannel<ResponseMessage<GetAck>>,
+        channel: ResponseHandle<GetAck>,
         operation_id: Uuid,
-        message: ResponseMessage<GetAck>,
+        error_message: &str,
     ) {
         if let Err(e) = self
             .network_manager
-            .send_get_response(channel, message)
+            .send_get_nack(channel, operation_id, error_message)
             .await
         {
             tracing::error!(
                 operation_id = %operation_id,
                 error = %e,
-                "Failed to send get response"
+                "Failed to send get NACK response"
             );
         }
     }
 
-    pub(crate) async fn send_nack(
-        &self,
-        channel: ResponseChannel<ResponseMessage<GetAck>>,
-        operation_id: Uuid,
-        error_message: &str,
-    ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: ResponseBody::error(error_message),
-        };
-        self.send_response(channel, operation_id, message).await;
-    }
-
     pub(crate) async fn send_ack(
         &self,
-        channel: ResponseChannel<ResponseMessage<GetAck>>,
+        channel: ResponseHandle<GetAck>,
         operation_id: Uuid,
         assertion: Assertion,
         metadata: Option<Vec<String>>,
     ) {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: ResponseBody::ack(GetAck {
-                assertion,
-                metadata,
-            }),
-        };
-        self.send_response(channel, operation_id, message).await;
+        if let Err(e) = self
+            .network_manager
+            .send_get_ack(
+                channel,
+                operation_id,
+                GetAck {
+                    assertion,
+                    metadata,
+                },
+            )
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send get ACK response"
+            );
+        }
     }
 }

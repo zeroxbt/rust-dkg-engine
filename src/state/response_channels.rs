@@ -1,8 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use dashmap::DashMap;
-use dkg_network::{PeerId, ResponseMessage, request_response};
-use serde::{Serialize, de::DeserializeOwned};
+use dkg_network::{PeerId, ResponseHandle};
 use tokio::time::Instant;
 use uuid::Uuid;
 
@@ -12,7 +11,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
 type ChannelKey = (String, Uuid);
 
 struct ChannelEntry<T> {
-    channel: request_response::ResponseChannel<ResponseMessage<T>>,
+    channel: ResponseHandle<T>,
     created_at: Instant,
 }
 
@@ -24,18 +23,12 @@ struct ChannelEntry<T> {
 /// - `ResponseChannels<GetAck>` for Get protocol
 ///
 /// Expired channels are cleaned up by the periodic cleanup task.
-pub(crate) struct ResponseChannels<T>
-where
-    T: Serialize + DeserializeOwned + Send + Sync,
-{
+pub(crate) struct ResponseChannels<T> {
     channels: Arc<DashMap<ChannelKey, ChannelEntry<T>>>,
     timeout: Duration,
 }
 
-impl<T> ResponseChannels<T>
-where
-    T: Serialize + DeserializeOwned + Send + Sync,
-{
+impl<T> ResponseChannels<T> {
     pub(crate) fn new() -> Self {
         Self {
             channels: Arc::new(DashMap::new()),
@@ -43,12 +36,7 @@ where
         }
     }
 
-    pub(crate) fn store(
-        &self,
-        peer_id: &PeerId,
-        operation_id: Uuid,
-        channel: request_response::ResponseChannel<ResponseMessage<T>>,
-    ) {
+    pub(crate) fn store(&self, peer_id: &PeerId, operation_id: Uuid, channel: ResponseHandle<T>) {
         let key = (peer_id.to_string(), operation_id);
         let entry = ChannelEntry {
             channel,
@@ -68,7 +56,7 @@ where
         &self,
         peer_id: &PeerId,
         operation_id: Uuid,
-    ) -> Option<request_response::ResponseChannel<ResponseMessage<T>>> {
+    ) -> Option<ResponseHandle<T>> {
         let key = (peer_id.to_string(), operation_id);
 
         tracing::trace!(
@@ -103,10 +91,7 @@ where
     }
 }
 
-impl<T> Default for ResponseChannels<T>
-where
-    T: Serialize + DeserializeOwned + Send + Sync,
-{
+impl<T> Default for ResponseChannels<T> {
     fn default() -> Self {
         Self::new()
     }

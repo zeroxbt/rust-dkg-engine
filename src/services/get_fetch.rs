@@ -6,10 +6,8 @@ use dkg_domain::{
     construct_paranet_id, parse_ual,
 };
 use dkg_network::{
-    NetworkError, NetworkManager, PeerId,
-    message::ResponseBody,
+    NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_GET,
     messages::{GetRequestData, GetResponseData},
-    protocols::{GetProtocol, ProtocolSpec},
 };
 use futures::{StreamExt, stream::FuturesUnordered};
 use uuid::Uuid;
@@ -279,7 +277,7 @@ impl GetFetchService {
         };
 
         match response {
-            ResponseBody::Ack(ack) => {
+            GetResponseData::Ack(ack) => {
                 let is_valid = self
                     .assertion_validation_service
                     .validate_response(&ack.assertion, parsed_ual, visibility)
@@ -298,7 +296,7 @@ impl GetFetchService {
                     source: GetFetchSource::Network,
                 })
             }
-            ResponseBody::Error(err) => {
+            GetResponseData::Error(err) => {
                 tracing::debug!(peer = %peer, error = %err.error_message, "Peer returned NACK");
                 None
             }
@@ -313,7 +311,7 @@ impl GetFetchService {
         let my_peer_id = self.network_manager.peer_id();
         let all_shard_peers = self.peer_service.select_shard_peers(
             &parsed_ual.blockchain,
-            GetProtocol::STREAM_PROTOCOL,
+            STREAM_PROTOCOL_GET,
             Some(my_peer_id),
         );
 

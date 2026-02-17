@@ -3,8 +3,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use dkg_domain::BlockchainId;
 pub(crate) use dkg_key_value_store::PeerAddressStore;
 use dkg_network::{
-    Multiaddr, PeerEvent, PeerId, RequestOutcomeKind,
-    protocols::{BatchGetProtocol, GetProtocol, ProtocolSpec},
+    Multiaddr, PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_GET, PeerEvent, PeerId, RequestOutcomeKind,
 };
 use tokio::sync::broadcast;
 
@@ -123,7 +122,7 @@ impl PeerService {
                 self.registry.update_identify(peer_id, info);
             }
             PeerEvent::RequestOutcome(outcome) => match outcome.protocol {
-                protocol if protocol == BatchGetProtocol::NAME => match outcome.outcome {
+                protocol if protocol == PROTOCOL_NAME_BATCH_GET => match outcome.outcome {
                     RequestOutcomeKind::Success => {
                         self.registry
                             .record_latency(outcome.peer_id, outcome.elapsed);
@@ -132,7 +131,7 @@ impl PeerService {
                         self.registry.record_request_failure(outcome.peer_id);
                     }
                 },
-                protocol if protocol == GetProtocol::NAME => {
+                protocol if protocol == PROTOCOL_NAME_GET => {
                     if matches!(outcome.outcome, RequestOutcomeKind::Failure) {
                         self.registry.record_request_failure(outcome.peer_id);
                     }

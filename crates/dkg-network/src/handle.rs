@@ -3,16 +3,17 @@
 //! This is the public-facing API that callers use to interact with the network.
 //! It communicates with the NetworkEventLoop via an action channel.
 
-use libp2p::{Multiaddr, PeerId, identity, request_response};
+use libp2p::{Multiaddr, PeerId, identity};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 use uuid::Uuid;
 
 use super::{
-    NetworkError, NetworkManagerConfig, ResponseMessage,
+    NetworkError, NetworkManagerConfig, ResponseHandle,
     actions::{NetworkControlAction, NetworkDataAction},
     behaviour::build_swarm,
+    message::{ResponseBody, ResponseMessage, ResponseMessageHeader, ResponseMessageType},
     protocols::{
         BatchGetAck, BatchGetRequestData, BatchGetResponseData, FinalityAck, FinalityRequestData,
         FinalityResponseData, GetAck, GetRequestData, GetResponseData, StoreAck, StoreRequestData,
@@ -159,14 +160,50 @@ impl NetworkManager {
         rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
-    /// Send a store response.
-    pub async fn send_store_response(
+    async fn send_store_response_message(
         &self,
-        channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
+        response: ResponseHandle<StoreAck>,
         message: ResponseMessage<StoreAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_data_action(NetworkDataAction::StoreResponse { channel, message })
-            .await
+        self.enqueue_data_action(NetworkDataAction::StoreResponse {
+            channel: response.into_inner(),
+            message,
+        })
+        .await
+    }
+
+    /// Send a store ACK response for an inbound request.
+    pub async fn send_store_ack(
+        &self,
+        response: ResponseHandle<StoreAck>,
+        operation_id: Uuid,
+        ack: StoreAck,
+    ) -> Result<(), NetworkError> {
+        self.send_store_response_message(
+            response,
+            ResponseMessage {
+                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
+                data: ResponseBody::ack(ack),
+            },
+        )
+        .await
+    }
+
+    /// Send a store NACK response for an inbound request.
+    pub async fn send_store_nack(
+        &self,
+        response: ResponseHandle<StoreAck>,
+        operation_id: Uuid,
+        error_message: impl Into<String>,
+    ) -> Result<(), NetworkError> {
+        self.send_store_response_message(
+            response,
+            ResponseMessage {
+                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
+                data: ResponseBody::error(error_message),
+            },
+        )
+        .await
     }
 
     /// Send a get request and await the response.
@@ -187,14 +224,50 @@ impl NetworkManager {
         rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
-    /// Send a get response.
-    pub async fn send_get_response(
+    async fn send_get_response_message(
         &self,
-        channel: request_response::ResponseChannel<ResponseMessage<GetAck>>,
+        response: ResponseHandle<GetAck>,
         message: ResponseMessage<GetAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_data_action(NetworkDataAction::GetResponse { channel, message })
-            .await
+        self.enqueue_data_action(NetworkDataAction::GetResponse {
+            channel: response.into_inner(),
+            message,
+        })
+        .await
+    }
+
+    /// Send a get ACK response for an inbound request.
+    pub async fn send_get_ack(
+        &self,
+        response: ResponseHandle<GetAck>,
+        operation_id: Uuid,
+        ack: GetAck,
+    ) -> Result<(), NetworkError> {
+        self.send_get_response_message(
+            response,
+            ResponseMessage {
+                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
+                data: ResponseBody::ack(ack),
+            },
+        )
+        .await
+    }
+
+    /// Send a get NACK response for an inbound request.
+    pub async fn send_get_nack(
+        &self,
+        response: ResponseHandle<GetAck>,
+        operation_id: Uuid,
+        error_message: impl Into<String>,
+    ) -> Result<(), NetworkError> {
+        self.send_get_response_message(
+            response,
+            ResponseMessage {
+                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
+                data: ResponseBody::error(error_message),
+            },
+        )
+        .await
     }
 
     /// Send a finality request and await the response.
@@ -215,14 +288,50 @@ impl NetworkManager {
         rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
-    /// Send a finality response.
-    pub async fn send_finality_response(
+    async fn send_finality_response_message(
         &self,
-        channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
+        response: ResponseHandle<FinalityAck>,
         message: ResponseMessage<FinalityAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_data_action(NetworkDataAction::FinalityResponse { channel, message })
-            .await
+        self.enqueue_data_action(NetworkDataAction::FinalityResponse {
+            channel: response.into_inner(),
+            message,
+        })
+        .await
+    }
+
+    /// Send a finality ACK response for an inbound request.
+    pub async fn send_finality_ack(
+        &self,
+        response: ResponseHandle<FinalityAck>,
+        operation_id: Uuid,
+        ack: FinalityAck,
+    ) -> Result<(), NetworkError> {
+        self.send_finality_response_message(
+            response,
+            ResponseMessage {
+                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
+                data: ResponseBody::ack(ack),
+            },
+        )
+        .await
+    }
+
+    /// Send a finality NACK response for an inbound request.
+    pub async fn send_finality_nack(
+        &self,
+        response: ResponseHandle<FinalityAck>,
+        operation_id: Uuid,
+        error_message: impl Into<String>,
+    ) -> Result<(), NetworkError> {
+        self.send_finality_response_message(
+            response,
+            ResponseMessage {
+                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
+                data: ResponseBody::error(error_message),
+            },
+        )
+        .await
     }
 
     /// Send a batch get request and await the response.
@@ -248,13 +357,49 @@ impl NetworkManager {
         rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
     }
 
-    /// Send a batch get response.
-    pub async fn send_batch_get_response(
+    async fn send_batch_get_response_message(
         &self,
-        channel: request_response::ResponseChannel<ResponseMessage<BatchGetAck>>,
+        response: ResponseHandle<BatchGetAck>,
         message: ResponseMessage<BatchGetAck>,
     ) -> Result<(), NetworkError> {
-        self.enqueue_data_action(NetworkDataAction::BatchGetResponse { channel, message })
-            .await
+        self.enqueue_data_action(NetworkDataAction::BatchGetResponse {
+            channel: response.into_inner(),
+            message,
+        })
+        .await
+    }
+
+    /// Send a batch-get ACK response for an inbound request.
+    pub async fn send_batch_get_ack(
+        &self,
+        response: ResponseHandle<BatchGetAck>,
+        operation_id: Uuid,
+        ack: BatchGetAck,
+    ) -> Result<(), NetworkError> {
+        self.send_batch_get_response_message(
+            response,
+            ResponseMessage {
+                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
+                data: ResponseBody::ack(ack),
+            },
+        )
+        .await
+    }
+
+    /// Send a batch-get NACK response for an inbound request.
+    pub async fn send_batch_get_nack(
+        &self,
+        response: ResponseHandle<BatchGetAck>,
+        operation_id: Uuid,
+        error_message: impl Into<String>,
+    ) -> Result<(), NetworkError> {
+        self.send_batch_get_response_message(
+            response,
+            ResponseMessage {
+                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
+                data: ResponseBody::error(error_message),
+            },
+        )
+        .await
     }
 }

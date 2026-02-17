@@ -13,10 +13,8 @@ use std::{
 use dkg_blockchain::BlockchainId;
 use dkg_domain::{ParsedUal, TokenIds, Visibility, parse_ual};
 use dkg_network::{
-    NetworkError, NetworkManager, PeerId,
-    message::ResponseBody,
+    NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_BATCH_GET,
     messages::{BatchGetRequestData, BatchGetResponseData},
-    protocols::{BatchGetProtocol, ProtocolSpec},
 };
 use dkg_triple_store::parse_metadata_from_triples;
 use futures::{StreamExt, stream::FuturesUnordered};
@@ -254,11 +252,8 @@ fn get_shard_peers(
     let my_peer_id = network_manager.peer_id();
 
     // Get shard peers that support BatchGetProtocol, excluding self
-    let peers = peer_service.select_shard_peers(
-        blockchain_id,
-        BatchGetProtocol::STREAM_PROTOCOL,
-        Some(my_peer_id),
-    );
+    let peers =
+        peer_service.select_shard_peers(blockchain_id, STREAM_PROTOCOL_BATCH_GET, Some(my_peer_id));
 
     // Stats: total in shard vs usable (have identify + support protocol)
     let shard_peer_count = peer_service.shard_peer_count(blockchain_id);
@@ -386,7 +381,7 @@ async fn fetch_kc_batch_from_network(
         let _guard = peer_span.enter();
 
         match result {
-            Ok(ResponseBody::Ack(ack)) => {
+            Ok(BatchGetResponseData::Ack(ack)) => {
                 let assertions = &ack.assertions;
                 let metadata_map = &ack.metadata;
                 let mut valid_count = 0usize;
@@ -436,7 +431,7 @@ async fn fetch_kc_batch_from_network(
                     break;
                 }
             }
-            Ok(ResponseBody::Error(_)) => {
+            Ok(BatchGetResponseData::Error(_)) => {
                 peer_span.record("valid_kcs", 0usize);
                 peer_span.record("status", tracing::field::display("nack"));
             }

@@ -1,4 +1,4 @@
-use dkg_network::{PeerId, message::ResponseBody, messages::StoreResponseData};
+use dkg_network::{PeerId, messages::StoreResponseData};
 use uuid::Uuid;
 
 use super::handler::SendPublishStoreRequestsCommandHandler;
@@ -15,7 +15,7 @@ impl SendPublishStoreRequestsCommandHandler {
         response: &StoreResponseData,
     ) -> bool {
         match response {
-            ResponseBody::Ack(ack) => {
+            StoreResponseData::Ack(ack) => {
                 let identity_id = ack.identity_id;
                 let signature = &ack.signature;
                 let sig_data = PublishStoreSignatureData::new(
@@ -55,7 +55,7 @@ impl SendPublishStoreRequestsCommandHandler {
                 );
                 true
             }
-            ResponseBody::Error(err) => {
+            StoreResponseData::Error(err) => {
                 tracing::debug!(
                     operation_id = %operation_id,
                     peer = %peer,

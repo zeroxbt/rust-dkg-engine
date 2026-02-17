@@ -4,10 +4,8 @@ use dkg_blockchain::{Address, BlockchainId, BlockchainManager, H256, U256};
 use dkg_domain::{KnowledgeCollectionMetadata, derive_ual};
 use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{
-    NetworkManager, PeerId,
-    message::ResponseBody,
-    messages::FinalityRequestData,
-    protocols::{FinalityProtocol, ProtocolSpec},
+    NetworkManager, PeerId, STREAM_PROTOCOL_FINALITY,
+    messages::{FinalityRequestData, FinalityResponseData},
 };
 use dkg_repository::RepositoryManager;
 use tracing::instrument;
@@ -350,7 +348,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
 
         if !self
             .peer_service
-            .peer_supports_protocol(&publisher_peer_id, FinalityProtocol::STREAM_PROTOCOL)
+            .peer_supports_protocol(&publisher_peer_id, STREAM_PROTOCOL_FINALITY)
         {
             tracing::warn!(
                 operation_id = %operation_id,
@@ -372,7 +370,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             .await;
 
         match result {
-            Ok(ResponseBody::Ack(_)) => {
+            Ok(FinalityResponseData::Ack(_)) => {
                 tracing::debug!(
                     operation_id = %operation_id,
                     publish_operation_id = %publish_operation_id,
@@ -380,7 +378,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                     "Finality request acknowledged by publisher"
                 );
             }
-            Ok(ResponseBody::Error(_)) => {
+            Ok(FinalityResponseData::Error(_)) => {
                 tracing::warn!(
                     operation_id = %operation_id,
                     publish_operation_id = %publish_operation_id,

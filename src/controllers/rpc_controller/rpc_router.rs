@@ -1,17 +1,12 @@
 use std::sync::Arc;
 
 use dkg_network::{
-    ImmediateResponse, InboundDecision, NetworkEventHandler, PeerId,
-    message::{
-        RequestMessage, ResponseBody, ResponseMessage, ResponseMessageHeader, ResponseMessageType,
-    },
+    ImmediateResponse, InboundDecision, InboundRequest, NetworkEventHandler, ResponseHandle,
     messages::{
         BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
         StoreAck, StoreRequestData,
     },
-    request_response::ResponseChannel,
 };
-use uuid::Uuid;
 
 use super::{PeerRateLimiter, RpcConfig};
 use crate::{
@@ -42,47 +37,31 @@ impl RpcRouter {
     }
 
     fn store_busy_response(
-        channel: ResponseChannel<ResponseMessage<StoreAck>>,
-        operation_id: Uuid,
+        channel: ResponseHandle<StoreAck>,
+        operation_id: uuid::Uuid,
     ) -> ImmediateResponse<StoreAck> {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: ResponseBody::error("Rate limited"),
-        };
-        ImmediateResponse { channel, message }
+        ImmediateResponse::busy(channel, operation_id, "Rate limited")
     }
 
     fn get_busy_response(
-        channel: ResponseChannel<ResponseMessage<GetAck>>,
-        operation_id: Uuid,
+        channel: ResponseHandle<GetAck>,
+        operation_id: uuid::Uuid,
     ) -> ImmediateResponse<GetAck> {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: ResponseBody::error("Rate limited"),
-        };
-        ImmediateResponse { channel, message }
+        ImmediateResponse::busy(channel, operation_id, "Rate limited")
     }
 
     fn finality_busy_response(
-        channel: ResponseChannel<ResponseMessage<FinalityAck>>,
-        operation_id: Uuid,
+        channel: ResponseHandle<FinalityAck>,
+        operation_id: uuid::Uuid,
     ) -> ImmediateResponse<FinalityAck> {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: ResponseBody::error("Rate limited"),
-        };
-        ImmediateResponse { channel, message }
+        ImmediateResponse::busy(channel, operation_id, "Rate limited")
     }
 
     fn batch_get_busy_response(
-        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
-        operation_id: Uuid,
+        channel: ResponseHandle<BatchGetAck>,
+        operation_id: uuid::Uuid,
     ) -> ImmediateResponse<BatchGetAck> {
-        let message = ResponseMessage {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: ResponseBody::error("Rate limited"),
-        };
-        ImmediateResponse { channel, message }
+        ImmediateResponse::busy(channel, operation_id, "Rate limited")
     }
 }
 
@@ -93,15 +72,14 @@ impl NetworkEventHandler for RpcRouter {
 
     fn on_store_request(
         &self,
-        request: RequestMessage<StoreRequestData>,
-        channel: ResponseChannel<ResponseMessage<StoreAck>>,
-        peer: PeerId,
+        request: InboundRequest<StoreRequestData>,
+        channel: ResponseHandle<StoreAck>,
     ) -> InboundDecision<StoreAck> {
-        let operation_id = request.header.operation_id();
-        if !self.peer_rate_limiter.check(&peer) {
+        let operation_id = request.operation_id();
+        if !self.peer_rate_limiter.check(&request.peer_id()) {
             return InboundDecision::RespondNow(Self::store_busy_response(channel, operation_id));
         }
-        if let Some(channel) = self.store_controller.handle_request(request, channel, peer) {
+        if let Some(channel) = self.store_controller.handle_request(request, channel) {
             return InboundDecision::RespondNow(Self::store_busy_response(channel, operation_id));
         }
         InboundDecision::Scheduled
@@ -109,15 +87,14 @@ impl NetworkEventHandler for RpcRouter {
 
     fn on_get_request(
         &self,
-        request: RequestMessage<GetRequestData>,
-        channel: ResponseChannel<ResponseMessage<GetAck>>,
-        peer: PeerId,
+        request: InboundRequest<GetRequestData>,
+        channel: ResponseHandle<GetAck>,
     ) -> InboundDecision<GetAck> {
-        let operation_id = request.header.operation_id();
-        if !self.peer_rate_limiter.check(&peer) {
+        let operation_id = request.operation_id();
+        if !self.peer_rate_limiter.check(&request.peer_id()) {
             return InboundDecision::RespondNow(Self::get_busy_response(channel, operation_id));
         }
-        if let Some(channel) = self.get_controller.handle_request(request, channel, peer) {
+        if let Some(channel) = self.get_controller.handle_request(request, channel) {
             return InboundDecision::RespondNow(Self::get_busy_response(channel, operation_id));
         }
         InboundDecision::Scheduled
@@ -125,21 +102,17 @@ impl NetworkEventHandler for RpcRouter {
 
     fn on_finality_request(
         &self,
-        request: RequestMessage<FinalityRequestData>,
-        channel: ResponseChannel<ResponseMessage<FinalityAck>>,
-        peer: PeerId,
+        request: InboundRequest<FinalityRequestData>,
+        channel: ResponseHandle<FinalityAck>,
     ) -> InboundDecision<FinalityAck> {
-        let operation_id = request.header.operation_id();
-        if !self.peer_rate_limiter.check(&peer) {
+        let operation_id = request.operation_id();
+        if !self.peer_rate_limiter.check(&request.peer_id()) {
             return InboundDecision::RespondNow(Self::finality_busy_response(
                 channel,
                 operation_id,
             ));
         }
-        if let Some(channel) = self
-            .finality_controller
-            .handle_request(request, channel, peer)
-        {
+        if let Some(channel) = self.finality_controller.handle_request(request, channel) {
             return InboundDecision::RespondNow(Self::finality_busy_response(
                 channel,
                 operation_id,
@@ -150,21 +123,17 @@ impl NetworkEventHandler for RpcRouter {
 
     fn on_batch_get_request(
         &self,
-        request: RequestMessage<BatchGetRequestData>,
-        channel: ResponseChannel<ResponseMessage<BatchGetAck>>,
-        peer: PeerId,
+        request: InboundRequest<BatchGetRequestData>,
+        channel: ResponseHandle<BatchGetAck>,
     ) -> InboundDecision<BatchGetAck> {
-        let operation_id = request.header.operation_id();
-        if !self.peer_rate_limiter.check(&peer) {
+        let operation_id = request.operation_id();
+        if !self.peer_rate_limiter.check(&request.peer_id()) {
             return InboundDecision::RespondNow(Self::batch_get_busy_response(
                 channel,
                 operation_id,
             ));
         }
-        if let Some(channel) = self
-            .batch_get_controller
-            .handle_request(request, channel, peer)
-        {
+        if let Some(channel) = self.batch_get_controller.handle_request(request, channel) {
             return InboundDecision::RespondNow(Self::batch_get_busy_response(
                 channel,
                 operation_id,

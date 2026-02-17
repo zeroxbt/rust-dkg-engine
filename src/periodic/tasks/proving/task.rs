@@ -9,10 +9,8 @@ use chrono::Utc;
 use dkg_blockchain::{BlockchainManager, U256};
 use dkg_domain::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual};
 use dkg_network::{
-    NetworkError, NetworkManager, PeerId,
-    message::ResponseBody,
+    NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_GET,
     messages::{GetRequestData, GetResponseData},
-    protocols::{GetProtocol, ProtocolSpec},
 };
 use dkg_repository::{ChallengeState, RepositoryManager};
 use dkg_triple_store::{
@@ -98,11 +96,8 @@ impl ProvingTask {
     /// Load shard peers for the given blockchain.
     fn load_shard_peers(&self, blockchain_id: &BlockchainId) -> Vec<PeerId> {
         let my_peer_id = self.network_manager.peer_id();
-        self.peer_service.select_shard_peers(
-            blockchain_id,
-            GetProtocol::STREAM_PROTOCOL,
-            Some(my_peer_id),
-        )
+        self.peer_service
+            .select_shard_peers(blockchain_id, STREAM_PROTOCOL_GET, Some(my_peer_id))
     }
 
     /// Fetch assertion from network peers.
@@ -262,7 +257,7 @@ impl ProvingTask {
         visibility: Visibility,
     ) -> Option<Assertion> {
         match response {
-            ResponseBody::Ack(ack) => {
+            GetResponseData::Ack(ack) => {
                 let assertion = &ack.assertion;
 
                 // Validate the assertion using the same service as GET command
@@ -280,7 +275,7 @@ impl ProvingTask {
                     assertion.private.clone(),
                 ))
             }
-            ResponseBody::Error(err) => {
+            GetResponseData::Error(err) => {
                 tracing::debug!(error = %err.error_message, "Peer returned error");
                 None
             }
