@@ -7,9 +7,10 @@ use alloy::{
 };
 
 use crate::{
-    AssetStorageChangedFilter, ContractChangedFilter, ContractName, HubEvents,
-    KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorageEvents, NewAssetStorageFilter,
-    NewContractFilter, ParameterChangedFilter, ParametersStorageEvents,
+    AssetStorageChangedFilter, ContractChangedFilter, ContractName,
+    KnowledgeCollectionCreatedFilter, NewAssetStorageFilter, NewContractFilter,
+    ParameterChangedFilter,
+    chains::evm::{Hub, KnowledgeCollectionStorage, ParametersStorage},
 };
 
 /// Blockchain-level event representation for monitored contracts.
@@ -53,25 +54,28 @@ pub fn monitored_contract_events() -> HashMap<ContractName, Vec<B256>> {
 /// Decode a contract log into a monitored blockchain event.
 pub fn decode_contract_event(contract_name: &ContractName, log: &Log) -> Option<ContractEvent> {
     match contract_name {
-        ContractName::Hub => decode_event::<HubEvents>(log).and_then(|event| match event {
-            HubEvents::NewContract(filter) => Some(ContractEvent::NewContract(filter)),
-            HubEvents::ContractChanged(filter) => Some(ContractEvent::ContractChanged(filter)),
-            HubEvents::NewAssetStorage(filter) => Some(ContractEvent::NewAssetStorage(filter)),
-            HubEvents::AssetStorageChanged(filter) => {
+        ContractName::Hub => decode_event::<Hub::HubEvents>(log).and_then(|event| match event {
+            Hub::HubEvents::NewContract(filter) => Some(ContractEvent::NewContract(filter)),
+            Hub::HubEvents::ContractChanged(filter) => Some(ContractEvent::ContractChanged(filter)),
+            Hub::HubEvents::NewAssetStorage(filter) => Some(ContractEvent::NewAssetStorage(filter)),
+            Hub::HubEvents::AssetStorageChanged(filter) => {
                 Some(ContractEvent::AssetStorageChanged(filter))
             }
             _ => None,
         }),
         ContractName::ParametersStorage => {
-            decode_event::<ParametersStorageEvents>(log).map(|event| match event {
-                ParametersStorageEvents::ParameterChanged(filter) => {
+            decode_event::<ParametersStorage::ParametersStorageEvents>(log).map(|event| {
+                match event {
+                    ParametersStorage::ParametersStorageEvents::ParameterChanged(filter) => {
                     ContractEvent::ParameterChanged(filter)
+                    }
                 }
             })
         }
         ContractName::KnowledgeCollectionStorage => {
-            decode_event::<KnowledgeCollectionStorageEvents>(log).and_then(|event| match event {
-                KnowledgeCollectionStorageEvents::KnowledgeCollectionCreated(filter) => {
+            decode_event::<KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents>(log)
+                .and_then(|event| match event {
+                KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents::KnowledgeCollectionCreated(filter) => {
                     Some(ContractEvent::KnowledgeCollectionCreated(filter))
                 }
                 _ => None,
