@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    context::Context,
+    context::SavePeerAddressesDeps,
     periodic::runner::run_with_shutdown,
     services::{PeerService, peer::PeerAddressStore},
 };
@@ -16,10 +16,10 @@ pub(crate) struct SavePeerAddressesTask {
 }
 
 impl SavePeerAddressesTask {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: SavePeerAddressesDeps) -> Self {
         Self {
-            peer_service: Arc::clone(context.peer_service()),
-            address_store: Arc::clone(context.peer_address_store()),
+            peer_service: deps.peer_service,
+            address_store: deps.peer_address_store,
         }
     }
 

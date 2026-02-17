@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use dkg_blockchain::{BlockchainId, BlockchainManager};
+use dkg_blockchain::BlockchainId;
 use dkg_domain::{AccessPolicy, construct_paranet_id, derive_ual, parse_ual};
-use dkg_repository::{RepositoryManager, models::paranet_kc_sync::Model as ParanetKcSyncModel};
+use dkg_repository::models::paranet_kc_sync::Model as ParanetKcSyncModel;
 use dkg_triple_store::parse_metadata_from_triples;
 use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
@@ -10,28 +10,19 @@ use uuid::Uuid;
 
 use super::ParanetSyncConfig;
 use crate::{
-    context::Context,
+    context::ParanetSyncDeps,
     periodic::runner::run_with_shutdown,
     services::{GetFetchRequest, GetFetchSource},
 };
 
 pub(crate) struct ParanetSyncTask {
     config: ParanetSyncConfig,
-    blockchain_manager: Arc<BlockchainManager>,
-    repository_manager: Arc<RepositoryManager>,
-    triple_store_service: Arc<crate::services::TripleStoreService>,
-    get_fetch_service: Arc<crate::services::GetFetchService>,
+    deps: ParanetSyncDeps,
 }
 
 impl ParanetSyncTask {
-    pub(crate) fn new(context: Arc<Context>, config: ParanetSyncConfig) -> Self {
-        Self {
-            config,
-            blockchain_manager: Arc::clone(context.blockchain_manager()),
-            repository_manager: Arc::clone(context.repository_manager()),
-            triple_store_service: Arc::clone(context.triple_store_service()),
-            get_fetch_service: Arc::clone(context.get_fetch_service()),
-        }
+    pub(crate) fn new(deps: ParanetSyncDeps, config: ParanetSyncConfig) -> Self {
+        Self { config, deps }
     }
 
     pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
@@ -125,6 +116,7 @@ impl ParanetSyncTask {
             let paranet_id =
                 construct_paranet_id(parsed.contract, parsed.knowledge_collection_id, ka_id);
             let access_policy = match self
+                .deps
                 .blockchain_manager
                 .get_nodes_access_policy(blockchain_id, paranet_id)
                 .await
@@ -157,7 +149,7 @@ impl ParanetSyncTask {
         blockchain_id: &BlockchainId,
         target: &ParanetSyncTarget,
     ) -> (u64, u64) {
-        let repo = self.repository_manager.paranet_kc_sync_repository();
+        let repo = self.deps.repository_manager.paranet_kc_sync_repository();
         let discovered = match repo.count_discovered(&target.paranet_ual).await {
             Ok(count) => count,
             Err(e) => {
@@ -172,6 +164,7 @@ impl ParanetSyncTask {
         };
 
         let on_chain_count = match self
+            .deps
             .blockchain_manager
             .get_paranet_knowledge_collection_count(blockchain_id, target.paranet_id_b256)
             .await
@@ -200,6 +193,7 @@ impl ParanetSyncTask {
         while offset < on_chain_count {
             let limit = page_limit.min(on_chain_count.saturating_sub(offset));
             let locators = match self
+                .deps
                 .blockchain_manager
                 .get_paranet_knowledge_collection_locators_with_pagination(
                     blockchain_id,
@@ -271,7 +265,7 @@ impl ParanetSyncTask {
         blockchain_id: &BlockchainId,
         targets: &[ParanetSyncTarget],
     ) -> Vec<ParanetKcSyncModel> {
-        let repo = self.repository_manager.paranet_kc_sync_repository();
+        let repo = self.deps.repository_manager.paranet_kc_sync_repository();
         let now_ts = chrono::Utc::now().timestamp();
         let total_limit = self.config.batch_size.max(1);
         let per_paranet_limit = (total_limit + targets.len().saturating_sub(1)) / targets.len();
@@ -336,9 +330,9 @@ impl ParanetSyncTask {
             .map(|target| (target.paranet_ual.clone(), target.clone()))
             .collect();
 
-        let repository_manager = Arc::clone(&self.repository_manager);
-        let triple_store_service = Arc::clone(&self.triple_store_service);
-        let get_fetch_service = Arc::clone(&self.get_fetch_service);
+        let repository_manager = Arc::clone(&self.deps.repository_manager);
+        let triple_store_service = Arc::clone(&self.deps.triple_store_service);
+        let get_fetch_service = Arc::clone(&self.deps.get_fetch_service);
         let retries_limit = self.config.retries_limit;
         let retry_delay_secs = self.config.retry_delay_secs;
         let max_in_flight = self.config.max_in_flight.max(1);

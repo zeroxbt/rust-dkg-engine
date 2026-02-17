@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 use dkg_network::{NetworkManager, PeerId};
 use tokio_util::sync::CancellationToken;
 
-use crate::{context::Context, periodic::runner::run_with_shutdown, services::PeerService};
+use crate::{context::DialPeersDeps, periodic::runner::run_with_shutdown, services::PeerService};
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
 const CONCURRENT_PEER_DIALS: usize = 20;
@@ -14,10 +14,10 @@ pub(crate) struct DialPeersTask {
 }
 
 impl DialPeersTask {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: DialPeersDeps) -> Self {
         Self {
-            network_manager: Arc::clone(context.network_manager()),
-            peer_service: Arc::clone(context.peer_service()),
+            network_manager: deps.network_manager,
+            peer_service: deps.peer_service,
         }
     }
 

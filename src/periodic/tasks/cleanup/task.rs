@@ -10,7 +10,7 @@ use super::{
     proof_challenges::cleanup_proof_challenges, publish_tmp_dataset::cleanup_publish_tmp_datasets,
 };
 use crate::{
-    context::Context,
+    context::CleanupDeps,
     operations::{GetOperation, PublishStoreOperation},
     periodic::runner::run_with_shutdown,
     services::OperationStatusService,
@@ -30,16 +30,16 @@ pub(crate) struct CleanupTask {
 }
 
 impl CleanupTask {
-    pub(crate) fn new(context: Arc<Context>, config: CleanupConfig) -> Self {
+    pub(crate) fn new(deps: CleanupDeps, config: CleanupConfig) -> Self {
         Self {
-            repository_manager: Arc::clone(context.repository_manager()),
-            publish_tmp_dataset_store: Arc::clone(context.publish_tmp_dataset_store()),
-            publish_operation_results: Arc::clone(context.publish_store_operation_status_service()),
-            get_operation_results: Arc::clone(context.get_operation_status_service()),
-            store_response_channels: Arc::clone(context.store_response_channels()),
-            get_response_channels: Arc::clone(context.get_response_channels()),
-            finality_response_channels: Arc::clone(context.finality_response_channels()),
-            batch_get_response_channels: Arc::clone(context.batch_get_response_channels()),
+            repository_manager: deps.repository_manager,
+            publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
+            publish_operation_results: deps.publish_operation_results,
+            get_operation_results: deps.get_operation_results,
+            store_response_channels: deps.store_response_channels,
+            get_response_channels: deps.get_response_channels,
+            finality_response_channels: deps.finality_response_channels,
+            batch_get_response_channels: deps.batch_get_response_channels,
             config,
         }
     }

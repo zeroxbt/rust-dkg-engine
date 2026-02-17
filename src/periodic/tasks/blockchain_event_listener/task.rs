@@ -16,7 +16,7 @@ use crate::{
         registry::Command, scheduler::CommandScheduler,
     },
     config,
-    context::Context,
+    context::BlockchainEventListenerDeps,
     error::NodeError,
     periodic::runner::run_with_shutdown,
 };
@@ -45,7 +45,7 @@ pub(crate) struct BlockchainEventListenerTask {
 }
 
 impl BlockchainEventListenerTask {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: BlockchainEventListenerDeps) -> Self {
         let is_dev_env = config::is_dev_env();
 
         let poll_interval = if is_dev_env {
@@ -61,9 +61,9 @@ impl BlockchainEventListenerTask {
         };
 
         Self {
-            blockchain_manager: Arc::clone(context.blockchain_manager()),
-            repository_manager: Arc::clone(context.repository_manager()),
-            command_scheduler: context.command_scheduler().clone(),
+            blockchain_manager: deps.blockchain_manager,
+            repository_manager: deps.repository_manager,
+            command_scheduler: deps.command_scheduler,
             poll_interval,
             max_blocks_to_sync,
         }

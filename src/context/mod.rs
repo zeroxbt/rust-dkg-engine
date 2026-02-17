@@ -6,11 +6,19 @@ use dkg_network::{BatchGetAck, FinalityAck, GetAck, StoreAck};
 use crate::{
     commands::scheduler::CommandScheduler,
     managers::Managers,
-    services::{
-        AssertionValidationService, GetFetchService, PeerService, Services, TripleStoreService,
-    },
+    services::{GetFetchService, PeerService, Services, TripleStoreService},
     state::ResponseChannels,
 };
+
+mod paranet_sync;
+mod periodic;
+mod sync;
+pub(crate) use paranet_sync::ParanetSyncDeps;
+pub(crate) use periodic::{
+    BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, ProvingDeps,
+    SavePeerAddressesDeps, ShardingTableCheckDeps,
+};
+pub(crate) use sync::SyncDeps;
 
 pub(crate) struct Context {
     command_scheduler: CommandScheduler,
@@ -53,20 +61,12 @@ impl Context {
         &self.services.triple_store
     }
 
-    pub(crate) fn assertion_validation_service(&self) -> &Arc<AssertionValidationService> {
-        &self.services.assertion_validation
-    }
-
     pub(crate) fn get_fetch_service(&self) -> &Arc<GetFetchService> {
         &self.services.get_fetch
     }
 
     pub(crate) fn peer_service(&self) -> &Arc<PeerService> {
         &self.services.peer_service
-    }
-
-    pub(crate) fn peer_address_store(&self) -> &Arc<crate::services::PeerAddressStore> {
-        &self.services.peer_address_store
     }
 
     pub(crate) fn publish_tmp_dataset_store(&self) -> &Arc<PublishTmpDatasetStore> {
@@ -103,5 +103,84 @@ impl Context {
     ) -> &Arc<crate::services::OperationStatusService<crate::operations::PublishStoreOperation>>
     {
         &self.services.publish_store_operation
+    }
+
+    pub(crate) fn sync_deps(&self) -> SyncDeps {
+        SyncDeps {
+            blockchain_manager: Arc::clone(&self.managers.blockchain),
+            repository_manager: Arc::clone(&self.managers.repository),
+            triple_store_service: Arc::clone(&self.services.triple_store),
+            network_manager: Arc::clone(&self.managers.network),
+            assertion_validation_service: Arc::clone(&self.services.assertion_validation),
+            peer_service: Arc::clone(&self.services.peer_service),
+        }
+    }
+
+    pub(crate) fn paranet_sync_deps(&self) -> ParanetSyncDeps {
+        ParanetSyncDeps {
+            blockchain_manager: Arc::clone(&self.managers.blockchain),
+            repository_manager: Arc::clone(&self.managers.repository),
+            triple_store_service: Arc::clone(&self.services.triple_store),
+            get_fetch_service: Arc::clone(&self.services.get_fetch),
+        }
+    }
+
+    pub(crate) fn dial_peers_deps(&self) -> DialPeersDeps {
+        DialPeersDeps {
+            network_manager: Arc::clone(&self.managers.network),
+            peer_service: Arc::clone(&self.services.peer_service),
+        }
+    }
+
+    pub(crate) fn save_peer_addresses_deps(&self) -> SavePeerAddressesDeps {
+        SavePeerAddressesDeps {
+            peer_service: Arc::clone(&self.services.peer_service),
+            peer_address_store: Arc::clone(&self.services.peer_address_store),
+        }
+    }
+
+    pub(crate) fn claim_rewards_deps(&self) -> ClaimRewardsDeps {
+        ClaimRewardsDeps {
+            blockchain_manager: Arc::clone(&self.managers.blockchain),
+        }
+    }
+
+    pub(crate) fn cleanup_deps(&self) -> CleanupDeps {
+        CleanupDeps {
+            repository_manager: Arc::clone(&self.managers.repository),
+            publish_tmp_dataset_store: Arc::clone(&self.services.publish_tmp_dataset_store),
+            publish_operation_results: Arc::clone(&self.services.publish_store_operation),
+            get_operation_results: Arc::clone(&self.services.get_operation),
+            store_response_channels: Arc::clone(&self.services.response_channels.store),
+            get_response_channels: Arc::clone(&self.services.response_channels.get),
+            finality_response_channels: Arc::clone(&self.services.response_channels.finality),
+            batch_get_response_channels: Arc::clone(&self.services.response_channels.batch_get),
+        }
+    }
+
+    pub(crate) fn sharding_table_check_deps(&self) -> ShardingTableCheckDeps {
+        ShardingTableCheckDeps {
+            blockchain_manager: Arc::clone(&self.managers.blockchain),
+            peer_service: Arc::clone(&self.services.peer_service),
+        }
+    }
+
+    pub(crate) fn blockchain_event_listener_deps(&self) -> BlockchainEventListenerDeps {
+        BlockchainEventListenerDeps {
+            blockchain_manager: Arc::clone(&self.managers.blockchain),
+            repository_manager: Arc::clone(&self.managers.repository),
+            command_scheduler: self.command_scheduler.clone(),
+        }
+    }
+
+    pub(crate) fn proving_deps(&self) -> ProvingDeps {
+        ProvingDeps {
+            blockchain_manager: Arc::clone(&self.managers.blockchain),
+            repository_manager: Arc::clone(&self.managers.repository),
+            triple_store_service: Arc::clone(&self.services.triple_store),
+            network_manager: Arc::clone(&self.managers.network),
+            assertion_validation_service: Arc::clone(&self.services.assertion_validation),
+            peer_service: Arc::clone(&self.services.peer_service),
+        }
     }
 }

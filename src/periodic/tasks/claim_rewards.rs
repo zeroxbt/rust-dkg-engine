@@ -5,7 +5,7 @@ use dkg_domain::BlockchainId;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio_util::sync::CancellationToken;
 
-use crate::{context::Context, periodic::runner::run_with_shutdown};
+use crate::{context::ClaimRewardsDeps, periodic::runner::run_with_shutdown};
 
 /// Interval between claim rewards cycles (1 hour).
 pub(crate) const CLAIM_REWARDS_INTERVAL: Duration = Duration::from_secs(60 * 60);
@@ -18,9 +18,9 @@ pub(crate) struct ClaimRewardsTask {
 }
 
 impl ClaimRewardsTask {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: ClaimRewardsDeps) -> Self {
         Self {
-            blockchain_manager: Arc::clone(context.blockchain_manager()),
+            blockchain_manager: deps.blockchain_manager,
         }
     }
 

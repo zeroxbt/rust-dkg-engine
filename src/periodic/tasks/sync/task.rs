@@ -4,9 +4,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use dkg_blockchain::{Address, BlockchainId, BlockchainManager, ContractName};
-use dkg_network::NetworkManager;
-use dkg_repository::RepositoryManager;
+use dkg_blockchain::{Address, BlockchainId, ContractName};
 use futures::future::join_all;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -20,34 +18,17 @@ use super::{
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
 use crate::{
-    context::Context,
-    periodic::runner::run_with_shutdown,
-    services::{
-        AssertionValidationService, GET_NETWORK_CONCURRENT_PEERS, PeerService, TripleStoreService,
-    },
+    context::SyncDeps, periodic::runner::run_with_shutdown, services::GET_NETWORK_CONCURRENT_PEERS,
 };
 
 pub(crate) struct SyncTask {
     config: SyncConfig,
-    blockchain_manager: Arc<BlockchainManager>,
-    repository_manager: Arc<RepositoryManager>,
-    triple_store_service: Arc<TripleStoreService>,
-    network_manager: Arc<NetworkManager>,
-    assertion_validation_service: Arc<AssertionValidationService>,
-    peer_service: Arc<PeerService>,
+    deps: SyncDeps,
 }
 
 impl SyncTask {
-    pub(crate) fn new(context: Arc<Context>, config: SyncConfig) -> Self {
-        Self {
-            config,
-            blockchain_manager: Arc::clone(context.blockchain_manager()),
-            repository_manager: Arc::clone(context.repository_manager()),
-            triple_store_service: Arc::clone(context.triple_store_service()),
-            network_manager: Arc::clone(context.network_manager()),
-            assertion_validation_service: Arc::clone(context.assertion_validation_service()),
-            peer_service: Arc::clone(context.peer_service()),
-        }
+    pub(crate) fn new(deps: SyncDeps, config: SyncConfig) -> Self {
+        Self { config, deps }
     }
 
     /// Sync a single contract using a three-stage pipeline.
@@ -74,6 +55,7 @@ impl SyncTask {
         // Step 1: Get pending KCs from queue
 
         let mut pending_kcs = self
+            .deps
             .repository_manager
             .kc_sync_repository()
             .get_pending_kcs_for_contract(
@@ -98,6 +80,7 @@ impl SyncTask {
 
             if newly_enqueued > 0 {
                 pending_kcs = self
+                    .deps
                     .repository_manager
                     .kc_sync_repository()
                     .get_pending_kcs_for_contract(
@@ -202,8 +185,8 @@ impl SyncTask {
         let filter_handle = {
             let blockchain_id = blockchain_id.clone();
             let contract_addr_str = contract_addr_str.clone();
-            let blockchain_manager = Arc::clone(&self.blockchain_manager);
-            let triple_store_service = Arc::clone(&self.triple_store_service);
+            let triple_store_service = Arc::clone(&self.deps.triple_store_service);
+            let blockchain_manager = Arc::clone(&self.deps.blockchain_manager);
             tokio::spawn(
                 async move {
                     filter_task(
@@ -225,9 +208,9 @@ impl SyncTask {
         // Spawn fetch task (with current span as parent for trace propagation)
         let fetch_handle = {
             let blockchain_id = blockchain_id.clone();
-            let network_manager = Arc::clone(&self.network_manager);
-            let assertion_validation_service = Arc::clone(&self.assertion_validation_service);
-            let peer_service = Arc::clone(&self.peer_service);
+            let network_manager = Arc::clone(&self.deps.network_manager);
+            let assertion_validation_service = Arc::clone(&self.deps.assertion_validation_service);
+            let peer_service = Arc::clone(&self.deps.peer_service);
             tokio::spawn(
                 async move {
                     fetch_task(
@@ -250,7 +233,7 @@ impl SyncTask {
         let insert_handle = {
             let blockchain_id = blockchain_id.clone();
             let contract_addr_str = contract_addr_str.clone();
-            let triple_store_service = Arc::clone(&self.triple_store_service);
+            let triple_store_service = Arc::clone(&self.deps.triple_store_service);
             tokio::spawn(
                 async move {
                     insert_task(
@@ -285,7 +268,7 @@ impl SyncTask {
         fetch_stats: &FetchStats,
         insert_stats: &InsertStats,
     ) {
-        let repo = self.repository_manager.kc_sync_repository();
+        let repo = self.deps.repository_manager.kc_sync_repository();
 
         // Remove already-synced KCs (found locally in filter stage)
         if !filter_stats.already_synced.is_empty()
@@ -381,6 +364,7 @@ impl SyncTask {
         );
 
         let latest_on_chain = self
+            .deps
             .blockchain_manager
             .get_latest_knowledge_collection_id(blockchain_id, contract_address)
             .await
@@ -400,6 +384,7 @@ impl SyncTask {
         );
 
         let last_checked = self
+            .deps
             .repository_manager
             .kc_sync_repository()
             .get_progress(blockchain_id.as_str(), contract_addr_str)
@@ -429,13 +414,15 @@ impl SyncTask {
         let new_kc_ids: Vec<u64> = (start_id..=end_id).collect();
         let count = new_kc_ids.len() as u64;
 
-        self.repository_manager
+        self.deps
+            .repository_manager
             .kc_sync_repository()
             .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, &new_kc_ids)
             .await
             .map_err(|e| format!("Failed to enqueue KCs: {}", e))?;
 
-        self.repository_manager
+        self.deps
+            .repository_manager
             .kc_sync_repository()
             .upsert_progress(blockchain_id.as_str(), contract_addr_str, end_id)
             .await
@@ -469,8 +456,11 @@ impl SyncTask {
         }
 
         // Check if we have identified enough shard peers before attempting sync
-        let total_shard_peers = self.peer_service.shard_peer_count(blockchain_id);
-        let identified_peers = self.peer_service.identified_shard_peer_count(blockchain_id);
+        let total_shard_peers = self.deps.peer_service.shard_peer_count(blockchain_id);
+        let identified_peers = self
+            .deps
+            .peer_service
+            .identified_shard_peer_count(blockchain_id);
         let min_required = (total_shard_peers / 3).max(GET_NETWORK_CONCURRENT_PEERS);
 
         if identified_peers < min_required {
@@ -492,6 +482,7 @@ impl SyncTask {
         );
 
         let contract_addresses = match self
+            .deps
             .blockchain_manager
             .get_all_contract_addresses(blockchain_id, &ContractName::KnowledgeCollectionStorage)
             .await

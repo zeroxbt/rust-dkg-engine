@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
-    context::Context,
+    context::ProvingDeps,
     periodic::runner::run_with_shutdown,
     services::{
         AssertionValidationService, GET_NETWORK_CONCURRENT_PEERS, PeerService, TripleStoreService,
@@ -38,14 +38,14 @@ pub(crate) struct ProvingTask {
 }
 
 impl ProvingTask {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: ProvingDeps) -> Self {
         Self {
-            blockchain_manager: Arc::clone(context.blockchain_manager()),
-            repository_manager: Arc::clone(context.repository_manager()),
-            triple_store_service: Arc::clone(context.triple_store_service()),
-            network_manager: Arc::clone(context.network_manager()),
-            assertion_validation_service: Arc::clone(context.assertion_validation_service()),
-            peer_service: Arc::clone(context.peer_service()),
+            blockchain_manager: deps.blockchain_manager,
+            repository_manager: deps.repository_manager,
+            triple_store_service: deps.triple_store_service,
+            network_manager: deps.network_manager,
+            assertion_validation_service: deps.assertion_validation_service,
+            peer_service: deps.peer_service,
         }
     }
 

@@ -5,7 +5,8 @@ use dkg_network::PeerId;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    context::Context, error::NodeError, periodic::runner::run_with_shutdown, services::PeerService,
+    context::ShardingTableCheckDeps, error::NodeError, periodic::runner::run_with_shutdown,
+    services::PeerService,
 };
 
 /// Interval between sharding table synchronization checks (10 seconds)
@@ -274,10 +275,10 @@ pub(crate) struct ShardingTableCheckTask {
 }
 
 impl ShardingTableCheckTask {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: ShardingTableCheckDeps) -> Self {
         Self {
-            blockchain_manager: Arc::clone(context.blockchain_manager()),
-            peer_service: Arc::clone(context.peer_service()),
+            blockchain_manager: deps.blockchain_manager,
+            peer_service: deps.peer_service,
         }
     }
 
