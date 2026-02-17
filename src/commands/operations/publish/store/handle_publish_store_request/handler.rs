@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use dkg_blockchain::{BlockchainId, BlockchainManager};
-use dkg_domain::Assertion;
+use dkg_domain::{Assertion, SignatureComponents};
 use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
-use dkg_network::{NetworkManager, PeerId, StoreAck};
+use dkg_network::{NetworkManager, PeerId, ResponseHandle, StoreAck};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -59,6 +59,52 @@ impl HandlePublishStoreRequestCommandHandler {
             peer_service: deps.peer_service,
             response_channels: deps.store_response_channels,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
+        }
+    }
+
+    pub(crate) async fn send_nack(
+        &self,
+        channel: ResponseHandle<StoreAck>,
+        operation_id: Uuid,
+        error_message: &str,
+    ) {
+        if let Err(e) = self
+            .network_manager
+            .send_store_nack(channel, operation_id, error_message)
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send store NACK response"
+            );
+        }
+    }
+
+    pub(crate) async fn send_ack(
+        &self,
+        channel: ResponseHandle<StoreAck>,
+        operation_id: Uuid,
+        identity_id: u128,
+        signature: SignatureComponents,
+    ) {
+        if let Err(e) = self
+            .network_manager
+            .send_store_ack(
+                channel,
+                operation_id,
+                StoreAck {
+                    identity_id,
+                    signature,
+                },
+            )
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send store ACK response"
+            );
         }
     }
 }

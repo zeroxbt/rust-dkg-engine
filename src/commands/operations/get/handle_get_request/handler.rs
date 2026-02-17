@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
-use dkg_domain::{TokenIds, parse_ual};
-use dkg_network::{GetAck, NetworkManager, PeerId};
+use dkg_domain::{Assertion, TokenIds, parse_ual};
+use dkg_network::{GetAck, NetworkManager, PeerId, ResponseHandle};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -60,6 +60,52 @@ impl HandleGetRequestCommandHandler {
             peer_service: deps.peer_service,
             response_channels: deps.get_response_channels,
             blockchain_manager: deps.blockchain_manager,
+        }
+    }
+
+    pub(crate) async fn send_nack(
+        &self,
+        channel: ResponseHandle<GetAck>,
+        operation_id: Uuid,
+        error_message: &str,
+    ) {
+        if let Err(e) = self
+            .network_manager
+            .send_get_nack(channel, operation_id, error_message)
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send get NACK response"
+            );
+        }
+    }
+
+    pub(crate) async fn send_ack(
+        &self,
+        channel: ResponseHandle<GetAck>,
+        operation_id: Uuid,
+        assertion: Assertion,
+        metadata: Option<Vec<String>>,
+    ) {
+        if let Err(e) = self
+            .network_manager
+            .send_get_ack(
+                channel,
+                operation_id,
+                GetAck {
+                    assertion,
+                    metadata,
+                },
+            )
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send get ACK response"
+            );
         }
     }
 }

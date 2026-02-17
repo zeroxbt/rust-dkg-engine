@@ -4,7 +4,7 @@ use std::{
 };
 
 use dkg_domain::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual};
-use dkg_network::{BatchGetAck, NetworkManager, PeerId};
+use dkg_network::{BatchGetAck, NetworkManager, PeerId, ResponseHandle};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -60,6 +60,52 @@ impl HandleBatchGetRequestCommandHandler {
             triple_store_service: deps.triple_store_service,
             peer_service: deps.peer_service,
             response_channels: deps.batch_get_response_channels,
+        }
+    }
+
+    pub(crate) async fn send_ack(
+        &self,
+        channel: ResponseHandle<BatchGetAck>,
+        operation_id: Uuid,
+        assertions: HashMap<String, Assertion>,
+        metadata: HashMap<String, Vec<String>>,
+    ) {
+        if let Err(e) = self
+            .network_manager
+            .send_batch_get_ack(
+                channel,
+                operation_id,
+                BatchGetAck {
+                    assertions,
+                    metadata,
+                },
+            )
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send batch-get ACK response"
+            );
+        }
+    }
+
+    pub(crate) async fn send_nack(
+        &self,
+        channel: ResponseHandle<BatchGetAck>,
+        operation_id: Uuid,
+        message: impl Into<String>,
+    ) {
+        if let Err(e) = self
+            .network_manager
+            .send_batch_get_nack(channel, operation_id, message)
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send batch-get NACK response"
+            );
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dkg_network::{FinalityAck, NetworkManager, PeerId};
+use dkg_network::{FinalityAck, NetworkManager, PeerId, ResponseHandle};
 use dkg_repository::RepositoryManager;
 use tracing::instrument;
 use uuid::Uuid;
@@ -53,6 +53,54 @@ impl HandlePublishFinalityRequestCommandHandler {
             repository_manager: deps.repository_manager,
             network_manager: deps.network_manager,
             response_channels: deps.finality_response_channels,
+        }
+    }
+
+    pub(crate) async fn send_ack(
+        &self,
+        channel: ResponseHandle<FinalityAck>,
+        operation_id: Uuid,
+        ual: &str,
+    ) {
+        if let Err(e) = self
+            .network_manager
+            .send_finality_ack(
+                channel,
+                operation_id,
+                FinalityAck {
+                    message: format!("Acknowledged storing of {}", ual),
+                },
+            )
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send finality ACK response"
+            );
+        }
+    }
+
+    pub(crate) async fn send_nack(
+        &self,
+        channel: ResponseHandle<FinalityAck>,
+        operation_id: Uuid,
+        ual: &str,
+    ) {
+        if let Err(e) = self
+            .network_manager
+            .send_finality_nack(
+                channel,
+                operation_id,
+                format!("Failed to acknowledge storing of {}", ual),
+            )
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to send finality NACK response"
+            );
         }
     }
 }
