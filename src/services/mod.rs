@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 pub(crate) use assertion_validation::AssertionValidationService;
 use dkg_key_value_store::PublishTmpDatasetStore;
-use dkg_network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck};
+use dkg_network::{BatchGetAck, FinalityAck, GetAck, StoreAck};
 pub(crate) use get_fetch::{
     GET_NETWORK_CONCURRENT_PEERS, GetFetchRequest, GetFetchService, GetFetchSource,
 };

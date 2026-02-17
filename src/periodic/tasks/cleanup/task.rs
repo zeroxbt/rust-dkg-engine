@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use dkg_key_value_store::PublishTmpDatasetStore;
-use dkg_network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck};
+use dkg_network::{BatchGetAck, FinalityAck, GetAck, StoreAck};
 use dkg_repository::RepositoryManager;
 use tokio_util::sync::CancellationToken;
 

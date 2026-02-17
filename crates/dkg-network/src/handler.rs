@@ -2,12 +2,8 @@ use libp2p::request_response::ResponseChannel;
 use uuid::Uuid;
 
 use super::{
-    PeerId,
-    message::{ResponseBody, ResponseMessage, ResponseMessageHeader, ResponseMessageType},
-    messages::{
-        BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
-        StoreAck, StoreRequestData,
-    },
+    BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
+    PeerId, StoreAck, StoreRequestData, message::ResponseMessage,
 };
 
 /// Inbound request envelope delivered to application handlers.
@@ -120,35 +116,17 @@ impl<T> ImmediateResponse<T> {
                 handle,
                 operation_id,
                 data,
-            } => (
-                handle,
-                ResponseMessage {
-                    header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-                    data: ResponseBody::ack(data),
-                },
-            ),
+            } => (handle, ResponseMessage::ack(operation_id, data)),
             Self::Nack {
                 handle,
                 operation_id,
                 error_message,
-            } => (
-                handle,
-                ResponseMessage {
-                    header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-                    data: ResponseBody::error(error_message),
-                },
-            ),
+            } => (handle, ResponseMessage::nack(operation_id, error_message)),
             Self::Busy {
                 handle,
                 operation_id,
                 error_message,
-            } => (
-                handle,
-                ResponseMessage {
-                    header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-                    data: ResponseBody::error(error_message),
-                },
-            ),
+            } => (handle, ResponseMessage::busy(operation_id, error_message)),
         }
     }
 }

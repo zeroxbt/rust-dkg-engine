@@ -1,4 +1,4 @@
-use dkg_network::{ResponseHandle, messages::StoreAck};
+use dkg_network::{ResponseHandle, StoreAck};
 use uuid::Uuid;
 
 use super::handler::HandlePublishStoreRequestCommandHandler;

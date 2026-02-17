@@ -3,7 +3,7 @@ use std::sync::Arc;
 use dkg_blockchain::{BlockchainId, BlockchainManager};
 use dkg_domain::Assertion;
 use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
-use dkg_network::{NetworkManager, PeerId, messages::StoreAck};
+use dkg_network::{NetworkManager, PeerId, StoreAck};
 use tracing::instrument;
 use uuid::Uuid;
 

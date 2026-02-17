@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use dkg_network::{
-    InboundRequest, ResponseHandle,
-    messages::{BatchGetAck, BatchGetRequestData},
-};
+use dkg_network::{BatchGetAck, BatchGetRequestData, InboundRequest, ResponseHandle};
 
 use super::inbound_request::store_channel_and_try_schedule;
 use crate::{

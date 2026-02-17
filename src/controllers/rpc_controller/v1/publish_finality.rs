@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use dkg_network::{
-    InboundRequest, ResponseHandle,
-    messages::{FinalityAck, FinalityRequestData},
-};
+use dkg_network::{FinalityAck, FinalityRequestData, InboundRequest, ResponseHandle};
 
 use super::inbound_request::store_channel_and_try_schedule;
 use crate::{

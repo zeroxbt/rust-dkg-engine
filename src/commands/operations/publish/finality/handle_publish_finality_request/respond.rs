@@ -1,4 +1,4 @@
-use dkg_network::{ResponseHandle, messages::FinalityAck};
+use dkg_network::{FinalityAck, ResponseHandle};
 use uuid::Uuid;
 
 use super::handler::HandlePublishFinalityRequestCommandHandler;

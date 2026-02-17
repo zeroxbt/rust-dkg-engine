@@ -111,6 +111,29 @@ pub struct ResponseMessage<T> {
     pub data: ResponseBody<T>,
 }
 
+impl<T> ResponseMessage<T> {
+    pub(crate) fn ack(operation_id: Uuid, data: T) -> Self {
+        Self {
+            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
+            data: ResponseBody::ack(data),
+        }
+    }
+
+    pub(crate) fn nack(operation_id: Uuid, error_message: impl Into<String>) -> Self {
+        Self {
+            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
+            data: ResponseBody::error(error_message),
+        }
+    }
+
+    pub(crate) fn busy(operation_id: Uuid, error_message: impl Into<String>) -> Self {
+        Self {
+            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
+            data: ResponseBody::error(error_message),
+        }
+    }
+}
+
 impl<'de, T> Deserialize<'de> for ResponseMessage<T>
 where
     T: DeserializeOwned,
@@ -146,3 +169,7 @@ where
         Ok(Self { header, data })
     }
 }
+
+#[cfg(test)]
+#[path = "messages/tests.rs"]
+mod tests;

@@ -1,5 +1,5 @@
 use dkg_domain::Assertion;
-use dkg_network::{ResponseHandle, messages::GetAck};
+use dkg_network::{GetAck, ResponseHandle};
 use uuid::Uuid;
 
 use crate::commands::operations::get::handle_get_request::HandleGetRequestCommandHandler;

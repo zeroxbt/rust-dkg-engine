@@ -4,8 +4,8 @@ use dkg_blockchain::{BlockchainId, BlockchainManager};
 use dkg_domain::Assertion;
 use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
 use dkg_network::{
-    NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_STORE,
-    messages::{StoreRequestData, StoreResponseData},
+    NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_STORE, StoreRequestData,
+    StoreResponseData,
 };
 use futures::{StreamExt, stream::FuturesUnordered};
 use tracing::instrument;

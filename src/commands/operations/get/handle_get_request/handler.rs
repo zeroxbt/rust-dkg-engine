@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
 use dkg_domain::{TokenIds, parse_ual};
-use dkg_network::{NetworkManager, PeerId, messages::GetAck};
+use dkg_network::{GetAck, NetworkManager, PeerId};
 use tracing::instrument;
 use uuid::Uuid;
 

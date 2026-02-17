@@ -6,8 +6,7 @@ use dkg_domain::{
     construct_paranet_id, parse_ual,
 };
 use dkg_network::{
-    NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_GET,
-    messages::{GetRequestData, GetResponseData},
+    GetRequestData, GetResponseData, NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_GET,
 };
 use futures::{StreamExt, stream::FuturesUnordered};
 use uuid::Uuid;

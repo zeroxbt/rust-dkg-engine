@@ -9,9 +9,7 @@ mod messages;
 use std::time::Duration;
 
 use super::ProtocolSpec;
-pub use crate::protocols::batch_get::messages::{
-    BatchGetAck, BatchGetRequestData, BatchGetResponseData,
-};
+pub use messages::{BatchGetAck, BatchGetRequestData, BatchGetResponseData};
 
 /// Batch get protocol marker type.
 pub struct BatchGetProtocol;

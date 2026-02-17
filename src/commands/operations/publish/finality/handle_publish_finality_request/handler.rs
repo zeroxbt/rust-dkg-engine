@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dkg_network::{NetworkManager, PeerId, messages::FinalityAck};
+use dkg_network::{FinalityAck, NetworkManager, PeerId};
 use dkg_repository::RepositoryManager;
 use tracing::instrument;
 use uuid::Uuid;

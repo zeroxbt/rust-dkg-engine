@@ -1,4 +1,4 @@
-use dkg_network::{PeerId, messages::StoreResponseData};
+use dkg_network::{PeerId, StoreResponseData};
 use uuid::Uuid;
 
 use super::handler::SendPublishStoreRequestsCommandHandler;

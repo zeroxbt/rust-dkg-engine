@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
 use dkg_network::{
+    BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
     ImmediateResponse, InboundDecision, InboundRequest, NetworkEventHandler, ResponseHandle,
-    messages::{
-        BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
-        StoreAck, StoreRequestData,
-    },
+    StoreAck, StoreRequestData,
 };
 
 use super::{PeerRateLimiter, RpcConfig};

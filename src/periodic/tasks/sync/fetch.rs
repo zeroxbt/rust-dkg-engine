@@ -13,8 +13,8 @@ use std::{
 use dkg_blockchain::BlockchainId;
 use dkg_domain::{ParsedUal, TokenIds, Visibility, parse_ual};
 use dkg_network::{
-    NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_BATCH_GET,
-    messages::{BatchGetRequestData, BatchGetResponseData},
+    BatchGetRequestData, BatchGetResponseData, NetworkError, NetworkManager, PeerId,
+    STREAM_PROTOCOL_BATCH_GET,
 };
 use dkg_triple_store::parse_metadata_from_triples;
 use futures::{StreamExt, stream::FuturesUnordered};

@@ -13,7 +13,7 @@ use super::{
     NetworkError, NetworkManagerConfig, ResponseHandle,
     actions::{NetworkControlAction, NetworkDataAction},
     behaviour::build_swarm,
-    message::{ResponseBody, ResponseMessage, ResponseMessageHeader, ResponseMessageType},
+    message::ResponseMessage,
     protocols::{
         BatchGetAck, BatchGetRequestData, BatchGetResponseData, FinalityAck, FinalityRequestData,
         FinalityResponseData, GetAck, GetRequestData, GetResponseData, StoreAck, StoreRequestData,
@@ -179,14 +179,8 @@ impl NetworkManager {
         operation_id: Uuid,
         ack: StoreAck,
     ) -> Result<(), NetworkError> {
-        self.send_store_response_message(
-            response,
-            ResponseMessage {
-                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-                data: ResponseBody::ack(ack),
-            },
-        )
-        .await
+        self.send_store_response_message(response, ResponseMessage::ack(operation_id, ack))
+            .await
     }
 
     /// Send a store NACK response for an inbound request.
@@ -198,10 +192,7 @@ impl NetworkManager {
     ) -> Result<(), NetworkError> {
         self.send_store_response_message(
             response,
-            ResponseMessage {
-                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-                data: ResponseBody::error(error_message),
-            },
+            ResponseMessage::nack(operation_id, error_message),
         )
         .await
     }
@@ -243,14 +234,8 @@ impl NetworkManager {
         operation_id: Uuid,
         ack: GetAck,
     ) -> Result<(), NetworkError> {
-        self.send_get_response_message(
-            response,
-            ResponseMessage {
-                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-                data: ResponseBody::ack(ack),
-            },
-        )
-        .await
+        self.send_get_response_message(response, ResponseMessage::ack(operation_id, ack))
+            .await
     }
 
     /// Send a get NACK response for an inbound request.
@@ -260,14 +245,8 @@ impl NetworkManager {
         operation_id: Uuid,
         error_message: impl Into<String>,
     ) -> Result<(), NetworkError> {
-        self.send_get_response_message(
-            response,
-            ResponseMessage {
-                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-                data: ResponseBody::error(error_message),
-            },
-        )
-        .await
+        self.send_get_response_message(response, ResponseMessage::nack(operation_id, error_message))
+            .await
     }
 
     /// Send a finality request and await the response.
@@ -307,14 +286,8 @@ impl NetworkManager {
         operation_id: Uuid,
         ack: FinalityAck,
     ) -> Result<(), NetworkError> {
-        self.send_finality_response_message(
-            response,
-            ResponseMessage {
-                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-                data: ResponseBody::ack(ack),
-            },
-        )
-        .await
+        self.send_finality_response_message(response, ResponseMessage::ack(operation_id, ack))
+            .await
     }
 
     /// Send a finality NACK response for an inbound request.
@@ -326,10 +299,7 @@ impl NetworkManager {
     ) -> Result<(), NetworkError> {
         self.send_finality_response_message(
             response,
-            ResponseMessage {
-                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-                data: ResponseBody::error(error_message),
-            },
+            ResponseMessage::nack(operation_id, error_message),
         )
         .await
     }
@@ -376,14 +346,8 @@ impl NetworkManager {
         operation_id: Uuid,
         ack: BatchGetAck,
     ) -> Result<(), NetworkError> {
-        self.send_batch_get_response_message(
-            response,
-            ResponseMessage {
-                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-                data: ResponseBody::ack(ack),
-            },
-        )
-        .await
+        self.send_batch_get_response_message(response, ResponseMessage::ack(operation_id, ack))
+            .await
     }
 
     /// Send a batch-get NACK response for an inbound request.
@@ -395,10 +359,7 @@ impl NetworkManager {
     ) -> Result<(), NetworkError> {
         self.send_batch_get_response_message(
             response,
-            ResponseMessage {
-                header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-                data: ResponseBody::error(error_message),
-            },
+            ResponseMessage::nack(operation_id, error_message),
         )
         .await
     }

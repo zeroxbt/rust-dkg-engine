@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use dkg_domain::Assertion;
-use dkg_network::{ResponseHandle, messages::BatchGetAck};
+use dkg_network::{BatchGetAck, ResponseHandle};
 use uuid::Uuid;
 
 use crate::commands::operations::batch_get::handle_batch_get_request::HandleBatchGetRequestCommandHandler;

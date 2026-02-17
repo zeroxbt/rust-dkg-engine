@@ -4,7 +4,7 @@ use std::{
 };
 
 use dkg_domain::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual};
-use dkg_network::{NetworkManager, PeerId, messages::BatchGetAck};
+use dkg_network::{BatchGetAck, NetworkManager, PeerId};
 use tracing::instrument;
 use uuid::Uuid;
 

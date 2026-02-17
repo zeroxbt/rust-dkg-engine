@@ -4,8 +4,7 @@ use dkg_blockchain::{Address, BlockchainId, BlockchainManager, H256, U256};
 use dkg_domain::{KnowledgeCollectionMetadata, derive_ual};
 use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{
-    NetworkManager, PeerId, STREAM_PROTOCOL_FINALITY,
-    messages::{FinalityRequestData, FinalityResponseData},
+    FinalityRequestData, FinalityResponseData, NetworkManager, PeerId, STREAM_PROTOCOL_FINALITY,
 };
 use dkg_repository::RepositoryManager;
 use tracing::instrument;

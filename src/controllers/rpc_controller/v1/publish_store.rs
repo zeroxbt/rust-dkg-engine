@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use dkg_domain::Assertion;
-use dkg_network::{
-    InboundRequest, ResponseHandle,
-    messages::{StoreAck, StoreRequestData},
-};
+use dkg_network::{InboundRequest, ResponseHandle, StoreAck, StoreRequestData};
 
 use super::inbound_request::store_channel_and_try_schedule;
 use crate::{

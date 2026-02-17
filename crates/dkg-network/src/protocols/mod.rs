@@ -11,15 +11,15 @@ mod codec;
 mod spec;
 
 // Protocol submodules
-pub mod batch_get;
-pub mod finality;
-pub mod get;
-pub mod store;
+mod batch_get;
+mod finality;
+mod get;
+mod store;
 
 // Re-export protocol types for convenience
 pub use batch_get::{BatchGetAck, BatchGetProtocol, BatchGetRequestData, BatchGetResponseData};
-pub use codec::JsCompatCodec;
+pub(crate) use codec::JsCompatCodec;
 pub use finality::{FinalityAck, FinalityProtocol, FinalityRequestData, FinalityResponseData};
 pub use get::{GetAck, GetProtocol, GetRequestData, GetResponseData};
-pub use spec::{ProtocolResponse, ProtocolSpec};
+pub(crate) use spec::{ProtocolResponse, ProtocolSpec};
 pub use store::{StoreAck, StoreProtocol, StoreRequestData, StoreResponseData};

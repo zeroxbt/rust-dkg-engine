@@ -15,12 +15,8 @@ mod handler;
 mod key_manager;
 mod message;
 mod pending_requests;
-pub mod protocols;
+mod protocols;
 mod request_outcome;
-
-// Keep messages module for backwards compatibility during transition
-// TODO: Remove this module after all imports are updated
-pub mod messages;
 
 pub use config::NetworkManagerConfig;
 pub use error::NetworkError;
@@ -33,6 +29,11 @@ pub use key_manager::KeyManager;
 // Re-export libp2p types for application use
 pub use libp2p::identity::Keypair;
 pub use libp2p::{Multiaddr, PeerId, StreamProtocol};
+pub use protocols::{
+    BatchGetAck, BatchGetRequestData, BatchGetResponseData, FinalityAck, FinalityRequestData,
+    FinalityResponseData, GetAck, GetRequestData, GetResponseData, StoreAck, StoreRequestData,
+    StoreResponseData,
+};
 pub use request_outcome::{IdentifyInfo, PeerEvent, RequestOutcome, RequestOutcomeKind};
 
 // Stable protocol identifiers for application-layer routing/filtering.
