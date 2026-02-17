@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::Context,
+    context::SendPublishFinalityRequestDeps,
     services::{PeerService, TripleStoreService},
 };
 
@@ -77,14 +77,14 @@ pub(crate) struct SendPublishFinalityRequestCommandHandler {
 }
 
 impl SendPublishFinalityRequestCommandHandler {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: SendPublishFinalityRequestDeps) -> Self {
         Self {
-            repository_manager: Arc::clone(context.repository_manager()),
-            network_manager: Arc::clone(context.network_manager()),
-            peer_service: Arc::clone(context.peer_service()),
-            blockchain_manager: Arc::clone(context.blockchain_manager()),
-            publish_tmp_dataset_store: Arc::clone(context.publish_tmp_dataset_store()),
-            triple_store_service: Arc::clone(context.triple_store_service()),
+            repository_manager: deps.repository_manager,
+            network_manager: deps.network_manager,
+            peer_service: deps.peer_service,
+            blockchain_manager: deps.blockchain_manager,
+            publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
+            triple_store_service: deps.triple_store_service,
         }
     }
 }

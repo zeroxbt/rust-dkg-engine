@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::Context,
+    context::HandleBatchGetRequestDeps,
     services::{PeerService, TripleStoreService},
     state::ResponseChannels,
 };
@@ -54,12 +54,12 @@ pub(crate) struct HandleBatchGetRequestCommandHandler {
 }
 
 impl HandleBatchGetRequestCommandHandler {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: HandleBatchGetRequestDeps) -> Self {
         Self {
-            network_manager: Arc::clone(context.network_manager()),
-            triple_store_service: Arc::clone(context.triple_store_service()),
-            peer_service: Arc::clone(context.peer_service()),
-            response_channels: Arc::clone(context.batch_get_response_channels()),
+            network_manager: deps.network_manager,
+            triple_store_service: deps.triple_store_service,
+            peer_service: deps.peer_service,
+            response_channels: deps.batch_get_response_channels,
         }
     }
 }

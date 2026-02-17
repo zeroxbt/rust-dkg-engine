@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::Context,
+    context::HandlePublishFinalityRequestDeps,
     state::ResponseChannels,
 };
 
@@ -48,11 +48,11 @@ pub(crate) struct HandlePublishFinalityRequestCommandHandler {
 }
 
 impl HandlePublishFinalityRequestCommandHandler {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: HandlePublishFinalityRequestDeps) -> Self {
         Self {
-            repository_manager: Arc::clone(context.repository_manager()),
-            network_manager: Arc::clone(context.network_manager()),
-            response_channels: Arc::clone(context.finality_response_channels()),
+            repository_manager: deps.repository_manager,
+            network_manager: deps.network_manager,
+            response_channels: deps.finality_response_channels,
         }
     }
 }

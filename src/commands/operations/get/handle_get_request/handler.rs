@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::Context,
+    context::HandleGetRequestDeps,
     services::{PeerService, TripleStoreService},
     state::ResponseChannels,
 };
@@ -53,13 +53,13 @@ pub(crate) struct HandleGetRequestCommandHandler {
 }
 
 impl HandleGetRequestCommandHandler {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: HandleGetRequestDeps) -> Self {
         Self {
-            network_manager: Arc::clone(context.network_manager()),
-            triple_store_service: Arc::clone(context.triple_store_service()),
-            peer_service: Arc::clone(context.peer_service()),
-            response_channels: Arc::clone(context.get_response_channels()),
-            blockchain_manager: Arc::clone(context.blockchain_manager()),
+            network_manager: deps.network_manager,
+            triple_store_service: deps.triple_store_service,
+            peer_service: deps.peer_service,
+            response_channels: deps.get_response_channels,
+            blockchain_manager: deps.blockchain_manager,
         }
     }
 }

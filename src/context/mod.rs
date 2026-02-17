@@ -1,18 +1,23 @@
 use std::sync::Arc;
 
-use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{BatchGetAck, FinalityAck, GetAck, StoreAck};
 
 use crate::{
     commands::scheduler::CommandScheduler,
     managers::Managers,
-    services::{GetFetchService, PeerService, Services, TripleStoreService},
+    services::{PeerService, Services},
     state::ResponseChannels,
 };
 
+mod commands;
 mod paranet_sync;
 mod periodic;
 mod sync;
+pub(crate) use commands::{
+    HandleBatchGetRequestDeps, HandleGetRequestDeps, HandlePublishFinalityRequestDeps,
+    HandlePublishStoreRequestDeps, SendGetRequestsDeps, SendPublishFinalityRequestDeps,
+    SendPublishStoreRequestsDeps,
+};
 pub(crate) use paranet_sync::ParanetSyncDeps;
 pub(crate) use periodic::{
     BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, ProvingDeps,
@@ -57,20 +62,8 @@ impl Context {
     }
 
     // Service accessors
-    pub(crate) fn triple_store_service(&self) -> &Arc<TripleStoreService> {
-        &self.services.triple_store
-    }
-
-    pub(crate) fn get_fetch_service(&self) -> &Arc<GetFetchService> {
-        &self.services.get_fetch
-    }
-
     pub(crate) fn peer_service(&self) -> &Arc<PeerService> {
         &self.services.peer_service
-    }
-
-    pub(crate) fn publish_tmp_dataset_store(&self) -> &Arc<PublishTmpDatasetStore> {
-        &self.services.publish_tmp_dataset_store
     }
 
     // Response channel accessors
@@ -181,6 +174,73 @@ impl Context {
             network_manager: Arc::clone(&self.managers.network),
             assertion_validation_service: Arc::clone(&self.services.assertion_validation),
             peer_service: Arc::clone(&self.services.peer_service),
+        }
+    }
+
+    pub(crate) fn send_publish_store_requests_deps(&self) -> SendPublishStoreRequestsDeps {
+        SendPublishStoreRequestsDeps {
+            network_manager: Arc::clone(&self.managers.network),
+            peer_service: Arc::clone(&self.services.peer_service),
+            blockchain_manager: Arc::clone(&self.managers.blockchain),
+            publish_store_operation_status_service: Arc::clone(
+                &self.services.publish_store_operation,
+            ),
+            publish_tmp_dataset_store: Arc::clone(&self.services.publish_tmp_dataset_store),
+        }
+    }
+
+    pub(crate) fn handle_publish_store_request_deps(&self) -> HandlePublishStoreRequestDeps {
+        HandlePublishStoreRequestDeps {
+            network_manager: Arc::clone(&self.managers.network),
+            blockchain_manager: Arc::clone(&self.managers.blockchain),
+            peer_service: Arc::clone(&self.services.peer_service),
+            store_response_channels: Arc::clone(&self.services.response_channels.store),
+            publish_tmp_dataset_store: Arc::clone(&self.services.publish_tmp_dataset_store),
+        }
+    }
+
+    pub(crate) fn send_publish_finality_request_deps(&self) -> SendPublishFinalityRequestDeps {
+        SendPublishFinalityRequestDeps {
+            repository_manager: Arc::clone(&self.managers.repository),
+            network_manager: Arc::clone(&self.managers.network),
+            peer_service: Arc::clone(&self.services.peer_service),
+            blockchain_manager: Arc::clone(&self.managers.blockchain),
+            publish_tmp_dataset_store: Arc::clone(&self.services.publish_tmp_dataset_store),
+            triple_store_service: Arc::clone(&self.services.triple_store),
+        }
+    }
+
+    pub(crate) fn handle_publish_finality_request_deps(&self) -> HandlePublishFinalityRequestDeps {
+        HandlePublishFinalityRequestDeps {
+            repository_manager: Arc::clone(&self.managers.repository),
+            network_manager: Arc::clone(&self.managers.network),
+            finality_response_channels: Arc::clone(&self.services.response_channels.finality),
+        }
+    }
+
+    pub(crate) fn send_get_requests_deps(&self) -> SendGetRequestsDeps {
+        SendGetRequestsDeps {
+            get_operation_status_service: Arc::clone(&self.services.get_operation),
+            get_fetch_service: Arc::clone(&self.services.get_fetch),
+        }
+    }
+
+    pub(crate) fn handle_get_request_deps(&self) -> HandleGetRequestDeps {
+        HandleGetRequestDeps {
+            network_manager: Arc::clone(&self.managers.network),
+            triple_store_service: Arc::clone(&self.services.triple_store),
+            peer_service: Arc::clone(&self.services.peer_service),
+            get_response_channels: Arc::clone(&self.services.response_channels.get),
+            blockchain_manager: Arc::clone(&self.managers.blockchain),
+        }
+    }
+
+    pub(crate) fn handle_batch_get_request_deps(&self) -> HandleBatchGetRequestDeps {
+        HandleBatchGetRequestDeps {
+            network_manager: Arc::clone(&self.managers.network),
+            triple_store_service: Arc::clone(&self.services.triple_store),
+            peer_service: Arc::clone(&self.services.peer_service),
+            batch_get_response_channels: Arc::clone(&self.services.response_channels.batch_get),
         }
     }
 }

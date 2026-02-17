@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::Context,
+    context::SendGetRequestsDeps,
     operations::{GetOperation, GetOperationResult},
     services::{
         GetFetchRequest, operation_status::OperationStatusService as GenericOperationService,
@@ -47,10 +47,10 @@ pub(crate) struct SendGetRequestsCommandHandler {
 }
 
 impl SendGetRequestsCommandHandler {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: SendGetRequestsDeps) -> Self {
         Self {
-            get_operation_status_service: Arc::clone(context.get_operation_status_service()),
-            get_fetch_service: Arc::clone(context.get_fetch_service()),
+            get_operation_status_service: deps.get_operation_status_service,
+            get_fetch_service: deps.get_fetch_service,
         }
     }
 }

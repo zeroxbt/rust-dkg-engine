@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    context::Context,
+    context::SendPublishStoreRequestsDeps,
     operations::{PublishStoreOperation, PublishStoreOperationResult},
     services::{PeerService, operation_status::OperationStatusService as GenericOperationService},
 };
@@ -60,15 +60,13 @@ pub(crate) struct SendPublishStoreRequestsCommandHandler {
 }
 
 impl SendPublishStoreRequestsCommandHandler {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: SendPublishStoreRequestsDeps) -> Self {
         Self {
-            network_manager: Arc::clone(context.network_manager()),
-            peer_service: Arc::clone(context.peer_service()),
-            blockchain_manager: Arc::clone(context.blockchain_manager()),
-            publish_store_operation_status_service: Arc::clone(
-                context.publish_store_operation_status_service(),
-            ),
-            publish_tmp_dataset_store: Arc::clone(context.publish_tmp_dataset_store()),
+            network_manager: deps.network_manager,
+            peer_service: deps.peer_service,
+            blockchain_manager: deps.blockchain_manager,
+            publish_store_operation_status_service: deps.publish_store_operation_status_service,
+            publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
         }
     }
 }
