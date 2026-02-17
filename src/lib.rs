@@ -1,3 +1,4 @@
+mod bootstrap;
 mod commands;
 mod config;
 mod controllers;
@@ -12,28 +13,7 @@ mod state;
 
 use std::sync::Arc;
 
-use commands::{
-    HandleBatchGetRequestDeps, HandleGetRequestDeps, HandlePublishFinalityRequestDeps,
-    HandlePublishStoreRequestDeps, SendGetRequestsDeps, SendPublishFinalityRequestDeps,
-    SendPublishStoreRequestsDeps,
-    executor::CommandExecutor,
-    registry::{CommandResolver, CommandResolverDeps},
-    scheduler::CommandScheduler,
-};
-use controllers::{
-    http_api_controller::HttpApiDeps,
-    rpc_controller::{
-        BatchGetRpcControllerDeps, GetRpcControllerDeps, PublishFinalityRpcControllerDeps,
-        PublishStoreRpcControllerDeps, RpcRouterDeps,
-    },
-};
-use dkg_network::{KeyManager, Multiaddr, PeerId};
-use periodic::{
-    BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, ParanetSyncDeps,
-    ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps, SyncDeps, seed_sharding_tables,
-};
-
-use crate::config::AppPaths;
+use periodic::seed_sharding_tables;
 
 pub async fn run() {
     // Install rustls crypto provider before any TLS connections
@@ -41,25 +21,17 @@ pub async fn run() {
         .install_default()
         .expect("Failed to install rustls crypto provider");
 
-    // Load configuration first, then initialize logger with config settings
-    let config = Arc::new(config::initialize_configuration());
-    logger::initialize(&config.logger, &config.telemetry);
+    let bootstrap::CoreBootstrap {
+        config,
+        managers,
+        services,
+        command_scheduler,
+        command_rx,
+        mut network_event_loop,
+        blockchain_ids,
+    } = bootstrap::build_core().await;
 
     display_rust_dkg_engine_ascii_art();
-
-    // Derive all filesystem paths from the root data directory
-    let paths = AppPaths::from_root(config.app_data_path.clone());
-
-    // Load or generate network identity key (security-critical, handled at app level)
-    let network_key = KeyManager::load_or_generate(&paths.network_key)
-        .await
-        .expect("Failed to load or generate network identity key");
-
-    // Create command scheduler channel
-    let (command_scheduler, command_rx) = CommandScheduler::channel();
-    // Initialize managers and services
-    let (managers, mut network_event_loop) =
-        managers::initialize(&config.managers, &paths, network_key).await;
 
     // Start listening before spawning the network task
     if let Err(error) = network_event_loop.start_listening() {
@@ -71,14 +43,6 @@ pub async fn run() {
         initialize_dev_environment(&managers.blockchain).await;
     }
 
-    let services = services::initialize(&managers);
-    let blockchain_ids = managers
-        .blockchain
-        .get_blockchain_ids()
-        .into_iter()
-        .cloned()
-        .collect();
-
     // Seed peer registry with sharding tables before commands start
     seed_sharding_tables(
         &managers.blockchain,
@@ -89,168 +53,12 @@ pub async fn run() {
 
     // Load persisted peer addresses and inject into Kademlia routing table.
     // This must happen after sharding table seeding so dial_peers knows who to connect to.
-    let persisted_addresses = services.peer_address_store.load_all().await;
-    if !persisted_addresses.is_empty() {
-        let addresses: Vec<_> = persisted_addresses
-            .into_iter()
-            .filter_map(|(peer_id_string, addr_strings)| {
-                let peer_id: PeerId = peer_id_string.parse().ok()?;
-                let addrs: Vec<Multiaddr> = addr_strings
-                    .into_iter()
-                    .filter_map(|addr| addr.parse().ok())
-                    .collect();
-                if addrs.is_empty() {
-                    None
-                } else {
-                    Some((peer_id, addrs))
-                }
-            })
-            .collect();
-
-        if !addresses.is_empty() {
-            tracing::info!(
-                peers = addresses.len(),
-                "Loading persisted peer addresses into Kademlia"
-            );
-            if let Err(e) = managers.network.add_addresses(addresses).await {
-                tracing::warn!(error = %e, "Failed to inject persisted peer addresses");
-            }
-        }
-    }
-
-    let periodic_deps = Arc::new(periodic::PeriodicDeps {
-        dial_peers: DialPeersDeps {
-            network_manager: Arc::clone(&managers.network),
-            peer_service: Arc::clone(&services.peer_service),
-        },
-        cleanup: CleanupDeps {
-            repository_manager: Arc::clone(&managers.repository),
-            publish_tmp_dataset_store: Arc::clone(&services.publish_tmp_dataset_store),
-            publish_operation_results: Arc::clone(&services.publish_store_operation),
-            get_operation_results: Arc::clone(&services.get_operation),
-            store_response_channels: Arc::clone(&services.response_channels.store),
-            get_response_channels: Arc::clone(&services.response_channels.get),
-            finality_response_channels: Arc::clone(&services.response_channels.finality),
-            batch_get_response_channels: Arc::clone(&services.response_channels.batch_get),
-        },
-        save_peer_addresses: SavePeerAddressesDeps {
-            peer_service: Arc::clone(&services.peer_service),
-            peer_address_store: Arc::clone(&services.peer_address_store),
-        },
-        sharding_table_check: ShardingTableCheckDeps {
-            blockchain_manager: Arc::clone(&managers.blockchain),
-            peer_service: Arc::clone(&services.peer_service),
-        },
-        blockchain_event_listener: BlockchainEventListenerDeps {
-            blockchain_manager: Arc::clone(&managers.blockchain),
-            repository_manager: Arc::clone(&managers.repository),
-            command_scheduler: command_scheduler.clone(),
-        },
-        claim_rewards: ClaimRewardsDeps {
-            blockchain_manager: Arc::clone(&managers.blockchain),
-        },
-        proving: ProvingDeps {
-            blockchain_manager: Arc::clone(&managers.blockchain),
-            repository_manager: Arc::clone(&managers.repository),
-            triple_store_service: Arc::clone(&services.triple_store),
-            network_manager: Arc::clone(&managers.network),
-            assertion_validation_service: Arc::clone(&services.assertion_validation),
-            peer_service: Arc::clone(&services.peer_service),
-        },
-        sync: SyncDeps {
-            blockchain_manager: Arc::clone(&managers.blockchain),
-            repository_manager: Arc::clone(&managers.repository),
-            triple_store_service: Arc::clone(&services.triple_store),
-            network_manager: Arc::clone(&managers.network),
-            assertion_validation_service: Arc::clone(&services.assertion_validation),
-            peer_service: Arc::clone(&services.peer_service),
-        },
-        paranet_sync: ParanetSyncDeps {
-            blockchain_manager: Arc::clone(&managers.blockchain),
-            repository_manager: Arc::clone(&managers.repository),
-            triple_store_service: Arc::clone(&services.triple_store),
-            get_fetch_service: Arc::clone(&services.get_fetch),
-        },
-    });
-
-    let command_resolver = CommandResolver::new(CommandResolverDeps {
-        send_publish_store_requests: SendPublishStoreRequestsDeps {
-            network_manager: Arc::clone(&managers.network),
-            peer_service: Arc::clone(&services.peer_service),
-            blockchain_manager: Arc::clone(&managers.blockchain),
-            publish_store_operation_status_service: Arc::clone(&services.publish_store_operation),
-            publish_tmp_dataset_store: Arc::clone(&services.publish_tmp_dataset_store),
-        },
-        handle_publish_store_request: HandlePublishStoreRequestDeps {
-            network_manager: Arc::clone(&managers.network),
-            blockchain_manager: Arc::clone(&managers.blockchain),
-            peer_service: Arc::clone(&services.peer_service),
-            store_response_channels: Arc::clone(&services.response_channels.store),
-            publish_tmp_dataset_store: Arc::clone(&services.publish_tmp_dataset_store),
-        },
-        send_publish_finality_request: SendPublishFinalityRequestDeps {
-            repository_manager: Arc::clone(&managers.repository),
-            network_manager: Arc::clone(&managers.network),
-            peer_service: Arc::clone(&services.peer_service),
-            blockchain_manager: Arc::clone(&managers.blockchain),
-            publish_tmp_dataset_store: Arc::clone(&services.publish_tmp_dataset_store),
-            triple_store_service: Arc::clone(&services.triple_store),
-        },
-        handle_publish_finality_request: HandlePublishFinalityRequestDeps {
-            repository_manager: Arc::clone(&managers.repository),
-            network_manager: Arc::clone(&managers.network),
-            finality_response_channels: Arc::clone(&services.response_channels.finality),
-        },
-        send_get_requests: SendGetRequestsDeps {
-            get_operation_status_service: Arc::clone(&services.get_operation),
-            get_fetch_service: Arc::clone(&services.get_fetch),
-        },
-        handle_get_request: HandleGetRequestDeps {
-            network_manager: Arc::clone(&managers.network),
-            triple_store_service: Arc::clone(&services.triple_store),
-            peer_service: Arc::clone(&services.peer_service),
-            get_response_channels: Arc::clone(&services.response_channels.get),
-            blockchain_manager: Arc::clone(&managers.blockchain),
-        },
-        handle_batch_get_request: HandleBatchGetRequestDeps {
-            network_manager: Arc::clone(&managers.network),
-            triple_store_service: Arc::clone(&services.triple_store),
-            peer_service: Arc::clone(&services.peer_service),
-            batch_get_response_channels: Arc::clone(&services.response_channels.batch_get),
-        },
-    });
-
+    bootstrap::hydrate_persisted_peer_addresses(&managers, &services).await;
+    let periodic_deps = bootstrap::build_periodic_deps(&managers, &services, &command_scheduler);
     let command_executor =
-        CommandExecutor::new(command_scheduler.clone(), command_resolver, command_rx);
-
-    let controllers = controllers::initialize(
-        &config.http_api,
-        &config.rpc,
-        RpcRouterDeps {
-            publish_store: PublishStoreRpcControllerDeps {
-                store_response_channels: Arc::clone(&services.response_channels.store),
-                command_scheduler: command_scheduler.clone(),
-            },
-            get: GetRpcControllerDeps {
-                get_response_channels: Arc::clone(&services.response_channels.get),
-                command_scheduler: command_scheduler.clone(),
-            },
-            publish_finality: PublishFinalityRpcControllerDeps {
-                finality_response_channels: Arc::clone(&services.response_channels.finality),
-                command_scheduler: command_scheduler.clone(),
-            },
-            batch_get: BatchGetRpcControllerDeps {
-                batch_get_response_channels: Arc::clone(&services.response_channels.batch_get),
-                command_scheduler: command_scheduler.clone(),
-            },
-        },
-        HttpApiDeps {
-            command_scheduler: command_scheduler.clone(),
-            repository_manager: Arc::clone(&managers.repository),
-            get_operation_status_service: Arc::clone(&services.get_operation),
-            publish_store_operation_status_service: Arc::clone(&services.publish_store_operation),
-        },
-    );
+        bootstrap::build_command_executor(&managers, &services, &command_scheduler, command_rx);
+    let controllers =
+        bootstrap::build_controllers(&config, &managers, &services, &command_scheduler);
 
     runtime::run(
         runtime::RuntimeDeps {
