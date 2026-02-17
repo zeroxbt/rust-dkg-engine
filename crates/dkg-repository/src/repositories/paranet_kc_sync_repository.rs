@@ -9,6 +9,7 @@ use sea_orm::{
 use crate::{
     error::Result,
     models::paranet_kc_sync::{ActiveModel, Column, Entity, Model},
+    types::ParanetKcSyncEntry,
 };
 
 pub const STATUS_PENDING: &str = "pending";
@@ -80,12 +81,12 @@ impl ParanetKcSyncRepository {
         now_ts: i64,
         retries_limit: u32,
         limit: u64,
-    ) -> Result<Vec<Model>> {
+    ) -> Result<Vec<ParanetKcSyncEntry>> {
         if limit == 0 {
             return Ok(Vec::new());
         }
 
-        Entity::find()
+        let rows = Entity::find()
             .filter(Column::BlockchainId.eq(blockchain_id))
             .filter(Column::ParanetUal.eq(paranet_ual))
             .filter(Column::Status.eq(STATUS_PENDING))
@@ -94,8 +95,16 @@ impl ParanetKcSyncRepository {
             .order_by_asc(Column::KcUal)
             .limit(limit)
             .all(self.conn.as_ref())
-            .await
-            .map_err(Into::into)
+            .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row: Model| ParanetKcSyncEntry {
+                paranet_ual: row.paranet_ual,
+                kc_ual: row.kc_ual,
+                retry_count: row.retry_count,
+            })
+            .collect())
     }
 
     pub async fn mark_synced(&self, paranet_ual: &str, kc_ual: &str) -> Result<()> {

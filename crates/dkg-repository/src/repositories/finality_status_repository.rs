@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     error::RepositoryError,
-    models::finality_status::{self, Column, Entity, Model},
+    models::finality_status::{self, Column, Entity},
 };
 
 pub struct FinalityStatusRepository {
@@ -28,7 +28,7 @@ impl FinalityStatusRepository {
         operation_id: Uuid,
         ual: &str,
         peer_id: &str,
-    ) -> Result<Model, RepositoryError> {
+    ) -> Result<(), RepositoryError> {
         let now = Utc::now();
 
         // Check if record already exists
@@ -49,11 +49,9 @@ impl FinalityStatusRepository {
                 updated_at: Set(now),
             };
 
-            let result = Entity::update(active_model)
+            Entity::update(active_model)
                 .exec(self.conn.as_ref())
                 .await?;
-
-            Ok(result)
         } else {
             // Insert new record
             let active_model = finality_status::ActiveModel {
@@ -65,12 +63,12 @@ impl FinalityStatusRepository {
                 updated_at: Set(now),
             };
 
-            let result = Entity::insert(active_model)
-                .exec_with_returning(self.conn.as_ref())
+            Entity::insert(active_model)
+                .exec_without_returning(self.conn.as_ref())
                 .await?;
-
-            Ok(result)
         }
+
+        Ok(())
     }
 
     /// Get the count of finality acks for a given UAL.

@@ -10,13 +10,12 @@ use crate::{
     models::{
         kc_sync_progress::{
             ActiveModel as ProgressActiveModel, Column as ProgressColumn, Entity as ProgressEntity,
-            Model as ProgressModel,
         },
         kc_sync_queue::{
             ActiveModel as QueueActiveModel, Column as QueueColumn, Entity as QueueEntity,
-            Model as QueueModel,
         },
     },
+    types::{KcSyncProgressEntry, KcSyncQueueEntry},
 };
 
 pub struct KcSyncRepository {
@@ -36,12 +35,13 @@ impl KcSyncRepository {
         &self,
         blockchain_id: &str,
         contract_address: &str,
-    ) -> Result<Option<ProgressModel>> {
+    ) -> Result<Option<KcSyncProgressEntry>> {
         Ok(ProgressEntity::find()
             .filter(ProgressColumn::BlockchainId.eq(blockchain_id))
             .filter(ProgressColumn::ContractAddress.eq(contract_address))
             .one(self.conn.as_ref())
-            .await?)
+            .await?
+            .map(Self::to_progress_entry))
     }
 
     /// Update or insert the sync progress for a contract.
@@ -131,8 +131,8 @@ impl KcSyncRepository {
         now_ts: i64,
         max_retries: u32,
         limit: u64,
-    ) -> Result<Vec<QueueModel>> {
-        Ok(QueueEntity::find()
+    ) -> Result<Vec<KcSyncQueueEntry>> {
+        let rows = QueueEntity::find()
             .filter(QueueColumn::BlockchainId.eq(blockchain_id))
             .filter(QueueColumn::ContractAddress.eq(contract_address))
             .filter(QueueColumn::RetryCount.lt(max_retries))
@@ -140,7 +140,9 @@ impl KcSyncRepository {
             .order_by_asc(QueueColumn::KcId)
             .limit(limit)
             .all(self.conn.as_ref())
-            .await?)
+            .await?;
+
+        Ok(rows.into_iter().map(Self::to_queue_entry).collect())
     }
 
     /// Remove successfully synced KCs from the queue.
@@ -242,5 +244,26 @@ impl KcSyncRepository {
             .wrapping_add((now_ts as u64).wrapping_mul(12_345));
         let jitter = seed % (jitter_limit.saturating_add(1));
         backoff.saturating_add(jitter)
+    }
+
+    fn to_progress_entry(model: crate::models::kc_sync_progress::Model) -> KcSyncProgressEntry {
+        KcSyncProgressEntry {
+            blockchain_id: model.blockchain_id,
+            contract_address: model.contract_address,
+            last_checked_id: model.last_checked_id,
+            updated_at: model.updated_at,
+        }
+    }
+
+    fn to_queue_entry(model: crate::models::kc_sync_queue::Model) -> KcSyncQueueEntry {
+        KcSyncQueueEntry {
+            blockchain_id: model.blockchain_id,
+            contract_address: model.contract_address,
+            kc_id: model.kc_id,
+            retry_count: model.retry_count,
+            next_retry_at: model.next_retry_at,
+            created_at: model.created_at,
+            last_retry_at: model.last_retry_at,
+        }
     }
 }

@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use dkg_blockchain::BlockchainId;
 use dkg_domain::{AccessPolicy, construct_paranet_id, derive_ual, parse_ual};
-use dkg_repository::models::paranet_kc_sync::Model as ParanetKcSyncModel;
+use dkg_repository::ParanetKcSyncEntry;
 use dkg_triple_store::parse_metadata_from_triples;
 use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
@@ -264,13 +264,13 @@ impl ParanetSyncTask {
         &self,
         blockchain_id: &BlockchainId,
         targets: &[ParanetSyncTarget],
-    ) -> Vec<ParanetKcSyncModel> {
+    ) -> Vec<ParanetKcSyncEntry> {
         let repo = self.deps.repository_manager.paranet_kc_sync_repository();
         let now_ts = chrono::Utc::now().timestamp();
         let total_limit = self.config.batch_size.max(1);
         let per_paranet_limit = (total_limit + targets.len().saturating_sub(1)) / targets.len();
 
-        let mut per_paranet: Vec<Vec<ParanetKcSyncModel>> = Vec::with_capacity(targets.len());
+        let mut per_paranet: Vec<Vec<ParanetKcSyncEntry>> = Vec::with_capacity(targets.len());
         for target in targets {
             match repo
                 .get_due_pending_batch(
@@ -323,7 +323,7 @@ impl ParanetSyncTask {
         &self,
         blockchain_id: &BlockchainId,
         targets: &[ParanetSyncTarget],
-        due_batch: Vec<ParanetKcSyncModel>,
+        due_batch: Vec<ParanetKcSyncEntry>,
     ) -> (usize, usize, usize, usize, usize) {
         let target_map: HashMap<String, ParanetSyncTarget> = targets
             .iter()

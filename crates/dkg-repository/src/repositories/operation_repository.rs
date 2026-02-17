@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{
     error::RepositoryError,
     models::operations::{self, Entity, Model},
-    types::OperationStatus,
+    types::{OperationRecord, OperationStatus},
 };
 
 pub struct OperationRepository {
@@ -28,7 +28,7 @@ impl OperationRepository {
         operation_id: Uuid,
         operation_name: &str,
         status: OperationStatus,
-    ) -> Result<Model, RepositoryError> {
+    ) -> Result<(), RepositoryError> {
         let now = Utc::now();
 
         let active_model = operations::ActiveModel {
@@ -40,11 +40,11 @@ impl OperationRepository {
             updated_at: Set(now),
         };
 
-        let result = Entity::insert(active_model)
-            .exec_with_returning(self.conn.as_ref())
+        Entity::insert(active_model)
+            .exec_without_returning(self.conn.as_ref())
             .await?;
 
-        Ok(result)
+        Ok(())
     }
 
     /// Get an operation record by its ID and name
@@ -52,14 +52,14 @@ impl OperationRepository {
         &self,
         operation_id: Uuid,
         operation_name: &str,
-    ) -> Result<Option<Model>, RepositoryError> {
+    ) -> Result<Option<OperationRecord>, RepositoryError> {
         let record = Entity::find()
             .filter(operations::Column::OperationId.eq(operation_id.to_string()))
             .filter(operations::Column::OperationName.eq(operation_name))
             .one(self.conn.as_ref())
             .await?;
 
-        Ok(record)
+        Ok(record.map(Self::to_record))
     }
 
     /// Update an operation record with flexible field updates
@@ -68,7 +68,7 @@ impl OperationRepository {
         operation_id: Uuid,
         status: Option<OperationStatus>,
         error_message: Option<String>,
-    ) -> Result<Model, RepositoryError> {
+    ) -> Result<(), RepositoryError> {
         // First, find the existing record
         let existing = Entity::find_by_id(operation_id.to_string())
             .one(self.conn.as_ref())
@@ -89,9 +89,8 @@ impl OperationRepository {
 
         active_model.updated_at = Set(Utc::now());
 
-        let result = active_model.update(self.conn.as_ref()).await?;
-
-        Ok(result)
+        active_model.update(self.conn.as_ref()).await?;
+        Ok(())
     }
 
     /// Update only the status field
@@ -99,7 +98,7 @@ impl OperationRepository {
         &self,
         operation_id: Uuid,
         status: OperationStatus,
-    ) -> Result<Model, RepositoryError> {
+    ) -> Result<(), RepositoryError> {
         self.update(operation_id, Some(status), None).await
     }
 
@@ -151,5 +150,14 @@ impl OperationRepository {
             .await?;
 
         Ok(result.rows_affected)
+    }
+
+    fn to_record(model: Model) -> OperationRecord {
+        OperationRecord {
+            operation_id: model.operation_id,
+            operation_name: model.operation_name,
+            status: model.status,
+            error_message: model.error_message,
+        }
     }
 }

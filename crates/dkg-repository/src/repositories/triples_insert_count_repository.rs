@@ -6,7 +6,7 @@ use sea_orm::{
 
 use crate::{
     error::RepositoryError,
-    models::triples_insert_count::{self, Entity, Model},
+    models::triples_insert_count::{self, Entity},
 };
 
 pub struct TriplesInsertCountRepository {
@@ -20,7 +20,7 @@ impl TriplesInsertCountRepository {
 
     /// Atomically increment the inserted triples count.
     /// Creates the record if it doesn't exist, otherwise increments atomically.
-    pub async fn atomic_increment(&self, by: i64) -> Result<Model, RepositoryError> {
+    pub async fn atomic_increment(&self, by: i64) -> Result<i64, RepositoryError> {
         let txn = self.conn.begin().await?;
 
         // Try to find existing record with exclusive lock
@@ -44,6 +44,6 @@ impl TriplesInsertCountRepository {
 
         txn.commit().await?;
 
-        Ok(result)
+        Ok(result.count)
     }
 }

@@ -1,7 +1,5 @@
 #![allow(unreachable_pub)]
 
-use std::str::FromStr;
-
 use sea_orm::{
     entity::prelude::{DeriveRelation, EnumIter},
     prelude::{
@@ -9,8 +7,6 @@ use sea_orm::{
     },
 };
 use serde::{Deserialize, Serialize};
-
-use crate::types::OperationStatus;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "operation_status")]
@@ -23,15 +19,6 @@ pub struct Model {
     pub error_message: Option<String>,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
-}
-
-impl Model {
-    /// Parse the status string into an OperationStatus enum.
-    ///
-    /// Returns an error if the status string is not a valid operation status.
-    pub fn operation_status(&self) -> Result<OperationStatus, String> {
-        OperationStatus::from_str(&self.status)
-    }
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
