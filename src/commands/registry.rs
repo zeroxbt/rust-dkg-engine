@@ -27,7 +27,14 @@ use super::operations::{
         },
     },
 };
-use crate::{commands::executor::CommandOutcome, context::Context};
+use crate::{
+    commands::executor::CommandOutcome,
+    context::{
+        HandleBatchGetRequestDeps, HandleGetRequestDeps, HandlePublishFinalityRequestDeps,
+        HandlePublishStoreRequestDeps, SendGetRequestsDeps, SendPublishFinalityRequestDeps,
+        SendPublishStoreRequestsDeps,
+    },
+};
 
 macro_rules! command_registry {
     (
@@ -35,7 +42,7 @@ macro_rules! command_registry {
             $field:ident: $variant:ident => {
                 data: $data:ty,
                 handler: $handler:ty,
-                deps: $deps_method:ident
+                deps: $deps_ty:ty
             }
         ),+ $(,)?
     ) => {
@@ -64,10 +71,14 @@ macro_rules! command_registry {
             $( $field: Arc<$handler>, )+
         }
 
+        pub(crate) struct CommandResolverDeps {
+            $( pub(crate) $field: $deps_ty, )+
+        }
+
         impl CommandResolver {
-            pub(crate) fn new(context: Arc<Context>) -> Self {
+            pub(crate) fn new(deps: CommandResolverDeps) -> Self {
                 Self {
-                    $( $field: Arc::new(<$handler>::new(context.$deps_method())), )+
+                    $( $field: Arc::new(<$handler>::new(deps.$field)), )+
                 }
             }
 
@@ -90,36 +101,36 @@ command_registry! {
     send_publish_store_requests: SendPublishStoreRequests => {
         data: SendPublishStoreRequestsCommandData,
         handler: SendPublishStoreRequestsCommandHandler,
-        deps: send_publish_store_requests_deps
+        deps: SendPublishStoreRequestsDeps
     },
     handle_publish_store_request: HandlePublishStoreRequest => {
         data: HandlePublishStoreRequestCommandData,
         handler: HandlePublishStoreRequestCommandHandler,
-        deps: handle_publish_store_request_deps
+        deps: HandlePublishStoreRequestDeps
     },
     send_publish_finality_request: SendPublishFinalityRequest => {
         data: SendPublishFinalityRequestCommandData,
         handler: SendPublishFinalityRequestCommandHandler,
-        deps: send_publish_finality_request_deps
+        deps: SendPublishFinalityRequestDeps
     },
     handle_publish_finality_request: HandlePublishFinalityRequest => {
         data: HandlePublishFinalityRequestCommandData,
         handler: HandlePublishFinalityRequestCommandHandler,
-        deps: handle_publish_finality_request_deps
+        deps: HandlePublishFinalityRequestDeps
     },
     send_get_requests: SendGetRequests => {
         data: SendGetRequestsCommandData,
         handler: SendGetRequestsCommandHandler,
-        deps: send_get_requests_deps
+        deps: SendGetRequestsDeps
     },
     handle_get_request: HandleGetRequest => {
         data: HandleGetRequestCommandData,
         handler: HandleGetRequestCommandHandler,
-        deps: handle_get_request_deps
+        deps: HandleGetRequestDeps
     },
     handle_batch_get_request: HandleBatchGetRequest => {
         data: HandleBatchGetRequestCommandData,
         handler: HandleBatchGetRequestCommandHandler,
-        deps: handle_batch_get_request_deps
+        deps: HandleBatchGetRequestDeps
     },
 }

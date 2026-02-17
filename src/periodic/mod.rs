@@ -1,8 +1,10 @@
+mod deps;
 mod registry;
 mod runner;
 pub(crate) mod tasks;
 use std::sync::Arc;
 
+pub(crate) use deps::PeriodicDeps;
 use dkg_blockchain::BlockchainId;
 pub(crate) use tasks::sharding_table_check::seed_sharding_tables;
 use tasks::{
@@ -21,13 +23,12 @@ use tokio_util::sync::CancellationToken;
 use self::registry::{
     BlockchainPeriodicTask, GlobalPeriodicTask, spawn_blockchain_task, spawn_global_task,
 };
-use crate::context::Context;
 
 impl GlobalPeriodicTask for DialPeersTask {
     type Config = ();
 
-    fn from_context(context: Arc<Context>, _config: Self::Config) -> Self {
-        Self::new(context.dial_peers_deps())
+    fn from_deps(deps: Arc<PeriodicDeps>, _config: Self::Config) -> Self {
+        Self::new(deps.dial_peers.clone())
     }
 
     fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
@@ -38,8 +39,8 @@ impl GlobalPeriodicTask for DialPeersTask {
 impl GlobalPeriodicTask for CleanupTask {
     type Config = CleanupConfig;
 
-    fn from_context(context: Arc<Context>, config: Self::Config) -> Self {
-        Self::new(context.cleanup_deps(), config)
+    fn from_deps(deps: Arc<PeriodicDeps>, config: Self::Config) -> Self {
+        Self::new(deps.cleanup.clone(), config)
     }
 
     fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
@@ -50,8 +51,8 @@ impl GlobalPeriodicTask for CleanupTask {
 impl GlobalPeriodicTask for SavePeerAddressesTask {
     type Config = ();
 
-    fn from_context(context: Arc<Context>, _config: Self::Config) -> Self {
-        Self::new(context.save_peer_addresses_deps())
+    fn from_deps(deps: Arc<PeriodicDeps>, _config: Self::Config) -> Self {
+        Self::new(deps.save_peer_addresses.clone())
     }
 
     fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
@@ -60,8 +61,8 @@ impl GlobalPeriodicTask for SavePeerAddressesTask {
 }
 
 impl BlockchainPeriodicTask for ShardingTableCheckTask {
-    fn from_context(context: Arc<Context>) -> Self {
-        Self::new(context.sharding_table_check_deps())
+    fn from_deps(deps: Arc<PeriodicDeps>) -> Self {
+        Self::new(deps.sharding_table_check.clone())
     }
 
     fn run_task(
@@ -74,8 +75,8 @@ impl BlockchainPeriodicTask for ShardingTableCheckTask {
 }
 
 impl BlockchainPeriodicTask for BlockchainEventListenerTask {
-    fn from_context(context: Arc<Context>) -> Self {
-        Self::new(context.blockchain_event_listener_deps())
+    fn from_deps(deps: Arc<PeriodicDeps>) -> Self {
+        Self::new(deps.blockchain_event_listener.clone())
     }
 
     fn run_task(
@@ -88,8 +89,8 @@ impl BlockchainPeriodicTask for BlockchainEventListenerTask {
 }
 
 impl BlockchainPeriodicTask for ClaimRewardsTask {
-    fn from_context(context: Arc<Context>) -> Self {
-        Self::new(context.claim_rewards_deps())
+    fn from_deps(deps: Arc<PeriodicDeps>) -> Self {
+        Self::new(deps.claim_rewards.clone())
     }
 
     fn run_task(
@@ -102,17 +103,17 @@ impl BlockchainPeriodicTask for ClaimRewardsTask {
 }
 
 macro_rules! spawn_registered_global_tasks {
-    ($set:expr, $context:expr, $shutdown:expr, $( $task:ty => $config:expr ),+ $(,)? ) => {
+    ($set:expr, $deps:expr, $shutdown:expr, $( $task:ty => $config:expr ),+ $(,)? ) => {
         $(
-            spawn_global_task::<$task>($set, $context, $shutdown, $config);
+            spawn_global_task::<$task>($set, $deps, $shutdown, $config);
         )+
     };
 }
 
 macro_rules! spawn_registered_blockchain_tasks {
-    ($set:expr, $context:expr, $shutdown:expr, $blockchain_id:expr, $( $task:ty ),+ $(,)? ) => {
+    ($set:expr, $deps:expr, $shutdown:expr, $blockchain_id:expr, $( $task:ty ),+ $(,)? ) => {
         $(
-            spawn_blockchain_task::<$task>($set, $context, $shutdown, $blockchain_id);
+            spawn_blockchain_task::<$task>($set, $deps, $shutdown, $blockchain_id);
         )+
     };
 }
@@ -125,7 +126,8 @@ macro_rules! spawn_registered_blockchain_tasks {
 ///
 /// Under normal operation, tasks only exit during shutdown.
 pub(crate) async fn run_all(
-    context: Arc<Context>,
+    deps: Arc<PeriodicDeps>,
+    blockchain_ids: Vec<BlockchainId>,
     cleanup_config: CleanupConfig,
     sync_config: SyncConfig,
     paranet_sync_config: ParanetSyncConfig,
@@ -137,32 +139,24 @@ pub(crate) async fn run_all(
     // Global periodic tasks
     spawn_registered_global_tasks!(
         &mut set,
-        &context,
+        &deps,
         &shutdown,
         DialPeersTask => (),
         CleanupTask => cleanup_config,
         SavePeerAddressesTask => (),
     );
 
-    // Collect blockchain IDs for periodic tasks
-    let blockchain_ids: Vec<_> = context
-        .blockchain_manager()
-        .get_blockchain_ids()
-        .into_iter()
-        .cloned()
-        .collect();
-
     // Per-blockchain periodic tasks
     for blockchain_id in blockchain_ids {
         // Per-blockchain sync task has dedicated config and does not fit
         // the generic BlockchainPeriodicTask registry helper.
         {
-            let ctx = Arc::clone(&context);
+            let deps = Arc::clone(&deps);
             let shutdown = shutdown.clone();
             let blockchain_id = blockchain_id.clone();
             let config = sync_config.clone();
             set.spawn(async move {
-                SyncTask::new(ctx.sync_deps(), config)
+                SyncTask::new(deps.sync.clone(), config)
                     .run(&blockchain_id, shutdown)
                     .await;
             });
@@ -171,12 +165,12 @@ pub(crate) async fn run_all(
         // Per-blockchain paranet sync task has dedicated config and does not fit
         // the generic BlockchainPeriodicTask registry helper.
         {
-            let ctx = Arc::clone(&context);
+            let deps = Arc::clone(&deps);
             let shutdown = shutdown.clone();
             let blockchain_id = blockchain_id.clone();
             let config = paranet_sync_config.clone();
             set.spawn(async move {
-                ParanetSyncTask::new(ctx.paranet_sync_deps(), config)
+                ParanetSyncTask::new(deps.paranet_sync.clone(), config)
                     .run(&blockchain_id, shutdown)
                     .await;
             });
@@ -184,7 +178,7 @@ pub(crate) async fn run_all(
 
         spawn_registered_blockchain_tasks!(
             &mut set,
-            &context,
+            &deps,
             &shutdown,
             &blockchain_id,
             ShardingTableCheckTask,
@@ -193,11 +187,11 @@ pub(crate) async fn run_all(
         );
 
         if proving_config.enabled {
-            let ctx = Arc::clone(&context);
+            let deps = Arc::clone(&deps);
             let shutdown = shutdown.clone();
             let blockchain_id = blockchain_id.clone();
             set.spawn(async move {
-                ProvingTask::new(ctx.proving_deps())
+                ProvingTask::new(deps.proving.clone())
                     .run(&blockchain_id, shutdown)
                     .await
             });

@@ -1,12 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
+use dkg_blockchain::BlockchainId;
 use dkg_network::NetworkEventLoop;
 use tokio::{select, signal::unix::SignalKind};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    commands::executor::CommandExecutor,
-    context::Context,
+    commands::{executor::CommandExecutor, scheduler::CommandScheduler},
     controllers::{
         http_api_controller::router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
     },
@@ -15,6 +15,7 @@ use crate::{
         cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, proving::ProvingConfig,
         sync::SyncConfig,
     },
+    services::PeerService,
 };
 
 const PERIODIC_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
@@ -22,9 +23,17 @@ const COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
 const NETWORK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const HTTP_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
+pub(crate) struct RuntimeDeps {
+    pub(crate) command_scheduler: CommandScheduler,
+    pub(crate) network_manager: Arc<dkg_network::NetworkManager>,
+    pub(crate) peer_service: Arc<PeerService>,
+    pub(crate) periodic_deps: Arc<periodic::PeriodicDeps>,
+    pub(crate) blockchain_ids: Vec<BlockchainId>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
-    context: Arc<Context>,
+    deps: RuntimeDeps,
     command_executor: CommandExecutor,
     network_event_loop: NetworkEventLoop,
     rpc_router: RpcRouter,
@@ -34,11 +43,11 @@ pub(crate) async fn run(
     paranet_sync_config: ParanetSyncConfig,
     proving_config: ProvingConfig,
 ) {
-    let command_scheduler = context.command_scheduler().clone();
-    let network_manager = Arc::clone(context.network_manager());
+    let command_scheduler = deps.command_scheduler.clone();
+    let network_manager = Arc::clone(&deps.network_manager);
     // Spawn peer service loop for network observations.
-    let peer_event_rx = context.network_manager().subscribe_peer_events();
-    let peer_service = Arc::clone(context.peer_service());
+    let peer_event_rx = deps.network_manager.subscribe_peer_events();
+    let peer_service = Arc::clone(&deps.peer_service);
     let _peer_registry_task = peer_service.start(peer_event_rx);
 
     // Create HTTP shutdown channel (oneshot for single signal)
@@ -49,7 +58,8 @@ pub(crate) async fn run(
 
     let periodic_shutdown = CancellationToken::new();
     let mut periodic_handle = tokio::task::spawn(periodic::run_all(
-        Arc::clone(&context),
+        Arc::clone(&deps.periodic_deps),
+        deps.blockchain_ids.clone(),
         cleanup_config,
         sync_config,
         paranet_sync_config,
@@ -94,12 +104,11 @@ pub(crate) async fn run(
     // 2. Cancel periodic tasks (they finish current iteration and exit)
     // 3. Wait for periodic tasks to exit
     // 4. Signal command scheduler to stop accepting new commands
-    // 5. Drop local runtime context reference
-    // 6. Wait for command executor to drain
-    // 7. Signal network loop to stop
-    // 8. Wait for network loop to exit
-    // 9. Wait for HTTP to finish in-flight requests
-    // 10. Flush telemetry
+    // 5. Wait for command executor to drain
+    // 6. Signal network loop to stop
+    // 7. Wait for network loop to exit
+    // 8. Wait for HTTP to finish in-flight requests
+    // 9. Flush telemetry
 
     tracing::info!("Shutting down gracefully...");
 
@@ -127,10 +136,7 @@ pub(crate) async fn run(
     // Step 4: Signal command scheduler to stop accepting new commands
     command_scheduler.shutdown();
 
-    // Step 5: Drop local runtime context reference
-    drop(context);
-
-    // Step 6: Wait for command executor to drain pending commands
+    // Step 5: Wait for command executor to drain pending commands
     tracing::info!("Waiting for command executor to drain...");
     match tokio::time::timeout(
         COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT,
@@ -150,10 +156,10 @@ pub(crate) async fn run(
         }
     }
 
-    // Step 7: Signal network manager event loop to stop
+    // Step 6: Signal network manager event loop to stop
     network_manager.shutdown();
 
-    // Step 8: Wait for network manager to exit
+    // Step 7: Wait for network manager to exit
     tracing::info!("Waiting for network manager to shut down...");
     match tokio::time::timeout(NETWORK_SHUTDOWN_TIMEOUT, network_event_loop_task).await {
         Ok(Ok(())) => tracing::info!("Network manager shut down cleanly"),
@@ -164,7 +170,7 @@ pub(crate) async fn run(
         ),
     }
 
-    // Step 9: Wait for HTTP server to finish in-flight requests
+    // Step 8: Wait for HTTP server to finish in-flight requests
     tracing::info!("Waiting for HTTP server to shut down...");
     match tokio::time::timeout(HTTP_SHUTDOWN_TIMEOUT, handle_http_events_task).await {
         Ok(Ok(())) => tracing::info!("HTTP server shut down cleanly"),
@@ -175,7 +181,7 @@ pub(crate) async fn run(
         ),
     }
 
-    // Step 10: Flush OpenTelemetry traces
+    // Step 9: Flush OpenTelemetry traces
     logger::shutdown_telemetry();
 
     tracing::info!("Shutdown complete");

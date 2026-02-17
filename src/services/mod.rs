@@ -68,7 +68,7 @@ pub(crate) struct Services {
 /// Services depend only on Managers, establishing a clear dependency hierarchy:
 /// - Managers: lowest level, self-contained infrastructure
 /// - Services: business logic layer, depends only on Managers
-/// - Controllers/Commands: highest level, depends on both via Context
+/// - Controllers/Commands: highest level, depends on explicit deps structs
 pub(crate) fn initialize(managers: &Managers) -> Services {
     // Operation status services
     let publish_store_operation = Arc::new(

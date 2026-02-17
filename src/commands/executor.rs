@@ -5,11 +5,11 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use super::scheduler::CommandScheduler;
 use super::{
     constants::{COMMAND_CONCURRENT_LIMIT, MAX_COMMAND_LIFETIME},
     registry::{Command, CommandResolver},
 };
-use crate::context::Context;
 
 /// Outcome of a command execution.
 ///
@@ -60,10 +60,14 @@ pub(crate) struct CommandExecutor {
 //   - add error handling
 
 impl CommandExecutor {
-    pub(crate) fn new(context: Arc<Context>, rx: mpsc::Receiver<CommandExecutionRequest>) -> Self {
-        let shutdown = context.command_scheduler().shutdown_token();
+    pub(crate) fn new(
+        command_scheduler: CommandScheduler,
+        command_resolver: CommandResolver,
+        rx: mpsc::Receiver<CommandExecutionRequest>,
+    ) -> Self {
+        let shutdown = command_scheduler.shutdown_token();
         Self {
-            command_resolver: Arc::new(CommandResolver::new(context)),
+            command_resolver: Arc::new(command_resolver),
             rx,
             shutdown,
         }
