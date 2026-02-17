@@ -4,8 +4,8 @@ use dkg_domain::{
     Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility,
 };
 use dkg_triple_store::{
-    GraphVisibility, TripleStoreManager, error::TripleStoreError, extract_subject,
-    group_triples_by_subject, query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
+    GraphVisibility, PRIVATE_HASH_SUBJECT_PREFIX, TripleStoreManager, error::TripleStoreError,
+    extract_subject, group_triples_by_subject,
 };
 use futures::future::join_all;
 use tracing::instrument;

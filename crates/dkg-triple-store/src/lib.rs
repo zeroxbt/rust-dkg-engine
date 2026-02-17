@@ -3,8 +3,8 @@ mod config;
 pub mod error;
 mod knowledge_asset;
 mod knowledge_collection;
-pub mod query;
-pub mod rdf;
+mod query;
+mod rdf;
 pub(crate) mod sparql;
 pub mod types;
 use std::{path::Path, sync::Arc, time::Duration};
@@ -13,11 +13,16 @@ use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 pub use config::{DKG_REPOSITORY, TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig};
 use error::{Result, TripleStoreError};
 pub use rdf::{
-    compare_js_default_string_order, extract_subject, group_triples_by_subject,
-    parse_metadata_from_triples,
+    compare_js_default_string_order, extract_quoted_string, extract_subject,
+    group_triples_by_subject, parse_metadata_from_triples,
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 pub use types::GraphVisibility;
+
+/// Subject prefix used for private-hash triples in public assertion graphs.
+pub const PRIVATE_HASH_SUBJECT_PREFIX: &str = query::subjects::PRIVATE_HASH_SUBJECT_PREFIX;
+/// Predicate IRI used for private merkle root in public assertion graphs.
+pub const PRIVATE_MERKLE_ROOT: &str = query::predicates::PRIVATE_MERKLE_ROOT;
 
 #[cfg(test)]
 mod tests;

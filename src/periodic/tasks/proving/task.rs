@@ -13,8 +13,7 @@ use dkg_network::{
 };
 use dkg_repository::{ChallengeState, RepositoryManager};
 use dkg_triple_store::{
-    compare_js_default_string_order, group_triples_by_subject,
-    query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
+    PRIVATE_HASH_SUBJECT_PREFIX, compare_js_default_string_order, group_triples_by_subject,
 };
 use futures::{StreamExt, stream::FuturesUnordered};
 use tokio_util::sync::CancellationToken;
