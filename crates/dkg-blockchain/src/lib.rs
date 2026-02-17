@@ -26,15 +26,6 @@ pub use multicall::{MulticallBatch, MulticallRequest, MulticallResult, encoders}
 pub use rpc_rate_limiter::RpcRateLimiter;
 pub use utils::{keccak256_encode_packed, parse_ether_to_u128, sha256_hex, to_hex_string};
 
-// Re-export event types for use by consumers
-// In alloy's sol! macro, events are nested under the contract module
-pub type NewContractFilter = chains::evm::Hub::NewContract;
-pub type ContractChangedFilter = chains::evm::Hub::ContractChanged;
-pub type NewAssetStorageFilter = chains::evm::Hub::NewAssetStorage;
-pub type AssetStorageChangedFilter = chains::evm::Hub::AssetStorageChanged;
-pub type ParameterChangedFilter = chains::evm::ParametersStorage::ParameterChanged;
-pub type KnowledgeCollectionCreatedFilter =
-    chains::evm::KnowledgeCollectionStorage::KnowledgeCollectionCreated;
 pub use alloy::{
     primitives::{Address, B256, B256 as H256, U256},
     rpc::types::Log,

@@ -1,27 +1,31 @@
 use std::collections::HashMap;
 
 use alloy::{
-    primitives::B256,
+    primitives::{Address, B256},
     rpc::types::Log,
     sol_types::{SolEvent, SolEventInterface},
 };
 
 use crate::{
-    AssetStorageChangedFilter, ContractChangedFilter, ContractName,
-    KnowledgeCollectionCreatedFilter, NewAssetStorageFilter, NewContractFilter,
-    ParameterChangedFilter,
+    ContractName,
     chains::evm::{Hub, KnowledgeCollectionStorage, ParametersStorage},
 };
 
 /// Blockchain-level event representation for monitored contracts.
 #[derive(Debug, Clone)]
 pub enum ContractEvent {
-    NewContract(NewContractFilter),
-    ContractChanged(ContractChangedFilter),
-    NewAssetStorage(NewAssetStorageFilter),
-    AssetStorageChanged(AssetStorageChangedFilter),
-    ParameterChanged(ParameterChangedFilter),
-    KnowledgeCollectionCreated(KnowledgeCollectionCreatedFilter),
+    NewContract(Hub::NewContract),
+    ContractChanged(Hub::ContractChanged),
+    NewAssetStorage(Hub::NewAssetStorage),
+    AssetStorageChanged(Hub::AssetStorageChanged),
+    ParameterChanged(ParametersStorage::ParameterChanged),
+    KnowledgeCollectionCreated {
+        event: KnowledgeCollectionStorage::KnowledgeCollectionCreated,
+        contract_address: Address,
+        transaction_hash: Option<B256>,
+        block_number: u64,
+        block_timestamp: u64,
+    },
 }
 
 fn decode_event<E: SolEventInterface>(log: &Log) -> Option<E> {
@@ -34,19 +38,19 @@ pub fn monitored_contract_events() -> HashMap<ContractName, Vec<B256>> {
     map.insert(
         ContractName::Hub,
         vec![
-            NewContractFilter::SIGNATURE_HASH,
-            ContractChangedFilter::SIGNATURE_HASH,
-            NewAssetStorageFilter::SIGNATURE_HASH,
-            AssetStorageChangedFilter::SIGNATURE_HASH,
+            Hub::NewContract::SIGNATURE_HASH,
+            Hub::ContractChanged::SIGNATURE_HASH,
+            Hub::NewAssetStorage::SIGNATURE_HASH,
+            Hub::AssetStorageChanged::SIGNATURE_HASH,
         ],
     );
     map.insert(
         ContractName::ParametersStorage,
-        vec![ParameterChangedFilter::SIGNATURE_HASH],
+        vec![ParametersStorage::ParameterChanged::SIGNATURE_HASH],
     );
     map.insert(
         ContractName::KnowledgeCollectionStorage,
-        vec![KnowledgeCollectionCreatedFilter::SIGNATURE_HASH],
+        vec![KnowledgeCollectionStorage::KnowledgeCollectionCreated::SIGNATURE_HASH],
     );
     map
 }
@@ -67,7 +71,7 @@ pub fn decode_contract_event(contract_name: &ContractName, log: &Log) -> Option<
             decode_event::<ParametersStorage::ParametersStorageEvents>(log).map(|event| {
                 match event {
                     ParametersStorage::ParametersStorageEvents::ParameterChanged(filter) => {
-                    ContractEvent::ParameterChanged(filter)
+                        ContractEvent::ParameterChanged(filter)
                     }
                 }
             })
@@ -75,11 +79,17 @@ pub fn decode_contract_event(contract_name: &ContractName, log: &Log) -> Option<
         ContractName::KnowledgeCollectionStorage => {
             decode_event::<KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents>(log)
                 .and_then(|event| match event {
-                KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents::KnowledgeCollectionCreated(filter) => {
-                    Some(ContractEvent::KnowledgeCollectionCreated(filter))
-                }
-                _ => None,
-            })
+                    KnowledgeCollectionStorage::KnowledgeCollectionStorageEvents::KnowledgeCollectionCreated(filter) => {
+                        Some(ContractEvent::KnowledgeCollectionCreated {
+                            event: filter,
+                            contract_address: log.address(),
+                            transaction_hash: log.transaction_hash,
+                            block_number: log.block_number.unwrap_or_default(),
+                            block_timestamp: log.block_timestamp.unwrap_or_default(),
+                        })
+                    }
+                    _ => None,
+                })
         }
         _ => None,
     }

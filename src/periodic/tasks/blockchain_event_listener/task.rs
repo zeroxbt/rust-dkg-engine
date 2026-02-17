@@ -3,10 +3,8 @@
 use std::{sync::Arc, time::Duration};
 
 use dkg_blockchain::{
-    Address, AssetStorageChangedFilter, BlockchainError, BlockchainId, BlockchainManager,
-    ContractChangedFilter, ContractEvent, ContractLog, ContractName,
-    KnowledgeCollectionCreatedFilter, NewAssetStorageFilter, NewContractFilter,
-    ParameterChangedFilter, decode_contract_event, monitored_contract_events, to_hex_string,
+    Address, BlockchainError, BlockchainId, BlockchainManager, ContractEvent, ContractLog,
+    ContractName, decode_contract_event, monitored_contract_events, to_hex_string,
 };
 use dkg_repository::RepositoryManager;
 use tokio_util::sync::CancellationToken;
@@ -296,29 +294,70 @@ impl BlockchainEventListenerTask {
 
         let log = event.log();
         match decode_contract_event(event.contract_name(), log) {
-            Some(ContractEvent::KnowledgeCollectionCreated(filter)) => {
-                self.handle_knowledge_collection_created_event(blockchain_id, &filter, log)
-                    .await;
+            Some(ContractEvent::KnowledgeCollectionCreated {
+                event,
+                contract_address,
+                transaction_hash,
+                block_number,
+                block_timestamp,
+            }) => {
+                let byte_size: u128 = event.byteSize.to();
+                self.handle_knowledge_collection_created_event(
+                    blockchain_id,
+                    event.publishOperationId.clone(),
+                    event.id,
+                    event.merkleRoot,
+                    byte_size,
+                    contract_address,
+                    transaction_hash,
+                    block_number,
+                    block_timestamp,
+                )
+                .await;
             }
-            Some(ContractEvent::ParameterChanged(filter)) => {
-                self.handle_parameter_changed_event(blockchain_id, &filter)
-                    .await?;
+            Some(ContractEvent::ParameterChanged(event)) => {
+                self.handle_parameter_changed_event(
+                    blockchain_id,
+                    &event.parameterName,
+                    event.parameterValue,
+                )
+                .await?;
             }
-            Some(ContractEvent::NewContract(filter)) => {
-                self.handle_new_contract_event(blockchain_id, &filter)
-                    .await?;
+            Some(ContractEvent::NewContract(event)) => {
+                self.handle_contract_address_update_event(
+                    blockchain_id,
+                    &event.contractName,
+                    event.newContractAddress,
+                    "New contract deployed",
+                )
+                .await?;
             }
-            Some(ContractEvent::ContractChanged(filter)) => {
-                self.handle_contract_changed_event(blockchain_id, &filter)
-                    .await?;
+            Some(ContractEvent::ContractChanged(event)) => {
+                self.handle_contract_address_update_event(
+                    blockchain_id,
+                    &event.contractName,
+                    event.newContractAddress,
+                    "Contract changed",
+                )
+                .await?;
             }
-            Some(ContractEvent::NewAssetStorage(filter)) => {
-                self.handle_new_asset_storage_event(blockchain_id, &filter)
-                    .await?;
+            Some(ContractEvent::NewAssetStorage(event)) => {
+                self.handle_contract_address_update_event(
+                    blockchain_id,
+                    &event.contractName,
+                    event.newContractAddress,
+                    "New asset storage deployed",
+                )
+                .await?;
             }
-            Some(ContractEvent::AssetStorageChanged(filter)) => {
-                self.handle_asset_storage_changed_event(blockchain_id, &filter)
-                    .await?;
+            Some(ContractEvent::AssetStorageChanged(event)) => {
+                self.handle_contract_address_update_event(
+                    blockchain_id,
+                    &event.contractName,
+                    event.newContractAddress,
+                    "Asset storage changed",
+                )
+                .await?;
             }
             None => {
                 tracing::warn!(
@@ -336,117 +375,70 @@ impl BlockchainEventListenerTask {
     async fn handle_parameter_changed_event(
         &self,
         blockchain_id: &BlockchainId,
-        filter: &ParameterChangedFilter,
+        parameter_name: &str,
+        parameter_value: dkg_blockchain::U256,
     ) -> Result<(), BlockchainError> {
         tracing::debug!(
             blockchain = %blockchain_id,
-            parameter = %filter.parameterName,
-            value = %filter.parameterValue,
+            parameter = %parameter_name,
+            value = %parameter_value,
             "Parameter changed"
         );
         // TODO: Update contract call cache with new parameter values
         Ok(())
     }
 
-    async fn handle_new_contract_event(
+    async fn handle_contract_address_update_event(
         &self,
         blockchain_id: &BlockchainId,
-        filter: &NewContractFilter,
+        contract_name: &str,
+        new_contract_address: Address,
+        log_message: &str,
     ) -> Result<(), BlockchainError> {
         tracing::info!(
             blockchain = %blockchain_id,
-            contract = %filter.contractName,
-            address = ?filter.newContractAddress,
-            "New contract deployed"
+            contract = %contract_name,
+            address = ?new_contract_address,
+            "{log_message}"
         );
 
         // Silently skip contracts not tracked by this node
-        let Ok(_) = filter.contractName.parse::<ContractName>() else {
+        let Ok(_) = contract_name.parse::<ContractName>() else {
             return Ok(());
         };
         self.blockchain_manager
             .re_initialize_contract(
                 blockchain_id,
-                filter.contractName.clone(),
-                filter.newContractAddress,
+                contract_name.to_string(),
+                new_contract_address,
             )
             .await?;
         Ok(())
     }
 
-    async fn handle_contract_changed_event(
-        &self,
-        blockchain_id: &BlockchainId,
-        filter: &ContractChangedFilter,
-    ) -> Result<(), BlockchainError> {
-        // Silently skip contracts not tracked by this node
-        let Ok(_) = filter.contractName.parse::<ContractName>() else {
-            return Ok(());
-        };
-        self.blockchain_manager
-            .re_initialize_contract(
-                blockchain_id,
-                filter.contractName.clone(),
-                filter.newContractAddress,
-            )
-            .await?;
-        Ok(())
-    }
-
-    async fn handle_new_asset_storage_event(
-        &self,
-        blockchain_id: &BlockchainId,
-        filter: &NewAssetStorageFilter,
-    ) -> Result<(), BlockchainError> {
-        // Silently skip contracts not tracked by this node
-        let Ok(_) = filter.contractName.parse::<ContractName>() else {
-            return Ok(());
-        };
-        self.blockchain_manager
-            .re_initialize_contract(
-                blockchain_id,
-                filter.contractName.clone(),
-                filter.newContractAddress,
-            )
-            .await?;
-        Ok(())
-    }
-
-    async fn handle_asset_storage_changed_event(
-        &self,
-        blockchain_id: &BlockchainId,
-        filter: &AssetStorageChangedFilter,
-    ) -> Result<(), BlockchainError> {
-        // Silently skip contracts not tracked by this node
-        let Ok(_) = filter.contractName.parse::<ContractName>() else {
-            return Ok(());
-        };
-        self.blockchain_manager
-            .re_initialize_contract(
-                blockchain_id,
-                filter.contractName.clone(),
-                filter.newContractAddress,
-            )
-            .await?;
-        Ok(())
-    }
-
+    #[allow(clippy::too_many_arguments)]
     async fn handle_knowledge_collection_created_event(
         &self,
         blockchain_id: &BlockchainId,
-        filter: &KnowledgeCollectionCreatedFilter,
-        log: &dkg_blockchain::Log,
+        publish_operation_id: String,
+        knowledge_collection_id: dkg_blockchain::U256,
+        merkle_root: dkg_blockchain::B256,
+        byte_size: u128,
+        contract_address: Address,
+        transaction_hash: Option<dkg_blockchain::B256>,
+        block_number: u64,
+        block_timestamp: u64,
     ) {
         tracing::info!(
             blockchain = %blockchain_id,
-            kc_id = %filter.id,
-            merkle_root = %to_hex_string(filter.merkleRoot),
-            byte_size = %filter.byteSize,
+            kc_id = %knowledge_collection_id,
+            merkle_root = %to_hex_string(merkle_root),
+            byte_size = %byte_size,
             "Knowledge collection created"
         );
 
         // Extract minimal data from the log - parsing happens in the operation command handler
-        let Some(transaction_hash) = log.transaction_hash else {
+        let Some(transaction_hash) = transaction_hash else {
             tracing::error!(
                 blockchain = %blockchain_id,
                 "Missing transaction hash in KnowledgeCollectionCreated log"
@@ -454,20 +446,17 @@ impl BlockchainEventListenerTask {
             return;
         };
 
-        // byteSize is uint88 in the contract, convert to u128
-        let byte_size: u128 = filter.byteSize.to();
-
         let command =
             Command::SendPublishFinalityRequest(SendPublishFinalityRequestCommandData::new(
                 blockchain_id.to_owned(),
-                filter.publishOperationId.clone(),
-                filter.id,
-                log.address(),
+                publish_operation_id,
+                knowledge_collection_id,
+                contract_address,
                 byte_size,
-                filter.merkleRoot,
+                merkle_root,
                 transaction_hash,
-                log.block_number.unwrap_or_default(),
-                log.block_timestamp.unwrap_or_default(),
+                block_number,
+                block_timestamp,
             ));
 
         self.command_scheduler
