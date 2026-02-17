@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::message::ResponseBody;
+use crate::message::ProtocolResponse as MessageProtocolResponse;
 
 /// Defines a request-response protocol's types and configuration.
 ///
@@ -48,5 +48,5 @@ pub trait ProtocolSpec: Send + Sync + 'static {
 
 /// Type alias for what callers receive from `send_*_request` methods.
 ///
-/// This is `ResponseBody<Ack>` which can be either `Ack(T)` or `Error(ErrorPayload)`.
-pub type ProtocolResponse<P> = ResponseBody<<P as ProtocolSpec>::Ack>;
+/// This is `ProtocolResponse<Ack>` which can be either `Ack(T)` or `Error(ErrorPayload)`.
+pub type ProtocolResponse<P> = MessageProtocolResponse<<P as ProtocolSpec>::Ack>;

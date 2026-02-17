@@ -4,10 +4,7 @@ use dkg_domain::{Assertion, BlockchainId, SignatureComponents, TokenIds};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::message::{
-    RequestMessage, RequestMessageHeader, RequestMessageType, ResponseBody, ResponseMessage,
-    ResponseMessageHeader, ResponseMessageType,
-};
+use crate::message::{MessageHeader, ProtocolResponse, RequestMessage, ResponseMessage};
 use crate::{
     BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
     StoreAck, StoreRequestData,
@@ -105,12 +102,9 @@ fn get_request_accepts_js_payload() {
 
 #[test]
 fn get_request_serializes_required_fields() {
-    let request = RequestMessage {
-        header: RequestMessageHeader::new(
-            sample_operation_id(),
-            RequestMessageType::ProtocolRequest,
-        ),
-        data: GetRequestData::new(
+    let request = RequestMessage::protocol_request(
+        sample_operation_id(),
+        GetRequestData::new(
             BlockchainId::from("otp:2043"),
             "0xabc".to_string(),
             42,
@@ -120,7 +114,7 @@ fn get_request_serializes_required_fields() {
             true,
             Some(sample_paranet_ual()),
         ),
-    };
+    );
 
     let actual = to_json(&request);
     let expected = parse_json(
@@ -152,8 +146,8 @@ fn get_request_serializes_required_fields() {
 #[test]
 fn get_response_ack_matches_js_shape() {
     let response = ResponseMessage {
-        header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Ack),
-        data: ResponseBody::ack(GetAck {
+        header: MessageHeader::ack(sample_operation_id()),
+        data: ProtocolResponse::ack(GetAck {
             assertion: Assertion::new(
                 vec!["<s> <p> <o> .".to_string()],
                 Some(vec!["<s> <p> \"x\" .".to_string()]),
@@ -185,8 +179,8 @@ fn get_response_ack_matches_js_shape() {
 #[test]
 fn get_response_nack_matches_js_shape() {
     let response: ResponseMessage<GetAck> = ResponseMessage {
-        header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Nack),
-        data: ResponseBody::error("boom"),
+        header: MessageHeader::nack(sample_operation_id()),
+        data: ProtocolResponse::error("boom"),
     };
 
     let actual = to_json(&response);
@@ -252,8 +246,8 @@ fn batch_get_response_ack_matches_js_shape() {
     metadata.insert(sample_ual(), vec!["<m> <p> <o> .".to_string()]);
 
     let response = ResponseMessage {
-        header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Ack),
-        data: ResponseBody::ack(BatchGetAck {
+        header: MessageHeader::ack(sample_operation_id()),
+        data: ProtocolResponse::ack(BatchGetAck {
             assertions,
             metadata,
         }),
@@ -286,8 +280,8 @@ fn batch_get_response_ack_matches_js_shape() {
 #[test]
 fn batch_get_response_nack_matches_js_shape() {
     let response: ResponseMessage<BatchGetAck> = ResponseMessage {
-        header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Nack),
-        data: ResponseBody::error("boom"),
+        header: MessageHeader::nack(sample_operation_id()),
+        data: ProtocolResponse::error("boom"),
     };
 
     let actual = to_json(&response);
@@ -331,17 +325,14 @@ fn finality_request_accepts_js_payload() {
 
 #[test]
 fn finality_request_serializes_required_fields() {
-    let request = RequestMessage {
-        header: RequestMessageHeader::new(
-            sample_operation_id(),
-            RequestMessageType::ProtocolRequest,
-        ),
-        data: FinalityRequestData::new(
+    let request = RequestMessage::protocol_request(
+        sample_operation_id(),
+        FinalityRequestData::new(
             sample_ual(),
             "22222222-2222-2222-2222-222222222222".to_string(),
             BlockchainId::from("otp:2043"),
         ),
-    };
+    );
 
     let actual = to_json(&request);
     let expected = parse_json(
@@ -364,8 +355,8 @@ fn finality_request_serializes_required_fields() {
 #[test]
 fn finality_response_ack_matches_js_shape() {
     let response = ResponseMessage {
-        header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Ack),
-        data: ResponseBody::ack(FinalityAck {
+        header: MessageHeader::ack(sample_operation_id()),
+        data: ProtocolResponse::ack(FinalityAck {
             message: "ok".to_string(),
         }),
     };
@@ -387,8 +378,8 @@ fn finality_response_ack_matches_js_shape() {
 #[test]
 fn finality_response_nack_matches_js_shape() {
     let response: ResponseMessage<FinalityAck> = ResponseMessage {
-        header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Nack),
-        data: ResponseBody::error("boom"),
+        header: MessageHeader::nack(sample_operation_id()),
+        data: ProtocolResponse::error("boom"),
     };
 
     let actual = to_json(&response);
@@ -431,8 +422,8 @@ fn store_request_accepts_js_payload() {
 #[test]
 fn store_response_ack_matches_js_shape() {
     let response = ResponseMessage {
-        header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Ack),
-        data: ResponseBody::ack(StoreAck {
+        header: MessageHeader::ack(sample_operation_id()),
+        data: ProtocolResponse::ack(StoreAck {
             identity_id: 123,
             signature: SignatureComponents {
                 v: 27,
@@ -466,8 +457,8 @@ fn store_response_ack_matches_js_shape() {
 #[test]
 fn store_response_nack_matches_js_shape() {
     let response: ResponseMessage<StoreAck> = ResponseMessage {
-        header: ResponseMessageHeader::new(sample_operation_id(), ResponseMessageType::Nack),
-        data: ResponseBody::error("boom"),
+        header: MessageHeader::nack(sample_operation_id()),
+        data: ProtocolResponse::error("boom"),
     };
 
     let actual = to_json(&response);

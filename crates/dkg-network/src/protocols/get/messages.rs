@@ -3,7 +3,7 @@
 use dkg_domain::{Assertion, BlockchainId, TokenIds};
 use serde::{Deserialize, Serialize};
 
-use crate::message::ResponseBody;
+use crate::message::ProtocolResponse;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,4 +75,4 @@ pub struct GetAck {
 }
 
 /// Get response data (ACK payload or error payload).
-pub type GetResponseData = ResponseBody<GetAck>;
+pub type GetResponseData = ProtocolResponse<GetAck>;

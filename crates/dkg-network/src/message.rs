@@ -2,16 +2,11 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use uuid::Uuid;
 
-/// Request message types for protocol negotiation
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum RequestMessageType {
+/// Wire-level message type used by request and response envelopes.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
+pub enum MessageType {
     #[serde(rename = "PROTOCOL_REQUEST")]
     ProtocolRequest,
-}
-
-/// Response message types for flow control
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub enum ResponseMessageType {
     #[serde(rename = "ACK")]
     Ack,
     #[serde(rename = "NACK")]
@@ -20,17 +15,17 @@ pub enum ResponseMessageType {
     Busy,
 }
 
-/// Request message header containing operation tracking and message type
+/// Common wire header containing operation tracking and message type.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct RequestMessageHeader {
+pub struct MessageHeader {
     operation_id: Uuid,
-    message_type: RequestMessageType,
+    message_type: MessageType,
 }
 
-impl RequestMessageHeader {
-    /// Creates a new request message header.
-    pub fn new(operation_id: Uuid, message_type: RequestMessageType) -> Self {
+impl MessageHeader {
+    /// Creates a new wire message header.
+    pub fn new(operation_id: Uuid, message_type: MessageType) -> Self {
         Self {
             operation_id,
             message_type,
@@ -41,23 +36,26 @@ impl RequestMessageHeader {
     pub fn operation_id(&self) -> Uuid {
         self.operation_id
     }
-}
 
-/// Response message header containing operation tracking and message type
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ResponseMessageHeader {
-    operation_id: Uuid,
-    message_type: ResponseMessageType,
-}
+    /// Returns the wire-level message type.
+    pub fn message_type(&self) -> MessageType {
+        self.message_type
+    }
 
-impl ResponseMessageHeader {
-    /// Creates a new response message header.
-    pub fn new(operation_id: Uuid, message_type: ResponseMessageType) -> Self {
-        Self {
-            operation_id,
-            message_type,
-        }
+    pub fn protocol_request(operation_id: Uuid) -> Self {
+        Self::new(operation_id, MessageType::ProtocolRequest)
+    }
+
+    pub fn ack(operation_id: Uuid) -> Self {
+        Self::new(operation_id, MessageType::Ack)
+    }
+
+    pub fn nack(operation_id: Uuid) -> Self {
+        Self::new(operation_id, MessageType::Nack)
+    }
+
+    pub fn busy(operation_id: Uuid) -> Self {
+        Self::new(operation_id, MessageType::Busy)
     }
 }
 
@@ -65,8 +63,17 @@ impl ResponseMessageHeader {
 /// The generic parameter T should be an application-defined request data type
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RequestMessage<T> {
-    pub header: RequestMessageHeader,
+    pub header: MessageHeader,
     pub data: T,
+}
+
+impl<T> RequestMessage<T> {
+    pub fn protocol_request(operation_id: Uuid, data: T) -> Self {
+        Self {
+            header: MessageHeader::protocol_request(operation_id),
+            data,
+        }
+    }
 }
 
 /// Error payload for NACK/BUSY responses.
@@ -85,15 +92,15 @@ impl ErrorPayload {
     }
 }
 
-/// Response body that depends on the response header.
+/// Protocol-level response payload (ACK data or error payload).
 #[derive(Debug, Serialize, Clone)]
 #[serde(untagged)]
-pub enum ResponseBody<T> {
+pub enum ProtocolResponse<T> {
     Ack(T),
     Error(ErrorPayload),
 }
 
-impl<T> ResponseBody<T> {
+impl<T> ProtocolResponse<T> {
     pub fn ack(data: T) -> Self {
         Self::Ack(data)
     }
@@ -107,29 +114,29 @@ impl<T> ResponseBody<T> {
 /// The generic parameter T should be an application-defined response data type
 #[derive(Debug, Serialize, Clone)]
 pub struct ResponseMessage<T> {
-    pub header: ResponseMessageHeader,
-    pub data: ResponseBody<T>,
+    pub header: MessageHeader,
+    pub data: ProtocolResponse<T>,
 }
 
 impl<T> ResponseMessage<T> {
     pub(crate) fn ack(operation_id: Uuid, data: T) -> Self {
         Self {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Ack),
-            data: ResponseBody::ack(data),
+            header: MessageHeader::ack(operation_id),
+            data: ProtocolResponse::ack(data),
         }
     }
 
     pub(crate) fn nack(operation_id: Uuid, error_message: impl Into<String>) -> Self {
         Self {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Nack),
-            data: ResponseBody::error(error_message),
+            header: MessageHeader::nack(operation_id),
+            data: ProtocolResponse::error(error_message),
         }
     }
 
     pub(crate) fn busy(operation_id: Uuid, error_message: impl Into<String>) -> Self {
         Self {
-            header: ResponseMessageHeader::new(operation_id, ResponseMessageType::Busy),
-            data: ResponseBody::error(error_message),
+            header: MessageHeader::busy(operation_id),
+            data: ProtocolResponse::error(error_message),
         }
     }
 }
@@ -150,19 +157,24 @@ where
             .clone();
         let data_value = value.get("data").cloned().unwrap_or(Value::Null);
 
-        let header: ResponseMessageHeader =
+        let header: MessageHeader =
             serde_json::from_value(header_value).map_err(serde::de::Error::custom)?;
 
-        let data = match header.message_type {
-            ResponseMessageType::Ack => {
+        let data = match header.message_type() {
+            MessageType::Ack => {
                 let ack =
                     serde_json::from_value::<T>(data_value).map_err(serde::de::Error::custom)?;
-                ResponseBody::Ack(ack)
+                ProtocolResponse::Ack(ack)
             }
-            ResponseMessageType::Nack | ResponseMessageType::Busy => {
+            MessageType::Nack | MessageType::Busy => {
                 let error = serde_json::from_value::<ErrorPayload>(data_value)
                     .map_err(serde::de::Error::custom)?;
-                ResponseBody::Error(error)
+                ProtocolResponse::Error(error)
+            }
+            MessageType::ProtocolRequest => {
+                return Err(serde::de::Error::custom(
+                    "invalid response message type: PROTOCOL_REQUEST",
+                ));
             }
         };
 

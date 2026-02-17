@@ -3,7 +3,7 @@
 use dkg_domain::BlockchainId;
 use serde::{Deserialize, Serialize};
 
-use crate::message::ResponseBody;
+use crate::message::ProtocolResponse;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -41,4 +41,4 @@ pub struct FinalityAck {
 }
 
 /// Finality response data (ACK payload or error payload).
-pub type FinalityResponseData = ResponseBody<FinalityAck>;
+pub type FinalityResponseData = ProtocolResponse<FinalityAck>;

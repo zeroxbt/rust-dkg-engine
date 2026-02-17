@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use dkg_domain::{Assertion, TokenIds};
 use serde::{Deserialize, Serialize};
 
-use crate::message::ResponseBody;
+use crate::message::ProtocolResponse;
 
 /// Request data for batch get protocol.
 ///
@@ -67,4 +67,4 @@ pub struct BatchGetAck {
 }
 
 /// Batch get response data (ACK payload or error payload).
-pub type BatchGetResponseData = ResponseBody<BatchGetAck>;
+pub type BatchGetResponseData = ProtocolResponse<BatchGetAck>;

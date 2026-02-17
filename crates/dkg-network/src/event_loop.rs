@@ -20,7 +20,7 @@ use super::{
     NetworkManagerConfig, PeerEvent, RequestOutcome, RequestOutcomeKind, ResponseHandle,
     actions::{NetworkControlAction, NetworkDataAction},
     behaviour::{NodeBehaviour, NodeBehaviourEvent},
-    message::{RequestMessage, RequestMessageHeader, RequestMessageType, ResponseMessage},
+    message::{ProtocolResponse as ResponsePayload, RequestMessage, ResponseMessage},
     pending_requests::{PendingRequests, RequestContext},
     protocols::{
         BatchGetProtocol, BatchGetResponseData, FinalityProtocol, FinalityResponseData,
@@ -56,8 +56,8 @@ fn handle_protocol_event<P, H>(
                 request_id,
             } => {
                 let outcome_kind = match &response.data {
-                    super::message::ResponseBody::Ack(_) => RequestOutcomeKind::Success,
-                    super::message::ResponseBody::Error(_) => RequestOutcomeKind::ResponseError,
+                    ResponsePayload::Ack(_) => RequestOutcomeKind::Success,
+                    ResponsePayload::Error(_) => RequestOutcomeKind::ResponseError,
                 };
                 if let Some(context) = pending.complete_success(request_id, response.data) {
                     let outcome = RequestOutcome {
@@ -199,10 +199,7 @@ fn send_protocol_request<P, B>(
         JsCompatCodec<RequestMessage<P::RequestData>, ResponseMessage<P::Ack>>,
     >,
 {
-    let message = RequestMessage {
-        header: RequestMessageHeader::new(operation_id, RequestMessageType::ProtocolRequest),
-        data: request_data,
-    };
+    let message = RequestMessage::protocol_request(operation_id, request_data);
     let started_at = Instant::now();
     let request_id = behaviour_accessor(swarm.behaviour_mut()).send_request(&peer, message);
     pending.insert_sender(
