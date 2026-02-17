@@ -4,16 +4,13 @@ use std::{sync::Arc, time::Duration};
 
 use dkg_blockchain::{
     Address, AssetStorageChangedFilter, BlockchainError, BlockchainId, BlockchainManager,
-    ContractChangedFilter, ContractLog, ContractName, HubEvents, KnowledgeCollectionCreatedFilter,
-    KnowledgeCollectionStorageEvents, NewAssetStorageFilter, NewContractFilter,
-    ParameterChangedFilter, ParametersStorageEvents, to_hex_string,
+    ContractChangedFilter, ContractEvent, ContractLog, ContractName,
+    KnowledgeCollectionCreatedFilter, NewAssetStorageFilter, NewContractFilter,
+    ParameterChangedFilter, decode_contract_event, monitored_contract_events, to_hex_string,
 };
 use dkg_repository::RepositoryManager;
 use tokio_util::sync::CancellationToken;
 
-use super::blockchain_event_spec::{
-    ContractEvent, decode_contract_event, monitored_contract_events,
-};
 use crate::{
     commands::{
         executor::CommandExecutionRequest,
@@ -299,38 +296,30 @@ impl BlockchainEventListenerTask {
 
         let log = event.log();
         match decode_contract_event(event.contract_name(), log) {
-            Some(ContractEvent::KnowledgeCollectionStorage(decoded)) => {
-                if let KnowledgeCollectionStorageEvents::KnowledgeCollectionCreated(filter) =
-                    decoded
-                {
-                    self.handle_knowledge_collection_created_event(blockchain_id, &filter, log)
-                        .await;
-                }
+            Some(ContractEvent::KnowledgeCollectionCreated(filter)) => {
+                self.handle_knowledge_collection_created_event(blockchain_id, &filter, log)
+                    .await;
             }
-            Some(ContractEvent::ParametersStorage(decoded)) => {
-                let ParametersStorageEvents::ParameterChanged(filter) = decoded;
+            Some(ContractEvent::ParameterChanged(filter)) => {
                 self.handle_parameter_changed_event(blockchain_id, &filter)
                     .await?;
             }
-            Some(ContractEvent::Hub(decoded)) => match decoded {
-                HubEvents::NewContract(filter) => {
-                    self.handle_new_contract_event(blockchain_id, &filter)
-                        .await?;
-                }
-                HubEvents::ContractChanged(filter) => {
-                    self.handle_contract_changed_event(blockchain_id, &filter)
-                        .await?;
-                }
-                HubEvents::NewAssetStorage(filter) => {
-                    self.handle_new_asset_storage_event(blockchain_id, &filter)
-                        .await?;
-                }
-                HubEvents::AssetStorageChanged(filter) => {
-                    self.handle_asset_storage_changed_event(blockchain_id, &filter)
-                        .await?;
-                }
-                _ => {}
-            },
+            Some(ContractEvent::NewContract(filter)) => {
+                self.handle_new_contract_event(blockchain_id, &filter)
+                    .await?;
+            }
+            Some(ContractEvent::ContractChanged(filter)) => {
+                self.handle_contract_changed_event(blockchain_id, &filter)
+                    .await?;
+            }
+            Some(ContractEvent::NewAssetStorage(filter)) => {
+                self.handle_new_asset_storage_event(blockchain_id, &filter)
+                    .await?;
+            }
+            Some(ContractEvent::AssetStorageChanged(filter)) => {
+                self.handle_asset_storage_changed_event(blockchain_id, &filter)
+                    .await?;
+            }
             None => {
                 tracing::warn!(
                     contract = %event.contract_name().as_str(),

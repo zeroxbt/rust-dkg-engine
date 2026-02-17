@@ -1,6 +1,7 @@
 mod chains;
 mod config;
 mod config_error;
+mod contract_events;
 mod error;
 mod error_classification;
 mod manager;
@@ -19,6 +20,7 @@ pub use config::{
     BlockchainRaw,
 };
 pub use config_error::ConfigError;
+pub use contract_events::{ContractEvent, decode_contract_event, monitored_contract_events};
 pub use error::BlockchainError;
 pub use multicall::{MulticallBatch, MulticallRequest, MulticallResult, encoders};
 pub use rpc_rate_limiter::RpcRateLimiter;
