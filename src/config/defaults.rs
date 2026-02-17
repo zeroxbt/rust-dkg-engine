@@ -26,7 +26,7 @@ use crate::{
     },
     logger::{LogFormat, LoggerConfig, TelemetryConfig},
     managers::ManagersConfigRaw,
-    periodic::tasks::{
+    periodic_tasks::tasks::{
         cleanup::{
             CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
             ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,

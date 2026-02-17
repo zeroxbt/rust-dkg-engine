@@ -3,8 +3,8 @@ use std::{sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    periodic::SavePeerAddressesDeps,
-    periodic::runner::run_with_shutdown,
+    periodic_tasks::SavePeerAddressesDeps,
+    periodic_tasks::runner::run_with_shutdown,
     services::{PeerService, peer::PeerAddressStore},
 };
 
@@ -28,7 +28,7 @@ impl SavePeerAddressesTask {
     }
 
     #[tracing::instrument(
-        name = "periodic.save_peer_addresses",
+        name = "periodic_tasks.save_peer_addresses",
         skip(self),
         fields(
             peers = tracing::field::Empty,

@@ -17,8 +17,8 @@ use crate::{
     },
     config,
     error::NodeError,
-    periodic::BlockchainEventListenerDeps,
-    periodic::runner::run_with_shutdown,
+    periodic_tasks::BlockchainEventListenerDeps,
+    periodic_tasks::runner::run_with_shutdown,
 };
 
 /// Event fetch interval for mainnet (10 seconds)
@@ -77,7 +77,7 @@ impl BlockchainEventListenerTask {
     }
 
     #[tracing::instrument(
-        name = "periodic.blockchain_events",
+        name = "periodic_tasks.blockchain_events",
         skip(self),
         fields(
             blockchain_id = %blockchain_id,

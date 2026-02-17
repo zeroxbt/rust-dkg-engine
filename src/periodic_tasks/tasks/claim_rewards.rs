@@ -5,7 +5,7 @@ use dkg_domain::BlockchainId;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio_util::sync::CancellationToken;
 
-use crate::{periodic::ClaimRewardsDeps, periodic::runner::run_with_shutdown};
+use crate::{periodic_tasks::ClaimRewardsDeps, periodic_tasks::runner::run_with_shutdown};
 
 /// Interval between claim rewards cycles (1 hour).
 pub(crate) const CLAIM_REWARDS_INTERVAL: Duration = Duration::from_secs(60 * 60);
@@ -28,7 +28,7 @@ impl ClaimRewardsTask {
         run_with_shutdown("claim_rewards", shutdown, || self.execute(blockchain_id)).await;
     }
 
-    #[tracing::instrument(name = "periodic.claim_rewards", skip(self))]
+    #[tracing::instrument(name = "periodic_tasks.claim_rewards", skip(self))]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
         let identity_id = self.blockchain_manager.identity_id(blockchain_id);
 

@@ -7,7 +7,7 @@ use crate::{
     controllers::{http_api_controller::router::HttpApiConfig, rpc_controller::RpcConfig},
     logger::{LoggerConfig, TelemetryConfig},
     managers::{ManagersConfig, ManagersConfigRaw},
-    periodic::tasks::{
+    periodic_tasks::tasks::{
         cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, proving::ProvingConfig,
         sync::SyncConfig,
     },

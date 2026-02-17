@@ -10,8 +10,8 @@ use crate::{
     controllers::{
         http_api_controller::router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
     },
-    logger, periodic,
-    periodic::tasks::{
+    logger, periodic_tasks,
+    periodic_tasks::tasks::{
         cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, proving::ProvingConfig,
         sync::SyncConfig,
     },
@@ -27,7 +27,7 @@ pub(crate) struct RuntimeDeps {
     pub(crate) command_scheduler: CommandScheduler,
     pub(crate) network_manager: Arc<dkg_network::NetworkManager>,
     pub(crate) peer_service: Arc<PeerService>,
-    pub(crate) periodic_deps: Arc<periodic::PeriodicDeps>,
+    pub(crate) periodic_tasks_deps: Arc<periodic_tasks::PeriodicTasksDeps>,
     pub(crate) blockchain_ids: Vec<BlockchainId>,
 }
 
@@ -57,8 +57,8 @@ pub(crate) async fn run(
     let mut execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
 
     let periodic_shutdown = CancellationToken::new();
-    let mut periodic_handle = tokio::task::spawn(periodic::run_all(
-        Arc::clone(&deps.periodic_deps),
+    let mut periodic_handle = tokio::task::spawn(periodic_tasks::run(
+        Arc::clone(&deps.periodic_tasks_deps),
         deps.blockchain_ids.clone(),
         cleanup_config,
         sync_config,

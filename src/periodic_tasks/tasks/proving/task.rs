@@ -21,8 +21,8 @@ use uuid::Uuid;
 
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
-    periodic::ProvingDeps,
-    periodic::runner::run_with_shutdown,
+    periodic_tasks::ProvingDeps,
+    periodic_tasks::runner::run_with_shutdown,
     services::{
         AssertionValidationService, GET_NETWORK_CONCURRENT_PEERS, PeerService, TripleStoreService,
     },
@@ -284,7 +284,7 @@ impl ProvingTask {
         run_with_shutdown("proving", shutdown, || self.execute(blockchain_id)).await;
     }
 
-    #[tracing::instrument(name = "periodic.proving", skip(self,))]
+    #[tracing::instrument(name = "periodic_tasks.proving", skip(self,))]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
         // 1. Check if we're in the shard
         if !self.is_in_shard(blockchain_id) {

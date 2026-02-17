@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use super::ParanetSyncConfig;
 use crate::{
-    periodic::ParanetSyncDeps,
-    periodic::runner::run_with_shutdown,
+    periodic_tasks::ParanetSyncDeps,
+    periodic_tasks::runner::run_with_shutdown,
     services::{GetFetchRequest, GetFetchSource},
 };
 
@@ -29,7 +29,7 @@ impl ParanetSyncTask {
         run_with_shutdown("paranet_sync", shutdown, || self.execute(blockchain_id)).await;
     }
 
-    #[tracing::instrument(name = "periodic.paranet_sync", skip(self), fields(blockchain_id = %blockchain_id))]
+    #[tracing::instrument(name = "periodic_tasks.paranet_sync", skip(self), fields(blockchain_id = %blockchain_id))]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
         let interval = Duration::from_secs(self.config.interval_secs);
 

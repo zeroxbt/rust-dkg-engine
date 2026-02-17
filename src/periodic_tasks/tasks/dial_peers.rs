@@ -3,7 +3,9 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 use dkg_network::{NetworkManager, PeerId};
 use tokio_util::sync::CancellationToken;
 
-use crate::{periodic::DialPeersDeps, periodic::runner::run_with_shutdown, services::PeerService};
+use crate::{
+    periodic_tasks::DialPeersDeps, periodic_tasks::runner::run_with_shutdown, services::PeerService,
+};
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
 const CONCURRENT_PEER_DIALS: usize = 20;
@@ -77,7 +79,7 @@ impl DialPeersTask {
     }
 
     #[tracing::instrument(
-        name = "periodic.dial_peers",
+        name = "periodic_tasks.dial_peers",
         skip(self),
         fields(
             own_peer_id = tracing::field::Empty,

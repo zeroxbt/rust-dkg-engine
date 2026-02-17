@@ -11,8 +11,8 @@ use super::{
 };
 use crate::{
     operations::{GetOperation, PublishStoreOperation},
-    periodic::CleanupDeps,
-    periodic::runner::run_with_shutdown,
+    periodic_tasks::CleanupDeps,
+    periodic_tasks::runner::run_with_shutdown,
     services::OperationStatusService,
     state::ResponseChannels,
 };
@@ -48,7 +48,7 @@ impl CleanupTask {
         run_with_shutdown("cleanup", shutdown, || self.execute(&self.config)).await;
     }
 
-    #[tracing::instrument(name = "periodic.cleanup", skip(self, config))]
+    #[tracing::instrument(name = "periodic_tasks.cleanup", skip(self, config))]
     async fn execute(&self, config: &CleanupConfig) -> Duration {
         let interval = Duration::from_secs(config.interval_secs);
 

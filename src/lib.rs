@@ -6,14 +6,14 @@ mod error;
 mod logger;
 mod managers;
 mod operations;
-mod periodic;
+mod periodic_tasks;
 mod runtime;
 mod services;
 mod state;
 
 use std::sync::Arc;
 
-use periodic::seed_sharding_tables;
+use periodic_tasks::seed_sharding_tables;
 
 pub async fn run() {
     // Install rustls crypto provider before any TLS connections
@@ -54,7 +54,8 @@ pub async fn run() {
     // Load persisted peer addresses and inject into Kademlia routing table.
     // This must happen after sharding table seeding so dial_peers knows who to connect to.
     bootstrap::hydrate_persisted_peer_addresses(&managers, &services).await;
-    let periodic_deps = bootstrap::build_periodic_deps(&managers, &services, &command_scheduler);
+    let periodic_tasks_deps =
+        bootstrap::build_periodic_tasks_deps(&managers, &services, &command_scheduler);
     let command_executor =
         bootstrap::build_command_executor(&managers, &services, &command_scheduler, command_rx);
     let controllers =
@@ -65,7 +66,7 @@ pub async fn run() {
             command_scheduler,
             network_manager: Arc::clone(&managers.network),
             peer_service: Arc::clone(&services.peer_service),
-            periodic_deps,
+            periodic_tasks_deps,
             blockchain_ids,
         },
         command_executor,

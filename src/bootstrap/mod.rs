@@ -23,7 +23,7 @@ use crate::{
         },
     },
     managers::{self, Managers},
-    periodic::{
+    periodic_tasks::{
         self, BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
         ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps, SyncDeps,
     },
@@ -108,12 +108,12 @@ pub(crate) async fn hydrate_persisted_peer_addresses(managers: &Managers, servic
     }
 }
 
-pub(crate) fn build_periodic_deps(
+pub(crate) fn build_periodic_tasks_deps(
     managers: &Managers,
     services: &Services,
     command_scheduler: &CommandScheduler,
-) -> Arc<periodic::PeriodicDeps> {
-    Arc::new(periodic::PeriodicDeps {
+) -> Arc<periodic_tasks::PeriodicTasksDeps> {
+    Arc::new(periodic_tasks::PeriodicTasksDeps {
         dial_peers: DialPeersDeps {
             network_manager: Arc::clone(&managers.network),
             peer_service: Arc::clone(&services.peer_service),

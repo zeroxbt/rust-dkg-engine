@@ -93,7 +93,7 @@ pub(crate) trait CommandHandler<D: Send + Sync + 'static>: Send + Sync {
 }
 
 // Command registry: operation commands only.
-// Periodic tasks are managed separately in src/periodic/.
+// Periodic tasks are managed separately in src/periodic_tasks/.
 command_registry! {
     send_publish_store_requests: SendPublishStoreRequests => {
         data: SendPublishStoreRequestsCommandData,

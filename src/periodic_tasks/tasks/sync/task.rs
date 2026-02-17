@@ -18,7 +18,8 @@ use super::{
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
 use crate::{
-    periodic::SyncDeps, periodic::runner::run_with_shutdown, services::GET_NETWORK_CONCURRENT_PEERS,
+    periodic_tasks::SyncDeps, periodic_tasks::runner::run_with_shutdown,
+    services::GET_NETWORK_CONCURRENT_PEERS,
 };
 
 pub(crate) struct SyncTask {
@@ -438,7 +439,7 @@ impl SyncTask {
     }
 
     #[tracing::instrument(
-        name = "periodic.sync",
+        name = "periodic_tasks.sync",
         skip(self),
         fields(blockchain_id = %blockchain_id)
     )]

@@ -86,7 +86,7 @@ pub(crate) struct ParanetSyncDeps {
 }
 
 #[derive(Clone)]
-pub(crate) struct PeriodicDeps {
+pub(crate) struct PeriodicTasksDeps {
     pub(crate) dial_peers: DialPeersDeps,
     pub(crate) cleanup: CleanupDeps,
     pub(crate) save_peer_addresses: SavePeerAddressesDeps,

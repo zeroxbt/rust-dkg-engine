@@ -5,8 +5,8 @@ use dkg_network::PeerId;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    error::NodeError, periodic::ShardingTableCheckDeps, periodic::runner::run_with_shutdown,
-    services::PeerService,
+    error::NodeError, periodic_tasks::ShardingTableCheckDeps,
+    periodic_tasks::runner::run_with_shutdown, services::PeerService,
 };
 
 /// Interval between sharding table synchronization checks (10 seconds)
@@ -316,7 +316,7 @@ impl ShardingTableCheckTask {
         .await;
     }
 
-    #[tracing::instrument(name = "periodic.sharding_table_check", skip(self))]
+    #[tracing::instrument(name = "periodic_tasks.sharding_table_check", skip(self))]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
         if let Err(error) = self.sync_blockchain_sharding_table(blockchain_id).await {
             tracing::error!(

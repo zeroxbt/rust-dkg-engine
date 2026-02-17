@@ -4,18 +4,18 @@ use dkg_blockchain::BlockchainId;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
-use super::deps::PeriodicDeps;
+use super::deps::PeriodicTasksDeps;
 
 pub(crate) trait GlobalPeriodicTask: Send + 'static {
     type Config: Send + 'static;
 
-    fn from_deps(deps: Arc<PeriodicDeps>, config: Self::Config) -> Self;
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self;
 
     fn run_task(self, shutdown: CancellationToken) -> impl Future<Output = ()> + Send;
 }
 
 pub(crate) trait BlockchainPeriodicTask: Send + 'static {
-    fn from_deps(deps: Arc<PeriodicDeps>) -> Self;
+    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self;
 
     fn run_task(
         self,
@@ -26,7 +26,7 @@ pub(crate) trait BlockchainPeriodicTask: Send + 'static {
 
 pub(crate) fn spawn_global_task<T: GlobalPeriodicTask>(
     set: &mut JoinSet<()>,
-    deps: &Arc<PeriodicDeps>,
+    deps: &Arc<PeriodicTasksDeps>,
     shutdown: &CancellationToken,
     config: T::Config,
 ) {
@@ -39,7 +39,7 @@ pub(crate) fn spawn_global_task<T: GlobalPeriodicTask>(
 
 pub(crate) fn spawn_blockchain_task<T: BlockchainPeriodicTask>(
     set: &mut JoinSet<()>,
-    deps: &Arc<PeriodicDeps>,
+    deps: &Arc<PeriodicTasksDeps>,
     shutdown: &CancellationToken,
     blockchain_id: &BlockchainId,
 ) {

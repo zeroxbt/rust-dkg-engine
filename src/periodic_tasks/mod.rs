@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 pub(crate) use deps::{
     BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, ParanetSyncDeps,
-    PeriodicDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps, SyncDeps,
+    PeriodicTasksDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps, SyncDeps,
 };
 use dkg_blockchain::BlockchainId;
 pub(crate) use tasks::sharding_table_check::seed_sharding_tables;
@@ -30,7 +30,7 @@ use self::registry::{
 impl GlobalPeriodicTask for DialPeersTask {
     type Config = ();
 
-    fn from_deps(deps: Arc<PeriodicDeps>, _config: Self::Config) -> Self {
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
         Self::new(deps.dial_peers.clone())
     }
 
@@ -42,7 +42,7 @@ impl GlobalPeriodicTask for DialPeersTask {
 impl GlobalPeriodicTask for CleanupTask {
     type Config = CleanupConfig;
 
-    fn from_deps(deps: Arc<PeriodicDeps>, config: Self::Config) -> Self {
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
         Self::new(deps.cleanup.clone(), config)
     }
 
@@ -54,7 +54,7 @@ impl GlobalPeriodicTask for CleanupTask {
 impl GlobalPeriodicTask for SavePeerAddressesTask {
     type Config = ();
 
-    fn from_deps(deps: Arc<PeriodicDeps>, _config: Self::Config) -> Self {
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
         Self::new(deps.save_peer_addresses.clone())
     }
 
@@ -64,7 +64,7 @@ impl GlobalPeriodicTask for SavePeerAddressesTask {
 }
 
 impl BlockchainPeriodicTask for ShardingTableCheckTask {
-    fn from_deps(deps: Arc<PeriodicDeps>) -> Self {
+    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
         Self::new(deps.sharding_table_check.clone())
     }
 
@@ -78,7 +78,7 @@ impl BlockchainPeriodicTask for ShardingTableCheckTask {
 }
 
 impl BlockchainPeriodicTask for BlockchainEventListenerTask {
-    fn from_deps(deps: Arc<PeriodicDeps>) -> Self {
+    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
         Self::new(deps.blockchain_event_listener.clone())
     }
 
@@ -92,7 +92,7 @@ impl BlockchainPeriodicTask for BlockchainEventListenerTask {
 }
 
 impl BlockchainPeriodicTask for ClaimRewardsTask {
-    fn from_deps(deps: Arc<PeriodicDeps>) -> Self {
+    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
         Self::new(deps.claim_rewards.clone())
     }
 
@@ -128,8 +128,8 @@ macro_rules! spawn_registered_blockchain_tasks {
 /// than waiting for all tasks to finish (as `join_all` would).
 ///
 /// Under normal operation, tasks only exit during shutdown.
-pub(crate) async fn run_all(
-    deps: Arc<PeriodicDeps>,
+pub(crate) async fn run(
+    deps: Arc<PeriodicTasksDeps>,
     blockchain_ids: Vec<BlockchainId>,
     cleanup_config: CleanupConfig,
     sync_config: SyncConfig,
