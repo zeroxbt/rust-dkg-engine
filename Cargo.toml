@@ -20,9 +20,9 @@ tokio = { workspace = true, features = [
     "io-util",
     "signal",
 ] }
-tokio-util = { version = "0.7", features = ["time"] }
-futures = "0.3.31"
-tracing = "0.1.44"
+tokio-util = { workspace = true }
+futures = { workspace = true }
+tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json"] }
 tracing-opentelemetry = "0.32.1"
 opentelemetry = { version = "0.31.0", default-features = false, features = [
@@ -32,14 +32,13 @@ opentelemetry_sdk = { version = "0.31.0", features = ["trace", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.31.0", features = ["trace", "grpc-tonic"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-uuid = { version = "1.20.0", features = ["serde", "v4"] }
+uuid = { workspace = true }
 axum = "0.8.8"
-tower = "0.5.3"
+tower = { workspace = true }
 tower-http = { version = "0.6.8", features = ["cors", "trace", "limit"] }
 tower_governor = "0.8"
 governor = "0.10"
-hyper = "1.8.1"
-chrono = "0.4.43"
+chrono = { workspace = true }
 validator = { workspace = true }
 validator_derive = { workspace = true }
 figment = { version = "0.10", features = ["toml"] }
@@ -54,7 +53,7 @@ rustls = { version = "0.23.36", default-features = false, features = [
 clap = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
-tempfile = "3.24.0"
+tempfile = { workspace = true }
 
 [patch.crates-io]
 # Patch libp2p-identity to support 1024-bit RSA keys for legacy js-libp2p node compatibility
@@ -95,3 +94,21 @@ thiserror = "2.0.18"
 tokio = "1.49.0"
 validator = "0.20.0"
 validator_derive = "0.20.0"
+
+# Centralized versions for deps used across 2+ crates
+async-trait = "0.1"
+chrono = "0.4.43"
+futures = "0.3.31"
+tempfile = "3.24.0"
+tokio-util = { version = "0.7", features = ["time"] }
+tower = "0.5.3"
+tracing = "0.1.44"
+uuid = { version = "1.20.0", features = ["serde", "v4"] }
+
+[profile.dev]
+debug = 1
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

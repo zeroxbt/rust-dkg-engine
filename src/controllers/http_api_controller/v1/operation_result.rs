@@ -3,9 +3,9 @@ use std::sync::Arc;
 use axum::{
     Json,
     extract::{Path, State},
+    http::StatusCode,
     response::IntoResponse,
 };
-use hyper::StatusCode;
 use uuid::Uuid;
 
 use crate::{

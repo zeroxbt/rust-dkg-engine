@@ -6,8 +6,8 @@ edition = "2024"
 
 [dependencies]
 dkg-domain = { path = "../dkg-domain" }
-async-trait = "0.1"
-futures = "0.3.31"
+async-trait = { workspace = true }
+futures = { workspace = true }
 libp2p = { version = "0.56.0", features = [
     "macros",
     "kad",
@@ -25,11 +25,11 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "fs", "io-util"] }
-tokio-util = { version = "0.7", features = ["time"] }
-tracing = "0.1.44"
+tokio-util = { workspace = true }
+tracing = { workspace = true }
 unsigned-varint = { version = "0.8.0", features = ["futures"] }
-uuid = { version = "1.20.0", features = ["serde", "v4"] }
+uuid = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3.24.0"
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }

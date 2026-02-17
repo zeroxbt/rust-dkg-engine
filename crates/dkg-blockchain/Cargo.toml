@@ -20,15 +20,15 @@ alloy = { workspace = true, features = [
     "signer-local",
     "sol-types",
 ] }
-futures = "0.3.31"
+futures = { workspace = true }
 jsonrpsee = { version = "0.24.10", default-features = false, features = ["http-client"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = "0.10"
-subxt = "0.44.2"
+subxt = { version = "0.44.2", default-features = false, features = ["jsonrpsee", "native"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
-tracing = "0.1.44"
-tower = "0.5.3"
+tracing = { workspace = true }
+tower = { workspace = true }
 governor = "0.10"
 url = "2.5.2"

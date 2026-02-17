@@ -5,8 +5,8 @@ rust-version = "1.92.0"
 edition = "2024"
 
 [dependencies]
-async-trait = "0.1"
-chrono = "0.4.43"
+async-trait = { workspace = true }
+chrono = { workspace = true }
 dkg-domain = { path = "../dkg-domain" }
 oxigraph = { version = "0.5.4" }
 reqwest = { workspace = true, features = ["json", "rustls-tls"] }
@@ -14,8 +14,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "time"] }
-tracing = "0.1.44"
+tracing = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3.24.0"
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "rt", "time"] }

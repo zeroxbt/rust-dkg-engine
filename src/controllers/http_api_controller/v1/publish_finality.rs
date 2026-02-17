@@ -3,9 +3,9 @@ use std::sync::Arc;
 use axum::{
     Json,
     extract::{Query, State},
+    http::StatusCode,
     response::IntoResponse,
 };
-use hyper::StatusCode;
 use validator::Validate;
 
 use crate::{

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use axum::{Json, extract::State, response::IntoResponse};
-use hyper::StatusCode;
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use uuid::Uuid;
 use validator::Validate;
 
