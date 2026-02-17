@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{
     Json,
     extract::{Path, State},
@@ -10,7 +8,7 @@ use dkg_repository::OperationStatus;
 use uuid::Uuid;
 
 use crate::{
-    context::Context,
+    context::OperationResultHttpApiControllerDeps,
     controllers::http_api_controller::v1::dto::{
         get::GetOperationResultResponse,
         operation_result::{OperationResultErrorResponse, OperationResultResponse, SignatureData},
@@ -22,7 +20,7 @@ pub(crate) struct OperationResultHttpApiController;
 
 impl OperationResultHttpApiController {
     pub(crate) async fn handle_publish_result(
-        State(context): State<Arc<Context>>,
+        State(context): State<OperationResultHttpApiControllerDeps>,
         Path(operation_id): Path<String>,
     ) -> impl IntoResponse {
         // Publish polling covers the store phase only (signatures), not finality.
@@ -40,7 +38,7 @@ impl OperationResultHttpApiController {
 
         // Get operation record
         let operation_record = match context
-            .repository_manager()
+            .repository_manager
             .operation_repository()
             .get_by_id_and_name(operation_uuid, PublishStoreOperation::NAME)
             .await
@@ -132,12 +130,12 @@ impl OperationResultHttpApiController {
 
     /// Get signatures from redb storage
     async fn get_signatures(
-        context: &Arc<Context>,
+        context: &OperationResultHttpApiControllerDeps,
         operation_id: Uuid,
     ) -> Result<(Option<SignatureData>, Vec<SignatureData>), String> {
         // Get result from redb via publish operation service
         let result: Option<PublishStoreOperationResult> = context
-            .publish_store_operation_status_service()
+            .publish_store_operation_status_service
             .get_result(operation_id)
             .await
             .map_err(|e| e.to_string())?;
@@ -172,7 +170,7 @@ impl OperationResultHttpApiController {
     }
 
     pub(crate) async fn handle_get_result(
-        State(context): State<Arc<Context>>,
+        State(context): State<OperationResultHttpApiControllerDeps>,
         Path(operation_id): Path<String>,
     ) -> impl IntoResponse {
         // Validate operation ID format
@@ -189,7 +187,7 @@ impl OperationResultHttpApiController {
 
         // Get operation record
         let operation_record = match context
-            .repository_manager()
+            .repository_manager
             .operation_repository()
             .get_by_id_and_name(operation_uuid, GetOperation::NAME)
             .await
@@ -252,7 +250,7 @@ impl OperationResultHttpApiController {
             OperationStatus::Completed => {
                 // Get result from redb store via new operation service
                 match context
-                    .get_operation_status_service()
+                    .get_operation_status_service
                     .get_result(operation_uuid)
                     .await
                 {

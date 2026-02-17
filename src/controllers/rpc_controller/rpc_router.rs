@@ -8,7 +8,7 @@ use dkg_network::{
 
 use super::{PeerRateLimiter, RpcConfig};
 use crate::{
-    context::Context,
+    context::RpcRouterDeps,
     controllers::rpc_controller::v1::{
         batch_get::BatchGetRpcController, get::GetRpcController,
         publish_finality::PublishFinalityRpcController, publish_store::PublishStoreRpcController,
@@ -24,12 +24,12 @@ pub(crate) struct RpcRouter {
 }
 
 impl RpcRouter {
-    pub(crate) fn new(context: Arc<Context>, config: &RpcConfig) -> Self {
+    pub(crate) fn new(deps: RpcRouterDeps, config: &RpcConfig) -> Self {
         RpcRouter {
-            store_controller: Arc::new(PublishStoreRpcController::new(Arc::clone(&context))),
-            get_controller: Arc::new(GetRpcController::new(Arc::clone(&context))),
-            finality_controller: Arc::new(PublishFinalityRpcController::new(Arc::clone(&context))),
-            batch_get_controller: Arc::new(BatchGetRpcController::new(Arc::clone(&context))),
+            store_controller: Arc::new(PublishStoreRpcController::new(deps.publish_store)),
+            get_controller: Arc::new(GetRpcController::new(deps.get)),
+            finality_controller: Arc::new(PublishFinalityRpcController::new(deps.publish_finality)),
+            batch_get_controller: Arc::new(BatchGetRpcController::new(deps.batch_get)),
             peer_rate_limiter: Arc::new(PeerRateLimiter::new(config.rate_limiter.clone())),
         }
     }

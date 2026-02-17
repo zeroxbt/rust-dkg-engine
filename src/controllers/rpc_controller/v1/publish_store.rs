@@ -10,7 +10,7 @@ use crate::{
         operations::publish::store::handle_publish_store_request::HandlePublishStoreRequestCommandData,
         registry::Command, scheduler::CommandScheduler,
     },
-    context::Context,
+    context::PublishStoreRpcControllerDeps,
     state::ResponseChannels,
 };
 
@@ -20,10 +20,10 @@ pub(crate) struct PublishStoreRpcController {
 }
 
 impl PublishStoreRpcController {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: PublishStoreRpcControllerDeps) -> Self {
         Self {
-            response_channels: Arc::clone(context.store_response_channels()),
-            command_scheduler: context.command_scheduler().clone(),
+            response_channels: deps.store_response_channels,
+            command_scheduler: deps.command_scheduler,
         }
     }
 

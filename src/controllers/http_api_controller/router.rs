@@ -22,7 +22,9 @@ use super::{
         publish_store::PublishStoreHttpApiController,
     },
 };
-use crate::{context::Context, controllers::http_api_controller::v1::get::GetHttpApiController};
+use crate::{
+    context::HttpApiDeps, controllers::http_api_controller::v1::get::GetHttpApiController,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -43,7 +45,7 @@ pub(crate) struct HttpApiRouter {
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
 
 impl HttpApiRouter {
-    pub(crate) fn new(config: &HttpApiConfig, context: &Arc<Context>) -> Self {
+    pub(crate) fn new(config: &HttpApiConfig, deps: HttpApiDeps) -> Self {
         // Build the base router with routes and state
         let mut router = Router::new()
             .route("/v1/info", get(InfoHttpApiController::handle_request))
@@ -64,7 +66,7 @@ impl HttpApiRouter {
                 "/v1/get/{operation_id}",
                 get(OperationResultHttpApiController::handle_get_result),
             )
-            .with_state(Arc::clone(context));
+            .with_state(deps);
 
         // Layer order (bottom-to-top, last added runs first):
         // 1. Auth middleware (innermost - runs first for security)

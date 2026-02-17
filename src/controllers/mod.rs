@@ -22,13 +22,13 @@ pub(crate) fn initialize(
 ) -> Controllers {
     let http_router = if http_api_config.enabled {
         tracing::info!("HTTP API enabled on port {}", http_api_config.port);
-        Some(HttpApiRouter::new(http_api_config, context))
+        Some(HttpApiRouter::new(http_api_config, context.http_api_deps()))
     } else {
         tracing::info!("HTTP API disabled");
         None
     };
 
-    let rpc_router = RpcRouter::new(Arc::clone(context), rpc_config);
+    let rpc_router = RpcRouter::new(context.rpc_router_deps(), rpc_config);
 
     Controllers {
         http_router,

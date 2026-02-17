@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use uuid::Uuid;
 use validator::Validate;
@@ -10,7 +8,7 @@ use crate::{
         operations::publish::store::send_publish_store_requests::SendPublishStoreRequestsCommandData,
         registry::Command,
     },
-    context::Context,
+    context::PublishStoreHttpApiControllerDeps,
     controllers::http_api_controller::v1::dto::publish::{PublishRequest, PublishResponse},
 };
 
@@ -18,7 +16,7 @@ pub(crate) struct PublishStoreHttpApiController;
 
 impl PublishStoreHttpApiController {
     pub(crate) async fn handle_request(
-        State(context): State<Arc<Context>>,
+        State(context): State<PublishStoreHttpApiControllerDeps>,
         Json(req): Json<PublishRequest>,
     ) -> impl IntoResponse {
         match req.validate() {
@@ -28,7 +26,7 @@ impl PublishStoreHttpApiController {
                 // Create operation record for the store phase (signatures).
                 // Finality is handled separately; clients poll the result endpoint.
                 if let Err(e) = context
-                    .publish_store_operation_status_service()
+                    .publish_store_operation_status_service
                     .create_operation(operation_id)
                     .await
                     .map(|_| ())
@@ -55,11 +53,11 @@ impl PublishStoreHttpApiController {
                     ));
 
                 if !context
-                    .command_scheduler()
+                    .command_scheduler
                     .try_schedule(CommandExecutionRequest::new(command))
                 {
                     context
-                        .publish_store_operation_status_service()
+                        .publish_store_operation_status_service
                         .mark_failed(operation_id, "Command queue full".to_string())
                         .await;
 

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use uuid::Uuid;
 use validator::Validate;
@@ -9,7 +7,7 @@ use crate::{
         executor::CommandExecutionRequest,
         operations::get::send_get_requests::SendGetRequestsCommandData, registry::Command,
     },
-    context::Context,
+    context::GetHttpApiControllerDeps,
     controllers::http_api_controller::v1::dto::get::{GetRequest, GetResponse},
 };
 
@@ -17,7 +15,7 @@ pub(crate) struct GetHttpApiController;
 
 impl GetHttpApiController {
     pub(crate) async fn handle_request(
-        State(context): State<Arc<Context>>,
+        State(context): State<GetHttpApiControllerDeps>,
         Json(req): Json<GetRequest>,
     ) -> impl IntoResponse {
         match req.validate() {
@@ -27,7 +25,7 @@ impl GetHttpApiController {
                 // Create operation record - we don't need the completion receiver for HTTP API
                 // (client polls for status via separate endpoint)
                 if let Err(e) = context
-                    .get_operation_status_service()
+                    .get_operation_status_service
                     .create_operation(operation_id)
                     .await
                     .map(|_| ())
@@ -51,11 +49,11 @@ impl GetHttpApiController {
                 ));
 
                 if !context
-                    .command_scheduler()
+                    .command_scheduler
                     .try_schedule(CommandExecutionRequest::new(command))
                 {
                     context
-                        .get_operation_status_service()
+                        .get_operation_status_service
                         .mark_failed(operation_id, "Command queue full".to_string())
                         .await;
 

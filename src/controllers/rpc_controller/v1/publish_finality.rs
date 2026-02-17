@@ -9,7 +9,7 @@ use crate::{
         operations::publish::finality::handle_publish_finality_request::HandlePublishFinalityRequestCommandData,
         registry::Command, scheduler::CommandScheduler,
     },
-    context::Context,
+    context::PublishFinalityRpcControllerDeps,
     state::ResponseChannels,
 };
 
@@ -19,10 +19,10 @@ pub(crate) struct PublishFinalityRpcController {
 }
 
 impl PublishFinalityRpcController {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: PublishFinalityRpcControllerDeps) -> Self {
         Self {
-            response_channels: Arc::clone(context.finality_response_channels()),
-            command_scheduler: context.command_scheduler().clone(),
+            response_channels: deps.finality_response_channels,
+            command_scheduler: deps.command_scheduler,
         }
     }
 

@@ -1,15 +1,13 @@
 use std::sync::Arc;
 
-use dkg_network::{BatchGetAck, FinalityAck, GetAck, StoreAck};
-
 use crate::{
     commands::scheduler::CommandScheduler,
     managers::Managers,
     services::{PeerService, Services},
-    state::ResponseChannels,
 };
 
 mod commands;
+mod controllers;
 mod paranet_sync;
 mod periodic;
 mod sync;
@@ -17,6 +15,12 @@ pub(crate) use commands::{
     HandleBatchGetRequestDeps, HandleGetRequestDeps, HandlePublishFinalityRequestDeps,
     HandlePublishStoreRequestDeps, SendGetRequestsDeps, SendPublishFinalityRequestDeps,
     SendPublishStoreRequestsDeps,
+};
+pub(crate) use controllers::{
+    BatchGetRpcControllerDeps, GetHttpApiControllerDeps, GetRpcControllerDeps, HttpApiDeps,
+    OperationResultHttpApiControllerDeps, PublishFinalityRpcControllerDeps,
+    PublishFinalityStatusHttpApiControllerDeps, PublishStoreHttpApiControllerDeps,
+    PublishStoreRpcControllerDeps, RpcRouterDeps,
 };
 pub(crate) use paranet_sync::ParanetSyncDeps;
 pub(crate) use periodic::{
@@ -49,10 +53,6 @@ impl Context {
     }
 
     // Manager accessors
-    pub(crate) fn repository_manager(&self) -> &Arc<dkg_repository::RepositoryManager> {
-        &self.managers.repository
-    }
-
     pub(crate) fn network_manager(&self) -> &Arc<dkg_network::NetworkManager> {
         &self.managers.network
     }
@@ -64,38 +64,6 @@ impl Context {
     // Service accessors
     pub(crate) fn peer_service(&self) -> &Arc<PeerService> {
         &self.services.peer_service
-    }
-
-    // Response channel accessors
-    pub(crate) fn store_response_channels(&self) -> &Arc<ResponseChannels<StoreAck>> {
-        &self.services.response_channels.store
-    }
-
-    pub(crate) fn get_response_channels(&self) -> &Arc<ResponseChannels<GetAck>> {
-        &self.services.response_channels.get
-    }
-
-    pub(crate) fn finality_response_channels(&self) -> &Arc<ResponseChannels<FinalityAck>> {
-        &self.services.response_channels.finality
-    }
-
-    pub(crate) fn batch_get_response_channels(&self) -> &Arc<ResponseChannels<BatchGetAck>> {
-        &self.services.response_channels.batch_get
-    }
-
-    // Operation status service accessors
-    pub(crate) fn get_operation_status_service(
-        &self,
-    ) -> &Arc<crate::services::OperationStatusService<crate::operations::GetOperation>> {
-        &self.services.get_operation
-    }
-
-    /// Publish polling status/results for store phase (signatures), not finality.
-    pub(crate) fn publish_store_operation_status_service(
-        &self,
-    ) -> &Arc<crate::services::OperationStatusService<crate::operations::PublishStoreOperation>>
-    {
-        &self.services.publish_store_operation
     }
 
     pub(crate) fn sync_deps(&self) -> SyncDeps {
@@ -241,6 +209,38 @@ impl Context {
             triple_store_service: Arc::clone(&self.services.triple_store),
             peer_service: Arc::clone(&self.services.peer_service),
             batch_get_response_channels: Arc::clone(&self.services.response_channels.batch_get),
+        }
+    }
+
+    pub(crate) fn rpc_router_deps(&self) -> RpcRouterDeps {
+        RpcRouterDeps {
+            publish_store: PublishStoreRpcControllerDeps {
+                store_response_channels: Arc::clone(&self.services.response_channels.store),
+                command_scheduler: self.command_scheduler.clone(),
+            },
+            get: GetRpcControllerDeps {
+                get_response_channels: Arc::clone(&self.services.response_channels.get),
+                command_scheduler: self.command_scheduler.clone(),
+            },
+            publish_finality: PublishFinalityRpcControllerDeps {
+                finality_response_channels: Arc::clone(&self.services.response_channels.finality),
+                command_scheduler: self.command_scheduler.clone(),
+            },
+            batch_get: BatchGetRpcControllerDeps {
+                batch_get_response_channels: Arc::clone(&self.services.response_channels.batch_get),
+                command_scheduler: self.command_scheduler.clone(),
+            },
+        }
+    }
+
+    pub(crate) fn http_api_deps(&self) -> HttpApiDeps {
+        HttpApiDeps {
+            command_scheduler: self.command_scheduler.clone(),
+            repository_manager: Arc::clone(&self.managers.repository),
+            get_operation_status_service: Arc::clone(&self.services.get_operation),
+            publish_store_operation_status_service: Arc::clone(
+                &self.services.publish_store_operation,
+            ),
         }
     }
 }

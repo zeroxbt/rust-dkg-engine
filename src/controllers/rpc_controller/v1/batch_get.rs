@@ -9,7 +9,7 @@ use crate::{
         operations::batch_get::handle_batch_get_request::HandleBatchGetRequestCommandData,
         registry::Command, scheduler::CommandScheduler,
     },
-    context::Context,
+    context::BatchGetRpcControllerDeps,
     state::ResponseChannels,
 };
 
@@ -19,10 +19,10 @@ pub(crate) struct BatchGetRpcController {
 }
 
 impl BatchGetRpcController {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: BatchGetRpcControllerDeps) -> Self {
         Self {
-            response_channels: Arc::clone(context.batch_get_response_channels()),
-            command_scheduler: context.command_scheduler().clone(),
+            response_channels: deps.batch_get_response_channels,
+            command_scheduler: deps.command_scheduler,
         }
     }
 

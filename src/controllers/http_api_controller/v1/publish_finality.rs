@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{
     Json,
     extract::{Query, State},
@@ -9,7 +7,7 @@ use axum::{
 use validator::Validate;
 
 use crate::{
-    context::Context,
+    context::PublishFinalityStatusHttpApiControllerDeps,
     controllers::http_api_controller::v1::dto::finality::{
         FinalityRequest, FinalityStatusErrorResponse, FinalityStatusResponse,
     },
@@ -19,7 +17,7 @@ pub(crate) struct PublishFinalityStatusHttpApiController;
 
 impl PublishFinalityStatusHttpApiController {
     pub(crate) async fn handle_request(
-        State(context): State<Arc<Context>>,
+        State(context): State<PublishFinalityStatusHttpApiControllerDeps>,
         Query(req): Query<FinalityRequest>,
     ) -> impl IntoResponse {
         if let Err(e) = req.validate() {
@@ -47,7 +45,7 @@ impl PublishFinalityStatusHttpApiController {
         }
 
         match context
-            .repository_manager()
+            .repository_manager
             .finality_status_repository()
             .get_finality_acks_count(&req.ual)
             .await

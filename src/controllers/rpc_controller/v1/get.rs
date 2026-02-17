@@ -9,7 +9,7 @@ use crate::{
         operations::get::handle_get_request::HandleGetRequestCommandData, registry::Command,
         scheduler::CommandScheduler,
     },
-    context::Context,
+    context::GetRpcControllerDeps,
     state::ResponseChannels,
 };
 
@@ -19,10 +19,10 @@ pub(crate) struct GetRpcController {
 }
 
 impl GetRpcController {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
+    pub(crate) fn new(deps: GetRpcControllerDeps) -> Self {
         Self {
-            response_channels: Arc::clone(context.get_response_channels()),
-            command_scheduler: context.command_scheduler().clone(),
+            response_channels: deps.get_response_channels,
+            command_scheduler: deps.command_scheduler,
         }
     }
 
