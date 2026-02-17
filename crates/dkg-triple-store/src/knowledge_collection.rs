@@ -1,10 +1,11 @@
 use chrono::{DateTime, SecondsFormat, Utc};
-
 use dkg_domain::{KnowledgeAsset, KnowledgeCollectionMetadata};
 
-use crate::TripleStoreManager;
-use crate::error::Result;
-use crate::query::{named_graphs, predicates};
+use crate::{
+    TripleStoreManager,
+    error::Result,
+    query::{named_graphs, predicates},
+};
 
 impl TripleStoreManager {
     /// Insert a knowledge collection into the triple store.

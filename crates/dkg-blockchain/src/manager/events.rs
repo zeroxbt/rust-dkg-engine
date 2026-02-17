@@ -1,10 +1,7 @@
 use alloy::primitives::{Address, B256, FixedBytes};
 use dkg_domain::BlockchainId;
 
-use crate::{
-    BlockchainManager,
-    {ContractLog, ContractName, error::BlockchainError},
-};
+use crate::{BlockchainManager, ContractLog, ContractName, error::BlockchainError};
 
 impl BlockchainManager {
     pub async fn get_event_logs(

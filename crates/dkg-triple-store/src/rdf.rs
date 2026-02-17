@@ -2,13 +2,13 @@
 
 use std::{cmp::Ordering, collections::HashMap};
 
+use dkg_domain::KnowledgeCollectionMetadata;
 use oxigraph::{
     io::{RdfFormat, RdfParser, RdfSerializer},
     model::{NamedOrBlankNode, Quad},
 };
 
 use super::query::predicates;
-use dkg_domain::KnowledgeCollectionMetadata;
 
 /// Extracts the subject from an RDF line (N-Triples/N-Quads).
 ///

@@ -1,10 +1,7 @@
 use alloy::primitives::Address;
 use dkg_domain::BlockchainId;
 
-use crate::{
-    BlockchainManager,
-    {error::BlockchainError, multicall},
-};
+use crate::{BlockchainManager, error::BlockchainError, multicall};
 
 impl BlockchainManager {
     /// Check if a knowledge collection exists on-chain.

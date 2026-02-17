@@ -5,19 +5,19 @@ use thiserror::Error;
 pub(crate) enum NodeError {
     /// Blockchain-related errors
     #[error("Blockchain error: {0}")]
-    Blockchain(#[from] crate::managers::blockchain::BlockchainError),
+    Blockchain(#[from] dkg_blockchain::BlockchainError),
 
     /// Network-related errors
     #[error("Network error: {0}")]
-    Network(#[from] crate::managers::network::NetworkError),
+    Network(#[from] dkg_network::NetworkError),
 
     /// Database/repository errors
     #[error("Repository error: {0}")]
-    Repository(#[from] crate::managers::repository::error::RepositoryError),
+    Repository(#[from] dkg_repository::error::RepositoryError),
 
     /// Triple store errors
     #[error("Triple store error: {0}")]
-    TripleStore(#[from] crate::managers::triple_store::error::TripleStoreError),
+    TripleStore(#[from] dkg_triple_store::error::TripleStoreError),
 
     /// I/O errors
     #[error("I/O error: {0}")]

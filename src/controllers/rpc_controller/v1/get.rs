@@ -1,5 +1,12 @@
 use std::sync::Arc;
 
+use dkg_network::{
+    PeerId,
+    message::{RequestMessage, ResponseMessage},
+    messages::{GetAck, GetRequestData},
+    request_response,
+};
+
 use super::inbound_request::store_channel_and_try_schedule;
 use crate::{
     commands::{
@@ -8,12 +15,6 @@ use crate::{
         scheduler::CommandScheduler,
     },
     context::Context,
-    managers::network::{
-        PeerId,
-        message::{RequestMessage, ResponseMessage},
-        messages::{GetAck, GetRequestData},
-        request_response,
-    },
     state::ResponseChannels,
 };
 

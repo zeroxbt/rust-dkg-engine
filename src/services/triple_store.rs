@@ -3,13 +3,12 @@ use std::{collections::HashMap, sync::Arc};
 use dkg_domain::{
     Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility,
 };
-use futures::future::join_all;
-use tracing::instrument;
-
-use crate::managers::triple_store::{
+use dkg_triple_store::{
     GraphVisibility, TripleStoreManager, error::TripleStoreError, extract_subject,
     group_triples_by_subject, query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
 };
+use futures::future::join_all;
+use tracing::instrument;
 
 /// Result of querying assertion data from the triple store.
 #[derive(Debug, Clone)]
@@ -481,9 +480,7 @@ impl TripleStoreService {
                         let hashed_subject = format!(
                             "<{}{}>",
                             PRIVATE_HASH_SUBJECT_PREFIX,
-                            crate::managers::blockchain::sha256_hex(
-                                subject_without_brackets.as_bytes()
-                            )
+                            dkg_blockchain::sha256_hex(subject_without_brackets.as_bytes())
                         );
                         public_subject_map.get(hashed_subject.as_str()).copied()
                     };
@@ -517,8 +514,9 @@ fn normalize_triple_lines(triples: &[String]) -> Vec<String> {
 mod tests {
     #![allow(clippy::unwrap_used)]
 
+    use dkg_blockchain as blockchain;
+
     use super::*;
-    use crate::managers::blockchain;
 
     // Note: Tests for the business logic in build_knowledge_assets:
     // - Private-hash triple separation

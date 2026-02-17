@@ -6,6 +6,7 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
+use dkg_repository::OperationStatus;
 use uuid::Uuid;
 
 use crate::{
@@ -14,7 +15,6 @@ use crate::{
         get::GetOperationResultResponse,
         operation_result::{OperationResultErrorResponse, OperationResultResponse, SignatureData},
     },
-    managers::repository::OperationStatus,
     operations::{GetOperation, OperationKind, PublishStoreOperation, PublishStoreOperationResult},
 };
 

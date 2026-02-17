@@ -1,10 +1,7 @@
 use alloy::primitives::Address;
 use dkg_domain::BlockchainId;
 
-use crate::{
-    BlockchainManager,
-    {ContractName, error::BlockchainError},
-};
+use crate::{BlockchainManager, ContractName, error::BlockchainError};
 
 impl BlockchainManager {
     pub async fn re_initialize_contract(

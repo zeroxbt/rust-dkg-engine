@@ -1,18 +1,15 @@
 use std::sync::Arc;
 
+use dkg_blockchain::{BlockchainId, BlockchainManager};
 use dkg_domain::Assertion;
-use dkg_network::PeerId;
+use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
+use dkg_network::{NetworkManager, PeerId, messages::StoreAck};
 use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
-    managers::{
-        blockchain::{BlockchainId, BlockchainManager},
-        key_value_store::{PublishTmpDataset, PublishTmpDatasetStore},
-        network::{NetworkManager, messages::StoreAck},
-    },
     services::PeerService,
     state::ResponseChannels,
 };

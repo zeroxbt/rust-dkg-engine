@@ -15,8 +15,7 @@ use std::sync::Arc;
 
 use commands::{executor::CommandExecutor, scheduler::CommandScheduler};
 use context::Context;
-use dkg_network::{Multiaddr, PeerId};
-use managers::network::KeyManager;
+use dkg_network::{KeyManager, Multiaddr, PeerId};
 use periodic::seed_sharding_tables;
 
 use crate::config::AppPaths;
@@ -136,8 +135,8 @@ fn display_rust_dkg_engine_ascii_art() {
     tracing::info!("Node is running in {} environment", environment);
 }
 
-async fn initialize_dev_environment(blockchain_manager: &Arc<managers::BlockchainManager>) {
-    use crate::managers::blockchain::parse_ether_to_u128;
+async fn initialize_dev_environment(blockchain_manager: &Arc<dkg_blockchain::BlockchainManager>) {
+    use dkg_blockchain::parse_ether_to_u128;
 
     tracing::info!("Initializing dev environment: setting stake and ask...");
 

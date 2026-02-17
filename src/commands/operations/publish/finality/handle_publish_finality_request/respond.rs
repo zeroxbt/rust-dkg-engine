@@ -1,12 +1,12 @@
-use uuid::Uuid;
-
-use super::handler::HandlePublishFinalityRequestCommandHandler;
-use crate::managers::network::{
+use dkg_network::{
     ResponseMessage,
     message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
     messages::FinalityAck,
     request_response::ResponseChannel,
 };
+use uuid::Uuid;
+
+use super::handler::HandlePublishFinalityRequestCommandHandler;
 
 impl HandlePublishFinalityRequestCommandHandler {
     pub(crate) async fn send_response(

@@ -1,17 +1,14 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use dkg_domain::BlockchainId;
-use dkg_network::{Multiaddr, PeerId};
+pub(crate) use dkg_key_value_store::PeerAddressStore;
+use dkg_network::{
+    Multiaddr, PeerEvent, PeerId, RequestOutcomeKind,
+    protocols::{BatchGetProtocol, GetProtocol, ProtocolSpec},
+};
 use tokio::sync::broadcast;
 
-pub(crate) use crate::managers::key_value_store::PeerAddressStore;
-use crate::{
-    managers::network::{
-        PeerEvent, RequestOutcomeKind,
-        protocols::{BatchGetProtocol, GetProtocol, ProtocolSpec},
-    },
-    state::PeerRegistry,
-};
+use crate::state::PeerRegistry;
 
 pub(crate) struct PeerService {
     registry: Arc<PeerRegistry>,

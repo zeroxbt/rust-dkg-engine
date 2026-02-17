@@ -1,14 +1,11 @@
 use std::sync::Arc;
 
+use dkg_blockchain::BlockchainManager;
 use dkg_domain::{Assertion, ParsedUal, Visibility};
-
-use crate::managers::{
-    blockchain::BlockchainManager,
-    triple_store::{
-        compare_js_default_string_order, group_triples_by_subject,
-        query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
-        rdf::extract_quoted_string,
-    },
+use dkg_triple_store::{
+    compare_js_default_string_order, group_triples_by_subject,
+    query::{predicates::PRIVATE_MERKLE_ROOT, subjects::PRIVATE_HASH_SUBJECT_PREFIX},
+    rdf::extract_quoted_string,
 };
 
 /// Service for validating assertion responses.

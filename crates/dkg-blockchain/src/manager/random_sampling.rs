@@ -3,10 +3,8 @@ use dkg_domain::BlockchainId;
 
 use crate::{
     BlockchainManager,
-    {
-        chains::evm::{NodeChallenge, ProofPeriodStatus},
-        error::BlockchainError,
-    },
+    chains::evm::{NodeChallenge, ProofPeriodStatus},
+    error::BlockchainError,
 };
 
 impl BlockchainManager {

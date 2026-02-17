@@ -9,6 +9,12 @@
 
 use std::path::PathBuf;
 
+use dkg_blockchain::{BlockchainConfigRaw, BlockchainManagerConfigRaw, BlockchainRaw};
+use dkg_key_value_store::KeyValueStoreManagerConfig;
+use dkg_network::NetworkManagerConfig;
+use dkg_repository::RepositoryManagerConfigRaw;
+use dkg_triple_store::{TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig};
+
 use super::ConfigRaw;
 use crate::{
     controllers::{
@@ -19,14 +25,7 @@ use crate::{
         rpc_controller::{config::RpcConfig, rate_limiter::PeerRateLimiterConfig},
     },
     logger::{LogFormat, LoggerConfig, TelemetryConfig},
-    managers::{
-        ManagersConfigRaw,
-        blockchain::{BlockchainConfigRaw, BlockchainManagerConfigRaw, BlockchainRaw},
-        key_value_store::KeyValueStoreManagerConfig,
-        network::NetworkManagerConfig,
-        repository::RepositoryManagerConfigRaw,
-        triple_store::{TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig},
-    },
+    managers::ManagersConfigRaw,
     periodic::tasks::{
         cleanup::{
             CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,

@@ -1,17 +1,15 @@
 use std::collections::HashMap;
 
 use dkg_domain::Assertion;
+use dkg_network::{
+    ResponseMessage,
+    message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
+    messages::BatchGetAck,
+    request_response::ResponseChannel,
+};
 use uuid::Uuid;
 
-use crate::{
-    commands::operations::batch_get::handle_batch_get_request::HandleBatchGetRequestCommandHandler,
-    managers::network::{
-        ResponseMessage,
-        message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
-        messages::BatchGetAck,
-        request_response::ResponseChannel,
-    },
-};
+use crate::commands::operations::batch_get::handle_batch_get_request::HandleBatchGetRequestCommandHandler;
 
 impl HandleBatchGetRequestCommandHandler {
     async fn send_response(

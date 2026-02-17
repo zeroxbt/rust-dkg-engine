@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use dkg_blockchain::{BlockchainId, BlockchainManager};
 use dkg_domain::{AccessPolicy, construct_paranet_id, derive_ual, parse_ual};
+use dkg_repository::{RepositoryManager, models::paranet_kc_sync::Model as ParanetKcSyncModel};
+use dkg_triple_store::parse_metadata_from_triples;
 use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -8,18 +11,14 @@ use uuid::Uuid;
 use super::ParanetSyncConfig;
 use crate::{
     context::Context,
-    managers::{
-        blockchain::BlockchainId, repository::models::paranet_kc_sync::Model as ParanetKcSyncModel,
-        triple_store::parse_metadata_from_triples,
-    },
     periodic::runner::run_with_shutdown,
     services::{GetFetchRequest, GetFetchSource},
 };
 
 pub(crate) struct ParanetSyncTask {
     config: ParanetSyncConfig,
-    blockchain_manager: Arc<crate::managers::BlockchainManager>,
-    repository_manager: Arc<crate::managers::RepositoryManager>,
+    blockchain_manager: Arc<BlockchainManager>,
+    repository_manager: Arc<RepositoryManager>,
     triple_store_service: Arc<crate::services::TripleStoreService>,
     get_fetch_service: Arc<crate::services::GetFetchService>,
 }
@@ -498,7 +497,7 @@ impl ParanetSyncTask {
 struct ParanetSyncTarget {
     paranet_ual: String,
     paranet_id: String,
-    paranet_id_b256: crate::managers::blockchain::B256,
+    paranet_id_b256: dkg_blockchain::B256,
     access_policy: AccessPolicy,
 }
 

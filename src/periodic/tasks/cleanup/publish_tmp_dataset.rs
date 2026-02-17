@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::managers::key_value_store::PublishTmpDatasetStore;
+use dkg_key_value_store::PublishTmpDatasetStore;
 
 pub(crate) async fn cleanup_publish_tmp_datasets(
     publish_tmp_dataset: &PublishTmpDatasetStore,

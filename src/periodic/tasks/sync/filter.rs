@@ -10,17 +10,15 @@
 
 use std::{sync::Arc, time::Instant};
 
+use dkg_blockchain::{
+    Address, BlockchainId, BlockchainManager, MulticallBatch, MulticallRequest, encoders,
+};
 use dkg_domain::{TokenIds, derive_ual};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
 use super::types::{FilterStats, KcToSync};
-use crate::{
-    managers::blockchain::{
-        Address, BlockchainId, BlockchainManager, MulticallBatch, MulticallRequest, encoders,
-    },
-    services::TripleStoreService,
-};
+use crate::services::TripleStoreService;
 
 /// Filter task: processes pending KCs in batches, checking local existence first,
 /// fetching token ranges and end epochs, then filtering expired KCs.

@@ -1,6 +1,12 @@
 use std::sync::Arc;
 
 use dkg_domain::Assertion;
+use dkg_network::{
+    PeerId,
+    message::{RequestMessage, ResponseMessage},
+    messages::{StoreAck, StoreRequestData},
+    request_response,
+};
 
 use super::inbound_request::store_channel_and_try_schedule;
 use crate::{
@@ -10,12 +16,6 @@ use crate::{
         registry::Command, scheduler::CommandScheduler,
     },
     context::Context,
-    managers::network::{
-        PeerId,
-        message::{RequestMessage, ResponseMessage},
-        messages::{StoreAck, StoreRequestData},
-        request_response,
-    },
     state::ResponseChannels,
 };
 

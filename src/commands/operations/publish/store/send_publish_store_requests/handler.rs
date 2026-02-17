@@ -1,7 +1,13 @@
 use std::sync::Arc;
 
+use dkg_blockchain::{BlockchainId, BlockchainManager};
 use dkg_domain::Assertion;
-use dkg_network::PeerId;
+use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
+use dkg_network::{
+    NetworkError, NetworkManager, PeerId,
+    messages::{StoreRequestData, StoreResponseData},
+    protocols::{ProtocolSpec, StoreProtocol},
+};
 use futures::{StreamExt, stream::FuturesUnordered};
 use tracing::instrument;
 use uuid::Uuid;
@@ -9,15 +15,6 @@ use uuid::Uuid;
 use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
-    managers::{
-        blockchain::{BlockchainId, BlockchainManager},
-        key_value_store::{PublishTmpDataset, PublishTmpDatasetStore},
-        network::{
-            NetworkError, NetworkManager,
-            messages::{StoreRequestData, StoreResponseData},
-            protocols::{ProtocolSpec, StoreProtocol},
-        },
-    },
     operations::{PublishStoreOperation, PublishStoreOperationResult},
     services::{PeerService, operation_status::OperationStatusService as GenericOperationService},
 };

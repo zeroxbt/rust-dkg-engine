@@ -5,9 +5,7 @@ use std::{
 
 use dashmap::DashMap;
 use dkg_domain::BlockchainId;
-use dkg_network::{Multiaddr, PeerId, StreamProtocol};
-
-use crate::managers::network::IdentifyInfo;
+use dkg_network::{IdentifyInfo, Multiaddr, PeerId, StreamProtocol};
 
 // Performance tracking constants
 const HISTORY_SIZE: usize = 20;

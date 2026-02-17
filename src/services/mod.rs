@@ -7,6 +7,8 @@ pub(crate) mod triple_store;
 use std::sync::Arc;
 
 pub(crate) use assertion_validation::AssertionValidationService;
+use dkg_key_value_store::PublishTmpDatasetStore;
+use dkg_network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck};
 pub(crate) use get_fetch::{
     GET_NETWORK_CONCURRENT_PEERS, GetFetchRequest, GetFetchService, GetFetchSource,
 };
@@ -15,11 +17,7 @@ pub(crate) use peer::{PeerAddressStore, PeerService};
 pub(crate) use triple_store::TripleStoreService;
 
 use crate::{
-    managers::{
-        Managers,
-        key_value_store::PublishTmpDatasetStore,
-        network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
-    },
+    managers::Managers,
     operations::{GetOperation, PublishStoreOperation},
     state::ResponseChannels,
 };

@@ -1,11 +1,8 @@
-use dkg_network::PeerId;
+use dkg_network::{PeerId, message::ResponseBody, messages::StoreResponseData};
 use uuid::Uuid;
 
 use super::handler::SendPublishStoreRequestsCommandHandler;
-use crate::{
-    managers::network::{message::ResponseBody, messages::StoreResponseData},
-    operations::{PublishStoreOperationResult, PublishStoreSignatureData},
-};
+use crate::operations::{PublishStoreOperationResult, PublishStoreSignatureData};
 
 impl SendPublishStoreRequestsCommandHandler {
     /// Process a store response and store the signature if valid.

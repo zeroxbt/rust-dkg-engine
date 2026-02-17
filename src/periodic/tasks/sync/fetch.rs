@@ -10,7 +10,15 @@ use std::{
     time::{Duration, Instant},
 };
 
+use dkg_blockchain::BlockchainId;
 use dkg_domain::{ParsedUal, TokenIds, Visibility, parse_ual};
+use dkg_network::{
+    NetworkError, NetworkManager, PeerId,
+    message::ResponseBody,
+    messages::{BatchGetRequestData, BatchGetResponseData},
+    protocols::{BatchGetProtocol, ProtocolSpec},
+};
+use dkg_triple_store::parse_metadata_from_triples;
 use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
@@ -18,16 +26,6 @@ use tracing::instrument;
 use super::types::{FetchStats, FetchedKc, KcToSync};
 use crate::{
     commands::operations::batch_get::handle_batch_get_request::UAL_MAX_LIMIT,
-    managers::{
-        blockchain::BlockchainId,
-        network::{
-            NetworkError, NetworkManager, PeerId,
-            message::ResponseBody,
-            messages::{BatchGetRequestData, BatchGetResponseData},
-            protocols::{BatchGetProtocol, ProtocolSpec},
-        },
-        triple_store::parse_metadata_from_triples,
-    },
     services::{AssertionValidationService, PeerService},
 };
 

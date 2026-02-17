@@ -1,8 +1,7 @@
 use std::time::Duration;
 
 use chrono::Utc;
-
-use crate::managers::repository::RepositoryManager;
+use dkg_repository::RepositoryManager;
 
 pub(crate) async fn cleanup_proof_challenges(
     repository: &RepositoryManager,

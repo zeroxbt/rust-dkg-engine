@@ -1,9 +1,6 @@
 use dkg_domain::BlockchainId;
 
-use crate::{
-    BlockchainManager,
-    {chains::evm::NodeInfo, error::BlockchainError},
-};
+use crate::{BlockchainManager, chains::evm::NodeInfo, error::BlockchainError};
 
 impl BlockchainManager {
     pub async fn get_sharding_table_head(

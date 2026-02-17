@@ -1,15 +1,13 @@
 use dkg_domain::Assertion;
+use dkg_network::{
+    ResponseMessage,
+    message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
+    messages::GetAck,
+    request_response::ResponseChannel,
+};
 use uuid::Uuid;
 
-use crate::{
-    commands::operations::get::handle_get_request::HandleGetRequestCommandHandler,
-    managers::network::{
-        ResponseMessage,
-        message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
-        messages::GetAck,
-        request_response::ResponseChannel,
-    },
-};
+use crate::commands::operations::get::handle_get_request::HandleGetRequestCommandHandler;
 
 impl HandleGetRequestCommandHandler {
     async fn send_response(

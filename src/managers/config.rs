@@ -1,12 +1,9 @@
+use dkg_blockchain::{BlockchainManagerConfig, BlockchainManagerConfigRaw};
+use dkg_key_value_store::KeyValueStoreManagerConfig;
+use dkg_network::NetworkManagerConfig;
+use dkg_repository::{RepositoryManagerConfig, RepositoryManagerConfigRaw};
+use dkg_triple_store::TripleStoreManagerConfig;
 use serde::{Deserialize, Serialize};
-
-use crate::managers::{
-    blockchain::{BlockchainManagerConfig, BlockchainManagerConfigRaw},
-    key_value_store::KeyValueStoreManagerConfig,
-    network::NetworkManagerConfig,
-    repository::{RepositoryManagerConfig, RepositoryManagerConfigRaw},
-    triple_store::TripleStoreManagerConfig,
-};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]

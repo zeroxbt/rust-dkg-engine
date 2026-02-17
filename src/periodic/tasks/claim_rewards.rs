@@ -1,14 +1,11 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use dkg_blockchain::{Address, BlockchainManager};
 use dkg_domain::BlockchainId;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    context::Context,
-    managers::blockchain::{Address, BlockchainManager},
-    periodic::runner::run_with_shutdown,
-};
+use crate::{context::Context, periodic::runner::run_with_shutdown};
 
 /// Interval between claim rewards cycles (1 hour).
 pub(crate) const CLAIM_REWARDS_INTERVAL: Duration = Duration::from_secs(60 * 60);

@@ -4,14 +4,13 @@ use std::{
 };
 
 use dkg_domain::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual};
-use dkg_network::PeerId;
+use dkg_network::{NetworkManager, PeerId, messages::BatchGetAck};
 use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
-    managers::network::{NetworkManager, messages::BatchGetAck},
     services::{PeerService, TripleStoreService},
     state::ResponseChannels,
 };

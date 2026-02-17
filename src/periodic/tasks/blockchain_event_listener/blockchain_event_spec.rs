@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::managers::blockchain::{
+use dkg_blockchain::{
     AssetStorageChangedFilter, B256, ContractChangedFilter, ContractName, HubEvents,
     KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorageEvents, Log, NewAssetStorageFilter,
     NewContractFilter, ParameterChangedFilter, ParametersStorageEvents, SolEvent,

@@ -6,8 +6,19 @@ use std::{
 };
 
 use chrono::Utc;
+use dkg_blockchain::{BlockchainManager, U256};
 use dkg_domain::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual};
-use dkg_network::PeerId;
+use dkg_network::{
+    NetworkError, NetworkManager, PeerId,
+    message::ResponseBody,
+    messages::{GetRequestData, GetResponseData},
+    protocols::{GetProtocol, ProtocolSpec},
+};
+use dkg_repository::{ChallengeState, RepositoryManager};
+use dkg_triple_store::{
+    compare_js_default_string_order, group_triples_by_subject,
+    query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
+};
 use futures::{StreamExt, stream::FuturesUnordered};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -15,20 +26,6 @@ use uuid::Uuid;
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
     context::Context,
-    managers::{
-        blockchain::{BlockchainManager, U256},
-        network::{
-            NetworkError, NetworkManager,
-            message::ResponseBody,
-            messages::{GetRequestData, GetResponseData},
-            protocols::{GetProtocol, ProtocolSpec},
-        },
-        repository::{ChallengeState, RepositoryManager},
-        triple_store::{
-            compare_js_default_string_order, group_triples_by_subject,
-            query::subjects::PRIVATE_HASH_SUBJECT_PREFIX,
-        },
-    },
     periodic::runner::run_with_shutdown,
     services::{
         AssertionValidationService, GET_NETWORK_CONCURRENT_PEERS, PeerService, TripleStoreService,

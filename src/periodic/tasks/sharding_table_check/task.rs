@@ -1,14 +1,11 @@
 use std::{sync::Arc, time::Duration};
 
+use dkg_blockchain::{BlockchainId, BlockchainManager, NodeInfo};
 use dkg_network::PeerId;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    context::Context,
-    error::NodeError,
-    managers::blockchain::{BlockchainId, BlockchainManager, NodeInfo},
-    periodic::runner::run_with_shutdown,
-    services::PeerService,
+    context::Context, error::NodeError, periodic::runner::run_with_shutdown, services::PeerService,
 };
 
 /// Interval between sharding table synchronization checks (10 seconds)

@@ -1,10 +1,7 @@
 use alloy::primitives::B256;
 use dkg_domain::{AccessPolicy, BlockchainId, ParanetKcLocator};
 
-use crate::{
-    BlockchainManager,
-    {chains::evm::PermissionedNode, error::BlockchainError},
-};
+use crate::{BlockchainManager, chains::evm::PermissionedNode, error::BlockchainError};
 
 impl BlockchainManager {
     /// Check if a paranet exists on-chain.

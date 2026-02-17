@@ -1,23 +1,21 @@
 use std::sync::Arc;
 
+use dkg_blockchain::{Address, BlockchainId, BlockchainManager, H256, U256};
 use dkg_domain::{KnowledgeCollectionMetadata, derive_ual};
+use dkg_key_value_store::PublishTmpDatasetStore;
+use dkg_network::{
+    NetworkManager, PeerId,
+    message::ResponseBody,
+    messages::FinalityRequestData,
+    protocols::{FinalityProtocol, ProtocolSpec},
+};
+use dkg_repository::RepositoryManager;
 use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
-    managers::{
-        blockchain::{Address, BlockchainId, BlockchainManager, H256, U256},
-        key_value_store::PublishTmpDatasetStore,
-        network::{
-            NetworkManager, PeerId,
-            message::ResponseBody,
-            messages::FinalityRequestData,
-            protocols::{FinalityProtocol, ProtocolSpec},
-        },
-        repository::RepositoryManager,
-    },
     services::{PeerService, TripleStoreService},
 };
 
@@ -200,10 +198,8 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         );
 
         // Validate merkle root matches
-        let blockchain_merkle_root = format!(
-            "0x{}",
-            crate::managers::blockchain::to_hex_string(data.dataset_root)
-        );
+        let blockchain_merkle_root =
+            format!("0x{}", dkg_blockchain::to_hex_string(data.dataset_root));
         if blockchain_merkle_root != pending_data.dataset_root() {
             tracing::error!(
                 operation_id = %operation_id,

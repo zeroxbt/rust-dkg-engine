@@ -4,6 +4,9 @@
 
 use std::{sync::Arc, time::Duration};
 
+use dkg_blockchain::{Address, BlockchainId, BlockchainManager, ContractName};
+use dkg_network::NetworkManager;
+use dkg_repository::RepositoryManager;
 use futures::future::join_all;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -18,10 +21,6 @@ use super::{
 };
 use crate::{
     context::Context,
-    managers::{
-        blockchain::{Address, BlockchainId, BlockchainManager, ContractName},
-        repository::RepositoryManager,
-    },
     periodic::runner::run_with_shutdown,
     services::{
         AssertionValidationService, GET_NETWORK_CONCURRENT_PEERS, PeerService, TripleStoreService,
@@ -33,7 +32,7 @@ pub(crate) struct SyncTask {
     blockchain_manager: Arc<BlockchainManager>,
     repository_manager: Arc<RepositoryManager>,
     triple_store_service: Arc<TripleStoreService>,
-    network_manager: Arc<crate::managers::network::NetworkManager>,
+    network_manager: Arc<NetworkManager>,
     assertion_validation_service: Arc<AssertionValidationService>,
     peer_service: Arc<PeerService>,
 }

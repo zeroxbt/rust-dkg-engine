@@ -1,9 +1,9 @@
 mod registry;
 mod runner;
 pub(crate) mod tasks;
-
 use std::sync::Arc;
 
+use dkg_blockchain::BlockchainId;
 pub(crate) use tasks::sharding_table_check::seed_sharding_tables;
 use tasks::{
     blockchain_event_listener::BlockchainEventListenerTask,
@@ -21,7 +21,7 @@ use tokio_util::sync::CancellationToken;
 use self::registry::{
     BlockchainPeriodicTask, GlobalPeriodicTask, spawn_blockchain_task, spawn_global_task,
 };
-use crate::{context::Context, managers::blockchain::BlockchainId};
+use crate::context::Context;
 
 macro_rules! impl_global_periodic_task {
     ($task:ty) => {

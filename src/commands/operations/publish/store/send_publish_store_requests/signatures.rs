@@ -1,9 +1,9 @@
+use dkg_blockchain::{BlockchainId, H256, keccak256_encode_packed};
 use uuid::Uuid;
 
 use super::handler::SendPublishStoreRequestsCommandHandler;
 use crate::{
     error::NodeError,
-    managers::blockchain::{BlockchainId, H256, keccak256_encode_packed},
     operations::{PublishStoreOperationResult, PublishStoreSignatureData},
 };
 
@@ -70,10 +70,7 @@ impl SendPublishStoreRequestsCommandHandler {
             .blockchain_manager
             .sign_message(
                 blockchain,
-                &format!(
-                    "0x{}",
-                    crate::managers::blockchain::to_hex_string(message_hash)
-                ),
+                &format!("0x{}", dkg_blockchain::to_hex_string(message_hash)),
             )
             .await?;
 

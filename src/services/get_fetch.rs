@@ -1,25 +1,20 @@
 use std::sync::Arc;
 
+use dkg_blockchain::BlockchainManager;
 use dkg_domain::{
     Assertion, ParsedUal, TokenIds, Visibility, construct_knowledge_collection_onchain_id,
     construct_paranet_id, parse_ual,
 };
-use dkg_network::PeerId;
+use dkg_network::{
+    NetworkError, NetworkManager, PeerId,
+    message::ResponseBody,
+    messages::{GetRequestData, GetResponseData},
+    protocols::{GetProtocol, ProtocolSpec},
+};
 use futures::{StreamExt, stream::FuturesUnordered};
 use uuid::Uuid;
 
-use crate::{
-    managers::{
-        blockchain::BlockchainManager,
-        network::{
-            NetworkError, NetworkManager,
-            message::ResponseBody,
-            messages::{GetRequestData, GetResponseData},
-            protocols::{GetProtocol, ProtocolSpec},
-        },
-    },
-    services::{AssertionValidationService, PeerService, TripleStoreService},
-};
+use crate::services::{AssertionValidationService, PeerService, TripleStoreService};
 
 pub(crate) const GET_NETWORK_CONCURRENT_PEERS: usize = 3;
 

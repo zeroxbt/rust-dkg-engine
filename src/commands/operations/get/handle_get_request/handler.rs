@@ -1,17 +1,14 @@
 use std::sync::Arc;
 
+use dkg_blockchain::BlockchainManager;
 use dkg_domain::{TokenIds, parse_ual};
-use dkg_network::PeerId;
+use dkg_network::{NetworkManager, PeerId, messages::GetAck};
 use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandOutcome, registry::CommandHandler},
     context::Context,
-    managers::{
-        blockchain::BlockchainManager,
-        network::{NetworkManager, messages::GetAck},
-    },
     services::{PeerService, TripleStoreService},
     state::ResponseChannels,
 };

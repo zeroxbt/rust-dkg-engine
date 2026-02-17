@@ -1,9 +1,9 @@
+use dkg_network::{PeerId, ResponseMessage, request_response::ResponseChannel};
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandExecutionRequest, scheduler::CommandScheduler},
-    managers::network::{PeerId, ResponseMessage, request_response::ResponseChannel},
     state::ResponseChannels,
 };
 

@@ -1,11 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
 use dashmap::DashMap;
+use dkg_network::{PeerId, ResponseMessage, request_response};
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::time::Instant;
 use uuid::Uuid;
-
-use crate::managers::network::{PeerId, ResponseMessage, request_response};
 
 /// Default timeout for response channels (5 minutes).
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);

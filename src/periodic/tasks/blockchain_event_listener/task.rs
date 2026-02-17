@@ -2,6 +2,13 @@
 
 use std::{sync::Arc, time::Duration};
 
+use dkg_blockchain::{
+    Address, AssetStorageChangedFilter, BlockchainError, BlockchainId, BlockchainManager,
+    ContractChangedFilter, ContractLog, ContractName, HubEvents, KnowledgeCollectionCreatedFilter,
+    KnowledgeCollectionStorageEvents, NewAssetStorageFilter, NewContractFilter,
+    ParameterChangedFilter, ParametersStorageEvents, to_hex_string,
+};
+use dkg_repository::RepositoryManager;
 use tokio_util::sync::CancellationToken;
 
 use super::blockchain_event_spec::{
@@ -16,16 +23,6 @@ use crate::{
     config,
     context::Context,
     error::NodeError,
-    managers::{
-        blockchain::{
-            Address, AssetStorageChangedFilter, BlockchainError, BlockchainId, BlockchainManager,
-            ContractChangedFilter, ContractLog, ContractName, HubEvents,
-            KnowledgeCollectionCreatedFilter, KnowledgeCollectionStorageEvents,
-            NewAssetStorageFilter, NewContractFilter, ParameterChangedFilter,
-            ParametersStorageEvents, to_hex_string,
-        },
-        repository::RepositoryManager,
-    },
     periodic::runner::run_with_shutdown,
 };
 
@@ -449,7 +446,7 @@ impl BlockchainEventListenerTask {
         &self,
         blockchain_id: &BlockchainId,
         filter: &KnowledgeCollectionCreatedFilter,
-        log: &crate::managers::blockchain::Log,
+        log: &dkg_blockchain::Log,
     ) {
         tracing::info!(
             blockchain = %blockchain_id,

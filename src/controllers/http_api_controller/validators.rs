@@ -2,9 +2,8 @@
 //!
 //! These validators are used with the `validator` crate's `#[validate(custom)]` attribute.
 
-use validator::ValidationError;
-
 use dkg_domain::parse_ual;
+use validator::ValidationError;
 
 /// Validates that a string is a valid UAL format.
 ///

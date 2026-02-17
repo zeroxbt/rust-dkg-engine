@@ -1,9 +1,10 @@
 use std::{future::Future, sync::Arc};
 
+use dkg_blockchain::BlockchainId;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
-use crate::{context::Context, managers::blockchain::BlockchainId};
+use crate::context::Context;
 
 pub(crate) trait GlobalPeriodicTask: Send + 'static {
     type Config: Send + 'static;

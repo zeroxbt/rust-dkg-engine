@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
+use dkg_key_value_store::PublishTmpDatasetStore;
+use dkg_network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck};
+
 use crate::{
     commands::scheduler::CommandScheduler,
-    managers::{
-        Managers,
-        key_value_store::PublishTmpDatasetStore,
-        network::messages::{BatchGetAck, FinalityAck, GetAck, StoreAck},
-    },
+    managers::Managers,
     services::{
         AssertionValidationService, GetFetchService, PeerService, Services, TripleStoreService,
     },
@@ -37,15 +36,15 @@ impl Context {
     }
 
     // Manager accessors
-    pub(crate) fn repository_manager(&self) -> &Arc<crate::managers::RepositoryManager> {
+    pub(crate) fn repository_manager(&self) -> &Arc<dkg_repository::RepositoryManager> {
         &self.managers.repository
     }
 
-    pub(crate) fn network_manager(&self) -> &Arc<crate::managers::NetworkManager> {
+    pub(crate) fn network_manager(&self) -> &Arc<dkg_network::NetworkManager> {
         &self.managers.network
     }
 
-    pub(crate) fn blockchain_manager(&self) -> &Arc<crate::managers::BlockchainManager> {
+    pub(crate) fn blockchain_manager(&self) -> &Arc<dkg_blockchain::BlockchainManager> {
         &self.managers.blockchain
     }
 

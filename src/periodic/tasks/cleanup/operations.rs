@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use chrono::Utc;
+use dkg_repository::{OperationStatus, RepositoryManager};
 use uuid::Uuid;
 
 use crate::{
-    managers::repository::{OperationStatus, RepositoryManager},
     operations::{GetOperation, PublishStoreOperation},
     services::OperationStatusService,
 };

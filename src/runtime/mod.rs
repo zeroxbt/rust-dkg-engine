@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
+use dkg_network::NetworkEventLoop;
 use tokio::{select, signal::unix::SignalKind};
 use tokio_util::sync::CancellationToken;
 
@@ -9,9 +10,7 @@ use crate::{
     controllers::{
         http_api_controller::router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
     },
-    logger,
-    managers::network::NetworkEventLoop,
-    periodic,
+    logger, periodic,
     periodic::tasks::{
         cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, proving::ProvingConfig,
         sync::SyncConfig,

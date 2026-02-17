@@ -1,9 +1,6 @@
 use std::collections::HashSet;
 
-use crate::TripleStoreManager;
-use crate::error::Result;
-use crate::query::named_graphs;
-use crate::types::GraphVisibility;
+use crate::{TripleStoreManager, error::Result, query::named_graphs, types::GraphVisibility};
 
 impl TripleStoreManager {
     /// Get knowledge asset from its named graph (public or private).

@@ -1,12 +1,12 @@
-use uuid::Uuid;
-
-use super::handler::HandlePublishStoreRequestCommandHandler;
-use crate::managers::network::{
+use dkg_network::{
     ResponseMessage,
     message::{ResponseBody, ResponseMessageHeader, ResponseMessageType},
     messages::StoreAck,
     request_response::ResponseChannel,
 };
+use uuid::Uuid;
+
+use super::handler::HandlePublishStoreRequestCommandHandler;
 
 impl HandlePublishStoreRequestCommandHandler {
     pub(crate) async fn send_response(

@@ -1,5 +1,16 @@
 use std::sync::Arc;
 
+use dkg_network::{
+    ImmediateResponse, InboundDecision, NetworkEventHandler, PeerId,
+    message::{
+        RequestMessage, ResponseBody, ResponseMessage, ResponseMessageHeader, ResponseMessageType,
+    },
+    messages::{
+        BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
+        StoreAck, StoreRequestData,
+    },
+    request_response::ResponseChannel,
+};
 use uuid::Uuid;
 
 use super::{PeerRateLimiter, RpcConfig};
@@ -8,18 +19,6 @@ use crate::{
     controllers::rpc_controller::v1::{
         batch_get::BatchGetRpcController, get::GetRpcController,
         publish_finality::PublishFinalityRpcController, publish_store::PublishStoreRpcController,
-    },
-    managers::network::{
-        ImmediateResponse, InboundDecision, NetworkEventHandler, PeerId,
-        message::{
-            RequestMessage, ResponseBody, ResponseMessage, ResponseMessageHeader,
-            ResponseMessageType,
-        },
-        messages::{
-            BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck,
-            GetRequestData, StoreAck, StoreRequestData,
-        },
-        request_response::ResponseChannel,
     },
 };
 

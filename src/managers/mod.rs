@@ -1,19 +1,13 @@
-pub(crate) mod blockchain;
 mod config;
-pub(crate) mod key_value_store;
-pub(crate) mod network;
-pub(crate) mod repository;
-pub(crate) mod triple_store;
 
 use std::sync::Arc;
 
-pub(crate) use blockchain::BlockchainManager;
 pub(crate) use config::{ManagersConfig, ManagersConfigRaw};
-use dkg_network::Keypair;
-pub(crate) use key_value_store::KeyValueStoreManager;
-pub(crate) use network::{NetworkEventLoop, NetworkManager};
-pub(crate) use repository::RepositoryManager;
-pub(crate) use triple_store::TripleStoreManager;
+use dkg_blockchain::BlockchainManager;
+use dkg_key_value_store::KeyValueStoreManager;
+use dkg_network::{Keypair, NetworkEventLoop, NetworkManager};
+use dkg_repository::RepositoryManager;
+use dkg_triple_store::TripleStoreManager;
 
 use crate::config::AppPaths;
 

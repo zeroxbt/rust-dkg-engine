@@ -37,10 +37,11 @@ pub type AssetStorageChangedFilter = chains::evm::Hub::AssetStorageChanged;
 pub type ParameterChangedFilter = chains::evm::ParametersStorage::ParameterChanged;
 pub type KnowledgeCollectionCreatedFilter =
     chains::evm::KnowledgeCollectionStorage::KnowledgeCollectionCreated;
-pub use alloy::primitives::{Address, B256, B256 as H256, U256};
-pub use alloy::rpc::types::Log;
-pub use alloy::sol_types::{SolEvent, SolEventInterface};
-
+pub use alloy::{
+    primitives::{Address, B256, B256 as H256, U256},
+    rpc::types::Log,
+    sol_types::{SolEvent, SolEventInterface},
+};
 // Re-export shared domain types from crate::types
 pub use dkg_domain::BlockchainId;
 

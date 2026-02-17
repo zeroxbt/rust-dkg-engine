@@ -1,16 +1,11 @@
 use std::sync::Arc;
 
+use dkg_key_value_store::{KeyValueStoreManager, OperationResultStore, ResultStoreError};
+use dkg_repository::{OperationStatus, RepositoryManager};
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
-use crate::{
-    error::NodeError,
-    managers::{
-        key_value_store::{KeyValueStoreManager, OperationResultStore, ResultStoreError},
-        repository::{OperationStatus, RepositoryManager},
-    },
-    operations::OperationKind,
-};
+use crate::{error::NodeError, operations::OperationKind};
 
 /// Operation status service used for HTTP polling.
 ///
