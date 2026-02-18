@@ -15,6 +15,9 @@ pub(crate) fn build_periodic_tasks_deps(
     services: &Services,
     command_scheduler: &CommandScheduler,
 ) -> Arc<periodic_tasks::PeriodicTasksDeps> {
+    let publish_tmp_dataset_store = Arc::new(managers.key_value_store.publish_tmp_dataset_store());
+    let peer_address_store = Arc::new(managers.key_value_store.peer_address_store());
+
     Arc::new(periodic_tasks::PeriodicTasksDeps {
         dial_peers: DialPeersDeps {
             network_manager: Arc::clone(&managers.network),
@@ -22,7 +25,7 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         cleanup: CleanupDeps {
             repository_manager: Arc::clone(&managers.repository),
-            publish_tmp_dataset_store: Arc::clone(&managers.publish_tmp_dataset_store),
+            publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
             publish_operation_results: Arc::clone(&services.publish_store_operation),
             get_operation_results: Arc::clone(&services.get_operation),
             store_response_channels: Arc::clone(&services.response_channels.store),
@@ -32,7 +35,7 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         save_peer_addresses: SavePeerAddressesDeps {
             peer_service: Arc::clone(&services.peer_service),
-            peer_address_store: Arc::clone(&managers.peer_address_store),
+            peer_address_store: Arc::clone(&peer_address_store),
         },
         sharding_table_check: ShardingTableCheckDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),

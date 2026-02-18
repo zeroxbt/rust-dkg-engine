@@ -21,27 +21,29 @@ pub(crate) fn build_command_executor(
     command_scheduler: &CommandScheduler,
     command_rx: mpsc::Receiver<CommandExecutionRequest>,
 ) -> CommandExecutor {
+    let publish_tmp_dataset_store = Arc::new(managers.key_value_store.publish_tmp_dataset_store());
+
     let command_resolver = CommandResolver::new(CommandResolverDeps {
         send_publish_store_requests: SendPublishStoreRequestsDeps {
             network_manager: Arc::clone(&managers.network),
             peer_service: Arc::clone(&services.peer_service),
             blockchain_manager: Arc::clone(&managers.blockchain),
             publish_store_operation_status_service: Arc::clone(&services.publish_store_operation),
-            publish_tmp_dataset_store: Arc::clone(&managers.publish_tmp_dataset_store),
+            publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
         },
         handle_publish_store_request: HandlePublishStoreRequestDeps {
             network_manager: Arc::clone(&managers.network),
             blockchain_manager: Arc::clone(&managers.blockchain),
             peer_service: Arc::clone(&services.peer_service),
             store_response_channels: Arc::clone(&services.response_channels.store),
-            publish_tmp_dataset_store: Arc::clone(&managers.publish_tmp_dataset_store),
+            publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
         },
         send_publish_finality_request: SendPublishFinalityRequestDeps {
             repository_manager: Arc::clone(&managers.repository),
             network_manager: Arc::clone(&managers.network),
             peer_service: Arc::clone(&services.peer_service),
             blockchain_manager: Arc::clone(&managers.blockchain),
-            publish_tmp_dataset_store: Arc::clone(&managers.publish_tmp_dataset_store),
+            publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
             triple_store_service: Arc::clone(&services.triple_store),
         },
         handle_publish_finality_request: HandlePublishFinalityRequestDeps {
