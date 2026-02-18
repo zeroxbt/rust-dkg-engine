@@ -1,16 +1,18 @@
 use std::sync::Arc;
 
-use dkg_blockchain::{BlockchainId, BlockchainManager};
+use dkg_blockchain::BlockchainId;
 use dkg_domain::{Assertion, SignatureComponents};
-use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
 use dkg_network::{NetworkManager, PeerId, ResponseHandle, StoreAck};
 use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    application::{
+        HandlePublishStoreRequestInput, HandlePublishStoreRequestOutcome,
+        HandlePublishStoreRequestWorkflow,
+    },
     commands::HandlePublishStoreRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    node_state::PeerRegistry,
     node_state::ResponseChannels,
 };
 
@@ -45,20 +47,16 @@ impl HandlePublishStoreRequestCommandData {
 
 pub(crate) struct HandlePublishStoreRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
-    blockchain_manager: Arc<BlockchainManager>,
-    peer_registry: Arc<PeerRegistry>,
+    handle_publish_store_request_workflow: Arc<HandlePublishStoreRequestWorkflow>,
     response_channels: Arc<ResponseChannels<StoreAck>>,
-    publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 }
 
 impl HandlePublishStoreRequestCommandHandler {
     pub(crate) fn new(deps: HandlePublishStoreRequestDeps) -> Self {
         Self {
             network_manager: deps.network_manager,
-            blockchain_manager: deps.blockchain_manager,
-            peer_registry: deps.peer_registry,
+            handle_publish_store_request_workflow: deps.handle_publish_store_request_workflow,
             response_channels: deps.store_response_channels,
-            publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
         }
     }
 
@@ -126,10 +124,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
     )]
     async fn execute(&self, data: &HandlePublishStoreRequestCommandData) -> CommandOutcome {
         let operation_id = data.operation_id;
-        let blockchain = &data.blockchain;
-        let dataset_root = &data.dataset_root;
         let remote_peer_id = &data.remote_peer_id;
-        let dataset = &data.dataset;
 
         // Retrieve the response channel
         let Some(channel) = self
@@ -144,144 +139,38 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandOutcome::Completed;
         };
 
-        // Validate that *this node* is in the shard for the given blockchain.
-        // (The sender being in shard is not the relevant check here.)
-        let local_peer_id = self.network_manager.peer_id();
-        if self
-            .peer_registry
-            .is_peer_in_shard(blockchain, local_peer_id)
-        {
-            tracing::debug!(
-                operation_id = %operation_id,
-                local_peer_id = %local_peer_id,
-                blockchain = %blockchain,
-                "Local node validated against shard membership"
-            );
-        } else {
-            tracing::warn!(
-                operation_id = %operation_id,
-                local_peer_id = %local_peer_id,
-                blockchain = %blockchain,
-                "Local node not found in shard - sending NACK"
-            );
-
-            self.send_nack(channel, operation_id, "Local node not in shard")
-                .await;
-
-            return CommandOutcome::Completed;
-        }
-
-        let computed_dataset_root = dkg_domain::calculate_merkle_root(&dataset.public);
-
-        tracing::debug!(
-            operation_id = %operation_id,
-            received_dataset_root = %dataset_root,
-            computed_dataset_root = %computed_dataset_root,
-            roots_match = (*dataset_root == computed_dataset_root),
-            "Dataset root validation"
-        );
-
-        if *dataset_root != computed_dataset_root {
-            tracing::warn!(
-                operation_id = %operation_id,
-                received = %dataset_root,
-                computed = %computed_dataset_root,
-                "Dataset root mismatch - sending NACK"
-            );
-            self.send_nack(
-                channel,
-                operation_id,
-                &format!(
-                    "Dataset root validation failed. Received dataset root: {}; Calculated dataset root: {}",
-                    dataset_root, computed_dataset_root
-                ),
-            )
-            .await;
-
-            return CommandOutcome::Completed;
-        }
-
-        let identity_id = self.blockchain_manager.identity_id(blockchain);
-        tracing::debug!(
-            operation_id = %operation_id,
-            identity_id = %identity_id,
-            "Identity ID resolved"
-        );
-
-        let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
-            tracing::warn!(
-            operation_id = %operation_id,
-            dataset_root = %dataset_root,
-            "Dataset root missing '0x' prefix - sending NACK"
-            );
-            self.send_nack(channel, operation_id, "Dataset root missing '0x' prefix")
-                .await;
-
-            return CommandOutcome::Completed;
+        let input = HandlePublishStoreRequestInput {
+            blockchain: data.blockchain.clone(),
+            operation_id,
+            dataset_root: data.dataset_root.clone(),
+            remote_peer_id: *remote_peer_id,
+            local_peer_id: *self.network_manager.peer_id(),
+            dataset: data.dataset.clone(),
         };
 
-        let signature = match self
-            .blockchain_manager
-            .sign_message(blockchain, dataset_root_hex)
+        match self
+            .handle_publish_store_request_workflow
+            .execute(&input)
             .await
         {
-            Ok(sig) => {
+            HandlePublishStoreRequestOutcome::Ack {
+                identity_id,
+                signature,
+            } => {
                 tracing::debug!(
                     operation_id = %operation_id,
-                    "Message signed successfully"
+                    peer = %remote_peer_id,
+                    identity_id = %identity_id,
+                    "Sending ACK response with signature"
                 );
-                sig
+                self.send_ack(channel, operation_id, identity_id, signature)
+                    .await;
             }
-            Err(e) => {
-                tracing::error!(
-                    operation_id = %operation_id,
-                    error = %e,
-                    "Failed to sign message - sending NACK"
-                );
-                self.send_nack(
-                    channel,
-                    operation_id,
-                    &format!("Failed to sign message: {}", e),
-                )
-                .await;
-
+            HandlePublishStoreRequestOutcome::Nack { error_message } => {
+                self.send_nack(channel, operation_id, &error_message).await;
                 return CommandOutcome::Completed;
             }
-        };
-
-        let pending = PublishTmpDataset::new(
-            dataset_root.to_owned(),
-            dataset.clone(),
-            remote_peer_id.to_base58(),
-        );
-        if let Err(e) = self
-            .publish_tmp_dataset_store
-            .store(operation_id, pending)
-            .await
-        {
-            tracing::error!(
-                operation_id = %operation_id,
-                error = %e,
-                "Failed to store dataset in publish tmp dataset store - sending NACK"
-            );
-            self.send_nack(
-                channel,
-                operation_id,
-                &format!("Failed to store dataset: {}", e),
-            )
-            .await;
-            return CommandOutcome::Completed;
         }
-
-        tracing::debug!(
-            operation_id = %operation_id,
-            peer = %remote_peer_id,
-            identity_id = %identity_id,
-            "Sending ACK response with signature"
-        );
-
-        self.send_ack(channel, operation_id, identity_id, signature)
-            .await;
 
         tracing::debug!(
             operation_id = %operation_id,

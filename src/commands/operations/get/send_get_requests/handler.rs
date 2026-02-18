@@ -5,12 +5,9 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    application::{GetAssertionInput, GetOperationWorkflow},
     commands::SendGetRequestsDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    operations::{GetOperation, GetOperationResult},
-    application::{
-        GetAssertionInput, OperationTracking as GenericOperationService,
-    },
 };
 
 /// Command data for sending get requests to network nodes.
@@ -42,15 +39,13 @@ impl SendGetRequestsCommandData {
 }
 
 pub(crate) struct SendGetRequestsCommandHandler {
-    pub(super) get_operation_tracking: Arc<GenericOperationService<GetOperation>>,
-    pub(super) get_assertion_use_case: Arc<crate::application::GetAssertionUseCase>,
+    get_operation_workflow: Arc<GetOperationWorkflow>,
 }
 
 impl SendGetRequestsCommandHandler {
     pub(crate) fn new(deps: SendGetRequestsDeps) -> Self {
         Self {
-            get_operation_tracking: deps.get_operation_tracking,
-            get_assertion_use_case: deps.get_assertion_use_case,
+            get_operation_workflow: deps.get_operation_workflow,
         }
     }
 }
@@ -70,45 +65,15 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
         )
     )]
     async fn execute(&self, data: &SendGetRequestsCommandData) -> CommandOutcome {
-        let operation_id = data.operation_id;
-
-        let fetch_request = GetAssertionInput {
-            operation_id,
+        let input = GetAssertionInput {
+            operation_id: data.operation_id,
             ual: data.ual.clone(),
             include_metadata: data.include_metadata,
             paranet_ual: data.paranet_ual.clone(),
             visibility: data.visibility,
         };
 
-        match self.get_assertion_use_case.fetch(&fetch_request).await {
-            Ok(result) => {
-                let get_result = GetOperationResult::new(result.assertion, result.metadata);
-                if let Err(e) = self
-                    .get_operation_tracking
-                    .complete_with_result(operation_id, get_result)
-                    .await
-                {
-                    tracing::error!(
-                        operation_id = %operation_id,
-                        error = %e,
-                        "Failed to complete get operation"
-                    );
-                    self.get_operation_tracking
-                        .mark_failed(operation_id, e.to_string())
-                        .await;
-                }
-            }
-            Err(error_message) => {
-                tracing::warn!(
-                    operation_id = %operation_id,
-                    error = %error_message,
-                    "Get operation failed"
-                );
-                self.get_operation_tracking
-                    .mark_failed(operation_id, error_message)
-                    .await;
-            }
-        }
+        self.get_operation_workflow.execute(&input).await;
 
         CommandOutcome::Completed
     }

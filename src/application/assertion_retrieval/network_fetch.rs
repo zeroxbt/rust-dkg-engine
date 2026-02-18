@@ -5,9 +5,11 @@ use dkg_network::{GetAck, GetRequestData, GetResponseData, NetworkError, Network
 use futures::{StreamExt, stream::FuturesUnordered};
 use uuid::Uuid;
 
-use crate::application::{AssertionValidation, get_assertion::config::GET_NETWORK_CONCURRENT_PEERS};
+use crate::application::AssertionValidation;
 
-pub(crate) async fn fetch_first_valid_ack_from_peers(
+use super::config::NETWORK_CONCURRENT_PEERS;
+
+pub(super) async fn fetch_first_valid_ack_from_peers(
     network_manager: Arc<NetworkManager>,
     assertion_validation: Arc<AssertionValidation>,
     peers: Vec<PeerId>,
@@ -18,7 +20,7 @@ pub(crate) async fn fetch_first_valid_ack_from_peers(
 ) -> Option<GetAck> {
     let mut futures = FuturesUnordered::new();
     let mut peers_iter = peers.iter().cloned();
-    let limit = GET_NETWORK_CONCURRENT_PEERS.max(1).min(peers.len());
+    let limit = NETWORK_CONCURRENT_PEERS.max(1).min(peers.len());
 
     for _ in 0..limit {
         if let Some(peer) = peers_iter.next() {
@@ -57,7 +59,7 @@ pub(crate) async fn fetch_first_valid_ack_from_peers(
     None
 }
 
-pub(crate) async fn validate_get_ack(
+async fn validate_get_ack(
     peer: &PeerId,
     response: Result<GetResponseData, NetworkError>,
     assertion_validation: &AssertionValidation,

@@ -18,8 +18,8 @@ use super::{
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
 use crate::{
-    periodic_tasks::SyncDeps, periodic_tasks::runner::run_with_shutdown,
-    application::GET_NETWORK_CONCURRENT_PEERS,
+    application::NETWORK_CONCURRENT_PEERS, periodic_tasks::SyncDeps,
+    periodic_tasks::runner::run_with_shutdown,
 };
 
 pub(crate) struct SyncTask {
@@ -457,7 +457,7 @@ impl SyncTask {
             .deps
             .peer_registry
             .identified_shard_peer_count(blockchain_id);
-        let min_required = (total_shard_peers / 3).max(GET_NETWORK_CONCURRENT_PEERS);
+        let min_required = (total_shard_peers / 3).max(NETWORK_CONCURRENT_PEERS);
 
         if identified_peers < min_required {
             tracing::debug!(

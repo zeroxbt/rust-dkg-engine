@@ -9,11 +9,14 @@ use dkg_repository::{
 };
 
 use crate::{
-    application::{AssertionValidation, GetAssertionUseCase, OperationTracking, TripleStoreAssertions},
+    application::{
+        AssertionRetrieval, AssertionValidation, GetAssertionUseCase, OperationTracking,
+        ShardPeerSelection, TripleStoreAssertions,
+    },
     commands::scheduler::CommandScheduler,
-    operations::{GetOperation, PublishStoreOperation},
     node_state::PeerRegistry,
     node_state::ResponseChannels,
+    operations::{GetOperation, PublishStoreOperation},
 };
 
 #[derive(Clone)]
@@ -64,10 +67,8 @@ pub(crate) struct BlockchainEventListenerDeps {
 pub(crate) struct ProvingDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) proof_challenge_repository: ProofChallengeRepository,
-    pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
-    pub(crate) network_manager: Arc<NetworkManager>,
-    pub(crate) assertion_validation: Arc<AssertionValidation>,
-    pub(crate) peer_registry: Arc<PeerRegistry>,
+    pub(crate) assertion_retrieval: Arc<AssertionRetrieval>,
+    pub(crate) shard_peer_selection: Arc<ShardPeerSelection>,
 }
 
 #[derive(Clone)]

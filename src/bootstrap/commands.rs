@@ -23,56 +23,40 @@ pub(crate) fn build_command_executor(
     command_scheduler: &CommandScheduler,
     command_rx: mpsc::Receiver<CommandExecutionRequest>,
 ) -> CommandExecutor {
-    let publish_tmp_dataset_store = Arc::new(managers.key_value_store.publish_tmp_dataset_store());
-    let finality_status_repository = managers.repository.finality_status_repository();
-    let triples_insert_count_repository = managers.repository.triples_insert_count_repository();
-
     let command_resolver = CommandResolver::new(CommandResolverDeps {
         send_publish_store_requests: SendPublishStoreRequestsDeps {
-            network_manager: Arc::clone(&managers.network),
-            peer_registry: Arc::clone(&node_state.peer_registry),
-            blockchain_manager: Arc::clone(&managers.blockchain),
-            publish_store_operation_tracking: Arc::clone(
-                &application.publish_store_operation_tracking,
-            ),
-            publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
+            publish_store_workflow: Arc::clone(&application.publish_store_workflow),
         },
         handle_publish_store_request: HandlePublishStoreRequestDeps {
             network_manager: Arc::clone(&managers.network),
-            blockchain_manager: Arc::clone(&managers.blockchain),
-            peer_registry: Arc::clone(&node_state.peer_registry),
+            handle_publish_store_request_workflow: Arc::clone(
+                &application.handle_publish_store_request_workflow,
+            ),
             store_response_channels: Arc::clone(&node_state.store_response_channels),
-            publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
         },
         send_publish_finality_request: SendPublishFinalityRequestDeps {
-            finality_status_repository: finality_status_repository.clone(),
-            triples_insert_count_repository: triples_insert_count_repository.clone(),
-            network_manager: Arc::clone(&managers.network),
-            peer_registry: Arc::clone(&node_state.peer_registry),
-            blockchain_manager: Arc::clone(&managers.blockchain),
-            publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
-            triple_store_assertions: Arc::clone(&application.triple_store_assertions),
+            publish_finality_workflow: Arc::clone(&application.publish_finality_workflow),
         },
         handle_publish_finality_request: HandlePublishFinalityRequestDeps {
-            finality_status_repository,
+            handle_publish_finality_request_workflow: Arc::clone(
+                &application.handle_publish_finality_request_workflow,
+            ),
             network_manager: Arc::clone(&managers.network),
             finality_response_channels: Arc::clone(&node_state.finality_response_channels),
         },
         send_get_requests: SendGetRequestsDeps {
-            get_operation_tracking: Arc::clone(&application.get_operation_tracking),
-            get_assertion_use_case: Arc::clone(&application.get_assertion_use_case),
+            get_operation_workflow: Arc::clone(&application.get_operation_workflow),
         },
         handle_get_request: HandleGetRequestDeps {
             network_manager: Arc::clone(&managers.network),
-            triple_store_assertions: Arc::clone(&application.triple_store_assertions),
-            peer_registry: Arc::clone(&node_state.peer_registry),
+            handle_get_request_workflow: Arc::clone(&application.handle_get_request_workflow),
             get_response_channels: Arc::clone(&node_state.get_response_channels),
-            blockchain_manager: Arc::clone(&managers.blockchain),
         },
         handle_batch_get_request: HandleBatchGetRequestDeps {
             network_manager: Arc::clone(&managers.network),
-            triple_store_assertions: Arc::clone(&application.triple_store_assertions),
-            peer_registry: Arc::clone(&node_state.peer_registry),
+            handle_batch_get_request_workflow: Arc::clone(
+                &application.handle_batch_get_request_workflow,
+            ),
             batch_get_response_channels: Arc::clone(&node_state.batch_get_response_channels),
         },
     });

@@ -253,8 +253,11 @@ fn get_shard_peers(
     let my_peer_id = network_manager.peer_id();
 
     // Get shard peers that support BatchGetProtocol, excluding self
-    let peers =
-        peer_registry.select_shard_peers(blockchain_id, STREAM_PROTOCOL_BATCH_GET, Some(my_peer_id));
+    let peers = peer_registry.select_shard_peers(
+        blockchain_id,
+        STREAM_PROTOCOL_BATCH_GET,
+        Some(my_peer_id),
+    );
 
     // Stats: total in shard vs usable (have identify + support protocol)
     let shard_peer_count = peer_registry.shard_peer_count(blockchain_id);

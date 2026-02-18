@@ -1,14 +1,11 @@
 //! Proving periodic task implementation.
 
-use std::{
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use dkg_blockchain::{BlockchainManager, U256};
-use dkg_domain::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual};
-use dkg_network::{GetRequestData, NetworkManager, PeerId, STREAM_PROTOCOL_GET};
+use dkg_domain::{BlockchainId, Visibility, derive_ual};
+use dkg_network::STREAM_PROTOCOL_GET;
 use dkg_repository::{ChallengeState, ProofChallengeRepository};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -16,22 +13,18 @@ use uuid::Uuid;
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
     application::{
-        AssertionValidation, TokenRangeResolutionPolicy, TripleStoreAssertions,
-        fetch_assertion_from_local, group_and_sort_public_triples,
-        get_assertion::{network_fetch, resolve_token_ids},
+        AssertionRetrieval, FetchRequest, ShardPeerSelection, TokenRangeResolutionPolicy,
+        group_and_sort_public_triples,
     },
     periodic_tasks::ProvingDeps,
     periodic_tasks::runner::run_with_shutdown,
-    node_state::PeerRegistry,
 };
 
 pub(crate) struct ProvingTask {
     blockchain_manager: Arc<BlockchainManager>,
     proof_challenge_repository: ProofChallengeRepository,
-    triple_store_assertions: Arc<TripleStoreAssertions>,
-    network_manager: Arc<NetworkManager>,
-    assertion_validation: Arc<AssertionValidation>,
-    peer_registry: Arc<PeerRegistry>,
+    assertion_retrieval: Arc<AssertionRetrieval>,
+    shard_peer_selection: Arc<ShardPeerSelection>,
 }
 
 impl ProvingTask {
@@ -39,94 +32,14 @@ impl ProvingTask {
         Self {
             blockchain_manager: deps.blockchain_manager,
             proof_challenge_repository: deps.proof_challenge_repository,
-            triple_store_assertions: deps.triple_store_assertions,
-            network_manager: deps.network_manager,
-            assertion_validation: deps.assertion_validation,
-            peer_registry: deps.peer_registry,
+            assertion_retrieval: deps.assertion_retrieval,
+            shard_peer_selection: deps.shard_peer_selection,
         }
-    }
-
-    /// Check if node is part of the shard for this blockchain.
-    fn is_in_shard(&self, blockchain_id: &BlockchainId) -> bool {
-        let peer_id = self.network_manager.peer_id();
-        self.peer_registry.is_peer_in_shard(blockchain_id, peer_id)
     }
 
     /// Get the identity ID for this blockchain.
     fn identity_id(&self, blockchain_id: &BlockchainId) -> u128 {
         self.blockchain_manager.identity_id(blockchain_id)
-    }
-
-    /// Load shard peers for the given blockchain.
-    fn load_shard_peers(&self, blockchain_id: &BlockchainId) -> Vec<PeerId> {
-        let my_peer_id = self.network_manager.peer_id();
-        self.peer_registry
-            .select_shard_peers(blockchain_id, STREAM_PROTOCOL_GET, Some(my_peer_id))
-    }
-
-    /// Fetch assertion from network peers.
-    #[tracing::instrument(
-        name = "proving.network_fetch",
-        skip(self, parsed_ual, token_ids),
-        fields(
-            ual = %parsed_ual.to_ual_string(),
-            peer_count = tracing::field::Empty,
-        )
-    )]
-    async fn fetch_from_network(
-        &self,
-        parsed_ual: &ParsedUal,
-        token_ids: TokenIds,
-    ) -> Option<Assertion> {
-        let mut peers = self.load_shard_peers(&parsed_ual.blockchain);
-
-        if peers.is_empty() {
-            tracing::warn!("No peers available in shard");
-            return None;
-        }
-
-        tracing::Span::current().record("peer_count", tracing::field::display(peers.len()));
-
-        // Sort by latency (best performers first)
-        self.peer_registry.sort_by_latency(&mut peers);
-
-        tracing::debug!(
-            total_peers = peers.len(),
-            "Selected peers for network query"
-        );
-
-        // Build request data
-        let request_data = GetRequestData::new(
-            parsed_ual.blockchain.clone(),
-            format!("{:?}", &parsed_ual.contract),
-            parsed_ual.knowledge_collection_id,
-            parsed_ual.knowledge_asset_id,
-            parsed_ual.to_ual_string(),
-            token_ids,
-            false, // no metadata needed for proving
-            None,  // no paranet
-        );
-
-        if let Some(ack) = network_fetch::fetch_first_valid_ack_from_peers(
-            Arc::clone(&self.network_manager),
-            Arc::clone(&self.assertion_validation),
-            peers,
-            Uuid::new_v4(),
-            request_data,
-            parsed_ual.clone(),
-            Visibility::Public,
-        )
-        .await
-        {
-            tracing::info!("Got valid assertion from network");
-            return Some(Assertion::new(
-                ack.assertion.public.clone(),
-                ack.assertion.private.clone(),
-            ));
-        }
-
-        tracing::warn!("Failed to fetch assertion from any peer");
-        None
     }
 
     pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
@@ -136,7 +49,10 @@ impl ProvingTask {
     #[tracing::instrument(name = "periodic_tasks.proving", skip(self,))]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
         // 1. Check if we're in the shard
-        if !self.is_in_shard(blockchain_id) {
+        if !self
+            .shard_peer_selection
+            .is_local_node_in_shard(blockchain_id)
+        {
             tracing::debug!("Node not in shard, skipping proving");
             return PROVING_PERIOD;
         }
@@ -352,14 +268,17 @@ impl ProvingTask {
             }
         };
 
+        let operation_id = Uuid::new_v4();
+
         // Resolve token range with strict policy for blockchain errors.
-        let token_ids = match resolve_token_ids(
-            self.blockchain_manager.as_ref(),
-            Uuid::new_v4(),
-            &parsed_ual,
-            TokenRangeResolutionPolicy::Strict,
-        )
-        .await
+        let token_ids = match self
+            .assertion_retrieval
+            .resolve_token_ids(
+                operation_id,
+                &parsed_ual,
+                TokenRangeResolutionPolicy::Strict,
+            )
+            .await
         {
             Ok(token_ids) => token_ids,
             Err(e) => {
@@ -368,29 +287,28 @@ impl ProvingTask {
             }
         };
 
-        // Try local triple store first, fall back to network.
-        let assertion = match fetch_assertion_from_local(
-            &self.triple_store_assertions,
-            &self.assertion_validation,
-            &parsed_ual,
-            &token_ids,
-            Visibility::Public,
-        )
-        .await
-        {
-            Some(local) => {
-                tracing::debug!("Found valid assertion locally");
-                local
+        let peers = self
+            .shard_peer_selection
+            .load_shard_peers(&parsed_ual.blockchain, STREAM_PROTOCOL_GET);
+
+        let fetch_request = FetchRequest {
+            operation_id,
+            parsed_ual: parsed_ual.clone(),
+            token_ids: token_ids.clone(),
+            peers,
+            visibility: Visibility::Public,
+            include_metadata: false,
+            paranet_ual: None,
+        };
+
+        let assertion = match self.assertion_retrieval.fetch(&fetch_request).await {
+            Ok(fetched) => {
+                tracing::debug!(source = ?fetched.source, "Fetched assertion for proving");
+                fetched.assertion
             }
-            None => {
-                tracing::debug!(ual = %ual, "Assertion not found locally or invalid, trying network");
-                match self.fetch_from_network(&parsed_ual, token_ids.clone()).await {
-                    Some(assertion) => assertion,
-                    None => {
-                        tracing::warn!(ual = %ual, "Assertion not found on network");
-                        return PROVING_PERIOD;
-                    }
-                }
+            Err(e) => {
+                tracing::warn!(error = %e, ual = %ual, "Failed to fetch assertion");
+                return PROVING_PERIOD;
             }
         };
 

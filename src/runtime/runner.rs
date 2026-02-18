@@ -10,12 +10,12 @@ use crate::{
     controllers::{
         http_api_controller::router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
     },
+    node_state::PeerRegistry,
     periodic_tasks,
     periodic_tasks::tasks::{
         cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, proving::ProvingConfig,
         sync::SyncConfig,
     },
-    node_state::PeerRegistry,
 };
 
 #[allow(clippy::too_many_arguments)]
