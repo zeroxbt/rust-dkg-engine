@@ -8,15 +8,15 @@ pub(crate) const UAL_MAX_LIMIT: usize = 1000;
 
 pub(crate) use get::{
     AssertionRetrieval, AssertionSource, FetchRequest, GetAssertionInput, GetAssertionUseCase,
-    GetOperationWorkflow, HandleBatchGetRequestInput, HandleBatchGetRequestOutcome,
-    HandleBatchGetRequestWorkflow, HandleGetRequestInput, HandleGetRequestOutcome,
-    HandleGetRequestWorkflow, NETWORK_CONCURRENT_PEERS, TokenRangeResolutionPolicy,
+    GetOperationWorkflow, NETWORK_CONCURRENT_PEERS, ServeBatchGetInput, ServeBatchGetOutcome,
+    ServeBatchGetWorkflow, ServeGetInput, ServeGetOutcome, ServeGetWorkflow,
+    TokenRangeResolutionPolicy,
 };
 pub(crate) use publish::{
-    HandlePublishFinalityRequestInput, HandlePublishFinalityRequestOutcome,
-    HandlePublishFinalityRequestWorkflow, HandlePublishStoreRequestInput,
-    HandlePublishStoreRequestOutcome, HandlePublishStoreRequestWorkflow, PublishFinalityInput,
-    PublishFinalityWorkflow, PublishStoreInput, PublishStoreWorkflow,
+    ExecutePublishStoreInput, ExecutePublishStoreWorkflow, ProcessPublishFinalityEventInput,
+    ProcessPublishFinalityEventWorkflow, ServePublishFinalityInput, ServePublishFinalityOutcome,
+    ServePublishFinalityWorkflow, ServePublishStoreInput, ServePublishStoreOutcome,
+    ServePublishStoreWorkflow,
 };
 pub(crate) use shared::{
     AssertionValidation, OperationTracking, ShardPeerSelection, TripleStoreAssertions,

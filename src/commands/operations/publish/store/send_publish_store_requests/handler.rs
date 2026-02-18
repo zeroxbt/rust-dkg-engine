@@ -5,7 +5,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    application::{PublishStoreInput, PublishStoreWorkflow},
+    application::{ExecutePublishStoreInput, ExecutePublishStoreWorkflow},
     commands::SendPublishStoreRequestsDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
 };
@@ -40,13 +40,13 @@ impl SendPublishStoreRequestsCommandData {
 }
 
 pub(crate) struct SendPublishStoreRequestsCommandHandler {
-    publish_store_workflow: Arc<PublishStoreWorkflow>,
+    execute_publish_store_workflow: Arc<ExecutePublishStoreWorkflow>,
 }
 
 impl SendPublishStoreRequestsCommandHandler {
     pub(crate) fn new(deps: SendPublishStoreRequestsDeps) -> Self {
         Self {
-            publish_store_workflow: deps.publish_store_workflow,
+            execute_publish_store_workflow: deps.execute_publish_store_workflow,
         }
     }
 }
@@ -68,7 +68,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         )
     )]
     async fn execute(&self, data: &SendPublishStoreRequestsCommandData) -> CommandOutcome {
-        let input = PublishStoreInput {
+        let input = ExecutePublishStoreInput {
             operation_id: data.operation_id,
             blockchain: data.blockchain.clone(),
             dataset_root: data.dataset_root.clone(),
@@ -76,7 +76,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             dataset: data.dataset.clone(),
         };
 
-        self.publish_store_workflow.execute(&input).await;
+        self.execute_publish_store_workflow.execute(&input).await;
 
         CommandOutcome::Completed
     }

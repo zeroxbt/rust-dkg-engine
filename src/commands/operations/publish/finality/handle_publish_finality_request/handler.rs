@@ -6,8 +6,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{
-        HandlePublishFinalityRequestInput, HandlePublishFinalityRequestOutcome,
-        HandlePublishFinalityRequestWorkflow,
+        ServePublishFinalityInput, ServePublishFinalityOutcome, ServePublishFinalityWorkflow,
     },
     commands::HandlePublishFinalityRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
@@ -45,7 +44,7 @@ impl HandlePublishFinalityRequestCommandData {
 }
 
 pub(crate) struct HandlePublishFinalityRequestCommandHandler {
-    handle_publish_finality_request_workflow: Arc<HandlePublishFinalityRequestWorkflow>,
+    serve_publish_finality_workflow: Arc<ServePublishFinalityWorkflow>,
     pub(super) network_manager: Arc<NetworkManager>,
     response_channels: Arc<ResponseChannels<FinalityAck>>,
 }
@@ -53,7 +52,7 @@ pub(crate) struct HandlePublishFinalityRequestCommandHandler {
 impl HandlePublishFinalityRequestCommandHandler {
     pub(crate) fn new(deps: HandlePublishFinalityRequestDeps) -> Self {
         Self {
-            handle_publish_finality_request_workflow: deps.handle_publish_finality_request_workflow,
+            serve_publish_finality_workflow: deps.serve_publish_finality_workflow,
             network_manager: deps.network_manager,
             response_channels: deps.finality_response_channels,
         }
@@ -141,7 +140,7 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
             return CommandOutcome::Completed;
         };
 
-        let input = HandlePublishFinalityRequestInput {
+        let input = ServePublishFinalityInput {
             operation_id: publish_finality_operation_id,
             ual: ual.clone(),
             publish_store_operation_id: data.publish_store_operation_id.clone(),
@@ -149,11 +148,11 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
         };
 
         let outcome = self
-            .handle_publish_finality_request_workflow
+            .serve_publish_finality_workflow
             .execute(&input)
             .await;
 
-        if matches!(outcome, HandlePublishFinalityRequestOutcome::Nack) {
+        if matches!(outcome, ServePublishFinalityOutcome::Nack) {
             self.send_nack(channel, publish_finality_operation_id, ual)
                 .await;
             return CommandOutcome::Completed;

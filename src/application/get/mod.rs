@@ -1,18 +1,14 @@
 pub(crate) mod assertion_retrieval;
-pub(crate) mod batch_get_request;
 pub(crate) mod get_assertion;
 pub(crate) mod get_operation;
-pub(crate) mod get_request;
+pub(crate) mod serve_batch_get;
+pub(crate) mod serve_get;
 
 pub(crate) use assertion_retrieval::{
     AssertionRetrieval, AssertionSource, FetchRequest, NETWORK_CONCURRENT_PEERS,
     TokenRangeResolutionPolicy,
 };
-pub(crate) use batch_get_request::{
-    HandleBatchGetRequestInput, HandleBatchGetRequestOutcome, HandleBatchGetRequestWorkflow,
-};
 pub(crate) use get_assertion::{GetAssertionInput, GetAssertionUseCase};
 pub(crate) use get_operation::GetOperationWorkflow;
-pub(crate) use get_request::{
-    HandleGetRequestInput, HandleGetRequestOutcome, HandleGetRequestWorkflow,
-};
+pub(crate) use serve_batch_get::{ServeBatchGetInput, ServeBatchGetOutcome, ServeBatchGetWorkflow};
+pub(crate) use serve_get::{ServeGetInput, ServeGetOutcome, ServeGetWorkflow};

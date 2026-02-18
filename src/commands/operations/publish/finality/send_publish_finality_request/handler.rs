@@ -4,7 +4,7 @@ use dkg_blockchain::{Address, B256, BlockchainId, U256};
 use tracing::instrument;
 
 use crate::{
-    application::{PublishFinalityInput, PublishFinalityWorkflow},
+    application::{ProcessPublishFinalityEventInput, ProcessPublishFinalityEventWorkflow},
     commands::SendPublishFinalityRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
 };
@@ -61,13 +61,13 @@ impl SendPublishFinalityRequestCommandData {
 }
 
 pub(crate) struct SendPublishFinalityRequestCommandHandler {
-    publish_finality_workflow: Arc<PublishFinalityWorkflow>,
+    process_publish_finality_event_workflow: Arc<ProcessPublishFinalityEventWorkflow>,
 }
 
 impl SendPublishFinalityRequestCommandHandler {
     pub(crate) fn new(deps: SendPublishFinalityRequestDeps) -> Self {
         Self {
-            publish_finality_workflow: deps.publish_finality_workflow,
+            process_publish_finality_event_workflow: deps.process_publish_finality_event_workflow,
         }
     }
 }
@@ -88,7 +88,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         )
     )]
     async fn execute(&self, data: &SendPublishFinalityRequestCommandData) -> CommandOutcome {
-        let input = PublishFinalityInput {
+        let input = ProcessPublishFinalityEventInput {
             blockchain: data.blockchain.clone(),
             publish_operation_id: data.publish_operation_id.clone(),
             knowledge_collection_id: data.knowledge_collection_id,
@@ -100,7 +100,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             block_timestamp: data.block_timestamp,
         };
 
-        self.publish_finality_workflow.execute(&input).await;
+        self.process_publish_finality_event_workflow.execute(&input).await;
 
         CommandOutcome::Completed
     }

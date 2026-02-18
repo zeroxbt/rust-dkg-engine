@@ -6,7 +6,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    application::{HandleGetRequestInput, HandleGetRequestOutcome, HandleGetRequestWorkflow},
+    application::{ServeGetInput, ServeGetOutcome, ServeGetWorkflow},
     commands::HandleGetRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
     node_state::ResponseChannels,
@@ -45,7 +45,7 @@ impl HandleGetRequestCommandData {
 
 pub(crate) struct HandleGetRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
-    handle_get_request_workflow: Arc<HandleGetRequestWorkflow>,
+    serve_get_workflow: Arc<ServeGetWorkflow>,
     response_channels: Arc<ResponseChannels<GetAck>>,
 }
 
@@ -53,7 +53,7 @@ impl HandleGetRequestCommandHandler {
     pub(crate) fn new(deps: HandleGetRequestDeps) -> Self {
         Self {
             network_manager: deps.network_manager,
-            handle_get_request_workflow: deps.handle_get_request_workflow,
+            serve_get_workflow: deps.serve_get_workflow,
             response_channels: deps.get_response_channels,
         }
     }
@@ -137,7 +137,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             return CommandOutcome::Completed;
         };
 
-        let input = HandleGetRequestInput {
+        let input = ServeGetInput {
             operation_id,
             ual: data.ual.clone(),
             token_ids: data.token_ids.clone(),
@@ -147,8 +147,8 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             local_peer_id: *self.network_manager.peer_id(),
         };
 
-        match self.handle_get_request_workflow.execute(&input).await {
-            HandleGetRequestOutcome::Ack {
+        match self.serve_get_workflow.execute(&input).await {
+            ServeGetOutcome::Ack {
                 assertion,
                 metadata,
                 effective_visibility,
@@ -165,7 +165,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
                 self.send_ack(channel, operation_id, assertion, metadata)
                     .await;
             }
-            HandleGetRequestOutcome::Nack { error_message } => {
+            ServeGetOutcome::Nack { error_message } => {
                 self.send_nack(channel, operation_id, &error_message).await;
             }
         }

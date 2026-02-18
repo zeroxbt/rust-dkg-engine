@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use crate::{
     application::{
-        AssertionRetrieval, AssertionValidation, GetAssertionUseCase, GetOperationWorkflow,
-        HandleBatchGetRequestWorkflow, HandleGetRequestWorkflow,
-        HandlePublishFinalityRequestWorkflow, HandlePublishStoreRequestWorkflow, OperationTracking,
-        PublishFinalityWorkflow, PublishStoreWorkflow, ShardPeerSelection, TripleStoreAssertions,
+        AssertionRetrieval, AssertionValidation, ExecutePublishStoreWorkflow, GetAssertionUseCase,
+        GetOperationWorkflow, OperationTracking, ProcessPublishFinalityEventWorkflow,
+        ServeBatchGetWorkflow, ServeGetWorkflow, ServePublishFinalityWorkflow,
+        ServePublishStoreWorkflow, ShardPeerSelection, TripleStoreAssertions,
     },
     managers::Managers,
     node_state::NodeState,
@@ -21,12 +21,12 @@ pub(crate) struct ApplicationDeps {
     pub(crate) shard_peer_selection: Arc<ShardPeerSelection>,
     pub(crate) get_assertion_use_case: Arc<GetAssertionUseCase>,
     pub(crate) get_operation_workflow: Arc<GetOperationWorkflow>,
-    pub(crate) handle_get_request_workflow: Arc<HandleGetRequestWorkflow>,
-    pub(crate) handle_batch_get_request_workflow: Arc<HandleBatchGetRequestWorkflow>,
-    pub(crate) handle_publish_store_request_workflow: Arc<HandlePublishStoreRequestWorkflow>,
-    pub(crate) handle_publish_finality_request_workflow: Arc<HandlePublishFinalityRequestWorkflow>,
-    pub(crate) publish_store_workflow: Arc<PublishStoreWorkflow>,
-    pub(crate) publish_finality_workflow: Arc<PublishFinalityWorkflow>,
+    pub(crate) serve_get_workflow: Arc<ServeGetWorkflow>,
+    pub(crate) serve_batch_get_workflow: Arc<ServeBatchGetWorkflow>,
+    pub(crate) serve_publish_store_workflow: Arc<ServePublishStoreWorkflow>,
+    pub(crate) serve_publish_finality_workflow: Arc<ServePublishFinalityWorkflow>,
+    pub(crate) execute_publish_store_workflow: Arc<ExecutePublishStoreWorkflow>,
+    pub(crate) process_publish_finality_event_workflow: Arc<ProcessPublishFinalityEventWorkflow>,
 }
 
 pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> ApplicationDeps {
@@ -75,13 +75,13 @@ pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> 
         Arc::clone(&get_operation_tracking),
     ));
 
-    let handle_get_request_workflow = Arc::new(HandleGetRequestWorkflow::new(
+    let serve_get_workflow = Arc::new(ServeGetWorkflow::new(
         Arc::clone(&triple_store_assertions),
         Arc::clone(&node_state.peer_registry),
         Arc::clone(&managers.blockchain),
     ));
 
-    let publish_store_workflow = Arc::new(PublishStoreWorkflow::new(
+    let execute_publish_store_workflow = Arc::new(ExecutePublishStoreWorkflow::new(
         Arc::clone(&managers.network),
         Arc::clone(&node_state.peer_registry),
         Arc::clone(&managers.blockchain),
@@ -89,7 +89,7 @@ pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> 
         Arc::clone(&publish_tmp_dataset_store),
     ));
 
-    let publish_finality_workflow = Arc::new(PublishFinalityWorkflow::new(
+    let process_publish_finality_event_workflow = Arc::new(ProcessPublishFinalityEventWorkflow::new(
         finality_status_repository.clone(),
         triples_insert_count_repository,
         Arc::clone(&managers.network),
@@ -99,20 +99,20 @@ pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> 
         Arc::clone(&triple_store_assertions),
     ));
 
-    let handle_batch_get_request_workflow = Arc::new(HandleBatchGetRequestWorkflow::new(
+    let serve_batch_get_workflow = Arc::new(ServeBatchGetWorkflow::new(
         Arc::clone(&triple_store_assertions),
         Arc::clone(&node_state.peer_registry),
     ));
 
-    let handle_publish_store_request_workflow = Arc::new(HandlePublishStoreRequestWorkflow::new(
+    let serve_publish_store_workflow = Arc::new(ServePublishStoreWorkflow::new(
         Arc::clone(&managers.blockchain),
         Arc::clone(&node_state.peer_registry),
         Arc::clone(&publish_tmp_dataset_store),
     ));
 
-    let handle_publish_finality_request_workflow = Arc::new(
-        HandlePublishFinalityRequestWorkflow::new(finality_status_repository),
-    );
+    let serve_publish_finality_workflow = Arc::new(ServePublishFinalityWorkflow::new(
+        finality_status_repository,
+    ));
 
     ApplicationDeps {
         publish_store_operation_tracking,
@@ -123,11 +123,11 @@ pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> 
         shard_peer_selection,
         get_assertion_use_case,
         get_operation_workflow,
-        handle_get_request_workflow,
-        handle_batch_get_request_workflow,
-        handle_publish_store_request_workflow,
-        handle_publish_finality_request_workflow,
-        publish_store_workflow,
-        publish_finality_workflow,
+        serve_get_workflow,
+        serve_batch_get_workflow,
+        serve_publish_store_workflow,
+        serve_publish_finality_workflow,
+        execute_publish_store_workflow,
+        process_publish_finality_event_workflow,
     }
 }

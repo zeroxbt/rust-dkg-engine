@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{application::TripleStoreAssertions, node_state::PeerRegistry};
 
 #[derive(Clone)]
-pub(crate) struct PublishFinalityInput {
+pub(crate) struct ProcessPublishFinalityEventInput {
     pub blockchain: BlockchainId,
     pub publish_operation_id: String,
     pub knowledge_collection_id: U256,
@@ -24,7 +24,7 @@ pub(crate) struct PublishFinalityInput {
     pub block_timestamp: u64,
 }
 
-pub(crate) struct PublishFinalityWorkflow {
+pub(crate) struct ProcessPublishFinalityEventWorkflow {
     finality_status_repository: FinalityStatusRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
     network_manager: Arc<NetworkManager>,
@@ -34,7 +34,7 @@ pub(crate) struct PublishFinalityWorkflow {
     triple_store_assertions: Arc<TripleStoreAssertions>,
 }
 
-impl PublishFinalityWorkflow {
+impl ProcessPublishFinalityEventWorkflow {
     pub(crate) fn new(
         finality_status_repository: FinalityStatusRepository,
         triples_insert_count_repository: TriplesInsertCountRepository,
@@ -55,7 +55,7 @@ impl PublishFinalityWorkflow {
         }
     }
 
-    pub(crate) async fn execute(&self, input: &PublishFinalityInput) {
+    pub(crate) async fn execute(&self, input: &ProcessPublishFinalityEventInput) {
         let operation_id = Uuid::new_v4();
 
         let publish_operation_id = match Uuid::parse_str(&input.publish_operation_id) {

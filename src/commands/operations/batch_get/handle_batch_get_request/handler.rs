@@ -6,9 +6,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    application::{
-        HandleBatchGetRequestInput, HandleBatchGetRequestOutcome, HandleBatchGetRequestWorkflow,
-    },
+    application::{ServeBatchGetInput, ServeBatchGetOutcome, ServeBatchGetWorkflow},
     commands::HandleBatchGetRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
     node_state::ResponseChannels,
@@ -44,7 +42,7 @@ impl HandleBatchGetRequestCommandData {
 
 pub(crate) struct HandleBatchGetRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
-    handle_batch_get_request_workflow: Arc<HandleBatchGetRequestWorkflow>,
+    serve_batch_get_workflow: Arc<ServeBatchGetWorkflow>,
     response_channels: Arc<ResponseChannels<BatchGetAck>>,
 }
 
@@ -52,7 +50,7 @@ impl HandleBatchGetRequestCommandHandler {
     pub(crate) fn new(deps: HandleBatchGetRequestDeps) -> Self {
         Self {
             network_manager: deps.network_manager,
-            handle_batch_get_request_workflow: deps.handle_batch_get_request_workflow,
+            serve_batch_get_workflow: deps.serve_batch_get_workflow,
             response_channels: deps.batch_get_response_channels,
         }
     }
@@ -135,7 +133,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             return CommandOutcome::Completed;
         };
 
-        let input = HandleBatchGetRequestInput {
+        let input = ServeBatchGetInput {
             operation_id,
             uals: data.uals.clone(),
             token_ids: data.token_ids.clone(),
@@ -145,8 +143,8 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
 
         tracing::Span::current().record("ual_count", tracing::field::display(bounded_ual_count));
 
-        match self.handle_batch_get_request_workflow.execute(&input).await {
-            HandleBatchGetRequestOutcome::Ack {
+        match self.serve_batch_get_workflow.execute(&input).await {
+            ServeBatchGetOutcome::Ack {
                 assertions,
                 metadata,
             } => {
@@ -159,7 +157,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
                 self.send_ack(channel, operation_id, assertions, metadata)
                     .await;
             }
-            HandleBatchGetRequestOutcome::Nack { error_message } => {
+            ServeBatchGetOutcome::Nack { error_message } => {
                 self.send_nack(channel, operation_id, error_message).await;
             }
         }

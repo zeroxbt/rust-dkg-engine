@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::node_state::PeerRegistry;
 
 #[derive(Debug, Clone)]
-pub(crate) struct HandlePublishStoreRequestInput {
+pub(crate) struct ServePublishStoreInput {
     pub blockchain: BlockchainId,
     pub operation_id: Uuid,
     pub dataset_root: String,
@@ -19,7 +19,7 @@ pub(crate) struct HandlePublishStoreRequestInput {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum HandlePublishStoreRequestOutcome {
+pub(crate) enum ServePublishStoreOutcome {
     Ack {
         identity_id: u128,
         signature: SignatureComponents,
@@ -29,13 +29,13 @@ pub(crate) enum HandlePublishStoreRequestOutcome {
     },
 }
 
-pub(crate) struct HandlePublishStoreRequestWorkflow {
+pub(crate) struct ServePublishStoreWorkflow {
     blockchain_manager: Arc<BlockchainManager>,
     peer_registry: Arc<PeerRegistry>,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 }
 
-impl HandlePublishStoreRequestWorkflow {
+impl ServePublishStoreWorkflow {
     pub(crate) fn new(
         blockchain_manager: Arc<BlockchainManager>,
         peer_registry: Arc<PeerRegistry>,
@@ -48,10 +48,7 @@ impl HandlePublishStoreRequestWorkflow {
         }
     }
 
-    pub(crate) async fn execute(
-        &self,
-        input: &HandlePublishStoreRequestInput,
-    ) -> HandlePublishStoreRequestOutcome {
+    pub(crate) async fn execute(&self, input: &ServePublishStoreInput) -> ServePublishStoreOutcome {
         if !self
             .peer_registry
             .is_peer_in_shard(&input.blockchain, &input.local_peer_id)
@@ -62,7 +59,7 @@ impl HandlePublishStoreRequestWorkflow {
                 blockchain = %input.blockchain,
                 "Local node not found in shard"
             );
-            return HandlePublishStoreRequestOutcome::Nack {
+            return ServePublishStoreOutcome::Nack {
                 error_message: "Local node not in shard".to_string(),
             };
         }
@@ -75,7 +72,7 @@ impl HandlePublishStoreRequestWorkflow {
                 computed = %computed_dataset_root,
                 "Dataset root mismatch"
             );
-            return HandlePublishStoreRequestOutcome::Nack {
+            return ServePublishStoreOutcome::Nack {
                 error_message: format!(
                     "Dataset root validation failed. Received dataset root: {}; Calculated dataset root: {}",
                     input.dataset_root, computed_dataset_root
@@ -86,7 +83,7 @@ impl HandlePublishStoreRequestWorkflow {
         let identity_id = self.blockchain_manager.identity_id(&input.blockchain);
 
         let Some(dataset_root_hex) = input.dataset_root.strip_prefix("0x") else {
-            return HandlePublishStoreRequestOutcome::Nack {
+            return ServePublishStoreOutcome::Nack {
                 error_message: "Dataset root missing '0x' prefix".to_string(),
             };
         };
@@ -103,7 +100,7 @@ impl HandlePublishStoreRequestWorkflow {
                     error = %e,
                     "Failed to sign message"
                 );
-                return HandlePublishStoreRequestOutcome::Nack {
+                return ServePublishStoreOutcome::Nack {
                     error_message: format!("Failed to sign message: {}", e),
                 };
             }
@@ -124,12 +121,12 @@ impl HandlePublishStoreRequestWorkflow {
                 error = %e,
                 "Failed to store dataset in publish tmp dataset store"
             );
-            return HandlePublishStoreRequestOutcome::Nack {
+            return ServePublishStoreOutcome::Nack {
                 error_message: format!("Failed to store dataset: {}", e),
             };
         }
 
-        HandlePublishStoreRequestOutcome::Ack {
+        ServePublishStoreOutcome::Ack {
             identity_id,
             signature,
         }

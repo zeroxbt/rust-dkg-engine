@@ -1,15 +1,15 @@
-pub(crate) mod publish_finality;
-pub(crate) mod publish_finality_request;
-pub(crate) mod publish_store;
-pub(crate) mod publish_store_request;
+pub(crate) mod execute_publish_store;
+pub(crate) mod process_publish_finality_event;
+pub(crate) mod serve_publish_finality;
+pub(crate) mod serve_publish_store;
 
-pub(crate) use publish_finality::{PublishFinalityInput, PublishFinalityWorkflow};
-pub(crate) use publish_finality_request::{
-    HandlePublishFinalityRequestInput, HandlePublishFinalityRequestOutcome,
-    HandlePublishFinalityRequestWorkflow,
+pub(crate) use execute_publish_store::{ExecutePublishStoreInput, ExecutePublishStoreWorkflow};
+pub(crate) use process_publish_finality_event::{
+    ProcessPublishFinalityEventInput, ProcessPublishFinalityEventWorkflow,
 };
-pub(crate) use publish_store::{PublishStoreInput, PublishStoreWorkflow};
-pub(crate) use publish_store_request::{
-    HandlePublishStoreRequestInput, HandlePublishStoreRequestOutcome,
-    HandlePublishStoreRequestWorkflow,
+pub(crate) use serve_publish_finality::{
+    ServePublishFinalityInput, ServePublishFinalityOutcome, ServePublishFinalityWorkflow,
+};
+pub(crate) use serve_publish_store::{
+    ServePublishStoreInput, ServePublishStoreOutcome, ServePublishStoreWorkflow,
 };

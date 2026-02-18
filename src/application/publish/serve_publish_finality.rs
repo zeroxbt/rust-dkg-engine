@@ -3,7 +3,7 @@ use dkg_repository::FinalityStatusRepository;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
-pub(crate) struct HandlePublishFinalityRequestInput {
+pub(crate) struct ServePublishFinalityInput {
     pub operation_id: Uuid,
     pub ual: String,
     pub publish_store_operation_id: String,
@@ -11,16 +11,16 @@ pub(crate) struct HandlePublishFinalityRequestInput {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum HandlePublishFinalityRequestOutcome {
+pub(crate) enum ServePublishFinalityOutcome {
     Ack,
     Nack,
 }
 
-pub(crate) struct HandlePublishFinalityRequestWorkflow {
+pub(crate) struct ServePublishFinalityWorkflow {
     finality_status_repository: FinalityStatusRepository,
 }
 
-impl HandlePublishFinalityRequestWorkflow {
+impl ServePublishFinalityWorkflow {
     pub(crate) fn new(finality_status_repository: FinalityStatusRepository) -> Self {
         Self {
             finality_status_repository,
@@ -29,8 +29,8 @@ impl HandlePublishFinalityRequestWorkflow {
 
     pub(crate) async fn execute(
         &self,
-        input: &HandlePublishFinalityRequestInput,
-    ) -> HandlePublishFinalityRequestOutcome {
+        input: &ServePublishFinalityInput,
+    ) -> ServePublishFinalityOutcome {
         let publish_store_operation_id = match Uuid::parse_str(&input.publish_store_operation_id) {
             Ok(uuid) => uuid,
             Err(e) => {
@@ -40,7 +40,7 @@ impl HandlePublishFinalityRequestWorkflow {
                     error = %e,
                     "Failed to parse publish_operation_id as UUID"
                 );
-                return HandlePublishFinalityRequestOutcome::Nack;
+                return ServePublishFinalityOutcome::Nack;
             }
         };
 
@@ -61,7 +61,7 @@ impl HandlePublishFinalityRequestWorkflow {
                 error = %e,
                 "Failed to save finality ack"
             );
-            return HandlePublishFinalityRequestOutcome::Nack;
+            return ServePublishFinalityOutcome::Nack;
         }
 
         tracing::debug!(
@@ -72,6 +72,6 @@ impl HandlePublishFinalityRequestWorkflow {
             "Finality ack saved successfully"
         );
 
-        HandlePublishFinalityRequestOutcome::Ack
+        ServePublishFinalityOutcome::Ack
     }
 }

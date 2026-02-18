@@ -7,10 +7,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    application::{
-        HandlePublishStoreRequestInput, HandlePublishStoreRequestOutcome,
-        HandlePublishStoreRequestWorkflow,
-    },
+    application::{ServePublishStoreInput, ServePublishStoreOutcome, ServePublishStoreWorkflow},
     commands::HandlePublishStoreRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
     node_state::ResponseChannels,
@@ -47,7 +44,7 @@ impl HandlePublishStoreRequestCommandData {
 
 pub(crate) struct HandlePublishStoreRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
-    handle_publish_store_request_workflow: Arc<HandlePublishStoreRequestWorkflow>,
+    serve_publish_store_workflow: Arc<ServePublishStoreWorkflow>,
     response_channels: Arc<ResponseChannels<StoreAck>>,
 }
 
@@ -55,7 +52,7 @@ impl HandlePublishStoreRequestCommandHandler {
     pub(crate) fn new(deps: HandlePublishStoreRequestDeps) -> Self {
         Self {
             network_manager: deps.network_manager,
-            handle_publish_store_request_workflow: deps.handle_publish_store_request_workflow,
+            serve_publish_store_workflow: deps.serve_publish_store_workflow,
             response_channels: deps.store_response_channels,
         }
     }
@@ -139,7 +136,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandOutcome::Completed;
         };
 
-        let input = HandlePublishStoreRequestInput {
+        let input = ServePublishStoreInput {
             blockchain: data.blockchain.clone(),
             operation_id,
             dataset_root: data.dataset_root.clone(),
@@ -149,11 +146,11 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
         };
 
         match self
-            .handle_publish_store_request_workflow
+            .serve_publish_store_workflow
             .execute(&input)
             .await
         {
-            HandlePublishStoreRequestOutcome::Ack {
+            ServePublishStoreOutcome::Ack {
                 identity_id,
                 signature,
             } => {
@@ -166,7 +163,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
                 self.send_ack(channel, operation_id, identity_id, signature)
                     .await;
             }
-            HandlePublishStoreRequestOutcome::Nack { error_message } => {
+            ServePublishStoreOutcome::Nack { error_message } => {
                 self.send_nack(channel, operation_id, &error_message).await;
                 return CommandOutcome::Completed;
             }

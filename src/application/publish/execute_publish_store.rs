@@ -21,7 +21,7 @@ use crate::{
 const CONCURRENT_PEERS: usize = usize::MAX;
 
 #[derive(Debug, Clone)]
-pub(crate) struct PublishStoreInput {
+pub(crate) struct ExecutePublishStoreInput {
     pub operation_id: Uuid,
     pub blockchain: BlockchainId,
     pub dataset_root: String,
@@ -29,7 +29,7 @@ pub(crate) struct PublishStoreInput {
     pub dataset: Assertion,
 }
 
-pub(crate) struct PublishStoreWorkflow {
+pub(crate) struct ExecutePublishStoreWorkflow {
     network_manager: Arc<NetworkManager>,
     peer_registry: Arc<PeerRegistry>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -37,7 +37,7 @@ pub(crate) struct PublishStoreWorkflow {
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 }
 
-impl PublishStoreWorkflow {
+impl ExecutePublishStoreWorkflow {
     pub(crate) fn new(
         network_manager: Arc<NetworkManager>,
         peer_registry: Arc<PeerRegistry>,
@@ -54,7 +54,7 @@ impl PublishStoreWorkflow {
         }
     }
 
-    pub(crate) async fn execute(&self, input: &PublishStoreInput) {
+    pub(crate) async fn execute(&self, input: &ExecutePublishStoreInput) {
         let operation_id = input.operation_id;
         let blockchain = &input.blockchain;
         let dataset_root = &input.dataset_root;

@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{application::TripleStoreAssertions, node_state::PeerRegistry};
 
 #[derive(Debug, Clone)]
-pub(crate) struct HandleGetRequestInput {
+pub(crate) struct ServeGetInput {
     pub operation_id: Uuid,
     pub ual: String,
     pub token_ids: TokenIds,
@@ -22,7 +22,7 @@ pub(crate) struct HandleGetRequestInput {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum HandleGetRequestOutcome {
+pub(crate) enum ServeGetOutcome {
     Ack {
         assertion: Assertion,
         metadata: Option<Vec<String>>,
@@ -33,13 +33,13 @@ pub(crate) enum HandleGetRequestOutcome {
     },
 }
 
-pub(crate) struct HandleGetRequestWorkflow {
+pub(crate) struct ServeGetWorkflow {
     triple_store_assertions: Arc<TripleStoreAssertions>,
     peer_registry: Arc<PeerRegistry>,
     blockchain_manager: Arc<BlockchainManager>,
 }
 
-impl HandleGetRequestWorkflow {
+impl ServeGetWorkflow {
     pub(crate) fn new(
         triple_store_assertions: Arc<TripleStoreAssertions>,
         peer_registry: Arc<PeerRegistry>,
@@ -52,7 +52,7 @@ impl HandleGetRequestWorkflow {
         }
     }
 
-    pub(crate) async fn execute(&self, input: &HandleGetRequestInput) -> HandleGetRequestOutcome {
+    pub(crate) async fn execute(&self, input: &ServeGetInput) -> ServeGetOutcome {
         let parsed_ual = match parse_ual(&input.ual) {
             Ok(parsed) => parsed,
             Err(e) => {
@@ -62,7 +62,7 @@ impl HandleGetRequestWorkflow {
                     error = %e,
                     "Failed to parse UAL"
                 );
-                return HandleGetRequestOutcome::Nack {
+                return ServeGetOutcome::Nack {
                     error_message: format!("Invalid UAL: {}", e),
                 };
             }
@@ -79,7 +79,7 @@ impl HandleGetRequestWorkflow {
                 blockchain = %blockchain,
                 "Local node not found in shard"
             );
-            return HandleGetRequestOutcome::Nack {
+            return ServeGetOutcome::Nack {
                 error_message: "Local node not in shard".to_string(),
             };
         }
@@ -120,7 +120,7 @@ impl HandleGetRequestWorkflow {
                     "Found assertion data"
                 );
 
-                HandleGetRequestOutcome::Ack {
+                ServeGetOutcome::Ack {
                     assertion: result.assertion,
                     metadata: result.metadata,
                     effective_visibility,
@@ -132,7 +132,7 @@ impl HandleGetRequestWorkflow {
                     ual = %input.ual,
                     "No assertion data found"
                 );
-                HandleGetRequestOutcome::Nack {
+                ServeGetOutcome::Nack {
                     error_message: format!("Unable to find assertion {}", input.ual),
                 }
             }
@@ -143,7 +143,7 @@ impl HandleGetRequestWorkflow {
                     error = %e,
                     "Triple store query failed"
                 );
-                HandleGetRequestOutcome::Nack {
+                ServeGetOutcome::Nack {
                     error_message: format!("Triple store query failed: {}", e),
                 }
             }

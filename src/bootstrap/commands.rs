@@ -25,21 +25,21 @@ pub(crate) fn build_command_executor(
 ) -> CommandExecutor {
     let command_resolver = CommandResolver::new(CommandResolverDeps {
         send_publish_store_requests: SendPublishStoreRequestsDeps {
-            publish_store_workflow: Arc::clone(&application.publish_store_workflow),
+            execute_publish_store_workflow: Arc::clone(&application.execute_publish_store_workflow),
         },
         handle_publish_store_request: HandlePublishStoreRequestDeps {
             network_manager: Arc::clone(&managers.network),
-            handle_publish_store_request_workflow: Arc::clone(
-                &application.handle_publish_store_request_workflow,
+            serve_publish_store_workflow: Arc::clone(
+                &application.serve_publish_store_workflow,
             ),
             store_response_channels: Arc::clone(&node_state.store_response_channels),
         },
         send_publish_finality_request: SendPublishFinalityRequestDeps {
-            publish_finality_workflow: Arc::clone(&application.publish_finality_workflow),
+            process_publish_finality_event_workflow: Arc::clone(&application.process_publish_finality_event_workflow),
         },
         handle_publish_finality_request: HandlePublishFinalityRequestDeps {
-            handle_publish_finality_request_workflow: Arc::clone(
-                &application.handle_publish_finality_request_workflow,
+            serve_publish_finality_workflow: Arc::clone(
+                &application.serve_publish_finality_workflow,
             ),
             network_manager: Arc::clone(&managers.network),
             finality_response_channels: Arc::clone(&node_state.finality_response_channels),
@@ -49,13 +49,13 @@ pub(crate) fn build_command_executor(
         },
         handle_get_request: HandleGetRequestDeps {
             network_manager: Arc::clone(&managers.network),
-            handle_get_request_workflow: Arc::clone(&application.handle_get_request_workflow),
+            serve_get_workflow: Arc::clone(&application.serve_get_workflow),
             get_response_channels: Arc::clone(&node_state.get_response_channels),
         },
         handle_batch_get_request: HandleBatchGetRequestDeps {
             network_manager: Arc::clone(&managers.network),
-            handle_batch_get_request_workflow: Arc::clone(
-                &application.handle_batch_get_request_workflow,
+            serve_batch_get_workflow: Arc::clone(
+                &application.serve_batch_get_workflow,
             ),
             batch_get_response_channels: Arc::clone(&node_state.batch_get_response_channels),
         },

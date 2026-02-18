@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{application::TripleStoreAssertions, node_state::PeerRegistry};
 
 #[derive(Debug, Clone)]
-pub(crate) struct HandleBatchGetRequestInput {
+pub(crate) struct ServeBatchGetInput {
     pub operation_id: Uuid,
     pub uals: Vec<String>,
     pub token_ids: HashMap<String, TokenIds>,
@@ -19,7 +19,7 @@ pub(crate) struct HandleBatchGetRequestInput {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum HandleBatchGetRequestOutcome {
+pub(crate) enum ServeBatchGetOutcome {
     Ack {
         assertions: HashMap<String, Assertion>,
         metadata: HashMap<String, Vec<String>>,
@@ -29,12 +29,12 @@ pub(crate) enum HandleBatchGetRequestOutcome {
     },
 }
 
-pub(crate) struct HandleBatchGetRequestWorkflow {
+pub(crate) struct ServeBatchGetWorkflow {
     triple_store_assertions: Arc<TripleStoreAssertions>,
     peer_registry: Arc<PeerRegistry>,
 }
 
-impl HandleBatchGetRequestWorkflow {
+impl ServeBatchGetWorkflow {
     pub(crate) fn new(
         triple_store_assertions: Arc<TripleStoreAssertions>,
         peer_registry: Arc<PeerRegistry>,
@@ -45,10 +45,7 @@ impl HandleBatchGetRequestWorkflow {
         }
     }
 
-    pub(crate) async fn execute(
-        &self,
-        input: &HandleBatchGetRequestInput,
-    ) -> HandleBatchGetRequestOutcome {
+    pub(crate) async fn execute(&self, input: &ServeBatchGetInput) -> ServeBatchGetOutcome {
         let uals: Vec<String> = input
             .uals
             .iter()
@@ -94,7 +91,7 @@ impl HandleBatchGetRequestWorkflow {
                     blockchain = %blockchain,
                     "Local node not found in shard"
                 );
-                return HandleBatchGetRequestOutcome::Nack {
+                return ServeBatchGetOutcome::Nack {
                     error_message: "Local node not in shard".to_string(),
                 };
             }
@@ -117,7 +114,7 @@ impl HandleBatchGetRequestWorkflow {
                     error = %e,
                     "Batch get query failed"
                 );
-                return HandleBatchGetRequestOutcome::Nack {
+                return ServeBatchGetOutcome::Nack {
                     error_message: format!("Triple store query failed: {}", e),
                 };
             }
@@ -135,7 +132,7 @@ impl HandleBatchGetRequestWorkflow {
             }
         }
 
-        HandleBatchGetRequestOutcome::Ack {
+        ServeBatchGetOutcome::Ack {
             assertions,
             metadata,
         }
