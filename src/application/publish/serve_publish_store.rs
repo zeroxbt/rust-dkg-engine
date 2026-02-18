@@ -49,14 +49,14 @@ impl ServePublishStoreWorkflow {
     }
 
     pub(crate) async fn execute(&self, input: &ServePublishStoreInput) -> ServePublishStoreOutcome {
-        if !self
+        if let Some(missing_blockchain) = self
             .peer_registry
-            .is_peer_in_shard(&input.blockchain, &input.local_peer_id)
+            .first_missing_shard_membership(&input.local_peer_id, [&input.blockchain])
         {
             tracing::warn!(
                 operation_id = %input.operation_id,
                 local_peer_id = %input.local_peer_id,
-                blockchain = %input.blockchain,
+                blockchain = %missing_blockchain,
                 "Local node not found in shard"
             );
             return ServePublishStoreOutcome::Nack {

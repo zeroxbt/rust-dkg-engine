@@ -5,7 +5,7 @@ use crate::{
         AssertionRetrieval, AssertionValidation, ExecutePublishStoreWorkflow, GetAssertionUseCase,
         GetOperationWorkflow, OperationTracking, ProcessPublishFinalityEventWorkflow,
         ServeBatchGetWorkflow, ServeGetWorkflow, ServePublishFinalityWorkflow,
-        ServePublishStoreWorkflow, ShardPeerSelection, TripleStoreAssertions,
+        ServePublishStoreWorkflow, TripleStoreAssertions,
     },
     managers::Managers,
     node_state::NodeState,
@@ -18,7 +18,6 @@ pub(crate) struct ApplicationDeps {
     pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
     pub(crate) assertion_validation: Arc<AssertionValidation>,
     pub(crate) assertion_retrieval: Arc<AssertionRetrieval>,
-    pub(crate) shard_peer_selection: Arc<ShardPeerSelection>,
     pub(crate) get_assertion_use_case: Arc<GetAssertionUseCase>,
     pub(crate) get_operation_workflow: Arc<GetOperationWorkflow>,
     pub(crate) serve_get_workflow: Arc<ServeGetWorkflow>,
@@ -59,15 +58,11 @@ pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> 
         Arc::clone(&assertion_validation),
     ));
 
-    let shard_peer_selection = Arc::new(ShardPeerSelection::new(
-        Arc::clone(&managers.network),
-        Arc::clone(&node_state.peer_registry),
-    ));
-
     let get_assertion_use_case = Arc::new(GetAssertionUseCase::new(
         Arc::clone(&assertion_retrieval),
         Arc::clone(&managers.blockchain),
-        Arc::clone(&shard_peer_selection),
+        Arc::clone(&managers.network),
+        Arc::clone(&node_state.peer_registry),
     ));
 
     let get_operation_workflow = Arc::new(GetOperationWorkflow::new(
@@ -121,7 +116,6 @@ pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> 
         triple_store_assertions,
         assertion_validation,
         assertion_retrieval,
-        shard_peer_selection,
         get_assertion_use_case,
         get_operation_workflow,
         serve_get_workflow,

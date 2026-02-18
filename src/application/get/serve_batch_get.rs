@@ -80,21 +80,19 @@ impl ServeBatchGetWorkflow {
             uals_with_token_ids.push((parsed_ual, token_ids));
         }
 
-        for blockchain in &blockchains {
-            if !self
-                .peer_registry
-                .is_peer_in_shard(blockchain, &input.local_peer_id)
-            {
-                tracing::warn!(
-                    operation_id = %input.operation_id,
-                    local_peer_id = %input.local_peer_id,
-                    blockchain = %blockchain,
-                    "Local node not found in shard"
-                );
-                return ServeBatchGetOutcome::Nack {
-                    error_message: "Local node not in shard".to_string(),
-                };
-            }
+        if let Some(missing_blockchain) = self
+            .peer_registry
+            .first_missing_shard_membership(&input.local_peer_id, blockchains.iter())
+        {
+            tracing::warn!(
+                operation_id = %input.operation_id,
+                local_peer_id = %input.local_peer_id,
+                blockchain = %missing_blockchain,
+                "Local node not found in shard"
+            );
+            return ServeBatchGetOutcome::Nack {
+                error_message: "Local node not in shard".to_string(),
+            };
         }
 
         let query_results = self

@@ -69,14 +69,14 @@ impl ServeGetWorkflow {
         };
 
         let blockchain = &parsed_ual.blockchain;
-        if !self
+        if let Some(missing_blockchain) = self
             .peer_registry
-            .is_peer_in_shard(blockchain, &input.local_peer_id)
+            .first_missing_shard_membership(&input.local_peer_id, [blockchain])
         {
             tracing::warn!(
                 operation_id = %input.operation_id,
                 local_peer_id = %input.local_peer_id,
-                blockchain = %blockchain,
+                blockchain = %missing_blockchain,
                 "Local node not found in shard"
             );
             return ServeGetOutcome::Nack {

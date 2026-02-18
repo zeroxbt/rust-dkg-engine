@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 use chrono::Utc;
 use dkg_blockchain::{BlockchainManager, U256};
 use dkg_domain::{Assertion, BlockchainId, ParsedUal, Visibility, derive_ual};
-use dkg_network::STREAM_PROTOCOL_GET;
+use dkg_network::{NetworkManager, STREAM_PROTOCOL_GET};
 use dkg_repository::{ChallengeState, ProofChallengeRepository};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -13,18 +13,19 @@ use uuid::Uuid;
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
     application::{
-        AssertionRetrieval, FetchRequest, ShardPeerSelection, TokenRangeResolutionPolicy,
-        group_and_sort_public_triples,
+        AssertionRetrieval, FetchRequest, TokenRangeResolutionPolicy, group_and_sort_public_triples,
     },
+    node_state::PeerRegistry,
     periodic_tasks::ProvingDeps,
     periodic_tasks::runner::run_with_shutdown,
 };
 
 pub(crate) struct ProvingTask {
     blockchain_manager: Arc<BlockchainManager>,
+    network_manager: Arc<NetworkManager>,
+    peer_registry: Arc<PeerRegistry>,
     proof_challenge_repository: ProofChallengeRepository,
     assertion_retrieval: Arc<AssertionRetrieval>,
-    shard_peer_selection: Arc<ShardPeerSelection>,
 }
 
 #[derive(Clone)]
@@ -71,9 +72,10 @@ impl ProvingTask {
     pub(crate) fn new(deps: ProvingDeps) -> Self {
         Self {
             blockchain_manager: deps.blockchain_manager,
+            network_manager: deps.network_manager,
+            peer_registry: deps.peer_registry,
             proof_challenge_repository: deps.proof_challenge_repository,
             assertion_retrieval: deps.assertion_retrieval,
-            shard_peer_selection: deps.shard_peer_selection,
         }
     }
 
@@ -89,9 +91,10 @@ impl ProvingTask {
     #[tracing::instrument(name = "periodic_tasks.proving", skip(self,))]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
         // 1. Check if we're in the shard
+        let local_peer_id = self.network_manager.peer_id();
         if !self
-            .shard_peer_selection
-            .is_local_node_in_shard(blockchain_id)
+            .peer_registry
+            .is_peer_in_shard(blockchain_id, local_peer_id)
         {
             tracing::debug!("Node not in shard, skipping proving");
             return PROVING_PERIOD;
@@ -406,9 +409,11 @@ impl ProvingTask {
             }
         };
 
-        let peers = self
-            .shard_peer_selection
-            .load_shard_peers(&work_item.parsed_ual.blockchain, STREAM_PROTOCOL_GET);
+        let peers = self.peer_registry.select_shard_peers(
+            &work_item.parsed_ual.blockchain,
+            STREAM_PROTOCOL_GET,
+            Some(self.network_manager.peer_id()),
+        );
 
         let fetch_request = FetchRequest {
             operation_id,

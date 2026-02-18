@@ -2,13 +2,14 @@ use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
 use dkg_domain::{ParsedUal, Visibility, parse_ual};
-use dkg_network::{PeerId, STREAM_PROTOCOL_GET};
+use dkg_network::{NetworkManager, PeerId, STREAM_PROTOCOL_GET};
 use uuid::Uuid;
 
 use crate::application::{
-    AssertionRetrieval, AssertionSource, FetchRequest, ParanetAccessResolution, ShardPeerSelection,
+    AssertionRetrieval, AssertionSource, FetchRequest, ParanetAccessResolution,
     TokenRangeResolutionPolicy, resolve_paranet_access,
 };
+use crate::node_state::PeerRegistry;
 
 #[derive(Debug, Clone)]
 pub(crate) struct GetAssertionInput {
@@ -29,19 +30,22 @@ pub(crate) struct GetAssertionOutput {
 pub(crate) struct GetAssertionUseCase {
     assertion_retrieval: Arc<AssertionRetrieval>,
     blockchain_manager: Arc<BlockchainManager>,
-    shard_peer_selection: Arc<ShardPeerSelection>,
+    network_manager: Arc<NetworkManager>,
+    peer_registry: Arc<PeerRegistry>,
 }
 
 impl GetAssertionUseCase {
     pub(crate) fn new(
         assertion_retrieval: Arc<AssertionRetrieval>,
         blockchain_manager: Arc<BlockchainManager>,
-        shard_peer_selection: Arc<ShardPeerSelection>,
+        network_manager: Arc<NetworkManager>,
+        peer_registry: Arc<PeerRegistry>,
     ) -> Self {
         Self {
             assertion_retrieval,
             blockchain_manager,
-            shard_peer_selection,
+            network_manager,
+            peer_registry,
         }
     }
 
@@ -120,9 +124,12 @@ impl GetAssertionUseCase {
         parsed_ual: &ParsedUal,
         paranet_ual: Option<&str>,
     ) -> Result<Vec<PeerId>, String> {
-        let peers = self
-            .shard_peer_selection
-            .load_shard_peers(&parsed_ual.blockchain, STREAM_PROTOCOL_GET);
+        let local_peer_id = self.network_manager.peer_id();
+        let peers = self.peer_registry.select_shard_peers(
+            &parsed_ual.blockchain,
+            STREAM_PROTOCOL_GET,
+            Some(local_peer_id),
+        );
 
         if let Some(paranet_ual) = paranet_ual {
             self.filter_peers_by_paranet(paranet_ual, parsed_ual, peers)

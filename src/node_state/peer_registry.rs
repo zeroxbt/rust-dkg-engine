@@ -209,6 +209,24 @@ impl PeerRegistry {
             .unwrap_or(false)
     }
 
+    /// Returns the first blockchain for which `peer_id` is not in shard membership.
+    pub(crate) fn first_missing_shard_membership<'a, I>(
+        &self,
+        peer_id: &PeerId,
+        blockchains: I,
+    ) -> Option<BlockchainId>
+    where
+        I: IntoIterator<Item = &'a BlockchainId>,
+    {
+        blockchains.into_iter().find_map(|blockchain| {
+            if self.is_peer_in_shard(blockchain, peer_id) {
+                None
+            } else {
+                Some(blockchain.clone())
+            }
+        })
+    }
+
     /// Get all unique peer IDs across all shards.
     pub(crate) fn get_all_shard_peer_ids(&self) -> Vec<PeerId> {
         self.peers
@@ -581,5 +599,32 @@ mod tests {
         registry.apply_peer_event(PeerEvent::ConnectionEstablished { peer_id: peer });
         assert!(registry.should_attempt_discovery(&peer));
         assert!(registry.discovery_backoff(&peer).is_none());
+    }
+
+    #[test]
+    fn test_first_missing_shard_membership_none_when_peer_present() {
+        let registry = PeerRegistry::new();
+        let peer = PeerId::random();
+
+        let chain_a = BlockchainId::from("test:chain:a".to_string());
+        let chain_b = BlockchainId::from("test:chain:b".to_string());
+        registry.set_shard_membership(&chain_a, &[peer]);
+        registry.set_shard_membership(&chain_b, &[peer]);
+
+        let missing = registry.first_missing_shard_membership(&peer, [&chain_a, &chain_b]);
+        assert_eq!(missing, None);
+    }
+
+    #[test]
+    fn test_first_missing_shard_membership_returns_first_missing_chain() {
+        let registry = PeerRegistry::new();
+        let peer = PeerId::random();
+
+        let chain_a = BlockchainId::from("test:chain:a".to_string());
+        let chain_b = BlockchainId::from("test:chain:b".to_string());
+        registry.set_shard_membership(&chain_a, &[peer]);
+
+        let missing = registry.first_missing_shard_membership(&peer, [&chain_a, &chain_b]);
+        assert_eq!(missing, Some(chain_b));
     }
 }

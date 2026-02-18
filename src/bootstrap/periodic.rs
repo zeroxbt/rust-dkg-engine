@@ -61,9 +61,10 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         proving: ProvingDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
+            network_manager: Arc::clone(&managers.network),
+            peer_registry: Arc::clone(&node_state.peer_registry),
             proof_challenge_repository,
             assertion_retrieval: Arc::clone(&application.assertion_retrieval),
-            shard_peer_selection: Arc::clone(&application.shard_peer_selection),
         },
         sync: SyncDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
