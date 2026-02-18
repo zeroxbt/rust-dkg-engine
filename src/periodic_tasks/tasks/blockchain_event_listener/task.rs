@@ -6,7 +6,7 @@ use dkg_blockchain::{
     Address, BlockchainError, BlockchainId, BlockchainManager, ContractEvent, ContractLog,
     ContractName, decode_contract_event, monitored_contract_events, to_hex_string,
 };
-use dkg_repository::RepositoryManager;
+use dkg_repository::BlockchainRepository;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -36,7 +36,7 @@ const MAX_BLOCKS_TO_SYNC_DEV: u64 = u64::MAX; // unlimited for dev
 
 pub(crate) struct BlockchainEventListenerTask {
     blockchain_manager: Arc<BlockchainManager>,
-    repository_manager: Arc<RepositoryManager>,
+    blockchain_repository: BlockchainRepository,
     command_scheduler: CommandScheduler,
     /// Polling interval
     poll_interval: Duration,
@@ -62,7 +62,7 @@ impl BlockchainEventListenerTask {
 
         Self {
             blockchain_manager: deps.blockchain_manager,
-            repository_manager: deps.repository_manager,
+            blockchain_repository: deps.blockchain_repository,
             command_scheduler: deps.command_scheduler,
             poll_interval,
             max_blocks_to_sync,
@@ -149,8 +149,7 @@ impl BlockchainEventListenerTask {
 
             for contract_address_str in addresses_to_check {
                 let last_checked_block = self
-                    .repository_manager
-                    .blockchain_repository()
+                    .blockchain_repository
                     .get_last_checked_block(
                         blockchain_id.as_str(),
                         contract_name.as_str(),
@@ -177,8 +176,7 @@ impl BlockchainEventListenerTask {
                         "Extended downtime detected; skipping missed events"
                     );
 
-                    self.repository_manager
-                        .blockchain_repository()
+                    self.blockchain_repository
                         .update_last_checked_block(
                             blockchain_id.as_str(),
                             contract_name.as_str(),
@@ -264,8 +262,7 @@ impl BlockchainEventListenerTask {
 
         // Update last checked block only after successful processing.
         for (contract_name, contract_address_str) in contracts_to_update {
-            self.repository_manager
-                .blockchain_repository()
+            self.blockchain_repository
                 .update_last_checked_block(
                     blockchain_id.as_str(),
                     contract_name.as_str(),

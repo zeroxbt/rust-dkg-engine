@@ -3,7 +3,7 @@ use std::sync::Arc;
 use dkg_blockchain::BlockchainManager;
 use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{BatchGetAck, FinalityAck, GetAck, NetworkManager, StoreAck};
-use dkg_repository::RepositoryManager;
+use dkg_repository::{FinalityStatusRepository, TriplesInsertCountRepository};
 
 use crate::{
     operations::{GetOperation, PublishStoreOperation},
@@ -35,7 +35,8 @@ pub(crate) struct HandlePublishStoreRequestDeps {
 
 #[derive(Clone)]
 pub(crate) struct SendPublishFinalityRequestDeps {
-    pub(crate) repository_manager: Arc<RepositoryManager>,
+    pub(crate) finality_status_repository: FinalityStatusRepository,
+    pub(crate) triples_insert_count_repository: TriplesInsertCountRepository,
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) peer_service: Arc<PeerService>,
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
@@ -45,7 +46,7 @@ pub(crate) struct SendPublishFinalityRequestDeps {
 
 #[derive(Clone)]
 pub(crate) struct HandlePublishFinalityRequestDeps {
-    pub(crate) repository_manager: Arc<RepositoryManager>,
+    pub(crate) finality_status_repository: FinalityStatusRepository,
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) finality_response_channels: Arc<ResponseChannels<FinalityAck>>,
 }

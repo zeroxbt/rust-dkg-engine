@@ -13,6 +13,7 @@ use crate::{
     types::{OperationRecord, OperationStatus},
 };
 
+#[derive(Clone)]
 pub struct OperationRepository {
     conn: Arc<DatabaseConnection>,
 }

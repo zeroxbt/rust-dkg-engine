@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{BatchGetAck, FinalityAck, GetAck, StoreAck};
-use dkg_repository::RepositoryManager;
+use dkg_repository::{FinalityStatusRepository, OperationRepository, ProofChallengeRepository};
 use tokio_util::sync::CancellationToken;
 
 use super::{
@@ -18,7 +18,9 @@ use crate::{
 };
 
 pub(crate) struct CleanupTask {
-    repository_manager: Arc<RepositoryManager>,
+    operation_repository: OperationRepository,
+    finality_status_repository: FinalityStatusRepository,
+    proof_challenge_repository: ProofChallengeRepository,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
     publish_operation_results: Arc<OperationStatusService<PublishStoreOperation>>,
     get_operation_results: Arc<OperationStatusService<GetOperation>>,
@@ -32,7 +34,9 @@ pub(crate) struct CleanupTask {
 impl CleanupTask {
     pub(crate) fn new(deps: CleanupDeps, config: CleanupConfig) -> Self {
         Self {
-            repository_manager: deps.repository_manager,
+            operation_repository: deps.operation_repository,
+            finality_status_repository: deps.finality_status_repository,
+            proof_challenge_repository: deps.proof_challenge_repository,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
             publish_operation_results: deps.publish_operation_results,
             get_operation_results: deps.get_operation_results,
@@ -59,7 +63,7 @@ impl CleanupTask {
 
         if config.operations.ttl_secs > 0 {
             match cleanup_operations(
-                &self.repository_manager,
+                &self.operation_repository,
                 &self.publish_operation_results,
                 &self.get_operation_results,
                 Duration::from_secs(config.operations.ttl_secs),
@@ -95,7 +99,7 @@ impl CleanupTask {
 
         if config.finality_acks.ttl_secs > 0 {
             match cleanup_finality_acks(
-                &self.repository_manager,
+                &self.finality_status_repository,
                 Duration::from_secs(config.finality_acks.ttl_secs),
                 config.finality_acks.batch_size,
             )
@@ -112,7 +116,7 @@ impl CleanupTask {
 
         if config.proof_challenges.ttl_secs > 0 {
             match cleanup_proof_challenges(
-                &self.repository_manager,
+                &self.proof_challenge_repository,
                 Duration::from_secs(config.proof_challenges.ttl_secs),
                 config.proof_challenges.batch_size,
             )

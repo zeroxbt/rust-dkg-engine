@@ -10,6 +10,7 @@ use crate::{
     models::blockchain::{ActiveModel, Column, Entity},
 };
 
+#[derive(Clone)]
 pub struct BlockchainRepository {
     conn: Arc<DatabaseConnection>,
 }

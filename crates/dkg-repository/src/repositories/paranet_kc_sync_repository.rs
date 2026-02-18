@@ -15,6 +15,7 @@ use crate::{
 pub const STATUS_PENDING: &str = "pending";
 pub const STATUS_SYNCED: &str = "synced";
 
+#[derive(Clone)]
 pub struct ParanetKcSyncRepository {
     conn: Arc<DatabaseConnection>,
 }

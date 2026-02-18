@@ -38,8 +38,7 @@ impl OperationResultHttpApiController {
 
         // Get operation record
         let operation_record = match context
-            .repository_manager
-            .operation_repository()
+            .operation_repository
             .get_by_id_and_name(operation_uuid, PublishStoreOperation::NAME)
             .await
         {
@@ -187,8 +186,7 @@ impl OperationResultHttpApiController {
 
         // Get operation record
         let operation_record = match context
-            .repository_manager
-            .operation_repository()
+            .operation_repository
             .get_by_id_and_name(operation_uuid, GetOperation::NAME)
             .await
         {

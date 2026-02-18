@@ -6,7 +6,7 @@ use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{
     FinalityRequestData, FinalityResponseData, NetworkManager, PeerId, STREAM_PROTOCOL_FINALITY,
 };
-use dkg_repository::RepositoryManager;
+use dkg_repository::{FinalityStatusRepository, TriplesInsertCountRepository};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -68,7 +68,8 @@ impl SendPublishFinalityRequestCommandData {
 }
 
 pub(crate) struct SendPublishFinalityRequestCommandHandler {
-    pub(super) repository_manager: Arc<RepositoryManager>,
+    finality_status_repository: FinalityStatusRepository,
+    triples_insert_count_repository: TriplesInsertCountRepository,
     pub(super) network_manager: Arc<NetworkManager>,
     peer_service: Arc<PeerService>,
     blockchain_manager: Arc<BlockchainManager>,
@@ -79,7 +80,8 @@ pub(crate) struct SendPublishFinalityRequestCommandHandler {
 impl SendPublishFinalityRequestCommandHandler {
     pub(crate) fn new(deps: SendPublishFinalityRequestDeps) -> Self {
         Self {
-            repository_manager: deps.repository_manager,
+            finality_status_repository: deps.finality_status_repository,
+            triples_insert_count_repository: deps.triples_insert_count_repository,
             network_manager: deps.network_manager,
             peer_service: deps.peer_service,
             blockchain_manager: deps.blockchain_manager,
@@ -287,8 +289,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
 
         // Increment the total triples counter
         if let Err(e) = self
-            .repository_manager
-            .triples_insert_count_repository()
+            .triples_insert_count_repository
             .atomic_increment(total_triples as i64)
             .await
         {
@@ -328,8 +329,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             );
             // Save the finality ack to the database
             if let Err(e) = self
-                .repository_manager
-                .finality_status_repository()
+                .finality_status_repository
                 .save_finality_ack(publish_operation_id, &ual, &publisher_peer_id.to_base58())
                 .await
             {

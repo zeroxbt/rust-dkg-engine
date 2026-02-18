@@ -59,31 +59,31 @@ impl RepositoryManager {
         })
     }
 
-    pub fn blockchain_repository(&self) -> &BlockchainRepository {
-        &self.blockchain_repository
+    pub fn blockchain_repository(&self) -> BlockchainRepository {
+        self.blockchain_repository.clone()
     }
 
-    pub fn operation_repository(&self) -> &OperationRepository {
-        &self.operation_repository
+    pub fn operation_repository(&self) -> OperationRepository {
+        self.operation_repository.clone()
     }
 
-    pub fn finality_status_repository(&self) -> &FinalityStatusRepository {
-        &self.finality_status_repository
+    pub fn finality_status_repository(&self) -> FinalityStatusRepository {
+        self.finality_status_repository.clone()
     }
 
-    pub fn triples_insert_count_repository(&self) -> &TriplesInsertCountRepository {
-        &self.triples_insert_count_repository
+    pub fn triples_insert_count_repository(&self) -> TriplesInsertCountRepository {
+        self.triples_insert_count_repository.clone()
     }
 
-    pub fn kc_sync_repository(&self) -> &KcSyncRepository {
-        &self.kc_sync_repository
+    pub fn kc_sync_repository(&self) -> KcSyncRepository {
+        self.kc_sync_repository.clone()
     }
 
-    pub fn paranet_kc_sync_repository(&self) -> &ParanetKcSyncRepository {
-        &self.paranet_kc_sync_repository
+    pub fn paranet_kc_sync_repository(&self) -> ParanetKcSyncRepository {
+        self.paranet_kc_sync_repository.clone()
     }
 
-    pub fn proof_challenge_repository(&self) -> &ProofChallengeRepository {
-        &self.proof_challenge_repository
+    pub fn proof_challenge_repository(&self) -> ProofChallengeRepository {
+        self.proof_challenge_repository.clone()
     }
 }

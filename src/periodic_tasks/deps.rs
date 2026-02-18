@@ -3,7 +3,10 @@ use std::sync::Arc;
 use dkg_blockchain::BlockchainManager;
 use dkg_key_value_store::{PeerAddressStore, PublishTmpDatasetStore};
 use dkg_network::{BatchGetAck, FinalityAck, GetAck, NetworkManager, StoreAck};
-use dkg_repository::RepositoryManager;
+use dkg_repository::{
+    BlockchainRepository, FinalityStatusRepository, KcSyncRepository, OperationRepository,
+    ParanetKcSyncRepository, ProofChallengeRepository,
+};
 
 use crate::{
     commands::scheduler::CommandScheduler,
@@ -34,7 +37,9 @@ pub(crate) struct ClaimRewardsDeps {
 
 #[derive(Clone)]
 pub(crate) struct CleanupDeps {
-    pub(crate) repository_manager: Arc<RepositoryManager>,
+    pub(crate) operation_repository: OperationRepository,
+    pub(crate) finality_status_repository: FinalityStatusRepository,
+    pub(crate) proof_challenge_repository: ProofChallengeRepository,
     pub(crate) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
     pub(crate) publish_operation_results: Arc<OperationStatusService<PublishStoreOperation>>,
     pub(crate) get_operation_results: Arc<OperationStatusService<GetOperation>>,
@@ -53,14 +58,14 @@ pub(crate) struct ShardingTableCheckDeps {
 #[derive(Clone)]
 pub(crate) struct BlockchainEventListenerDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
-    pub(crate) repository_manager: Arc<RepositoryManager>,
+    pub(crate) blockchain_repository: BlockchainRepository,
     pub(crate) command_scheduler: CommandScheduler,
 }
 
 #[derive(Clone)]
 pub(crate) struct ProvingDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
-    pub(crate) repository_manager: Arc<RepositoryManager>,
+    pub(crate) proof_challenge_repository: ProofChallengeRepository,
     pub(crate) triple_store_service: Arc<TripleStoreService>,
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) assertion_validation_service: Arc<AssertionValidationService>,
@@ -70,7 +75,7 @@ pub(crate) struct ProvingDeps {
 #[derive(Clone)]
 pub(crate) struct SyncDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
-    pub(crate) repository_manager: Arc<RepositoryManager>,
+    pub(crate) kc_sync_repository: KcSyncRepository,
     pub(crate) triple_store_service: Arc<TripleStoreService>,
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) assertion_validation_service: Arc<AssertionValidationService>,
@@ -80,7 +85,7 @@ pub(crate) struct SyncDeps {
 #[derive(Clone)]
 pub(crate) struct ParanetSyncDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
-    pub(crate) repository_manager: Arc<RepositoryManager>,
+    pub(crate) paranet_kc_sync_repository: ParanetKcSyncRepository,
     pub(crate) triple_store_service: Arc<TripleStoreService>,
     pub(crate) get_fetch_service: Arc<GetFetchService>,
 }

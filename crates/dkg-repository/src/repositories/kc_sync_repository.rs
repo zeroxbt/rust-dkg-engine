@@ -18,6 +18,7 @@ use crate::{
     types::{KcSyncProgressEntry, KcSyncQueueEntry},
 };
 
+#[derive(Clone)]
 pub struct KcSyncRepository {
     conn: Arc<DatabaseConnection>,
 }

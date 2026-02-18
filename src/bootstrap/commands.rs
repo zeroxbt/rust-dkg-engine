@@ -22,6 +22,8 @@ pub(crate) fn build_command_executor(
     command_rx: mpsc::Receiver<CommandExecutionRequest>,
 ) -> CommandExecutor {
     let publish_tmp_dataset_store = Arc::new(managers.key_value_store.publish_tmp_dataset_store());
+    let finality_status_repository = managers.repository.finality_status_repository();
+    let triples_insert_count_repository = managers.repository.triples_insert_count_repository();
 
     let command_resolver = CommandResolver::new(CommandResolverDeps {
         send_publish_store_requests: SendPublishStoreRequestsDeps {
@@ -39,7 +41,8 @@ pub(crate) fn build_command_executor(
             publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
         },
         send_publish_finality_request: SendPublishFinalityRequestDeps {
-            repository_manager: Arc::clone(&managers.repository),
+            finality_status_repository: finality_status_repository.clone(),
+            triples_insert_count_repository: triples_insert_count_repository.clone(),
             network_manager: Arc::clone(&managers.network),
             peer_service: Arc::clone(&services.peer_service),
             blockchain_manager: Arc::clone(&managers.blockchain),
@@ -47,7 +50,7 @@ pub(crate) fn build_command_executor(
             triple_store_service: Arc::clone(&services.triple_store),
         },
         handle_publish_finality_request: HandlePublishFinalityRequestDeps {
-            repository_manager: Arc::clone(&managers.repository),
+            finality_status_repository,
             network_manager: Arc::clone(&managers.network),
             finality_response_channels: Arc::clone(&services.response_channels.finality),
         },

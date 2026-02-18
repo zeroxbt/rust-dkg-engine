@@ -11,7 +11,7 @@ use dkg_domain::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, deriv
 use dkg_network::{
     GetRequestData, GetResponseData, NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_GET,
 };
-use dkg_repository::{ChallengeState, RepositoryManager};
+use dkg_repository::{ChallengeState, ProofChallengeRepository};
 use dkg_triple_store::{
     PRIVATE_HASH_SUBJECT_PREFIX, compare_js_default_string_order, group_triples_by_subject,
 };
@@ -30,7 +30,7 @@ use crate::{
 
 pub(crate) struct ProvingTask {
     blockchain_manager: Arc<BlockchainManager>,
-    repository_manager: Arc<RepositoryManager>,
+    proof_challenge_repository: ProofChallengeRepository,
     triple_store_service: Arc<TripleStoreService>,
     network_manager: Arc<NetworkManager>,
     assertion_validation_service: Arc<AssertionValidationService>,
@@ -41,7 +41,7 @@ impl ProvingTask {
     pub(crate) fn new(deps: ProvingDeps) -> Self {
         Self {
             blockchain_manager: deps.blockchain_manager,
-            repository_manager: deps.repository_manager,
+            proof_challenge_repository: deps.proof_challenge_repository,
             triple_store_service: deps.triple_store_service,
             network_manager: deps.network_manager,
             assertion_validation_service: deps.assertion_validation_service,
@@ -309,8 +309,7 @@ impl ProvingTask {
 
         // 3. Get latest challenge from database
         let latest_challenge = self
-            .repository_manager
-            .proof_challenge_repository()
+            .proof_challenge_repository
             .get_latest(blockchain_id.as_str())
             .await
             .ok()
@@ -370,8 +369,7 @@ impl ProvingTask {
 
                                 // Finalize
                                 if let Err(e) = self
-                                    .repository_manager
-                                    .proof_challenge_repository()
+                                    .proof_challenge_repository
                                     .set_state(
                                         blockchain_id.as_str(),
                                         challenge.epoch,
@@ -391,8 +389,7 @@ impl ProvingTask {
                                 // re-submit
                                 tracing::warn!("Score is zero, resetting challenge to retry");
                                 if let Err(e) = self
-                                    .repository_manager
-                                    .proof_challenge_repository()
+                                    .proof_challenge_repository
                                     .set_state(
                                         blockchain_id.as_str(),
                                         challenge.epoch,
@@ -462,8 +459,7 @@ impl ProvingTask {
 
         // Store challenge in database if new
         let db_challenge = self
-            .repository_manager
-            .proof_challenge_repository()
+            .proof_challenge_repository
             .get_latest(blockchain_id.as_str())
             .await
             .ok()
@@ -476,8 +472,7 @@ impl ProvingTask {
 
         if needs_db_record
             && let Err(e) = self
-                .repository_manager
-                .proof_challenge_repository()
+                .proof_challenge_repository
                 .create(
                     blockchain_id.as_str(),
                     epoch,
@@ -622,8 +617,7 @@ impl ProvingTask {
 
         // 9. Update database state
         if let Err(e) = self
-            .repository_manager
-            .proof_challenge_repository()
+            .proof_challenge_repository
             .set_state(
                 blockchain_id.as_str(),
                 epoch,

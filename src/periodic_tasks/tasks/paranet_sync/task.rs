@@ -149,7 +149,7 @@ impl ParanetSyncTask {
         blockchain_id: &BlockchainId,
         target: &ParanetSyncTarget,
     ) -> (u64, u64) {
-        let repo = self.deps.repository_manager.paranet_kc_sync_repository();
+        let repo = &self.deps.paranet_kc_sync_repository;
         let discovered = match repo.count_discovered(&target.paranet_ual).await {
             Ok(count) => count,
             Err(e) => {
@@ -265,7 +265,7 @@ impl ParanetSyncTask {
         blockchain_id: &BlockchainId,
         targets: &[ParanetSyncTarget],
     ) -> Vec<ParanetKcSyncEntry> {
-        let repo = self.deps.repository_manager.paranet_kc_sync_repository();
+        let repo = &self.deps.paranet_kc_sync_repository;
         let now_ts = chrono::Utc::now().timestamp();
         let total_limit = self.config.batch_size.max(1);
         let per_paranet_limit = (total_limit + targets.len().saturating_sub(1)) / targets.len();
@@ -330,7 +330,7 @@ impl ParanetSyncTask {
             .map(|target| (target.paranet_ual.clone(), target.clone()))
             .collect();
 
-        let repository_manager = Arc::clone(&self.deps.repository_manager);
+        let paranet_kc_sync_repository = self.deps.paranet_kc_sync_repository.clone();
         let triple_store_service = Arc::clone(&self.deps.triple_store_service);
         let get_fetch_service = Arc::clone(&self.deps.get_fetch_service);
         let retries_limit = self.config.retries_limit;
@@ -341,7 +341,7 @@ impl ParanetSyncTask {
         let stream = futures::stream::iter(due_batch.into_iter())
             .map(|row| {
                 let target = target_map.get(&row.paranet_ual).cloned();
-                let repository_manager = Arc::clone(&repository_manager);
+                let paranet_kc_sync_repository = paranet_kc_sync_repository.clone();
                 let triple_store_service = Arc::clone(&triple_store_service);
                 let get_fetch_service = Arc::clone(&get_fetch_service);
                 let blockchain_id = blockchain_id.clone();
@@ -364,7 +364,7 @@ impl ParanetSyncTask {
                         visibility,
                     };
 
-                    let repo = repository_manager.paranet_kc_sync_repository();
+                    let repo = paranet_kc_sync_repository;
 
                     let fetched = get_fetch_service.fetch(&request).await;
                     match fetched {

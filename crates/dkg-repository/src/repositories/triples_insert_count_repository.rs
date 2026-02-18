@@ -9,6 +9,7 @@ use crate::{
     models::triples_insert_count::{self, Entity},
 };
 
+#[derive(Clone)]
 pub struct TriplesInsertCountRepository {
     conn: Arc<DatabaseConnection>,
 }

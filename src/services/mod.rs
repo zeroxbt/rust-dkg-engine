@@ -68,13 +68,14 @@ pub(crate) struct Services {
 /// - Controllers/Commands: highest level, depends on explicit deps structs
 pub(crate) fn initialize(managers: &Managers) -> Services {
     // Operation status services
+    let operation_repository = managers.repository.operation_repository();
     let publish_store_operation = Arc::new(OperationStatusService::<PublishStoreOperation>::new(
-        Arc::clone(&managers.repository),
+        operation_repository.clone(),
         &managers.key_value_store,
     ));
 
     let get_operation = Arc::new(OperationStatusService::<GetOperation>::new(
-        Arc::clone(&managers.repository),
+        operation_repository,
         &managers.key_value_store,
     ));
 

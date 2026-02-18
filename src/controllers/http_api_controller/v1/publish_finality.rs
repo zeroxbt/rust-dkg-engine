@@ -43,8 +43,7 @@ impl PublishFinalityStatusHttpApiController {
         }
 
         match context
-            .repository_manager
-            .finality_status_repository()
+            .finality_status_repository
             .get_finality_acks_count(&req.ual)
             .await
         {

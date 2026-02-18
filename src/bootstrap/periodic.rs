@@ -17,6 +17,12 @@ pub(crate) fn build_periodic_tasks_deps(
 ) -> Arc<periodic_tasks::PeriodicTasksDeps> {
     let publish_tmp_dataset_store = Arc::new(managers.key_value_store.publish_tmp_dataset_store());
     let peer_address_store = Arc::new(managers.key_value_store.peer_address_store());
+    let operation_repository = managers.repository.operation_repository();
+    let finality_status_repository = managers.repository.finality_status_repository();
+    let proof_challenge_repository = managers.repository.proof_challenge_repository();
+    let blockchain_repository = managers.repository.blockchain_repository();
+    let kc_sync_repository = managers.repository.kc_sync_repository();
+    let paranet_kc_sync_repository = managers.repository.paranet_kc_sync_repository();
 
     Arc::new(periodic_tasks::PeriodicTasksDeps {
         dial_peers: DialPeersDeps {
@@ -24,7 +30,9 @@ pub(crate) fn build_periodic_tasks_deps(
             peer_service: Arc::clone(&services.peer_service),
         },
         cleanup: CleanupDeps {
-            repository_manager: Arc::clone(&managers.repository),
+            operation_repository,
+            finality_status_repository,
+            proof_challenge_repository: proof_challenge_repository.clone(),
             publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
             publish_operation_results: Arc::clone(&services.publish_store_operation),
             get_operation_results: Arc::clone(&services.get_operation),
@@ -43,7 +51,7 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         blockchain_event_listener: BlockchainEventListenerDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
-            repository_manager: Arc::clone(&managers.repository),
+            blockchain_repository,
             command_scheduler: command_scheduler.clone(),
         },
         claim_rewards: ClaimRewardsDeps {
@@ -51,7 +59,7 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         proving: ProvingDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
-            repository_manager: Arc::clone(&managers.repository),
+            proof_challenge_repository,
             triple_store_service: Arc::clone(&services.triple_store),
             network_manager: Arc::clone(&managers.network),
             assertion_validation_service: Arc::clone(&services.assertion_validation),
@@ -59,7 +67,7 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         sync: SyncDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
-            repository_manager: Arc::clone(&managers.repository),
+            kc_sync_repository,
             triple_store_service: Arc::clone(&services.triple_store),
             network_manager: Arc::clone(&managers.network),
             assertion_validation_service: Arc::clone(&services.assertion_validation),
@@ -67,7 +75,7 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         paranet_sync: ParanetSyncDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
-            repository_manager: Arc::clone(&managers.repository),
+            paranet_kc_sync_repository,
             triple_store_service: Arc::clone(&services.triple_store),
             get_fetch_service: Arc::clone(&services.get_fetch),
         },

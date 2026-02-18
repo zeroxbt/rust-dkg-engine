@@ -41,6 +41,7 @@ impl ChallengeState {
     }
 }
 
+#[derive(Clone)]
 pub struct ProofChallengeRepository {
     conn: Arc<DatabaseConnection>,
 }

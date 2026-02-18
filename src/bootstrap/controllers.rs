@@ -44,7 +44,8 @@ pub(crate) fn build_controllers(
         },
         HttpApiDeps {
             command_scheduler: command_scheduler.clone(),
-            repository_manager: Arc::clone(&managers.repository),
+            operation_repository: managers.repository.operation_repository(),
+            finality_status_repository: managers.repository.finality_status_repository(),
             get_operation_status_service: Arc::clone(&services.get_operation),
             publish_store_operation_status_service: Arc::clone(&services.publish_store_operation),
         },

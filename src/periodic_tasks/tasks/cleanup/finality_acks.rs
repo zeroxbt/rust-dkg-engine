@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use chrono::Utc;
-use dkg_repository::RepositoryManager;
+use dkg_repository::FinalityStatusRepository;
 
 pub(crate) async fn cleanup_finality_acks(
-    repository: &RepositoryManager,
+    finality_status_repository: &FinalityStatusRepository,
     ttl: Duration,
     batch_size: usize,
 ) -> Result<usize, String> {
@@ -17,8 +17,7 @@ pub(crate) async fn cleanup_finality_acks(
     let mut total_removed = 0usize;
 
     loop {
-        let ids = repository
-            .finality_status_repository()
+        let ids = finality_status_repository
             .find_ids_older_than(cutoff, batch_size as u64)
             .await
             .map_err(|e| e.to_string())?;
@@ -27,8 +26,7 @@ pub(crate) async fn cleanup_finality_acks(
             break;
         }
 
-        let removed_rows = repository
-            .finality_status_repository()
+        let removed_rows = finality_status_repository
             .delete_by_ids(&ids)
             .await
             .map_err(|e| e.to_string())?;

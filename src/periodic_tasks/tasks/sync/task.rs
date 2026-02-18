@@ -57,8 +57,7 @@ impl SyncTask {
 
         let mut pending_kcs = self
             .deps
-            .repository_manager
-            .kc_sync_repository()
+            .kc_sync_repository
             .get_pending_kcs_for_contract(
                 blockchain_id.as_str(),
                 &contract_addr_str,
@@ -82,8 +81,7 @@ impl SyncTask {
             if newly_enqueued > 0 {
                 pending_kcs = self
                     .deps
-                    .repository_manager
-                    .kc_sync_repository()
+                    .kc_sync_repository
                     .get_pending_kcs_for_contract(
                         blockchain_id.as_str(),
                         &contract_addr_str,
@@ -269,7 +267,7 @@ impl SyncTask {
         fetch_stats: &FetchStats,
         insert_stats: &InsertStats,
     ) {
-        let repo = self.deps.repository_manager.kc_sync_repository();
+        let repo = &self.deps.kc_sync_repository;
 
         // Remove already-synced KCs (found locally in filter stage)
         if !filter_stats.already_synced.is_empty()
@@ -386,8 +384,7 @@ impl SyncTask {
 
         let last_checked = self
             .deps
-            .repository_manager
-            .kc_sync_repository()
+            .kc_sync_repository
             .get_progress(blockchain_id.as_str(), contract_addr_str)
             .await
             .map_err(|e| format!("Failed to get sync progress: {}", e))?
@@ -416,15 +413,13 @@ impl SyncTask {
         let count = new_kc_ids.len() as u64;
 
         self.deps
-            .repository_manager
-            .kc_sync_repository()
+            .kc_sync_repository
             .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, &new_kc_ids)
             .await
             .map_err(|e| format!("Failed to enqueue KCs: {}", e))?;
 
         self.deps
-            .repository_manager
-            .kc_sync_repository()
+            .kc_sync_repository
             .upsert_progress(blockchain_id.as_str(), contract_addr_str, end_id)
             .await
             .map_err(|e| format!("Failed to update progress: {}", e))?;

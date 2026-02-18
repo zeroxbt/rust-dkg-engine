@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
 use dkg_key_value_store::{KeyValueStoreManager, OperationResultStore, ResultStoreError};
-use dkg_repository::{OperationStatus, RepositoryManager};
+use dkg_repository::{OperationRepository, OperationStatus};
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
@@ -11,7 +9,7 @@ use crate::{error::NodeError, operations::OperationKind};
 ///
 /// Stores a lightweight status record in SQL and the typed result in redb.
 pub(crate) struct OperationStatusService<K: OperationKind> {
-    repository: Arc<RepositoryManager>,
+    operation_repository: OperationRepository,
     result_store: OperationResultStore<K::Result>,
     _marker: std::marker::PhantomData<K>,
 }
@@ -25,12 +23,12 @@ where
 
     /// Create a new operation status service.
     pub(crate) fn new(
-        repository: Arc<RepositoryManager>,
+        operation_repository: OperationRepository,
         kv_store_manager: &KeyValueStoreManager,
     ) -> Self {
         let result_store = K::result_store(kv_store_manager);
         Self {
-            repository,
+            operation_repository,
             result_store,
             _marker: std::marker::PhantomData,
         }
@@ -38,8 +36,7 @@ where
 
     /// Create a new operation status record in the database.
     pub(crate) async fn create_operation(&self, operation_id: Uuid) -> Result<(), NodeError> {
-        self.repository
-            .operation_repository()
+        self.operation_repository
             .create(operation_id, K::NAME, OperationStatus::InProgress)
             .await?;
 
@@ -127,8 +124,7 @@ where
     /// Mark an operation as completed.
     /// Caller should store the result first via `store_result` before calling this.
     async fn mark_completed(&self, operation_id: Uuid) -> Result<(), NodeError> {
-        self.repository
-            .operation_repository()
+        self.operation_repository
             .update_status(operation_id, OperationStatus::Completed)
             .await?;
 
@@ -144,8 +140,7 @@ where
     /// Manually fail an operation (e.g., due to external error before sending requests).
     pub(crate) async fn mark_failed(&self, operation_id: Uuid, reason: String) {
         let result = self
-            .repository
-            .operation_repository()
+            .operation_repository
             .update(operation_id, Some(OperationStatus::Failed), Some(reason))
             .await;
 

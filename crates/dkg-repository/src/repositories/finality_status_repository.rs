@@ -12,6 +12,7 @@ use crate::{
     models::finality_status::{self, Column, Entity},
 };
 
+#[derive(Clone)]
 pub struct FinalityStatusRepository {
     conn: Arc<DatabaseConnection>,
 }

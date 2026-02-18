@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use chrono::Utc;
-use dkg_repository::RepositoryManager;
+use dkg_repository::ProofChallengeRepository;
 
 pub(crate) async fn cleanup_proof_challenges(
-    repository: &RepositoryManager,
+    proof_challenge_repository: &ProofChallengeRepository,
     ttl: Duration,
     batch_size: usize,
 ) -> Result<usize, String> {
@@ -17,8 +17,7 @@ pub(crate) async fn cleanup_proof_challenges(
     let mut total_removed = 0usize;
 
     loop {
-        let entries = repository
-            .proof_challenge_repository()
+        let entries = proof_challenge_repository
             .find_expired(cutoff, batch_size as u64)
             .await
             .map_err(|e| e.to_string())?;
@@ -27,8 +26,7 @@ pub(crate) async fn cleanup_proof_challenges(
             break;
         }
 
-        let removed_rows = repository
-            .proof_challenge_repository()
+        let removed_rows = proof_challenge_repository
             .delete_by_keys(&entries)
             .await
             .map_err(|e| e.to_string())?;

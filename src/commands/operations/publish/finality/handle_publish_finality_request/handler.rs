@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use dkg_network::{FinalityAck, NetworkManager, PeerId, ResponseHandle};
-use dkg_repository::RepositoryManager;
+use dkg_repository::FinalityStatusRepository;
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -42,7 +42,7 @@ impl HandlePublishFinalityRequestCommandData {
 }
 
 pub(crate) struct HandlePublishFinalityRequestCommandHandler {
-    repository_manager: Arc<RepositoryManager>,
+    finality_status_repository: FinalityStatusRepository,
     pub(super) network_manager: Arc<NetworkManager>,
     response_channels: Arc<ResponseChannels<FinalityAck>>,
 }
@@ -50,7 +50,7 @@ pub(crate) struct HandlePublishFinalityRequestCommandHandler {
 impl HandlePublishFinalityRequestCommandHandler {
     pub(crate) fn new(deps: HandlePublishFinalityRequestDeps) -> Self {
         Self {
-            repository_manager: deps.repository_manager,
+            finality_status_repository: deps.finality_status_repository,
             network_manager: deps.network_manager,
             response_channels: deps.finality_response_channels,
         }
@@ -157,8 +157,7 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
 
         // Save the finality ack to the database
         if let Err(e) = self
-            .repository_manager
-            .finality_status_repository()
+            .finality_status_repository
             .save_finality_ack(publish_store_operation_id, ual, &remote_peer_id.to_base58())
             .await
         {
