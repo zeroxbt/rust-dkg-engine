@@ -188,6 +188,7 @@ impl ExecutePublishStoreWorkflow {
             return;
         }
 
+        let mut self_signature_collected = false;
         if self_in_shard {
             tracing::debug!(
                 operation_id = %operation_id,
@@ -204,6 +205,7 @@ impl ExecutePublishStoreWorkflow {
                     "Failed to handle self-node signature, continuing with other nodes"
                 );
             } else {
+                self_signature_collected = true;
                 tracing::debug!(
                     operation_id = %operation_id,
                     "Self-node signature handled successfully"
@@ -217,7 +219,7 @@ impl ExecutePublishStoreWorkflow {
             blockchain.to_owned(),
         );
 
-        let mut success_count: u16 = if self_in_shard { 1 } else { 0 };
+        let mut success_count: u16 = if self_signature_collected { 1 } else { 0 };
         let mut failure_count: u16 = 0;
         let mut reached_threshold = success_count >= min_ack_required;
 

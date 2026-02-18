@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use dkg_blockchain::{Address, B256, BlockchainId, BlockchainManager, U256};
 use dkg_domain::{KnowledgeCollectionMetadata, derive_ual};
-use dkg_key_value_store::PublishTmpDatasetStore;
+use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
 use dkg_network::{
     FinalityRequestData, FinalityResponseData, NetworkManager, PeerId, STREAM_PROTOCOL_FINALITY,
 };
@@ -22,6 +22,15 @@ pub(crate) struct ProcessPublishFinalityEventInput {
     pub transaction_hash: B256,
     pub block_number: u64,
     pub block_timestamp: u64,
+}
+
+struct FinalityProcessingContext {
+    operation_id: Uuid,
+    publish_operation_id: Uuid,
+    knowledge_collection_id: u128,
+    pending_data: PublishTmpDataset,
+    publisher_address: Address,
+    ual: String,
 }
 
 pub(crate) struct ProcessPublishFinalityEventWorkflow {
@@ -56,75 +65,30 @@ impl ProcessPublishFinalityEventWorkflow {
     }
 
     pub(crate) async fn execute(&self, input: &ProcessPublishFinalityEventInput) {
-        let operation_id = Uuid::new_v4();
-
-        let publish_operation_id = match Uuid::parse_str(&input.publish_operation_id) {
-            Ok(uuid) => uuid,
-            Err(e) => {
-                tracing::error!(
-                    publish_operation_id = %input.publish_operation_id,
-                    error = %e,
-                    "Failed to parse publish_operation_id as UUID"
-                );
-                return;
-            }
-        };
-
-        let Ok(knowledge_collection_id) = input.knowledge_collection_id.try_into() else {
-            tracing::error!(
-            knowledge_collection_id = %input.knowledge_collection_id,
-            "Knowledge collection ID exceeds u128 max"
-            );
+        let Some(context) = self.prepare_context(input).await else {
             return;
         };
 
-        let pending_data = match self
-            .publish_tmp_dataset_store
-            .get(publish_operation_id)
-            .await
-        {
-            Ok(Some(data)) => data,
-            Ok(None) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    publish_operation_id = %publish_operation_id,
-                    "Dataset not in publish tmp dataset store, skipping finality"
-                );
-                return;
-            }
-            Err(e) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    publish_operation_id = %publish_operation_id,
-                    error = %e,
-                    "Failed to read publish tmp dataset store, skipping finality"
-                );
-                return;
-            }
+        let Some(total_triples) = self.insert_knowledge_collection(input, &context).await else {
+            return;
         };
 
-        let publisher_address = match self
-            .blockchain_manager
-            .get_transaction_sender(&input.blockchain, input.transaction_hash)
-            .await
-        {
-            Ok(Some(addr)) => addr,
-            Ok(None) => {
-                tracing::error!(
-                    tx_hash = %input.transaction_hash,
-                    "Transaction not found, cannot determine publisher address"
-                );
-                return;
-            }
-            Err(e) => {
-                tracing::error!(
-                    tx_hash = %input.transaction_hash,
-                    error = %e,
-                    "Failed to fetch transaction"
-                );
-                return;
-            }
-        };
+        self.finalize_persistence(&context, total_triples).await;
+        self.notify_publisher(input, &context).await;
+    }
+
+    async fn prepare_context(
+        &self,
+        input: &ProcessPublishFinalityEventInput,
+    ) -> Option<FinalityProcessingContext> {
+        let operation_id = Uuid::new_v4();
+        let publish_operation_id = self.parse_publish_operation_id(operation_id, input)?;
+        let knowledge_collection_id =
+            self.parse_knowledge_collection_id(operation_id, input.knowledge_collection_id)?;
+        let pending_data = self
+            .load_pending_data(operation_id, publish_operation_id)
+            .await?;
+        let publisher_address = self.resolve_publisher_address(operation_id, input).await?;
 
         tracing::debug!(
             operation_id = %operation_id,
@@ -136,6 +100,132 @@ impl ProcessPublishFinalityEventWorkflow {
             "Processing publish finality event"
         );
 
+        if !self.validate_publish_data(operation_id, input, &pending_data) {
+            return None;
+        }
+
+        let ual = derive_ual(
+            &input.blockchain,
+            &input.knowledge_collection_storage_address,
+            knowledge_collection_id,
+            None,
+        );
+
+        Some(FinalityProcessingContext {
+            operation_id,
+            publish_operation_id,
+            knowledge_collection_id,
+            pending_data,
+            publisher_address,
+            ual,
+        })
+    }
+
+    fn parse_publish_operation_id(
+        &self,
+        operation_id: Uuid,
+        input: &ProcessPublishFinalityEventInput,
+    ) -> Option<Uuid> {
+        match Uuid::parse_str(&input.publish_operation_id) {
+            Ok(uuid) => Some(uuid),
+            Err(e) => {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    publish_operation_id = %input.publish_operation_id,
+                    error = %e,
+                    "Failed to parse publish_operation_id as UUID"
+                );
+                None
+            }
+        }
+    }
+
+    fn parse_knowledge_collection_id(
+        &self,
+        operation_id: Uuid,
+        knowledge_collection_id: U256,
+    ) -> Option<u128> {
+        match knowledge_collection_id.try_into() {
+            Ok(id) => Some(id),
+            Err(_) => {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    knowledge_collection_id = %knowledge_collection_id,
+                    "Knowledge collection ID exceeds u128 max"
+                );
+                None
+            }
+        }
+    }
+
+    async fn load_pending_data(
+        &self,
+        operation_id: Uuid,
+        publish_operation_id: Uuid,
+    ) -> Option<PublishTmpDataset> {
+        match self
+            .publish_tmp_dataset_store
+            .get(publish_operation_id)
+            .await
+        {
+            Ok(Some(data)) => Some(data),
+            Ok(None) => {
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    publish_operation_id = %publish_operation_id,
+                    "Dataset not in publish tmp dataset store, skipping finality"
+                );
+                None
+            }
+            Err(e) => {
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    publish_operation_id = %publish_operation_id,
+                    error = %e,
+                    "Failed to read publish tmp dataset store, skipping finality"
+                );
+                None
+            }
+        }
+    }
+
+    async fn resolve_publisher_address(
+        &self,
+        operation_id: Uuid,
+        input: &ProcessPublishFinalityEventInput,
+    ) -> Option<Address> {
+        match self
+            .blockchain_manager
+            .get_transaction_sender(&input.blockchain, input.transaction_hash)
+            .await
+        {
+            Ok(Some(addr)) => Some(addr),
+            Ok(None) => {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    tx_hash = %input.transaction_hash,
+                    "Transaction not found, cannot determine publisher address"
+                );
+                None
+            }
+            Err(e) => {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    tx_hash = %input.transaction_hash,
+                    error = %e,
+                    "Failed to fetch transaction"
+                );
+                None
+            }
+        }
+    }
+
+    fn validate_publish_data(
+        &self,
+        operation_id: Uuid,
+        input: &ProcessPublishFinalityEventInput,
+        pending_data: &PublishTmpDataset,
+    ) -> bool {
         let blockchain_merkle_root =
             format!("0x{}", dkg_blockchain::to_hex_string(input.dataset_root));
         if blockchain_merkle_root != pending_data.dataset_root() {
@@ -145,7 +235,7 @@ impl ProcessPublishFinalityEventWorkflow {
                 cached_merkle_root = %pending_data.dataset_root(),
                 "Merkle root mismatch: blockchain value does not match cached value"
             );
-            return;
+            return false;
         }
 
         let calculated_size = dkg_domain::calculate_assertion_size(&pending_data.dataset().public);
@@ -156,68 +246,80 @@ impl ProcessPublishFinalityEventWorkflow {
                 calculated_byte_size = calculated_size,
                 "Byte size mismatch: blockchain value does not match calculated value"
             );
-            return;
+            return false;
         }
 
         tracing::debug!(
             operation_id = %operation_id,
             "Publish data validation successful"
         );
+        true
+    }
 
+    async fn insert_knowledge_collection(
+        &self,
+        input: &ProcessPublishFinalityEventInput,
+        context: &FinalityProcessingContext,
+    ) -> Option<usize> {
         let metadata = KnowledgeCollectionMetadata::new(
-            publisher_address.to_string().to_lowercase(),
+            context.publisher_address.to_string().to_lowercase(),
             input.block_number,
             input.transaction_hash.to_string(),
             input.block_timestamp,
         );
 
-        let ual = derive_ual(
-            &input.blockchain,
-            &input.knowledge_collection_storage_address,
-            knowledge_collection_id,
-            None,
-        );
-
         tracing::debug!(
-            operation_id = %operation_id,
-            publish_operation_id = %publish_operation_id,
-            ual = %ual,
+            operation_id = %context.operation_id,
+            publish_operation_id = %context.publish_operation_id,
+            ual = %context.ual,
+            knowledge_collection_id = context.knowledge_collection_id,
             "Inserting knowledge collection into triple store"
         );
 
-        let total_triples = match self
+        match self
             .triple_store_assertions
-            .insert_knowledge_collection(&ual, pending_data.dataset(), &Some(metadata), None)
+            .insert_knowledge_collection(
+                &context.ual,
+                context.pending_data.dataset(),
+                &Some(metadata),
+                None,
+            )
             .await
         {
             Ok(count) => {
                 tracing::info!(
-                    operation_id = %operation_id,
-                    ual = %ual,
+                    operation_id = %context.operation_id,
+                    ual = %context.ual,
                     total_triples = count,
                     "Knowledge collection inserted into triple store"
                 );
-                count
+                Some(count)
             }
             Err(e) => {
                 tracing::error!(
-                    operation_id = %operation_id,
-                    ual = %ual,
+                    operation_id = %context.operation_id,
+                    ual = %context.ual,
                     error = %e,
                     "Failed to insert Knowledge Collection to Triple Store"
                 );
-                return;
+                None
             }
-        };
+        }
+    }
 
+    async fn finalize_persistence(
+        &self,
+        context: &FinalityProcessingContext,
+        total_triples: usize,
+    ) {
         if let Err(e) = self
             .publish_tmp_dataset_store
-            .remove(publish_operation_id)
+            .remove(context.publish_operation_id)
             .await
         {
             tracing::warn!(
-                operation_id = %operation_id,
-                publish_operation_id = %publish_operation_id,
+                operation_id = %context.operation_id,
+                publish_operation_id = %context.publish_operation_id,
                 error = %e,
                 "Failed to remove dataset from publish tmp dataset store"
             );
@@ -229,25 +331,32 @@ impl ProcessPublishFinalityEventWorkflow {
             .await
         {
             tracing::warn!(
-                operation_id = %operation_id,
+                operation_id = %context.operation_id,
                 total_triples = total_triples,
                 error = %e,
                 "Failed to increment triples count, continuing anyway"
             );
-        } else {
-            tracing::debug!(
-                operation_id = %operation_id,
-                total_triples = total_triples,
-                "Triples counter incremented"
-            );
+            return;
         }
 
-        let publisher_peer_id: PeerId = match pending_data.publisher_peer_id().parse() {
+        tracing::debug!(
+            operation_id = %context.operation_id,
+            total_triples = total_triples,
+            "Triples counter incremented"
+        );
+    }
+
+    async fn notify_publisher(
+        &self,
+        input: &ProcessPublishFinalityEventInput,
+        context: &FinalityProcessingContext,
+    ) {
+        let publisher_peer_id: PeerId = match context.pending_data.publisher_peer_id().parse() {
             Ok(peer_id) => peer_id,
             Err(e) => {
                 tracing::error!(
-                    operation_id = %operation_id,
-                    publisher_peer_id = %pending_data.publisher_peer_id(),
+                    operation_id = %context.operation_id,
+                    publisher_peer_id = %context.pending_data.publisher_peer_id(),
                     error = %e,
                     "Failed to parse publisher peer ID"
                 );
@@ -256,27 +365,8 @@ impl ProcessPublishFinalityEventWorkflow {
         };
 
         if &publisher_peer_id == self.network_manager.peer_id() {
-            tracing::debug!(
-                operation_id = %operation_id,
-                publish_operation_id = %publish_operation_id,
-                ual = %ual,
-                "Saving finality ack"
-            );
-
-            if let Err(e) = self
-                .finality_status_repository
-                .save_finality_ack(publish_operation_id, &ual, &publisher_peer_id.to_base58())
-                .await
-            {
-                tracing::error!(
-                    operation_id = %operation_id,
-                    publish_operation_id = %publish_operation_id,
-                    ual = %ual,
-                    error = %e,
-                    "Failed to save finality ack"
-                );
-            }
-
+            self.save_local_finality_ack(context, &publisher_peer_id)
+                .await;
             return;
         }
 
@@ -285,45 +375,90 @@ impl ProcessPublishFinalityEventWorkflow {
             .peer_supports_protocol(&publisher_peer_id, STREAM_PROTOCOL_FINALITY)
         {
             tracing::warn!(
-                operation_id = %operation_id,
-                publish_operation_id = %publish_operation_id,
+                operation_id = %context.operation_id,
+                publish_operation_id = %context.publish_operation_id,
                 peer = %publisher_peer_id,
                 "Publisher does not advertise finality protocol; skipping request"
             );
             return;
         }
 
+        self.send_finality_request(input, context, publisher_peer_id)
+            .await;
+    }
+
+    async fn save_local_finality_ack(
+        &self,
+        context: &FinalityProcessingContext,
+        publisher_peer_id: &PeerId,
+    ) {
+        tracing::debug!(
+            operation_id = %context.operation_id,
+            publish_operation_id = %context.publish_operation_id,
+            ual = %context.ual,
+            "Saving finality ack"
+        );
+
+        if let Err(e) = self
+            .finality_status_repository
+            .save_finality_ack(
+                context.publish_operation_id,
+                &context.ual,
+                &publisher_peer_id.to_base58(),
+            )
+            .await
+        {
+            tracing::error!(
+                operation_id = %context.operation_id,
+                publish_operation_id = %context.publish_operation_id,
+                ual = %context.ual,
+                error = %e,
+                "Failed to save finality ack"
+            );
+        }
+    }
+
+    async fn send_finality_request(
+        &self,
+        input: &ProcessPublishFinalityEventInput,
+        context: &FinalityProcessingContext,
+        publisher_peer_id: PeerId,
+    ) {
         let finality_request_data = FinalityRequestData::new(
-            ual,
+            context.ual.clone(),
             input.publish_operation_id.clone(),
             input.blockchain.clone(),
         );
-        let result = self
-            .network_manager
-            .send_finality_request(publisher_peer_id, operation_id, finality_request_data)
-            .await;
 
-        match result {
+        match self
+            .network_manager
+            .send_finality_request(
+                publisher_peer_id,
+                context.operation_id,
+                finality_request_data,
+            )
+            .await
+        {
             Ok(FinalityResponseData::Ack(_)) => {
                 tracing::debug!(
-                    operation_id = %operation_id,
-                    publish_operation_id = %publish_operation_id,
+                    operation_id = %context.operation_id,
+                    publish_operation_id = %context.publish_operation_id,
                     peer = %publisher_peer_id,
                     "Finality request acknowledged by publisher"
                 );
             }
             Ok(FinalityResponseData::Error(_)) => {
                 tracing::warn!(
-                    operation_id = %operation_id,
-                    publish_operation_id = %publish_operation_id,
+                    operation_id = %context.operation_id,
+                    publish_operation_id = %context.publish_operation_id,
                     peer = %publisher_peer_id,
                     "Publisher returned error for finality request"
                 );
             }
             Err(e) => {
                 tracing::error!(
-                    operation_id = %operation_id,
-                    publish_operation_id = %publish_operation_id,
+                    operation_id = %context.operation_id,
+                    publish_operation_id = %context.publish_operation_id,
                     peer = %publisher_peer_id,
                     error = %e,
                     "Failed to send finality request to publisher"
