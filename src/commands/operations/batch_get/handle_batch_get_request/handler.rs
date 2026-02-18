@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     commands::HandleBatchGetRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    services::{PeerService, TripleStoreService},
+    application::{TripleStoreAssertions}, runtime_state::PeerDirectory,
     state::ResponseChannels,
 };
 
@@ -48,8 +48,8 @@ impl HandleBatchGetRequestCommandData {
 
 pub(crate) struct HandleBatchGetRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
-    triple_store_service: Arc<TripleStoreService>,
-    peer_service: Arc<PeerService>,
+    triple_store_assertions: Arc<TripleStoreAssertions>,
+    peer_directory: Arc<PeerDirectory>,
     response_channels: Arc<ResponseChannels<BatchGetAck>>,
 }
 
@@ -57,8 +57,8 @@ impl HandleBatchGetRequestCommandHandler {
     pub(crate) fn new(deps: HandleBatchGetRequestDeps) -> Self {
         Self {
             network_manager: deps.network_manager,
-            triple_store_service: deps.triple_store_service,
-            peer_service: deps.peer_service,
+            triple_store_assertions: deps.triple_store_assertions,
+            peer_directory: deps.peer_directory,
             response_channels: deps.batch_get_response_channels,
         }
     }
@@ -178,7 +178,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         let local_peer_id = self.network_manager.peer_id();
         for blockchain in &blockchains {
             if !self
-                .peer_service
+                .peer_directory
                 .is_peer_in_shard(blockchain, local_peer_id)
             {
                 tracing::warn!(
@@ -196,7 +196,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         // Query local triple store in batch
         // Always query public visibility for remote requests
         let query_results = self
-            .triple_store_service
+            .triple_store_assertions
             .query_assertions_batch(
                 &uals_with_token_ids,
                 Visibility::Public,

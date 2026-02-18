@@ -8,11 +8,11 @@ use tokio::sync::broadcast;
 
 use crate::state::PeerRegistry;
 
-pub(crate) struct PeerService {
+pub(crate) struct PeerDirectory {
     registry: Arc<PeerRegistry>,
 }
 
-impl PeerService {
+impl PeerDirectory {
     pub(crate) fn new() -> Self {
         Self {
             registry: Arc::new(PeerRegistry::new()),
@@ -151,7 +151,7 @@ impl PeerService {
     }
 }
 
-impl Default for PeerService {
+impl Default for PeerDirectory {
     fn default() -> Self {
         Self::new()
     }

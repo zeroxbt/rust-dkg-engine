@@ -13,7 +13,7 @@ use crate::{
     operations::{GetOperation, PublishStoreOperation},
     periodic_tasks::CleanupDeps,
     periodic_tasks::runner::run_with_shutdown,
-    services::OperationStatusService,
+    application::OperationTracking,
     state::ResponseChannels,
 };
 
@@ -22,8 +22,8 @@ pub(crate) struct CleanupTask {
     finality_status_repository: FinalityStatusRepository,
     proof_challenge_repository: ProofChallengeRepository,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
-    publish_operation_results: Arc<OperationStatusService<PublishStoreOperation>>,
-    get_operation_results: Arc<OperationStatusService<GetOperation>>,
+    publish_operation_tracking: Arc<OperationTracking<PublishStoreOperation>>,
+    get_operation_tracking: Arc<OperationTracking<GetOperation>>,
     store_response_channels: Arc<ResponseChannels<StoreAck>>,
     get_response_channels: Arc<ResponseChannels<GetAck>>,
     finality_response_channels: Arc<ResponseChannels<FinalityAck>>,
@@ -38,8 +38,8 @@ impl CleanupTask {
             finality_status_repository: deps.finality_status_repository,
             proof_challenge_repository: deps.proof_challenge_repository,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
-            publish_operation_results: deps.publish_operation_results,
-            get_operation_results: deps.get_operation_results,
+            publish_operation_tracking: deps.publish_operation_tracking,
+            get_operation_tracking: deps.get_operation_tracking,
             store_response_channels: deps.store_response_channels,
             get_response_channels: deps.get_response_channels,
             finality_response_channels: deps.finality_response_channels,
@@ -64,8 +64,8 @@ impl CleanupTask {
         if config.operations.ttl_secs > 0 {
             match cleanup_operations(
                 &self.operation_repository,
-                &self.publish_operation_results,
-                &self.get_operation_results,
+                &self.publish_operation_tracking,
+                &self.get_operation_tracking,
                 Duration::from_secs(config.operations.ttl_secs),
                 config.operations.batch_size,
             )

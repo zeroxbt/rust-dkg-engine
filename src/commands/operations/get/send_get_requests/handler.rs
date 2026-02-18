@@ -8,8 +8,8 @@ use crate::{
     commands::SendGetRequestsDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
     operations::{GetOperation, GetOperationResult},
-    services::{
-        GetFetchRequest, operation_status::OperationStatusService as GenericOperationService,
+    application::{
+        GetAssertionInput, OperationTracking as GenericOperationService,
     },
 };
 
@@ -42,15 +42,15 @@ impl SendGetRequestsCommandData {
 }
 
 pub(crate) struct SendGetRequestsCommandHandler {
-    pub(super) get_operation_status_service: Arc<GenericOperationService<GetOperation>>,
-    pub(super) get_fetch_service: Arc<crate::services::GetFetchService>,
+    pub(super) get_operation_tracking: Arc<GenericOperationService<GetOperation>>,
+    pub(super) get_assertion_use_case: Arc<crate::application::GetAssertionUseCase>,
 }
 
 impl SendGetRequestsCommandHandler {
     pub(crate) fn new(deps: SendGetRequestsDeps) -> Self {
         Self {
-            get_operation_status_service: deps.get_operation_status_service,
-            get_fetch_service: deps.get_fetch_service,
+            get_operation_tracking: deps.get_operation_tracking,
+            get_assertion_use_case: deps.get_assertion_use_case,
         }
     }
 }
@@ -72,7 +72,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
     async fn execute(&self, data: &SendGetRequestsCommandData) -> CommandOutcome {
         let operation_id = data.operation_id;
 
-        let fetch_request = GetFetchRequest {
+        let fetch_request = GetAssertionInput {
             operation_id,
             ual: data.ual.clone(),
             include_metadata: data.include_metadata,
@@ -80,11 +80,11 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             visibility: data.visibility,
         };
 
-        match self.get_fetch_service.fetch(&fetch_request).await {
+        match self.get_assertion_use_case.fetch(&fetch_request).await {
             Ok(result) => {
                 let get_result = GetOperationResult::new(result.assertion, result.metadata);
                 if let Err(e) = self
-                    .get_operation_status_service
+                    .get_operation_tracking
                     .complete_with_result(operation_id, get_result)
                     .await
                 {
@@ -93,7 +93,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                         error = %e,
                         "Failed to complete get operation"
                     );
-                    self.get_operation_status_service
+                    self.get_operation_tracking
                         .mark_failed(operation_id, e.to_string())
                         .await;
                 }
@@ -104,7 +104,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                     error = %error_message,
                     "Get operation failed"
                 );
-                self.get_operation_status_service
+                self.get_operation_tracking
                     .mark_failed(operation_id, error_message)
                     .await;
             }

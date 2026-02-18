@@ -19,7 +19,7 @@ use super::{
 };
 use crate::{
     periodic_tasks::SyncDeps, periodic_tasks::runner::run_with_shutdown,
-    services::GET_NETWORK_CONCURRENT_PEERS,
+    application::GET_NETWORK_CONCURRENT_PEERS,
 };
 
 pub(crate) struct SyncTask {
@@ -184,7 +184,7 @@ impl SyncTask {
         let filter_handle = {
             let blockchain_id = blockchain_id.clone();
             let contract_addr_str = contract_addr_str.clone();
-            let triple_store_service = Arc::clone(&self.deps.triple_store_service);
+            let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
             let blockchain_manager = Arc::clone(&self.deps.blockchain_manager);
             tokio::spawn(
                 async move {
@@ -195,7 +195,7 @@ impl SyncTask {
                         contract_address,
                         contract_addr_str,
                         blockchain_manager,
-                        triple_store_service,
+                        triple_store_assertions,
                         filter_tx,
                     )
                     .await
@@ -208,8 +208,8 @@ impl SyncTask {
         let fetch_handle = {
             let blockchain_id = blockchain_id.clone();
             let network_manager = Arc::clone(&self.deps.network_manager);
-            let assertion_validation_service = Arc::clone(&self.deps.assertion_validation_service);
-            let peer_service = Arc::clone(&self.deps.peer_service);
+            let assertion_validation = Arc::clone(&self.deps.assertion_validation);
+            let peer_directory = Arc::clone(&self.deps.peer_directory);
             tokio::spawn(
                 async move {
                     fetch_task(
@@ -218,8 +218,8 @@ impl SyncTask {
                         max_assets_per_fetch_batch,
                         blockchain_id,
                         network_manager,
-                        assertion_validation_service,
-                        peer_service,
+                        assertion_validation,
+                        peer_directory,
                         fetch_tx,
                     )
                     .await
@@ -232,14 +232,14 @@ impl SyncTask {
         let insert_handle = {
             let blockchain_id = blockchain_id.clone();
             let contract_addr_str = contract_addr_str.clone();
-            let triple_store_service = Arc::clone(&self.deps.triple_store_service);
+            let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
             tokio::spawn(
                 async move {
                     insert_task(
                         fetch_rx,
                         blockchain_id,
                         contract_addr_str,
-                        triple_store_service,
+                        triple_store_assertions,
                     )
                     .await
                 }
@@ -452,10 +452,10 @@ impl SyncTask {
         }
 
         // Check if we have identified enough shard peers before attempting sync
-        let total_shard_peers = self.deps.peer_service.shard_peer_count(blockchain_id);
+        let total_shard_peers = self.deps.peer_directory.shard_peer_count(blockchain_id);
         let identified_peers = self
             .deps
-            .peer_service
+            .peer_directory
             .identified_shard_peer_count(blockchain_id);
         let min_required = (total_shard_peers / 3).max(GET_NETWORK_CONCURRENT_PEERS);
 

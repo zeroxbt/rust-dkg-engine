@@ -31,7 +31,7 @@ impl SendPublishStoreRequestsCommandHandler {
             signature.vs.clone(),
         );
 
-        self.publish_store_operation_status_service
+        self.publish_store_operation_tracking
             .update_result(
                 operation_id,
                 PublishStoreOperationResult::new(None, Vec::new()),

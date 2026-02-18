@@ -31,10 +31,10 @@ pub(crate) async fn run(
 ) {
     let command_scheduler = deps.command_scheduler.clone();
     let network_manager = Arc::clone(&deps.network_manager);
-    // Spawn peer service loop for network observations.
+    // Spawn peer directory loop for network observations.
     let peer_event_rx = deps.network_manager.subscribe_peer_events();
-    let peer_service = Arc::clone(&deps.peer_service);
-    let _peer_registry_task = peer_service.start(peer_event_rx);
+    let peer_directory = Arc::clone(&deps.peer_directory);
+    let _peer_registry_task = peer_directory.start(peer_event_rx);
 
     // Create HTTP shutdown channel (oneshot for single signal)
     let (http_shutdown_tx, http_shutdown_rx) = tokio::sync::oneshot::channel::<()>();

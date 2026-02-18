@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::{
     commands::HandleGetRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    services::{PeerService, TripleStoreService},
+    application::{TripleStoreAssertions}, runtime_state::PeerDirectory,
     state::ResponseChannels,
 };
 
@@ -46,8 +46,8 @@ impl HandleGetRequestCommandData {
 
 pub(crate) struct HandleGetRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
-    triple_store_service: Arc<TripleStoreService>,
-    peer_service: Arc<PeerService>,
+    triple_store_assertions: Arc<TripleStoreAssertions>,
+    peer_directory: Arc<PeerDirectory>,
     response_channels: Arc<ResponseChannels<GetAck>>,
     pub(super) blockchain_manager: Arc<BlockchainManager>,
 }
@@ -56,8 +56,8 @@ impl HandleGetRequestCommandHandler {
     pub(crate) fn new(deps: HandleGetRequestDeps) -> Self {
         Self {
             network_manager: deps.network_manager,
-            triple_store_service: deps.triple_store_service,
-            peer_service: deps.peer_service,
+            triple_store_assertions: deps.triple_store_assertions,
+            peer_directory: deps.peer_directory,
             response_channels: deps.get_response_channels,
             blockchain_manager: deps.blockchain_manager,
         }
@@ -163,7 +163,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
         let local_peer_id = self.network_manager.peer_id();
         let blockchain = &parsed_ual.blockchain;
         if !self
-            .peer_service
+            .peer_directory
             .is_peer_in_shard(blockchain, local_peer_id)
         {
             tracing::warn!(
@@ -200,7 +200,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
 
         // Query the triple store using the shared service
         let query_result = self
-            .triple_store_service
+            .triple_store_assertions
             .query_assertion(
                 &parsed_ual,
                 &data.token_ids,

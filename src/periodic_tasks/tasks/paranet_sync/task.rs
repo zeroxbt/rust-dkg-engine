@@ -12,7 +12,7 @@ use super::ParanetSyncConfig;
 use crate::{
     periodic_tasks::ParanetSyncDeps,
     periodic_tasks::runner::run_with_shutdown,
-    services::{GetFetchRequest, GetFetchSource},
+    application::{GetAssertionInput, AssertionSource},
 };
 
 pub(crate) struct ParanetSyncTask {
@@ -331,8 +331,8 @@ impl ParanetSyncTask {
             .collect();
 
         let paranet_kc_sync_repository = self.deps.paranet_kc_sync_repository.clone();
-        let triple_store_service = Arc::clone(&self.deps.triple_store_service);
-        let get_fetch_service = Arc::clone(&self.deps.get_fetch_service);
+        let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
+        let get_assertion_use_case = Arc::clone(&self.deps.get_assertion_use_case);
         let retries_limit = self.config.retries_limit;
         let retry_delay_secs = self.config.retry_delay_secs;
         let max_in_flight = self.config.max_in_flight.max(1);
@@ -342,8 +342,8 @@ impl ParanetSyncTask {
             .map(|row| {
                 let target = target_map.get(&row.paranet_ual).cloned();
                 let paranet_kc_sync_repository = paranet_kc_sync_repository.clone();
-                let triple_store_service = Arc::clone(&triple_store_service);
-                let get_fetch_service = Arc::clone(&get_fetch_service);
+                let triple_store_assertions = Arc::clone(&triple_store_assertions);
+                let get_assertion_use_case = Arc::clone(&get_assertion_use_case);
                 let blockchain_id = blockchain_id.clone();
 
                 async move {
@@ -356,7 +356,7 @@ impl ParanetSyncTask {
                         AccessPolicy::Permissioned => dkg_domain::Visibility::All,
                     };
 
-                    let request = GetFetchRequest {
+                    let request = GetAssertionInput {
                         operation_id: Uuid::new_v4(),
                         ual: row.kc_ual.clone(),
                         include_metadata: true,
@@ -366,13 +366,13 @@ impl ParanetSyncTask {
 
                     let repo = paranet_kc_sync_repository;
 
-                    let fetched = get_fetch_service.fetch(&request).await;
+                    let fetched = get_assertion_use_case.fetch(&request).await;
                     match fetched {
                         Ok(fetch_result) => {
                             let mut outcome = RowOutcome::default();
                             match fetch_result.source {
-                                GetFetchSource::Local => outcome.local_hits = 1,
-                                GetFetchSource::Network => outcome.network_hits = 1,
+                                AssertionSource::Local => outcome.local_hits = 1,
+                                AssertionSource::Network => outcome.network_hits = 1,
                             }
 
                             let metadata = fetch_result
@@ -380,7 +380,7 @@ impl ParanetSyncTask {
                                 .as_ref()
                                 .and_then(|triples| parse_metadata_from_triples(triples));
 
-                            match triple_store_service
+                            match triple_store_assertions
                                 .insert_knowledge_collection(
                                     &row.kc_ual,
                                     &fetch_result.assertion,

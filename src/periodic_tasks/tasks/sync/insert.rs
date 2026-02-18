@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use tracing::instrument;
 
 use super::types::{FetchedKc, InsertStats};
-use crate::services::TripleStoreService;
+use crate::application::TripleStoreAssertions;
 
 /// Insert task: receives fetched KCs and inserts into triple store.
 ///
@@ -19,7 +19,7 @@ use crate::services::TripleStoreService;
 /// received here are valid and ready for insertion.
 #[instrument(
     name = "sync_insert",
-    skip(rx, triple_store_service),
+    skip(rx, triple_store_assertions),
     fields(
         blockchain_id = %blockchain_id,
         contract = %contract_addr_str,
@@ -29,7 +29,7 @@ pub(crate) async fn insert_task(
     mut rx: mpsc::Receiver<Vec<FetchedKc>>,
     blockchain_id: BlockchainId,
     contract_addr_str: String,
-    triple_store_service: Arc<TripleStoreService>,
+    triple_store_assertions: Arc<TripleStoreAssertions>,
 ) -> InsertStats {
     let task_start = Instant::now();
     let mut synced = Vec::new();
@@ -51,7 +51,7 @@ pub(crate) async fn insert_task(
         // Insert all KCs in parallel
         let (batch_synced, batch_failed) = insert_kcs_to_store(
             &batch,
-            &triple_store_service,
+            &triple_store_assertions,
             &blockchain_id,
             &contract_addr_str,
         )
@@ -89,7 +89,7 @@ pub(crate) async fn insert_task(
 /// Returns (synced KC IDs, failed KC IDs).
 async fn insert_kcs_to_store(
     kcs: &[FetchedKc],
-    triple_store_service: &TripleStoreService,
+    triple_store_assertions: &TripleStoreAssertions,
     blockchain_id: &BlockchainId,
     contract_addr_str: &str,
 ) -> (Vec<u64>, Vec<u64>) {
@@ -100,7 +100,7 @@ async fn insert_kcs_to_store(
     let insert_futures: Vec<_> = kcs
         .iter()
         .map(|kc| {
-            let ts = triple_store_service;
+            let ts = triple_store_assertions;
             let ual = kc.ual.clone();
             let assertion = kc.assertion.clone();
             let metadata = kc.metadata.clone();

@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 use tracing::instrument;
 
 use super::types::{FilterStats, KcToSync};
-use crate::services::TripleStoreService;
+use crate::application::TripleStoreAssertions;
 
 /// Filter task: processes pending KCs in batches, checking local existence first,
 /// fetching token ranges and end epochs, then filtering expired KCs.
@@ -26,7 +26,7 @@ use crate::services::TripleStoreService;
 #[allow(clippy::too_many_arguments)]
 #[instrument(
     name = "sync_filter",
-    skip(pending_kc_ids, blockchain_manager, triple_store_service, tx),
+    skip(pending_kc_ids, blockchain_manager, triple_store_assertions, tx),
     fields(
         blockchain_id = %blockchain_id,
         contract = %contract_addr_str,
@@ -40,7 +40,7 @@ pub(crate) async fn filter_task(
     contract_address: Address,
     contract_addr_str: String,
     blockchain_manager: Arc<BlockchainManager>,
-    triple_store_service: Arc<TripleStoreService>,
+    triple_store_assertions: Arc<TripleStoreAssertions>,
     tx: mpsc::Sender<Vec<KcToSync>>,
 ) -> FilterStats {
     let task_start = Instant::now();
@@ -61,7 +61,7 @@ pub(crate) async fn filter_task(
             chunk,
             &blockchain_id,
             &contract_address,
-            &triple_store_service,
+            &triple_store_assertions,
             current_epoch,
             &contract_addr_str,
             &blockchain_manager,
@@ -116,14 +116,14 @@ struct FilterBatchResult {
 /// Process a single batch in the filter stage.
 #[instrument(
     name = "filter_batch",
-    skip(chunk, blockchain_id, contract_address, triple_store_service, blockchain_manager),
+    skip(chunk, blockchain_id, contract_address, triple_store_assertions, blockchain_manager),
     fields(chunk_size = chunk.len())
 )]
 async fn process_filter_batch(
     chunk: &[u64],
     blockchain_id: &BlockchainId,
     contract_address: &Address,
-    triple_store_service: &TripleStoreService,
+    triple_store_assertions: &TripleStoreAssertions,
     current_epoch: Option<u64>,
     contract_addr_str: &str,
     blockchain_manager: &BlockchainManager,
@@ -133,7 +133,7 @@ async fn process_filter_batch(
 
     // Step 1: Check local existence by UAL first (cheap, no RPC needed)
     let kcs_needing_sync =
-        check_local_existence(chunk, blockchain_id, contract_address, triple_store_service).await;
+        check_local_existence(chunk, blockchain_id, contract_address, triple_store_assertions).await;
 
     // Track already synced
     let needing_sync_ids: std::collections::HashSet<u64> =
@@ -175,14 +175,14 @@ async fn process_filter_batch(
 /// Returns only those that need syncing (don't exist locally).
 #[instrument(
     name = "filter_check_local",
-    skip(chunk, blockchain_id, contract_address, triple_store_service),
+    skip(chunk, blockchain_id, contract_address, triple_store_assertions),
     fields(chunk_size = chunk.len())
 )]
 async fn check_local_existence(
     chunk: &[u64],
     blockchain_id: &BlockchainId,
     contract_address: &Address,
-    triple_store_service: &TripleStoreService,
+    triple_store_assertions: &TripleStoreAssertions,
 ) -> Vec<(u64, String)> {
     // Build UALs for all KCs in the chunk
     let kc_uals: Vec<(u64, String)> = chunk
@@ -195,7 +195,7 @@ async fn check_local_existence(
 
     // Batch existence check to reduce per-KC SPARQL requests
     let uals: Vec<String> = kc_uals.iter().map(|(_, ual)| ual.clone()).collect();
-    let existing = triple_store_service
+    let existing = triple_store_assertions
         .knowledge_collections_exist_by_uals(&uals)
         .await;
 

@@ -5,20 +5,20 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     periodic_tasks::SavePeerAddressesDeps, periodic_tasks::runner::run_with_shutdown,
-    services::PeerService,
+    runtime_state::PeerDirectory,
 };
 
 const SAVE_PEER_ADDRESSES_PERIOD: Duration = Duration::from_secs(60);
 
 pub(crate) struct SavePeerAddressesTask {
-    peer_service: Arc<PeerService>,
+    peer_directory: Arc<PeerDirectory>,
     address_store: Arc<PeerAddressStore>,
 }
 
 impl SavePeerAddressesTask {
     pub(crate) fn new(deps: SavePeerAddressesDeps) -> Self {
         Self {
-            peer_service: deps.peer_service,
+            peer_directory: deps.peer_directory,
             address_store: deps.peer_address_store,
         }
     }
@@ -35,7 +35,7 @@ impl SavePeerAddressesTask {
         )
     )]
     async fn execute(&self) -> Duration {
-        let addresses = self.peer_service.get_all_addresses();
+        let addresses = self.peer_directory.get_all_addresses();
 
         tracing::Span::current().record("peers", addresses.len());
 

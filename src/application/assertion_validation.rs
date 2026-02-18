@@ -12,11 +12,11 @@ use dkg_triple_store::{
 /// Validates that:
 /// 1. Public assertion merkle root matches on-chain value
 /// 2. Private assertion merkle root (if present) matches the value in public triples
-pub(crate) struct AssertionValidationService {
+pub(crate) struct AssertionValidation {
     blockchain_manager: Arc<BlockchainManager>,
 }
 
-impl AssertionValidationService {
+impl AssertionValidation {
     pub(crate) fn new(blockchain_manager: Arc<BlockchainManager>) -> Self {
         Self { blockchain_manager }
     }
@@ -387,7 +387,7 @@ mod tests {
     #[test]
     fn test_calculate_public_merkle_root_matches_known_paranet_kc() {
         let triples = sample_kc_4210492_public_triples();
-        let root = AssertionValidationService::calculate_public_merkle_root(&triples)
+        let root = AssertionValidation::calculate_public_merkle_root(&triples)
             .expect("Expected merkle root calculation to succeed");
         assert_eq!(
             root,
@@ -402,7 +402,7 @@ mod tests {
         // Mimic ACK payloads where each entry may contain multiple complete lines.
         let chunked: Vec<String> = triples.chunks(4).map(|chunk| chunk.join("\n")).collect();
 
-        let root = AssertionValidationService::calculate_public_merkle_root(&chunked)
+        let root = AssertionValidation::calculate_public_merkle_root(&chunked)
             .expect("Expected merkle root calculation to succeed");
         assert_eq!(
             root,

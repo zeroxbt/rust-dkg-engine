@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     error::NodeError, periodic_tasks::ShardingTableCheckDeps,
-    periodic_tasks::runner::run_with_shutdown, services::PeerService,
+    periodic_tasks::runner::run_with_shutdown, runtime_state::PeerDirectory,
 };
 
 /// Interval between sharding table synchronization checks (10 seconds)
@@ -29,27 +29,27 @@ const SEED_MAX_BACKOFF: Duration = Duration::from_secs(30);
 /// fails after all retries - the node cannot operate without shard data.
 pub(crate) async fn seed_sharding_tables(
     blockchain_manager: &BlockchainManager,
-    peer_service: &PeerService,
+    peer_directory: &PeerDirectory,
     local_peer_id: &PeerId,
 ) {
     let blockchain_ids = blockchain_manager.get_blockchain_ids();
 
     for blockchain in blockchain_ids {
-        seed_blockchain_with_retry(blockchain_manager, peer_service, blockchain, local_peer_id)
+        seed_blockchain_with_retry(blockchain_manager, peer_directory, blockchain, local_peer_id)
             .await;
     }
 }
 
 async fn seed_blockchain_with_retry(
     blockchain_manager: &BlockchainManager,
-    peer_service: &PeerService,
+    peer_directory: &PeerDirectory,
     blockchain: &BlockchainId,
     local_peer_id: &PeerId,
 ) {
     let mut backoff = SEED_INITIAL_BACKOFF;
 
     for attempt in 1..=SEED_MAX_RETRIES {
-        match pull_sharding_table(blockchain_manager, peer_service, blockchain).await {
+        match pull_sharding_table(blockchain_manager, peer_directory, blockchain).await {
             Ok(count) => {
                 tracing::info!(
                     blockchain = %blockchain,
@@ -173,7 +173,7 @@ updating the chain sharding table.",
 /// Returns the number of peers loaded.
 async fn pull_sharding_table(
     blockchain_manager: &BlockchainManager,
-    peer_service: &PeerService,
+    peer_directory: &PeerDirectory,
     blockchain: &BlockchainId,
 ) -> Result<usize, NodeError> {
     let sharding_table_length = blockchain_manager
@@ -181,7 +181,7 @@ async fn pull_sharding_table(
         .await?;
 
     if sharding_table_length == 0 {
-        peer_service.set_shard_membership(blockchain, &[]);
+        peer_directory.set_shard_membership(blockchain, &[]);
         return Ok(0);
     }
 
@@ -220,7 +220,7 @@ async fn pull_sharding_table(
         page_index += 1;
     }
 
-    peer_service.set_shard_membership(blockchain, &peer_ids);
+    peer_directory.set_shard_membership(blockchain, &peer_ids);
 
     Ok(peer_ids.len())
 }
@@ -271,14 +271,14 @@ fn collect_peer_ids(
 
 pub(crate) struct ShardingTableCheckTask {
     blockchain_manager: Arc<BlockchainManager>,
-    peer_service: Arc<PeerService>,
+    peer_directory: Arc<PeerDirectory>,
 }
 
 impl ShardingTableCheckTask {
     pub(crate) fn new(deps: ShardingTableCheckDeps) -> Self {
         Self {
             blockchain_manager: deps.blockchain_manager,
-            peer_service: deps.peer_service,
+            peer_directory: deps.peer_directory,
         }
     }
 
@@ -291,7 +291,7 @@ impl ShardingTableCheckTask {
             .get_sharding_table_length(blockchain)
             .await?;
 
-        let local_count = self.peer_service.shard_peer_count(blockchain);
+        let local_count = self.peer_directory.shard_peer_count(blockchain);
 
         // Skip if counts match (optimization to avoid fetching unchanged data)
         if sharding_table_length == local_count as u128 {
@@ -305,7 +305,7 @@ impl ShardingTableCheckTask {
             "Refreshing local sharding table"
         );
 
-        pull_sharding_table(&self.blockchain_manager, &self.peer_service, blockchain).await?;
+        pull_sharding_table(&self.blockchain_manager, &self.peer_directory, blockchain).await?;
         Ok(true)
     }
 

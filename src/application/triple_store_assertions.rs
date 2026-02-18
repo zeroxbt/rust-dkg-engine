@@ -22,11 +22,11 @@ pub(crate) struct AssertionQueryResult {
 /// This service provides a unified interface for querying knowledge assets
 /// and collections, used by both the get sender (local query) and receiver
 /// (handling remote requests).
-pub(crate) struct TripleStoreService {
+pub(crate) struct TripleStoreAssertions {
     triple_store_manager: Arc<TripleStoreManager>,
 }
 
-impl TripleStoreService {
+impl TripleStoreAssertions {
     pub(crate) fn new(triple_store_manager: Arc<TripleStoreManager>) -> Self {
         Self {
             triple_store_manager,
@@ -538,7 +538,7 @@ mod tests {
             private: None,
         };
 
-        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset)
+        let kas = TripleStoreAssertions::build_knowledge_assets(kc_ual, &dataset)
             .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs (grouped by subject)
@@ -568,7 +568,7 @@ mod tests {
             private: None,
         };
 
-        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset)
+        let kas = TripleStoreAssertions::build_knowledge_assets(kc_ual, &dataset)
             .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs (regular subject + hash subject)
@@ -597,7 +597,7 @@ mod tests {
             ]),
         };
 
-        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset)
+        let kas = TripleStoreAssertions::build_knowledge_assets(kc_ual, &dataset)
             .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs, each with matched private triples
@@ -638,7 +638,7 @@ mod tests {
             private: Some(vec![private_triple]),
         };
 
-        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset)
+        let kas = TripleStoreAssertions::build_knowledge_assets(kc_ual, &dataset)
             .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs, private matches to second (hash placeholder)
@@ -669,7 +669,7 @@ mod tests {
             ]),
         };
 
-        let kas = TripleStoreService::build_knowledge_assets(kc_ual, &dataset)
+        let kas = TripleStoreAssertions::build_knowledge_assets(kc_ual, &dataset)
             .expect("Expected knowledge asset build to succeed");
 
         // Expected: 3 KAs sorted alphabetically by subject:

@@ -1,3 +1,6 @@
+pub(crate) mod config;
+pub(crate) mod network_fetch;
+
 use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
@@ -5,24 +8,28 @@ use dkg_domain::{
     Assertion, ParsedUal, TokenIds, Visibility, construct_knowledge_collection_onchain_id,
     construct_paranet_id, parse_ual,
 };
-use dkg_network::{
-    GetRequestData, GetResponseData, NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_GET,
-};
-use futures::{StreamExt, stream::FuturesUnordered};
+use dkg_network::{GetRequestData, NetworkManager, PeerId, STREAM_PROTOCOL_GET};
 use uuid::Uuid;
 
-use crate::services::{AssertionValidationService, PeerService, TripleStoreService};
-
-pub(crate) const GET_NETWORK_CONCURRENT_PEERS: usize = 3;
+use crate::{
+    application::{AssertionValidation, TripleStoreAssertions},
+    runtime_state::PeerDirectory,
+};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum GetFetchSource {
+pub(crate) enum AssertionSource {
     Local,
     Network,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum TokenRangeResolutionPolicy {
+    Strict,
+    CompatibleSingleTokenFallback,
+}
+
 #[derive(Debug, Clone)]
-pub(crate) struct GetFetchRequest {
+pub(crate) struct GetAssertionInput {
     pub operation_id: Uuid,
     pub ual: String,
     pub include_metadata: bool,
@@ -31,38 +38,41 @@ pub(crate) struct GetFetchRequest {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct GetFetchResult {
+pub(crate) struct GetAssertionOutput {
     pub assertion: Assertion,
     pub metadata: Option<Vec<String>>,
-    pub source: GetFetchSource,
+    pub source: AssertionSource,
 }
 
-pub(crate) struct GetFetchService {
+pub(crate) struct GetAssertionUseCase {
     blockchain_manager: Arc<BlockchainManager>,
-    triple_store_service: Arc<TripleStoreService>,
+    triple_store_assertions: Arc<TripleStoreAssertions>,
     network_manager: Arc<NetworkManager>,
-    assertion_validation_service: Arc<AssertionValidationService>,
-    peer_service: Arc<PeerService>,
+    assertion_validation: Arc<AssertionValidation>,
+    peer_directory: Arc<PeerDirectory>,
 }
 
-impl GetFetchService {
+impl GetAssertionUseCase {
     pub(crate) fn new(
         blockchain_manager: Arc<BlockchainManager>,
-        triple_store_service: Arc<TripleStoreService>,
+        triple_store_assertions: Arc<TripleStoreAssertions>,
         network_manager: Arc<NetworkManager>,
-        assertion_validation_service: Arc<AssertionValidationService>,
-        peer_service: Arc<PeerService>,
+        assertion_validation: Arc<AssertionValidation>,
+        peer_directory: Arc<PeerDirectory>,
     ) -> Self {
         Self {
             blockchain_manager,
-            triple_store_service,
+            triple_store_assertions,
             network_manager,
-            assertion_validation_service,
-            peer_service,
+            assertion_validation,
+            peer_directory,
         }
     }
 
-    pub(crate) async fn fetch(&self, request: &GetFetchRequest) -> Result<GetFetchResult, String> {
+    pub(crate) async fn fetch(
+        &self,
+        request: &GetAssertionInput,
+    ) -> Result<GetAssertionOutput, String> {
         let parsed_ual = parse_ual(&request.ual).map_err(|e| format!("Invalid UAL: {}", e))?;
 
         // Validate on-chain existence when possible. If call fails, continue (old contracts may
@@ -93,8 +103,12 @@ impl GetFetchService {
         }
 
         let token_ids = self
-            .resolve_token_ids(request.operation_id, &parsed_ual)
-            .await;
+            .resolve_token_ids_with_policy(
+                request.operation_id,
+                &parsed_ual,
+                TokenRangeResolutionPolicy::CompatibleSingleTokenFallback,
+            )
+            .await?;
 
         if let Some(local) = self
             .try_local(
@@ -113,40 +127,19 @@ impl GetFetchService {
             .await
     }
 
-    async fn resolve_token_ids(&self, operation_id: Uuid, parsed_ual: &ParsedUal) -> TokenIds {
-        if let Some(token_id) = parsed_ual.knowledge_asset_id {
-            return TokenIds::single(token_id as u64);
-        }
-
-        match self
-            .blockchain_manager
-            .get_knowledge_assets_range(
-                &parsed_ual.blockchain,
-                parsed_ual.contract,
-                parsed_ual.knowledge_collection_id,
-            )
-            .await
-        {
-            Ok(Some((start, end, burned))) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    start,
-                    end,
-                    burned = burned.len(),
-                    "Resolved KC token range from chain"
-                );
-                TokenIds::from_global_range(parsed_ual.knowledge_collection_id, start, end, burned)
-            }
-            Ok(None) => TokenIds::single(1),
-            Err(e) => {
-                tracing::warn!(
-                    operation_id = %operation_id,
-                    error = %e,
-                    "Failed to resolve token range, using fallback"
-                );
-                TokenIds::single(1)
-            }
-        }
+    pub(crate) async fn resolve_token_ids_with_policy(
+        &self,
+        operation_id: Uuid,
+        parsed_ual: &ParsedUal,
+        policy: TokenRangeResolutionPolicy,
+    ) -> Result<TokenIds, String> {
+        resolve_token_ids(
+            self.blockchain_manager.as_ref(),
+            operation_id,
+            parsed_ual,
+            policy,
+        )
+        .await
     }
 
     async fn try_local(
@@ -156,9 +149,9 @@ impl GetFetchService {
         token_ids: &TokenIds,
         visibility: Visibility,
         include_metadata: bool,
-    ) -> Option<GetFetchResult> {
+    ) -> Option<GetAssertionOutput> {
         let local_result = self
-            .triple_store_service
+            .triple_store_assertions
             .query_assertion(parsed_ual, token_ids, visibility, include_metadata)
             .await
             .ok()?;
@@ -169,7 +162,7 @@ impl GetFetchService {
         }
 
         let is_valid = self
-            .assertion_validation_service
+            .assertion_validation
             .validate_response(&result.assertion, parsed_ual, visibility)
             .await;
 
@@ -181,13 +174,13 @@ impl GetFetchService {
             return None;
         }
 
-        Some(GetFetchResult {
+        Some(GetAssertionOutput {
             assertion: Assertion::new(
                 result.assertion.public.clone(),
                 result.assertion.private.clone(),
             ),
             metadata: result.metadata.clone(),
-            source: GetFetchSource::Local,
+            source: AssertionSource::Local,
         })
     }
 
@@ -196,8 +189,8 @@ impl GetFetchService {
         operation_id: Uuid,
         parsed_ual: &ParsedUal,
         token_ids: TokenIds,
-        request: &GetFetchRequest,
-    ) -> Result<GetFetchResult, String> {
+        request: &GetAssertionInput,
+    ) -> Result<GetAssertionOutput, String> {
         let mut peers = self
             .load_shard_peers(parsed_ual, request.paranet_ual.as_deref())
             .await?;
@@ -209,7 +202,7 @@ impl GetFetchService {
             ));
         }
 
-        self.peer_service.sort_by_latency(&mut peers);
+        self.peer_directory.sort_by_latency(&mut peers);
 
         let get_request_data = GetRequestData::new(
             parsed_ual.blockchain.clone(),
@@ -222,36 +215,22 @@ impl GetFetchService {
             request.paranet_ual.clone(),
         );
 
-        let mut futures = FuturesUnordered::new();
-        let mut peers_iter = peers.iter().cloned();
-        let limit = GET_NETWORK_CONCURRENT_PEERS.max(1).min(peers.len());
-        for _ in 0..limit {
-            if let Some(peer) = peers_iter.next() {
-                futures.push(send_get_request_to_peer(
-                    Arc::clone(&self.network_manager),
-                    peer,
-                    operation_id,
-                    get_request_data.clone(),
-                ));
-            }
-        }
-
-        while let Some((peer, response)) = futures.next().await {
-            if let Some(result) = self
-                .validate_response(&peer, response, parsed_ual, request.visibility)
-                .await
-            {
-                return Ok(result);
-            }
-
-            if let Some(peer) = peers_iter.next() {
-                futures.push(send_get_request_to_peer(
-                    Arc::clone(&self.network_manager),
-                    peer,
-                    operation_id,
-                    get_request_data.clone(),
-                ));
-            }
+        if let Some(ack) = network_fetch::fetch_first_valid_ack_from_peers(
+            Arc::clone(&self.network_manager),
+            Arc::clone(&self.assertion_validation),
+            peers,
+            operation_id,
+            get_request_data,
+            parsed_ual.clone(),
+            request.visibility,
+        )
+        .await
+        {
+            return Ok(GetAssertionOutput {
+                assertion: Assertion::new(ack.assertion.public.clone(), ack.assertion.private.clone()),
+                metadata: ack.metadata.clone(),
+                source: AssertionSource::Network,
+            });
         }
 
         Err(format!(
@@ -260,55 +239,13 @@ impl GetFetchService {
         ))
     }
 
-    async fn validate_response(
-        &self,
-        peer: &PeerId,
-        response: Result<GetResponseData, NetworkError>,
-        parsed_ual: &ParsedUal,
-        visibility: Visibility,
-    ) -> Option<GetFetchResult> {
-        let response = match response {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::debug!(peer = %peer, error = %e, "Get request failed");
-                return None;
-            }
-        };
-
-        match response {
-            GetResponseData::Ack(ack) => {
-                let is_valid = self
-                    .assertion_validation_service
-                    .validate_response(&ack.assertion, parsed_ual, visibility)
-                    .await;
-                if !is_valid {
-                    tracing::debug!(peer = %peer, "Ack failed assertion validation");
-                    return None;
-                }
-
-                Some(GetFetchResult {
-                    assertion: Assertion::new(
-                        ack.assertion.public.clone(),
-                        ack.assertion.private.clone(),
-                    ),
-                    metadata: ack.metadata.clone(),
-                    source: GetFetchSource::Network,
-                })
-            }
-            GetResponseData::Error(err) => {
-                tracing::debug!(peer = %peer, error = %err.error_message, "Peer returned NACK");
-                None
-            }
-        }
-    }
-
     async fn load_shard_peers(
         &self,
         parsed_ual: &ParsedUal,
         paranet_ual: Option<&str>,
     ) -> Result<Vec<PeerId>, String> {
         let my_peer_id = self.network_manager.peer_id();
-        let all_shard_peers = self.peer_service.select_shard_peers(
+        let all_shard_peers = self.peer_directory.select_shard_peers(
             &parsed_ual.blockchain,
             STREAM_PROTOCOL_GET,
             Some(my_peer_id),
@@ -395,14 +332,53 @@ impl GetFetchService {
     }
 }
 
-async fn send_get_request_to_peer(
-    network_manager: Arc<NetworkManager>,
-    peer: PeerId,
+pub(crate) async fn resolve_token_ids(
+    blockchain_manager: &BlockchainManager,
     operation_id: Uuid,
-    request_data: GetRequestData,
-) -> (PeerId, Result<GetResponseData, NetworkError>) {
-    let result = network_manager
-        .send_get_request(peer, operation_id, request_data)
-        .await;
-    (peer, result)
+    parsed_ual: &ParsedUal,
+    policy: TokenRangeResolutionPolicy,
+) -> Result<TokenIds, String> {
+    if let Some(token_id) = parsed_ual.knowledge_asset_id {
+        return Ok(TokenIds::single(token_id as u64));
+    }
+
+    match blockchain_manager
+        .get_knowledge_assets_range(
+            &parsed_ual.blockchain,
+            parsed_ual.contract,
+            parsed_ual.knowledge_collection_id,
+        )
+        .await
+    {
+        Ok(Some((start, end, burned))) => {
+            tracing::debug!(
+                operation_id = %operation_id,
+                start,
+                end,
+                burned = burned.len(),
+                "Resolved KC token range from chain"
+            );
+            Ok(TokenIds::from_global_range(
+                parsed_ual.knowledge_collection_id,
+                start,
+                end,
+                burned,
+            ))
+        }
+        Ok(None) => Ok(TokenIds::single(1)),
+        Err(e) => match policy {
+            TokenRangeResolutionPolicy::Strict => Err(format!(
+                "Failed to resolve token range for operation {}: {}",
+                operation_id, e
+            )),
+            TokenRangeResolutionPolicy::CompatibleSingleTokenFallback => {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Failed to resolve token range, using fallback"
+                );
+                Ok(TokenIds::single(1))
+            }
+        },
+    }
 }

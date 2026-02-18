@@ -15,7 +15,7 @@ use crate::{
     commands::SendPublishStoreRequestsDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
     operations::{PublishStoreOperation, PublishStoreOperationResult},
-    services::{PeerService, operation_status::OperationStatusService as GenericOperationService},
+    application::{OperationTracking as GenericOperationService}, runtime_state::PeerDirectory,
 };
 
 /// Maximum number of in-flight peer requests for this operation.
@@ -52,9 +52,9 @@ impl SendPublishStoreRequestsCommandData {
 
 pub(crate) struct SendPublishStoreRequestsCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
-    pub(super) peer_service: Arc<PeerService>,
+    pub(super) peer_directory: Arc<PeerDirectory>,
     pub(super) blockchain_manager: Arc<BlockchainManager>,
-    pub(super) publish_store_operation_status_service:
+    pub(super) publish_store_operation_tracking:
         Arc<GenericOperationService<PublishStoreOperation>>,
     pub(super) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 }
@@ -63,9 +63,9 @@ impl SendPublishStoreRequestsCommandHandler {
     pub(crate) fn new(deps: SendPublishStoreRequestsDeps) -> Self {
         Self {
             network_manager: deps.network_manager,
-            peer_service: deps.peer_service,
+            peer_directory: deps.peer_directory,
             blockchain_manager: deps.blockchain_manager,
-            publish_store_operation_status_service: deps.publish_store_operation_status_service,
+            publish_store_operation_tracking: deps.publish_store_operation_tracking,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
         }
     }
@@ -118,10 +118,10 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         let my_peer_id = *self.network_manager.peer_id();
 
         // Check if we are in the shard nodes (publisher node)
-        let self_in_shard = self.peer_service.is_peer_in_shard(blockchain, &my_peer_id);
+        let self_in_shard = self.peer_directory.is_peer_in_shard(blockchain, &my_peer_id);
 
         // Get remote peers that support the store protocol, excluding self
-        let remote_peers = self.peer_service.select_shard_peers(
+        let remote_peers = self.peer_directory.select_shard_peers(
             blockchain,
             STREAM_PROTOCOL_STORE,
             Some(&my_peer_id),
@@ -158,7 +158,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                 "Unable to find enough nodes for operation: {operation_id}. Minimum number of nodes required: {min_required_peers}"
             );
 
-            self.publish_store_operation_status_service
+            self.publish_store_operation_tracking
                 .mark_failed(operation_id, error_message)
                 .await;
 
@@ -168,7 +168,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         let identity_id = self.blockchain_manager.identity_id(blockchain);
 
         let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
-            self.publish_store_operation_status_service
+            self.publish_store_operation_tracking
                 .mark_failed(operation_id, "Dataset root missing '0x' prefix".to_string())
                 .await;
             return CommandOutcome::Completed;
@@ -182,7 +182,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             Ok(sig) => {
                 // Store publisher signature to result storage immediately
                 if let Err(e) = self
-                    .publish_store_operation_status_service
+                    .publish_store_operation_tracking
                     .update_result(
                         operation_id,
                         PublishStoreOperationResult::new(None, Vec::new()),
@@ -223,7 +223,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                 error = %e,
                 "Failed to store dataset in publish tmp dataset store"
             );
-            self.publish_store_operation_status_service
+            self.publish_store_operation_tracking
                 .mark_failed(operation_id, format!("Failed to store dataset: {}", e))
                 .await;
             return CommandOutcome::Completed;
@@ -330,7 +330,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             );
 
             if let Err(e) = self
-                .publish_store_operation_status_service
+                .publish_store_operation_tracking
                 .complete(operation_id)
                 .await
             {
@@ -339,7 +339,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                     error = %e,
                     "Failed to complete operation"
                 );
-                self.publish_store_operation_status_service
+                self.publish_store_operation_tracking
                     .mark_failed(operation_id, e.to_string())
                     .await;
             }
@@ -353,7 +353,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             success_count, failure_count, min_ack_responses
         );
         tracing::warn!(operation_id = %operation_id, %error_message, "Publish store failed");
-        self.publish_store_operation_status_service
+        self.publish_store_operation_tracking
             .mark_failed(operation_id, error_message)
             .await;
 

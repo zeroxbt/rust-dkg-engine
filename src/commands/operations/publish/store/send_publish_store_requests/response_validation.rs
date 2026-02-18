@@ -28,7 +28,7 @@ impl SendPublishStoreRequestsCommandHandler {
 
                 // Store signature incrementally to redb
                 if let Err(e) = self
-                    .publish_store_operation_status_service
+                    .publish_store_operation_tracking
                     .update_result(
                         operation_id,
                         PublishStoreOperationResult::new(None, Vec::new()),

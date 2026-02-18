@@ -4,7 +4,7 @@ use dkg_network::{NetworkManager, PeerId};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    periodic_tasks::DialPeersDeps, periodic_tasks::runner::run_with_shutdown, services::PeerService,
+    periodic_tasks::DialPeersDeps, periodic_tasks::runner::run_with_shutdown, runtime_state::PeerDirectory,
 };
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
@@ -12,14 +12,14 @@ const CONCURRENT_PEER_DIALS: usize = 20;
 
 pub(crate) struct DialPeersTask {
     network_manager: Arc<NetworkManager>,
-    peer_service: Arc<PeerService>,
+    peer_directory: Arc<PeerDirectory>,
 }
 
 impl DialPeersTask {
     pub(crate) fn new(deps: DialPeersDeps) -> Self {
         Self {
             network_manager: deps.network_manager,
-            peer_service: deps.peer_service,
+            peer_directory: deps.peer_directory,
         }
     }
 
@@ -60,11 +60,11 @@ impl DialPeersTask {
 
     /// Returns true if peer should be attempted (not in backoff).
     fn check_backoff(&self, peer_id: &PeerId) -> bool {
-        if self.peer_service.should_attempt_discovery(peer_id) {
+        if self.peer_directory.should_attempt_discovery(peer_id) {
             return true;
         }
 
-        if let Some(backoff) = self.peer_service.discovery_backoff(peer_id) {
+        if let Some(backoff) = self.peer_directory.discovery_backoff(peer_id) {
             tracing::trace!(
                 %peer_id,
                 backoff_secs = backoff.as_secs(),
@@ -95,7 +95,7 @@ impl DialPeersTask {
         tracing::Span::current().record("own_peer_id", tracing::field::display(&own_peer_id));
 
         // Get all peer IDs from shard table
-        let all_peers = self.peer_service.get_all_shard_peer_ids();
+        let all_peers = self.peer_directory.get_all_shard_peer_ids();
 
         let all_peers_set: HashSet<PeerId> = all_peers.iter().copied().collect();
         let total_peers = all_peers.len();

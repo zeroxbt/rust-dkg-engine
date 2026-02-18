@@ -1,3 +1,4 @@
+mod application;
 mod bootstrap;
 mod commands;
 mod config;
@@ -8,7 +9,7 @@ mod managers;
 mod operations;
 mod periodic_tasks;
 mod runtime;
-mod services;
+mod runtime_state;
 mod state;
 
 use std::sync::Arc;
@@ -24,7 +25,8 @@ pub async fn run() {
     let bootstrap::CoreBootstrap {
         config,
         managers,
-        services,
+        runtime_state,
+        application,
         command_scheduler,
         command_rx,
         mut network_event_loop,
@@ -46,7 +48,7 @@ pub async fn run() {
     // Seed peer registry with sharding tables before commands start
     seed_sharding_tables(
         &managers.blockchain,
-        &services.peer_service,
+        &runtime_state.peer_directory,
         managers.network.peer_id(),
     )
     .await;
@@ -54,18 +56,27 @@ pub async fn run() {
     // Load persisted peer addresses and inject into Kademlia routing table.
     // This must happen after sharding table seeding so dial_peers knows who to connect to.
     bootstrap::hydrate_persisted_peer_addresses(&managers).await;
-    let periodic_tasks_deps =
-        bootstrap::build_periodic_tasks_deps(&managers, &services, &command_scheduler);
-    let command_executor =
-        bootstrap::build_command_executor(&managers, &services, &command_scheduler, command_rx);
+    let periodic_tasks_deps = bootstrap::build_periodic_tasks_deps(
+        &managers,
+        &runtime_state,
+        &application,
+        &command_scheduler,
+    );
+    let command_executor = bootstrap::build_command_executor(
+        &managers,
+        &runtime_state,
+        &application,
+        &command_scheduler,
+        command_rx,
+    );
     let controllers =
-        bootstrap::build_controllers(&config, &managers, &services, &command_scheduler);
+        bootstrap::build_controllers(&config, &managers, &runtime_state, &application, &command_scheduler);
 
     runtime::run(
         runtime::RuntimeDeps {
             command_scheduler,
             network_manager: Arc::clone(&managers.network),
-            peer_service: Arc::clone(&services.peer_service),
+            peer_directory: Arc::clone(&runtime_state.peer_directory),
             periodic_tasks_deps,
             blockchain_ids,
         },

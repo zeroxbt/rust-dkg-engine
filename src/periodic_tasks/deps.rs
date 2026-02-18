@@ -9,24 +9,22 @@ use dkg_repository::{
 };
 
 use crate::{
+    application::{AssertionValidation, GetAssertionUseCase, OperationTracking, TripleStoreAssertions},
     commands::scheduler::CommandScheduler,
     operations::{GetOperation, PublishStoreOperation},
-    services::{
-        AssertionValidationService, GetFetchService, OperationStatusService, PeerService,
-        TripleStoreService,
-    },
+    runtime_state::PeerDirectory,
     state::ResponseChannels,
 };
 
 #[derive(Clone)]
 pub(crate) struct DialPeersDeps {
     pub(crate) network_manager: Arc<NetworkManager>,
-    pub(crate) peer_service: Arc<PeerService>,
+    pub(crate) peer_directory: Arc<PeerDirectory>,
 }
 
 #[derive(Clone)]
 pub(crate) struct SavePeerAddressesDeps {
-    pub(crate) peer_service: Arc<PeerService>,
+    pub(crate) peer_directory: Arc<PeerDirectory>,
     pub(crate) peer_address_store: Arc<PeerAddressStore>,
 }
 
@@ -41,8 +39,8 @@ pub(crate) struct CleanupDeps {
     pub(crate) finality_status_repository: FinalityStatusRepository,
     pub(crate) proof_challenge_repository: ProofChallengeRepository,
     pub(crate) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
-    pub(crate) publish_operation_results: Arc<OperationStatusService<PublishStoreOperation>>,
-    pub(crate) get_operation_results: Arc<OperationStatusService<GetOperation>>,
+    pub(crate) publish_operation_tracking: Arc<OperationTracking<PublishStoreOperation>>,
+    pub(crate) get_operation_tracking: Arc<OperationTracking<GetOperation>>,
     pub(crate) store_response_channels: Arc<ResponseChannels<StoreAck>>,
     pub(crate) get_response_channels: Arc<ResponseChannels<GetAck>>,
     pub(crate) finality_response_channels: Arc<ResponseChannels<FinalityAck>>,
@@ -52,7 +50,7 @@ pub(crate) struct CleanupDeps {
 #[derive(Clone)]
 pub(crate) struct ShardingTableCheckDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
-    pub(crate) peer_service: Arc<PeerService>,
+    pub(crate) peer_directory: Arc<PeerDirectory>,
 }
 
 #[derive(Clone)]
@@ -66,28 +64,28 @@ pub(crate) struct BlockchainEventListenerDeps {
 pub(crate) struct ProvingDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) proof_challenge_repository: ProofChallengeRepository,
-    pub(crate) triple_store_service: Arc<TripleStoreService>,
+    pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
     pub(crate) network_manager: Arc<NetworkManager>,
-    pub(crate) assertion_validation_service: Arc<AssertionValidationService>,
-    pub(crate) peer_service: Arc<PeerService>,
+    pub(crate) assertion_validation: Arc<AssertionValidation>,
+    pub(crate) peer_directory: Arc<PeerDirectory>,
 }
 
 #[derive(Clone)]
 pub(crate) struct SyncDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) kc_sync_repository: KcSyncRepository,
-    pub(crate) triple_store_service: Arc<TripleStoreService>,
+    pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
     pub(crate) network_manager: Arc<NetworkManager>,
-    pub(crate) assertion_validation_service: Arc<AssertionValidationService>,
-    pub(crate) peer_service: Arc<PeerService>,
+    pub(crate) assertion_validation: Arc<AssertionValidation>,
+    pub(crate) peer_directory: Arc<PeerDirectory>,
 }
 
 #[derive(Clone)]
 pub(crate) struct ParanetSyncDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) paranet_kc_sync_repository: ParanetKcSyncRepository,
-    pub(crate) triple_store_service: Arc<TripleStoreService>,
-    pub(crate) get_fetch_service: Arc<GetFetchService>,
+    pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
+    pub(crate) get_assertion_use_case: Arc<GetAssertionUseCase>,
 }
 
 #[derive(Clone)]

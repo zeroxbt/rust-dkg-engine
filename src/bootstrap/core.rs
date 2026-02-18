@@ -5,16 +5,18 @@ use dkg_network::{KeyManager, Multiaddr, NetworkEventLoop, PeerId};
 use tokio::sync::mpsc;
 
 use crate::{
+    bootstrap::{ApplicationDeps, build_application},
     commands::{executor::CommandExecutionRequest, scheduler::CommandScheduler},
     config::{self, AppPaths, Config},
     managers::{self, Managers},
-    services::{self, Services},
+    runtime_state::{self, RuntimeState},
 };
 
 pub(crate) struct CoreBootstrap {
     pub(crate) config: Arc<Config>,
     pub(crate) managers: Managers,
-    pub(crate) services: Services,
+    pub(crate) runtime_state: RuntimeState,
+    pub(crate) application: ApplicationDeps,
     pub(crate) command_scheduler: CommandScheduler,
     pub(crate) command_rx: mpsc::Receiver<CommandExecutionRequest>,
     pub(crate) network_event_loop: NetworkEventLoop,
@@ -34,7 +36,8 @@ pub(crate) async fn build_core() -> CoreBootstrap {
     let (managers, network_event_loop) =
         managers::initialize(&config.managers, &paths, network_key).await;
 
-    let services = services::initialize(&managers);
+    let runtime_state = runtime_state::initialize();
+    let application = build_application(&managers, &runtime_state);
     let blockchain_ids = managers
         .blockchain
         .get_blockchain_ids()
@@ -45,7 +48,8 @@ pub(crate) async fn build_core() -> CoreBootstrap {
     CoreBootstrap {
         config,
         managers,
-        services,
+        runtime_state,
+        application,
         command_scheduler,
         command_rx,
         network_event_loop,

@@ -8,13 +8,13 @@ use crate::{error::NodeError, operations::OperationKind};
 /// Operation status service used for HTTP polling.
 ///
 /// Stores a lightweight status record in SQL and the typed result in redb.
-pub(crate) struct OperationStatusService<K: OperationKind> {
+pub(crate) struct OperationTracking<K: OperationKind> {
     operation_repository: OperationRepository,
     result_store: OperationResultStore<K::Result>,
     _marker: std::marker::PhantomData<K>,
 }
 
-impl<K> OperationStatusService<K>
+impl<K> OperationTracking<K>
 where
     K: OperationKind,
     K::Result: Serialize + DeserializeOwned + Send + Sync + 'static,

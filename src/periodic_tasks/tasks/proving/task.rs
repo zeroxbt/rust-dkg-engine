@@ -2,39 +2,38 @@
 
 use std::{
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use chrono::Utc;
 use dkg_blockchain::{BlockchainManager, U256};
 use dkg_domain::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual};
-use dkg_network::{
-    GetRequestData, GetResponseData, NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_GET,
-};
+use dkg_network::{GetRequestData, NetworkManager, PeerId, STREAM_PROTOCOL_GET};
 use dkg_repository::{ChallengeState, ProofChallengeRepository};
 use dkg_triple_store::{
     PRIVATE_HASH_SUBJECT_PREFIX, compare_js_default_string_order, group_triples_by_subject,
 };
-use futures::{StreamExt, stream::FuturesUnordered};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
+    application::{
+        AssertionValidation, TokenRangeResolutionPolicy, TripleStoreAssertions,
+        get_assertion::{network_fetch, resolve_token_ids},
+    },
     periodic_tasks::ProvingDeps,
     periodic_tasks::runner::run_with_shutdown,
-    services::{
-        AssertionValidationService, GET_NETWORK_CONCURRENT_PEERS, PeerService, TripleStoreService,
-    },
+    runtime_state::PeerDirectory,
 };
 
 pub(crate) struct ProvingTask {
     blockchain_manager: Arc<BlockchainManager>,
     proof_challenge_repository: ProofChallengeRepository,
-    triple_store_service: Arc<TripleStoreService>,
+    triple_store_assertions: Arc<TripleStoreAssertions>,
     network_manager: Arc<NetworkManager>,
-    assertion_validation_service: Arc<AssertionValidationService>,
-    peer_service: Arc<PeerService>,
+    assertion_validation: Arc<AssertionValidation>,
+    peer_directory: Arc<PeerDirectory>,
 }
 
 impl ProvingTask {
@@ -42,17 +41,17 @@ impl ProvingTask {
         Self {
             blockchain_manager: deps.blockchain_manager,
             proof_challenge_repository: deps.proof_challenge_repository,
-            triple_store_service: deps.triple_store_service,
+            triple_store_assertions: deps.triple_store_assertions,
             network_manager: deps.network_manager,
-            assertion_validation_service: deps.assertion_validation_service,
-            peer_service: deps.peer_service,
+            assertion_validation: deps.assertion_validation,
+            peer_directory: deps.peer_directory,
         }
     }
 
     /// Check if node is part of the shard for this blockchain.
     fn is_in_shard(&self, blockchain_id: &BlockchainId) -> bool {
         let peer_id = self.network_manager.peer_id();
-        self.peer_service.is_peer_in_shard(blockchain_id, peer_id)
+        self.peer_directory.is_peer_in_shard(blockchain_id, peer_id)
     }
 
     /// Get the identity ID for this blockchain.
@@ -94,17 +93,11 @@ impl ProvingTask {
     /// Load shard peers for the given blockchain.
     fn load_shard_peers(&self, blockchain_id: &BlockchainId) -> Vec<PeerId> {
         let my_peer_id = self.network_manager.peer_id();
-        self.peer_service
+        self.peer_directory
             .select_shard_peers(blockchain_id, STREAM_PROTOCOL_GET, Some(my_peer_id))
     }
 
     /// Fetch assertion from network peers.
-    ///
-    /// Uses the same concurrent request pattern as the GET command:
-    /// - Sort peers by latency
-    /// - Send concurrent requests
-    /// - Track success/failure for peer performance
-    /// - Return on first valid response (proving only needs 1)
     #[tracing::instrument(
         name = "proving.network_fetch",
         skip(self, parsed_ual, token_ids),
@@ -128,7 +121,7 @@ impl ProvingTask {
         tracing::Span::current().record("peer_count", tracing::field::display(peers.len()));
 
         // Sort by latency (best performers first)
-        self.peer_service.sort_by_latency(&mut peers);
+        self.peer_directory.sort_by_latency(&mut peers);
 
         tracing::debug!(
             total_peers = peers.len(),
@@ -147,137 +140,26 @@ impl ProvingTask {
             None,  // no paranet
         );
 
-        // Use a random operation ID for tracking
-        let operation_id = Uuid::new_v4();
-
-        // Concurrent request pattern (same as GET command)
-        let mut futures = FuturesUnordered::new();
-        let mut peers_iter = peers.iter().cloned();
-        let limit = GET_NETWORK_CONCURRENT_PEERS.max(1).min(peers.len());
-
-        // Start initial batch of concurrent requests
-        for _ in 0..limit {
-            if let Some(peer) = peers_iter.next() {
-                futures.push(self.send_get_request_to_peer(
-                    peer,
-                    operation_id,
-                    request_data.clone(),
-                    parsed_ual.clone(),
-                ));
-            }
+        if let Some(ack) = network_fetch::fetch_first_valid_ack_from_peers(
+            Arc::clone(&self.network_manager),
+            Arc::clone(&self.assertion_validation),
+            peers,
+            Uuid::new_v4(),
+            request_data,
+            parsed_ual.clone(),
+            Visibility::Public,
+        )
+        .await
+        {
+            tracing::info!("Got valid assertion from network");
+            return Some(Assertion::new(
+                ack.assertion.public.clone(),
+                ack.assertion.private.clone(),
+            ));
         }
 
-        let mut failure_count = 0u16;
-
-        // Process responses as they arrive
-        while let Some((peer, outcome, elapsed, assertion)) = futures.next().await {
-            match outcome {
-                Ok(true) => {
-                    tracing::info!(
-                        peer = %peer,
-                        elapsed_ms = elapsed.as_millis(),
-                        "Got valid assertion from network"
-                    );
-
-                    // For proving, we only need 1 valid response
-                    return assertion;
-                }
-                Ok(false) => {
-                    failure_count += 1;
-                    tracing::debug!(
-                        peer = %peer,
-                        "Response validation failed"
-                    );
-                }
-                Err(e) => {
-                    failure_count += 1;
-                    tracing::debug!(
-                        peer = %peer,
-                        error = %e,
-                        "Request to peer failed"
-                    );
-                }
-            }
-
-            // Queue next peer if available
-            if let Some(peer) = peers_iter.next() {
-                futures.push(self.send_get_request_to_peer(
-                    peer,
-                    operation_id,
-                    request_data.clone(),
-                    parsed_ual.clone(),
-                ));
-            }
-        }
-
-        tracing::warn!(failure_count, "Failed to fetch assertion from any peer");
+        tracing::warn!("Failed to fetch assertion from any peer");
         None
-    }
-
-    /// Send GET request to a single peer and validate response.
-    async fn send_get_request_to_peer(
-        &self,
-        peer: PeerId,
-        operation_id: Uuid,
-        request_data: GetRequestData,
-        parsed_ual: ParsedUal,
-    ) -> (
-        PeerId,
-        Result<bool, NetworkError>,
-        Duration,
-        Option<Assertion>,
-    ) {
-        let start = Instant::now();
-        let result = self
-            .network_manager
-            .send_get_request(peer, operation_id, request_data)
-            .await;
-
-        let elapsed = start.elapsed();
-
-        match result {
-            Ok(response) => {
-                let assertion = self
-                    .validate_response(&response, &parsed_ual, Visibility::Public)
-                    .await;
-                let is_valid = assertion.is_some();
-                (peer, Ok(is_valid), elapsed, assertion)
-            }
-            Err(e) => (peer, Err(e), elapsed, None),
-        }
-    }
-
-    /// Validate a GET response and extract the assertion if valid.
-    async fn validate_response(
-        &self,
-        response: &GetResponseData,
-        parsed_ual: &ParsedUal,
-        visibility: Visibility,
-    ) -> Option<Assertion> {
-        match response {
-            GetResponseData::Ack(ack) => {
-                let assertion = &ack.assertion;
-
-                // Validate the assertion using the same service as GET command
-                let is_valid = self
-                    .assertion_validation_service
-                    .validate_response(assertion, parsed_ual, visibility)
-                    .await;
-
-                if !is_valid {
-                    return None;
-                }
-
-                Some(Assertion::new(
-                    assertion.public.clone(),
-                    assertion.private.clone(),
-                ))
-            }
-            GetResponseData::Error(err) => {
-                tracing::debug!(error = %err.error_message, "Peer returned error");
-                None
-            }
-        }
     }
 
     pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
@@ -503,39 +385,32 @@ impl ProvingTask {
             }
         };
 
-        // Get token IDs range from blockchain
-        let token_ids = match self
-            .blockchain_manager
-            .get_knowledge_assets_range(
-                blockchain_id,
-                node_challenge.knowledge_collection_storage_contract,
-                kc_id,
-            )
-            .await
+        // Resolve token range with strict policy for blockchain errors.
+        let token_ids = match resolve_token_ids(
+            self.blockchain_manager.as_ref(),
+            Uuid::new_v4(),
+            &parsed_ual,
+            TokenRangeResolutionPolicy::Strict,
+        )
+        .await
         {
-            Ok(Some((global_start, global_end, global_burned))) => {
-                TokenIds::from_global_range(kc_id, global_start, global_end, global_burned)
-            }
-            Ok(None) => {
-                // Fallback for old ContentAssetStorage contracts
-                TokenIds::single(1)
-            }
+            Ok(token_ids) => token_ids,
             Err(e) => {
-                tracing::warn!(error = %e, "Failed to get knowledge assets range");
+                tracing::warn!(error = %e, "Failed to resolve knowledge asset token range");
                 return PROVING_PERIOD;
             }
         };
 
         // Try local triple store first (same as GET command's local_query_phase)
         let assertion = match self
-            .triple_store_service
+            .triple_store_assertions
             .query_assertion(&parsed_ual, &token_ids, Visibility::Public, false)
             .await
         {
             Ok(Some(result)) if result.assertion.has_data() => {
                 // Validate local data
                 let is_valid = self
-                    .assertion_validation_service
+                    .assertion_validation
                     .validate_response(&result.assertion, &parsed_ual, Visibility::Public)
                     .await;
 

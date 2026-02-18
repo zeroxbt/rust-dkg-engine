@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     commands::SendPublishFinalityRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    services::{PeerService, TripleStoreService},
+    application::{TripleStoreAssertions}, runtime_state::PeerDirectory,
 };
 
 /// Raw event data from KnowledgeCollectionCreated event.
@@ -71,10 +71,10 @@ pub(crate) struct SendPublishFinalityRequestCommandHandler {
     finality_status_repository: FinalityStatusRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
     pub(super) network_manager: Arc<NetworkManager>,
-    peer_service: Arc<PeerService>,
+    peer_directory: Arc<PeerDirectory>,
     blockchain_manager: Arc<BlockchainManager>,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
-    triple_store_service: Arc<TripleStoreService>,
+    triple_store_assertions: Arc<TripleStoreAssertions>,
 }
 
 impl SendPublishFinalityRequestCommandHandler {
@@ -83,10 +83,10 @@ impl SendPublishFinalityRequestCommandHandler {
             finality_status_repository: deps.finality_status_repository,
             triples_insert_count_repository: deps.triples_insert_count_repository,
             network_manager: deps.network_manager,
-            peer_service: deps.peer_service,
+            peer_directory: deps.peer_directory,
             blockchain_manager: deps.blockchain_manager,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
-            triple_store_service: deps.triple_store_service,
+            triple_store_assertions: deps.triple_store_assertions,
         }
     }
 }
@@ -249,7 +249,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         );
 
         let total_triples = match self
-            .triple_store_service
+            .triple_store_assertions
             .insert_knowledge_collection(&ual, pending_data.dataset(), &Some(metadata), None)
             .await
         {
@@ -346,7 +346,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         }
 
         if !self
-            .peer_service
+            .peer_directory
             .peer_supports_protocol(&publisher_peer_id, STREAM_PROTOCOL_FINALITY)
         {
             tracing::warn!(

@@ -27,7 +27,7 @@ impl GetHttpApiController {
                 // Create operation record - we don't need the completion receiver for HTTP API
                 // (client polls for status via separate endpoint)
                 if let Err(e) = context
-                    .get_operation_status_service
+                    .get_operation_tracking
                     .create_operation(operation_id)
                     .await
                     .map(|_| ())
@@ -55,7 +55,7 @@ impl GetHttpApiController {
                     .try_schedule(CommandExecutionRequest::new(command))
                 {
                     context
-                        .get_operation_status_service
+                        .get_operation_tracking
                         .mark_failed(operation_id, "Command queue full".to_string())
                         .await;
 
