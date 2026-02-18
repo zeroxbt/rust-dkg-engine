@@ -59,6 +59,14 @@ fn should_create_new_challenge(
         .unwrap_or(true)
 }
 
+fn elapsed_since_timestamp_secs(updated_at: i64, now: i64) -> Duration {
+    Duration::from_secs((now - updated_at).max(0) as u64)
+}
+
+fn should_wait_for_reorg_finalization(updated_at: i64, now: i64) -> bool {
+    elapsed_since_timestamp_secs(updated_at, now) < REORG_BUFFER
+}
+
 impl ProvingTask {
     pub(crate) fn new(deps: ProvingDeps) -> Self {
         Self {
@@ -228,10 +236,9 @@ impl ProvingTask {
 
         match score {
             Ok(score) if score > U256::ZERO => {
-                let elapsed = Duration::from_secs(
-                    (Utc::now().timestamp() - challenge.updated_at).max(0) as u64,
-                );
-                if elapsed < REORG_BUFFER {
+                let now = Utc::now().timestamp();
+                let elapsed = elapsed_since_timestamp_secs(challenge.updated_at, now);
+                if should_wait_for_reorg_finalization(challenge.updated_at, now) {
                     tracing::debug!(
                         elapsed_secs = elapsed.as_secs(),
                         buffer_secs = REORG_BUFFER.as_secs(),
@@ -535,5 +542,30 @@ mod tests {
             current_start_block,
             Some(&challenge(100))
         ));
+    }
+
+    #[test]
+    fn wait_for_reorg_when_elapsed_below_buffer() {
+        let updated_at = 1_000;
+        let now = updated_at + REORG_BUFFER.as_secs() as i64 - 1;
+        assert!(should_wait_for_reorg_finalization(updated_at, now));
+    }
+
+    #[test]
+    fn do_not_wait_for_reorg_when_elapsed_at_or_above_buffer() {
+        let updated_at = 1_000;
+        let now = updated_at + REORG_BUFFER.as_secs() as i64;
+        assert!(!should_wait_for_reorg_finalization(updated_at, now));
+    }
+
+    #[test]
+    fn elapsed_since_timestamp_clamps_negative_durations() {
+        let updated_at = 2_000;
+        let now = 1_000;
+        assert_eq!(
+            elapsed_since_timestamp_secs(updated_at, now),
+            Duration::ZERO
+        );
+        assert!(should_wait_for_reorg_finalization(updated_at, now));
     }
 }

@@ -55,6 +55,19 @@ fn should_use_catching_up_delay(totals: &SyncCycleTotals) -> bool {
     totals.total_pending > 0 || totals.total_enqueued > 0
 }
 
+fn compute_enqueue_window(
+    latest_on_chain: u64,
+    last_checked: u64,
+    limit: u64,
+) -> Option<(u64, u64)> {
+    if latest_on_chain <= last_checked {
+        return None;
+    }
+
+    let capped_end = std::cmp::min(latest_on_chain, last_checked.saturating_add(limit.max(1)));
+    Some((last_checked.saturating_add(1), capped_end))
+}
+
 impl SyncTask {
     pub(crate) fn new(deps: SyncDeps, config: SyncConfig) -> Self {
         Self { config, deps }
@@ -446,6 +459,37 @@ impl SyncTask {
         contract_addr_str: &str,
         limit: u64,
     ) -> Result<u64, String> {
+        let latest_on_chain = self
+            .load_latest_on_chain_kc_id(blockchain_id, contract_address, contract_addr_str)
+            .await?;
+        let last_checked = self
+            .load_last_checked_progress(blockchain_id, contract_addr_str)
+            .await?;
+
+        let Some((start_id, end_id)) = compute_enqueue_window(latest_on_chain, last_checked, limit)
+        else {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                "No new KCs to enqueue (latest_on_chain <= last_checked)"
+            );
+            return Ok(0);
+        };
+        let new_kc_ids: Vec<u64> = (start_id..=end_id).collect();
+        let count = new_kc_ids.len() as u64;
+
+        self.persist_enqueued_window(blockchain_id, contract_addr_str, &new_kc_ids, end_id)
+            .await?;
+
+        Ok(count)
+    }
+
+    async fn load_latest_on_chain_kc_id(
+        &self,
+        blockchain_id: &BlockchainId,
+        contract_address: Address,
+        contract_addr_str: &str,
+    ) -> Result<u64, String> {
         tracing::debug!(
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
@@ -465,7 +509,14 @@ impl SyncTask {
             latest_on_chain,
             "Got latest KC ID from chain"
         );
+        Ok(latest_on_chain)
+    }
 
+    async fn load_last_checked_progress(
+        &self,
+        blockchain_id: &BlockchainId,
+        contract_addr_str: &str,
+    ) -> Result<u64, String> {
         tracing::debug!(
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
@@ -487,24 +538,19 @@ impl SyncTask {
             last_checked,
             "Got sync progress from DB"
         );
+        Ok(last_checked)
+    }
 
-        if latest_on_chain <= last_checked {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
-                "No new KCs to enqueue (latest_on_chain <= last_checked)"
-            );
-            return Ok(0);
-        }
-
-        let start_id = last_checked + 1;
-        let end_id = std::cmp::min(latest_on_chain, last_checked + limit);
-        let new_kc_ids: Vec<u64> = (start_id..=end_id).collect();
-        let count = new_kc_ids.len() as u64;
-
+    async fn persist_enqueued_window(
+        &self,
+        blockchain_id: &BlockchainId,
+        contract_addr_str: &str,
+        new_kc_ids: &[u64],
+        end_id: u64,
+    ) -> Result<(), String> {
         self.deps
             .kc_sync_repository
-            .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, &new_kc_ids)
+            .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, new_kc_ids)
             .await
             .map_err(|e| format!("Failed to enqueue KCs: {}", e))?;
 
@@ -513,8 +559,7 @@ impl SyncTask {
             .upsert_progress(blockchain_id.as_str(), contract_addr_str, end_id)
             .await
             .map_err(|e| format!("Failed to update progress: {}", e))?;
-
-        Ok(count)
+        Ok(())
     }
 }
 
@@ -756,5 +801,31 @@ mod tests {
     fn idle_delay_selected_when_no_backlog_and_no_new_items() {
         let totals = SyncCycleTotals::default();
         assert!(!should_use_catching_up_delay(&totals));
+    }
+
+    #[test]
+    fn enqueue_window_none_when_up_to_date() {
+        assert_eq!(compute_enqueue_window(10, 10, 5), None);
+        assert_eq!(compute_enqueue_window(9, 10, 5), None);
+    }
+
+    #[test]
+    fn enqueue_window_respects_limit() {
+        assert_eq!(compute_enqueue_window(100, 10, 5), Some((11, 15)));
+    }
+
+    #[test]
+    fn enqueue_window_uses_latest_when_limit_exceeds_gap() {
+        assert_eq!(compute_enqueue_window(12, 10, 50), Some((11, 12)));
+    }
+
+    #[test]
+    fn enqueue_window_uses_saturating_add_for_end() {
+        let latest = u64::MAX - 1;
+        let last_checked = u64::MAX - 2;
+        assert_eq!(
+            compute_enqueue_window(latest, last_checked, 10),
+            Some((u64::MAX - 1, u64::MAX - 1))
+        );
     }
 }
