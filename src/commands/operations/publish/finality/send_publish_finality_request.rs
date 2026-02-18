@@ -100,7 +100,9 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             block_timestamp: data.block_timestamp,
         };
 
-        self.process_publish_finality_event_workflow.execute(&input).await;
+        self.process_publish_finality_event_workflow
+            .execute(&input)
+            .await;
 
         CommandOutcome::Completed
     }

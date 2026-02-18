@@ -147,10 +147,7 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
             remote_peer_id: *remote_peer_id,
         };
 
-        let outcome = self
-            .serve_publish_finality_workflow
-            .execute(&input)
-            .await;
+        let outcome = self.serve_publish_finality_workflow.execute(&input).await;
 
         if matches!(outcome, ServePublishFinalityOutcome::Nack) {
             self.send_nack(channel, publish_finality_operation_id, ual)

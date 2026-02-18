@@ -89,15 +89,16 @@ pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> 
         Arc::clone(&publish_tmp_dataset_store),
     ));
 
-    let process_publish_finality_event_workflow = Arc::new(ProcessPublishFinalityEventWorkflow::new(
-        finality_status_repository.clone(),
-        triples_insert_count_repository,
-        Arc::clone(&managers.network),
-        Arc::clone(&node_state.peer_registry),
-        Arc::clone(&managers.blockchain),
-        Arc::clone(&publish_tmp_dataset_store),
-        Arc::clone(&triple_store_assertions),
-    ));
+    let process_publish_finality_event_workflow =
+        Arc::new(ProcessPublishFinalityEventWorkflow::new(
+            finality_status_repository.clone(),
+            triples_insert_count_repository,
+            Arc::clone(&managers.network),
+            Arc::clone(&node_state.peer_registry),
+            Arc::clone(&managers.blockchain),
+            Arc::clone(&publish_tmp_dataset_store),
+            Arc::clone(&triple_store_assertions),
+        ));
 
     let serve_batch_get_workflow = Arc::new(ServeBatchGetWorkflow::new(
         Arc::clone(&triple_store_assertions),

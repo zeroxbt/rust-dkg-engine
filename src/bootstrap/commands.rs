@@ -29,13 +29,13 @@ pub(crate) fn build_command_executor(
         },
         handle_publish_store_request: HandlePublishStoreRequestDeps {
             network_manager: Arc::clone(&managers.network),
-            serve_publish_store_workflow: Arc::clone(
-                &application.serve_publish_store_workflow,
-            ),
+            serve_publish_store_workflow: Arc::clone(&application.serve_publish_store_workflow),
             store_response_channels: Arc::clone(&node_state.store_response_channels),
         },
         send_publish_finality_request: SendPublishFinalityRequestDeps {
-            process_publish_finality_event_workflow: Arc::clone(&application.process_publish_finality_event_workflow),
+            process_publish_finality_event_workflow: Arc::clone(
+                &application.process_publish_finality_event_workflow,
+            ),
         },
         handle_publish_finality_request: HandlePublishFinalityRequestDeps {
             serve_publish_finality_workflow: Arc::clone(
@@ -54,9 +54,7 @@ pub(crate) fn build_command_executor(
         },
         handle_batch_get_request: HandleBatchGetRequestDeps {
             network_manager: Arc::clone(&managers.network),
-            serve_batch_get_workflow: Arc::clone(
-                &application.serve_batch_get_workflow,
-            ),
+            serve_batch_get_workflow: Arc::clone(&application.serve_batch_get_workflow),
             batch_get_response_channels: Arc::clone(&node_state.batch_get_response_channels),
         },
     });

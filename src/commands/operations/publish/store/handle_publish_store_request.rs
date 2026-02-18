@@ -145,11 +145,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             dataset: data.dataset.clone(),
         };
 
-        match self
-            .serve_publish_store_workflow
-            .execute(&input)
-            .await
-        {
+        match self.serve_publish_store_workflow.execute(&input).await {
             ServePublishStoreOutcome::Ack {
                 identity_id,
                 signature,
