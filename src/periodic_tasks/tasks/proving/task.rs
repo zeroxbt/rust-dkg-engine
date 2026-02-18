@@ -45,6 +45,20 @@ struct ProofWorkItem {
     parsed_ual: ParsedUal,
 }
 
+fn should_create_new_challenge(
+    proof_period_is_valid: bool,
+    current_start_block: U256,
+    latest_challenge: Option<&LatestChallengeSnapshot>,
+) -> bool {
+    if !proof_period_is_valid {
+        return true;
+    }
+
+    latest_challenge
+        .map(|c| U256::from(c.proof_period_start_block as u64) != current_start_block)
+        .unwrap_or(true)
+}
+
 impl ProvingTask {
     pub(crate) fn new(deps: ProvingDeps) -> Self {
         Self {
@@ -272,13 +286,7 @@ impl ProvingTask {
         current_start_block: U256,
         latest_challenge: Option<&LatestChallengeSnapshot>,
     ) -> bool {
-        if !proof_period_is_valid {
-            return true;
-        }
-
-        latest_challenge
-            .map(|c| U256::from(c.proof_period_start_block as u64) != current_start_block)
-            .unwrap_or(true)
+        should_create_new_challenge(proof_period_is_valid, current_start_block, latest_challenge)
     }
 
     async fn maybe_create_challenge(&self, blockchain_id: &BlockchainId) -> bool {
@@ -477,5 +485,55 @@ impl ProvingTask {
             "Proof submitted successfully"
         );
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn challenge(start_block: i64) -> LatestChallengeSnapshot {
+        LatestChallengeSnapshot {
+            epoch: 1,
+            proof_period_start_block: start_block,
+            state: ChallengeState::Pending,
+            updated_at: 0,
+        }
+    }
+
+    #[test]
+    fn create_new_challenge_when_period_invalid() {
+        let current_start_block = U256::from(100u64);
+        assert!(should_create_new_challenge(
+            false,
+            current_start_block,
+            Some(&challenge(100))
+        ));
+    }
+
+    #[test]
+    fn create_new_challenge_when_no_previous_challenge() {
+        let current_start_block = U256::from(100u64);
+        assert!(should_create_new_challenge(true, current_start_block, None));
+    }
+
+    #[test]
+    fn do_not_create_new_challenge_when_start_block_matches() {
+        let current_start_block = U256::from(100u64);
+        assert!(!should_create_new_challenge(
+            true,
+            current_start_block,
+            Some(&challenge(100))
+        ));
+    }
+
+    #[test]
+    fn create_new_challenge_when_start_block_differs() {
+        let current_start_block = U256::from(200u64);
+        assert!(should_create_new_challenge(
+            true,
+            current_start_block,
+            Some(&challenge(100))
+        ));
     }
 }

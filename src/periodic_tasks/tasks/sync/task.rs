@@ -7,6 +7,7 @@ use std::{sync::Arc, time::Duration};
 use dkg_blockchain::{Address, BlockchainId, ContractName};
 use futures::future::join_all;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
@@ -44,6 +45,14 @@ struct SyncCycleDurations {
     idle: Duration,
     catching_up: Duration,
     no_peers_retry: Duration,
+}
+
+fn min_required_identified_peers(total_shard_peers: usize) -> usize {
+    (total_shard_peers / 3).max(NETWORK_CONCURRENT_PEERS)
+}
+
+fn should_use_catching_up_delay(totals: &SyncCycleTotals) -> bool {
+    totals.total_pending > 0 || totals.total_enqueued > 0
 }
 
 impl SyncTask {
@@ -224,72 +233,22 @@ impl SyncTask {
         let (filter_tx, filter_rx) = mpsc::channel::<Vec<KcToSync>>(pipeline_channel_buffer);
         let (fetch_tx, fetch_rx) = mpsc::channel::<Vec<FetchedKc>>(pipeline_channel_buffer);
 
-        // Spawn filter task (with current span as parent for trace propagation)
-        let filter_handle = {
-            let blockchain_id = blockchain_id.clone();
-            let contract_addr_str = contract_addr_str.clone();
-            let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
-            let blockchain_manager = Arc::clone(&self.deps.blockchain_manager);
-            tokio::spawn(
-                async move {
-                    filter_task(
-                        pending_kc_ids,
-                        filter_batch_size,
-                        blockchain_id,
-                        contract_address,
-                        contract_addr_str,
-                        blockchain_manager,
-                        triple_store_assertions,
-                        filter_tx,
-                    )
-                    .await
-                }
-                .in_current_span(),
-            )
-        };
-
-        // Spawn fetch task (with current span as parent for trace propagation)
-        let fetch_handle = {
-            let blockchain_id = blockchain_id.clone();
-            let network_manager = Arc::clone(&self.deps.network_manager);
-            let assertion_validation = Arc::clone(&self.deps.assertion_validation);
-            let peer_registry = Arc::clone(&self.deps.peer_registry);
-            tokio::spawn(
-                async move {
-                    fetch_task(
-                        filter_rx,
-                        network_fetch_batch_size,
-                        max_assets_per_fetch_batch,
-                        blockchain_id,
-                        network_manager,
-                        assertion_validation,
-                        peer_registry,
-                        fetch_tx,
-                    )
-                    .await
-                }
-                .in_current_span(),
-            )
-        };
-
-        // Spawn insert task (with current span as parent for trace propagation)
-        let insert_handle = {
-            let blockchain_id = blockchain_id.clone();
-            let contract_addr_str = contract_addr_str.clone();
-            let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
-            tokio::spawn(
-                async move {
-                    insert_task(
-                        fetch_rx,
-                        blockchain_id,
-                        contract_addr_str,
-                        triple_store_assertions,
-                    )
-                    .await
-                }
-                .in_current_span(),
-            )
-        };
+        let filter_handle = self.spawn_filter_stage(
+            pending_kc_ids,
+            filter_batch_size,
+            blockchain_id.clone(),
+            contract_address,
+            contract_addr_str.clone(),
+            filter_tx,
+        );
+        let fetch_handle = self.spawn_fetch_stage(
+            filter_rx,
+            network_fetch_batch_size,
+            max_assets_per_fetch_batch,
+            blockchain_id.clone(),
+            fetch_tx,
+        );
+        let insert_handle = self.spawn_insert_stage(fetch_rx, blockchain_id, contract_addr_str);
 
         // Wait for all tasks
         let (filter_result, fetch_result, insert_result) =
@@ -300,6 +259,85 @@ impl SyncTask {
         let insert_stats = insert_result.map_err(|e| format!("Insert task panicked: {}", e))?;
 
         Ok((filter_stats, fetch_stats, insert_stats))
+    }
+
+    fn spawn_filter_stage(
+        &self,
+        pending_kc_ids: Vec<u64>,
+        filter_batch_size: usize,
+        blockchain_id: BlockchainId,
+        contract_address: Address,
+        contract_addr_str: String,
+        filter_tx: mpsc::Sender<Vec<KcToSync>>,
+    ) -> JoinHandle<FilterStats> {
+        let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
+        let blockchain_manager = Arc::clone(&self.deps.blockchain_manager);
+        tokio::spawn(
+            async move {
+                filter_task(
+                    pending_kc_ids,
+                    filter_batch_size,
+                    blockchain_id,
+                    contract_address,
+                    contract_addr_str,
+                    blockchain_manager,
+                    triple_store_assertions,
+                    filter_tx,
+                )
+                .await
+            }
+            .in_current_span(),
+        )
+    }
+
+    fn spawn_fetch_stage(
+        &self,
+        filter_rx: mpsc::Receiver<Vec<KcToSync>>,
+        network_fetch_batch_size: usize,
+        max_assets_per_fetch_batch: u64,
+        blockchain_id: BlockchainId,
+        fetch_tx: mpsc::Sender<Vec<FetchedKc>>,
+    ) -> JoinHandle<FetchStats> {
+        let network_manager = Arc::clone(&self.deps.network_manager);
+        let assertion_validation = Arc::clone(&self.deps.assertion_validation);
+        let peer_registry = Arc::clone(&self.deps.peer_registry);
+        tokio::spawn(
+            async move {
+                fetch_task(
+                    filter_rx,
+                    network_fetch_batch_size,
+                    max_assets_per_fetch_batch,
+                    blockchain_id,
+                    network_manager,
+                    assertion_validation,
+                    peer_registry,
+                    fetch_tx,
+                )
+                .await
+            }
+            .in_current_span(),
+        )
+    }
+
+    fn spawn_insert_stage(
+        &self,
+        fetch_rx: mpsc::Receiver<Vec<FetchedKc>>,
+        blockchain_id: BlockchainId,
+        contract_addr_str: String,
+    ) -> JoinHandle<InsertStats> {
+        let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
+        tokio::spawn(
+            async move {
+                insert_task(
+                    fetch_rx,
+                    blockchain_id,
+                    contract_addr_str,
+                    triple_store_assertions,
+                )
+                .await
+            }
+            .in_current_span(),
+        )
     }
 
     /// Update the sync queue based on pipeline results.
@@ -534,7 +572,7 @@ impl SyncTask {
             .deps
             .peer_registry
             .identified_shard_peer_count(blockchain_id);
-        let min_required = (total_shard_peers / 3).max(NETWORK_CONCURRENT_PEERS);
+        let min_required = min_required_identified_peers(total_shard_peers);
 
         if identified_peers < min_required {
             tracing::debug!(
@@ -658,7 +696,7 @@ impl SyncTask {
             );
         }
 
-        if totals.total_pending > 0 || totals.total_enqueued > 0 {
+        if should_use_catching_up_delay(totals) {
             tracing::debug!(
                 blockchain_id = %blockchain_id,
                 total_pending = totals.total_pending,
@@ -673,5 +711,50 @@ impl SyncTask {
             );
             periods.idle
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn min_required_identified_peers_uses_network_floor() {
+        assert_eq!(min_required_identified_peers(0), NETWORK_CONCURRENT_PEERS);
+        assert_eq!(min_required_identified_peers(2), NETWORK_CONCURRENT_PEERS);
+    }
+
+    #[test]
+    fn min_required_identified_peers_grows_with_shard_size() {
+        let total_shard_peers = NETWORK_CONCURRENT_PEERS * 9;
+        assert_eq!(
+            min_required_identified_peers(total_shard_peers),
+            total_shard_peers / 3
+        );
+    }
+
+    #[test]
+    fn catching_up_delay_selected_when_pending_or_enqueued() {
+        let totals = SyncCycleTotals {
+            total_enqueued: 1,
+            total_pending: 0,
+            total_synced: 0,
+            total_failed: 0,
+        };
+        assert!(should_use_catching_up_delay(&totals));
+
+        let totals = SyncCycleTotals {
+            total_enqueued: 0,
+            total_pending: 3,
+            total_synced: 0,
+            total_failed: 0,
+        };
+        assert!(should_use_catching_up_delay(&totals));
+    }
+
+    #[test]
+    fn idle_delay_selected_when_no_backlog_and_no_new_items() {
+        let totals = SyncCycleTotals::default();
+        assert!(!should_use_catching_up_delay(&totals));
     }
 }
