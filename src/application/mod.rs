@@ -19,6 +19,6 @@ pub(crate) use publish::{
     ServePublishStoreWorkflow,
 };
 pub(crate) use shared::{
-    AssertionValidation, OperationTracking, ShardPeerSelection, TripleStoreAssertions,
-    group_and_sort_public_triples,
+    AssertionValidation, OperationTracking, ParanetAccessResolution, ShardPeerSelection,
+    TripleStoreAssertions, group_and_sort_public_triples, resolve_paranet_access,
 };

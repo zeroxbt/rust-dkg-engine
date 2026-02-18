@@ -1,16 +1,13 @@
 use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
-use dkg_domain::{
-    ParsedUal, Visibility, construct_knowledge_collection_onchain_id, construct_paranet_id,
-    parse_ual,
-};
+use dkg_domain::{ParsedUal, Visibility, parse_ual};
 use dkg_network::{PeerId, STREAM_PROTOCOL_GET};
 use uuid::Uuid;
 
 use crate::application::{
-    AssertionRetrieval, AssertionSource, FetchRequest, ShardPeerSelection,
-    TokenRangeResolutionPolicy,
+    AssertionRetrieval, AssertionSource, FetchRequest, ParanetAccessResolution, ShardPeerSelection,
+    TokenRangeResolutionPolicy, resolve_paranet_access,
 };
 
 #[derive(Debug, Clone)]
@@ -141,69 +138,18 @@ impl GetAssertionUseCase {
         target_ual: &ParsedUal,
         all_shard_peers: Vec<PeerId>,
     ) -> Result<Vec<PeerId>, String> {
-        let paranet_parsed =
-            parse_ual(paranet_ual).map_err(|e| format!("Invalid paranet UAL: {}", e))?;
-        let ka_id = paranet_parsed
-            .knowledge_asset_id
-            .ok_or_else(|| "Paranet UAL must include knowledge asset ID".to_string())?;
-
-        let paranet_id = construct_paranet_id(
-            paranet_parsed.contract,
-            paranet_parsed.knowledge_collection_id,
-            ka_id,
-        );
-
-        let exists = self
-            .blockchain_manager
-            .paranet_exists(&target_ual.blockchain, paranet_id)
+        match resolve_paranet_access(&self.blockchain_manager, target_ual, paranet_ual, true)
             .await
-            .map_err(|e| format!("Failed to check paranet existence: {}", e))?;
-        if !exists {
-            return Err(format!("Paranet does not exist: {}", paranet_ual));
-        }
-
-        let policy = self
-            .blockchain_manager
-            .get_nodes_access_policy(&target_ual.blockchain, paranet_id)
-            .await
-            .map_err(|e| format!("Failed to get access policy: {}", e))?;
-
-        let kc_onchain_id = construct_knowledge_collection_onchain_id(
-            target_ual.contract,
-            target_ual.knowledge_collection_id,
-        );
-        let kc_registered = self
-            .blockchain_manager
-            .is_knowledge_collection_registered(&target_ual.blockchain, paranet_id, kc_onchain_id)
-            .await
-            .map_err(|e| format!("Failed to check KC registration in paranet: {}", e))?;
-        if !kc_registered {
-            return Err("Knowledge collection not registered in paranet".to_string());
-        }
-
-        match policy {
-            dkg_domain::AccessPolicy::Permissioned => {
-                let permissioned_nodes = self
-                    .blockchain_manager
-                    .get_permissioned_nodes(&target_ual.blockchain, paranet_id)
-                    .await
-                    .map_err(|e| format!("Failed to get permissioned nodes: {}", e))?;
-
-                let permissioned_peer_ids: std::collections::HashSet<PeerId> = permissioned_nodes
-                    .iter()
-                    .filter_map(|node| {
-                        String::from_utf8(node.nodeId.to_vec())
-                            .ok()
-                            .and_then(|s| s.parse::<PeerId>().ok())
-                    })
-                    .collect();
-
-                Ok(all_shard_peers
-                    .into_iter()
-                    .filter(|peer_id| permissioned_peer_ids.contains(peer_id))
-                    .collect())
-            }
-            dkg_domain::AccessPolicy::Open => Ok(all_shard_peers),
+            .map_err(|e| e.to_string())?
+        {
+            ParanetAccessResolution::Permissioned {
+                permissioned_peer_ids,
+                ..
+            } => Ok(all_shard_peers
+                .into_iter()
+                .filter(|peer_id| permissioned_peer_ids.contains(peer_id))
+                .collect()),
+            ParanetAccessResolution::Open { .. } => Ok(all_shard_peers),
         }
     }
 }
