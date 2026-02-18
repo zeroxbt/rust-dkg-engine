@@ -10,9 +10,6 @@ use dkg_blockchain::{BlockchainManager, U256};
 use dkg_domain::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual};
 use dkg_network::{GetRequestData, NetworkManager, PeerId, STREAM_PROTOCOL_GET};
 use dkg_repository::{ChallengeState, ProofChallengeRepository};
-use dkg_triple_store::{
-    PRIVATE_HASH_SUBJECT_PREFIX, compare_js_default_string_order, group_triples_by_subject,
-};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -20,6 +17,7 @@ use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
     application::{
         AssertionValidation, TokenRangeResolutionPolicy, TripleStoreAssertions,
+        fetch_assertion_from_local, group_and_sort_public_triples,
         get_assertion::{network_fetch, resolve_token_ids},
     },
     periodic_tasks::ProvingDeps,
@@ -57,37 +55,6 @@ impl ProvingTask {
     /// Get the identity ID for this blockchain.
     fn identity_id(&self, blockchain_id: &BlockchainId) -> u128 {
         self.blockchain_manager.identity_id(blockchain_id)
-    }
-
-    /// Prepare quads for Merkle proof calculation.
-    /// Groups by subject, separates private-hash triples, sorts each group.
-    fn prepare_quads_for_proof(public_triples: &[String]) -> Result<Vec<String>, String> {
-        let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
-
-        let mut filtered_public: Vec<String> = Vec::new();
-        let mut private_hash_triples: Vec<String> = Vec::new();
-
-        for triple in public_triples {
-            if triple.starts_with(&private_hash_prefix) {
-                private_hash_triples.push(triple.clone());
-            } else {
-                filtered_public.push(triple.clone());
-            }
-        }
-
-        // Group by subject, then append private-hash groups
-        let mut grouped = group_triples_by_subject(&filtered_public)?;
-        grouped.extend(group_triples_by_subject(&private_hash_triples)?);
-
-        // Sort each group and flatten
-        Ok(grouped
-            .iter()
-            .flat_map(|group| {
-                let mut sorted_group: Vec<&str> = group.iter().map(String::as_str).collect();
-                sorted_group.sort_by(|a, b| compare_js_default_string_order(a, b));
-                sorted_group.into_iter().map(String::from)
-            })
-            .collect())
     }
 
     /// Load shard peers for the given blockchain.
@@ -401,56 +368,23 @@ impl ProvingTask {
             }
         };
 
-        // Try local triple store first (same as GET command's local_query_phase)
-        let assertion = match self
-            .triple_store_assertions
-            .query_assertion(&parsed_ual, &token_ids, Visibility::Public, false)
-            .await
+        // Try local triple store first, fall back to network.
+        let assertion = match fetch_assertion_from_local(
+            &self.triple_store_assertions,
+            &self.assertion_validation,
+            &parsed_ual,
+            &token_ids,
+            Visibility::Public,
+        )
+        .await
         {
-            Ok(Some(result)) if result.assertion.has_data() => {
-                // Validate local data
-                let is_valid = self
-                    .assertion_validation
-                    .validate_response(&result.assertion, &parsed_ual, Visibility::Public)
-                    .await;
-
-                if is_valid {
-                    tracing::debug!("Found valid assertion locally");
-                    result.assertion
-                } else {
-                    tracing::debug!("Local validation failed, trying network");
-                    match self
-                        .fetch_from_network(&parsed_ual, token_ids.clone())
-                        .await
-                    {
-                        Some(assertion) => assertion,
-                        None => {
-                            tracing::warn!(ual = %ual, "Assertion not found on network");
-                            return PROVING_PERIOD;
-                        }
-                    }
-                }
+            Some(local) => {
+                tracing::debug!("Found valid assertion locally");
+                local
             }
-            Ok(_) => {
-                // Not found locally - try network
-                tracing::debug!(ual = %ual, "Assertion not found locally, trying network");
-                match self
-                    .fetch_from_network(&parsed_ual, token_ids.clone())
-                    .await
-                {
-                    Some(assertion) => assertion,
-                    None => {
-                        tracing::warn!(ual = %ual, "Assertion not found locally or on network");
-                        return PROVING_PERIOD;
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to query local triple store, trying network");
-                match self
-                    .fetch_from_network(&parsed_ual, token_ids.clone())
-                    .await
-                {
+            None => {
+                tracing::debug!(ual = %ual, "Assertion not found locally or invalid, trying network");
+                match self.fetch_from_network(&parsed_ual, token_ids.clone()).await {
                     Some(assertion) => assertion,
                     None => {
                         tracing::warn!(ual = %ual, "Assertion not found on network");
@@ -461,7 +395,10 @@ impl ProvingTask {
         };
 
         // 7. Calculate Merkle proof
-        let prepared_quads = match Self::prepare_quads_for_proof(&assertion.public) {
+        // Proving task receives triples already in single-triple-per-entry form from the
+        // triple store / network ACK, so no normalization step is needed here (unlike
+        // AssertionValidation which must handle multi-line network payloads).
+        let prepared_quads = match group_and_sort_public_triples(&assertion.public) {
             Ok(quads) => quads,
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to prepare quads for proof");

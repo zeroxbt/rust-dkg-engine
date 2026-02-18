@@ -181,37 +181,8 @@ impl AssertionValidation {
         // Network payloads can contain multiple triples per string entry.
         // Normalize to one triple per line before grouping/sorting so hashing
         // matches JS behavior and on-chain roots.
-        let normalized_public = Self::normalize_public_triples(public_triples);
-
-        // Separate private-hash triples from regular public triples
-        let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
-
-        let mut filtered_public: Vec<String> = Vec::new();
-        let mut private_hash_triples: Vec<String> = Vec::new();
-
-        for triple in normalized_public {
-            if triple.starts_with(&private_hash_prefix) {
-                private_hash_triples.push(triple);
-            } else {
-                filtered_public.push(triple);
-            }
-        }
-
-        // Group by subject, then append private-hash groups
-        let mut grouped = group_triples_by_subject(&filtered_public)?;
-        grouped.extend(group_triples_by_subject(&private_hash_triples)?);
-
-        // Sort each group and flatten
-        let sorted_flat: Vec<String> = grouped
-            .iter()
-            .flat_map(|group| {
-                let mut sorted_group: Vec<&str> = group.iter().map(String::as_str).collect();
-                sorted_group.sort_by(|a, b| compare_js_default_string_order(a, b));
-                sorted_group.into_iter().map(String::from)
-            })
-            .collect();
-
-        // Calculate merkle root
+        let normalized = Self::normalize_public_triples(public_triples);
+        let sorted_flat = group_and_sort_public_triples(&normalized)?;
         Ok(dkg_domain::calculate_merkle_root(&sorted_flat))
     }
 
@@ -313,6 +284,42 @@ impl AssertionValidation {
 
         Ok(true)
     }
+}
+
+/// Groups triples by subject, sorts each group by JS default string order, and flattens.
+///
+/// Private-hash triples (subjects prefixed with `PRIVATE_HASH_SUBJECT_PREFIX`) are separated
+/// from regular public triples, grouped independently, and appended at the end — matching the
+/// JS on-chain ordering.
+///
+/// This is the core sorting step shared by Merkle root calculation (validation) and Merkle proof
+/// preparation (proving). Callers are responsible for any normalization (e.g. splitting
+/// multi-line entries) before passing triples here.
+pub(crate) fn group_and_sort_public_triples(triples: &[String]) -> Result<Vec<String>, String> {
+    let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
+
+    let mut filtered_public: Vec<String> = Vec::new();
+    let mut private_hash_triples: Vec<String> = Vec::new();
+
+    for triple in triples {
+        if triple.starts_with(&private_hash_prefix) {
+            private_hash_triples.push(triple.clone());
+        } else {
+            filtered_public.push(triple.clone());
+        }
+    }
+
+    let mut grouped = group_triples_by_subject(&filtered_public)?;
+    grouped.extend(group_triples_by_subject(&private_hash_triples)?);
+
+    Ok(grouped
+        .iter()
+        .flat_map(|group| {
+            let mut sorted_group: Vec<&str> = group.iter().map(String::as_str).collect();
+            sorted_group.sort_by(|a, b| compare_js_default_string_order(a, b));
+            sorted_group.into_iter().map(String::from)
+        })
+        .collect())
 }
 
 /// Extract the merkle root value from a privateMerkleRoot triple.

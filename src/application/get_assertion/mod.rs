@@ -332,6 +332,36 @@ impl GetAssertionUseCase {
     }
 }
 
+/// Try to fetch an assertion from the local triple store, validating it before returning.
+///
+/// Returns `Some(assertion)` if a valid assertion was found locally, `None` if not found,
+/// empty, or validation failed. Callers should fall back to network fetch on `None`.
+pub(crate) async fn fetch_assertion_from_local(
+    triple_store_assertions: &TripleStoreAssertions,
+    assertion_validation: &AssertionValidation,
+    parsed_ual: &ParsedUal,
+    token_ids: &TokenIds,
+    visibility: Visibility,
+) -> Option<Assertion> {
+    let result = triple_store_assertions
+        .query_assertion(parsed_ual, token_ids, visibility, false)
+        .await
+        .ok()??;
+
+    if !result.assertion.has_data() {
+        return None;
+    }
+
+    if assertion_validation
+        .validate_response(&result.assertion, parsed_ual, visibility)
+        .await
+    {
+        Some(result.assertion)
+    } else {
+        None
+    }
+}
+
 pub(crate) async fn resolve_token_ids(
     blockchain_manager: &BlockchainManager,
     operation_id: Uuid,

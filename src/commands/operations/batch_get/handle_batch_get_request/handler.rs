@@ -9,14 +9,11 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    application::{TripleStoreAssertions, UAL_MAX_LIMIT},
     commands::HandleBatchGetRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    application::{TripleStoreAssertions}, node_state::PeerRegistry,
-    node_state::ResponseChannels,
+    node_state::{PeerRegistry, ResponseChannels},
 };
-
-/// Maximum number of UALs allowed in a single batch get request.
-pub(crate) const UAL_MAX_LIMIT: usize = 1000;
 
 /// Command data for handling incoming batch get requests.
 #[derive(Clone)]

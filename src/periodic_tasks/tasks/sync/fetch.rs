@@ -23,8 +23,7 @@ use tracing::instrument;
 
 use super::types::{FetchStats, FetchedKc, KcToSync};
 use crate::{
-    application::AssertionValidation,
-    commands::operations::batch_get::handle_batch_get_request::UAL_MAX_LIMIT,
+    application::{AssertionValidation, UAL_MAX_LIMIT},
     node_state::PeerRegistry,
 };
 
