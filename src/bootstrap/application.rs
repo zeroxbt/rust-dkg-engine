@@ -6,7 +6,7 @@ use crate::{
     },
     managers::Managers,
     operations::{GetOperation, PublishStoreOperation},
-    runtime_state::RuntimeState,
+    node_state::NodeState,
 };
 
 pub(crate) struct ApplicationDeps {
@@ -17,7 +17,7 @@ pub(crate) struct ApplicationDeps {
     pub(crate) get_assertion_use_case: Arc<GetAssertionUseCase>,
 }
 
-pub(crate) fn build_application(managers: &Managers, runtime_state: &RuntimeState) -> ApplicationDeps {
+pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> ApplicationDeps {
     let operation_repository = managers.repository.operation_repository();
 
     let publish_store_operation_tracking = Arc::new(OperationTracking::<PublishStoreOperation>::new(
@@ -41,7 +41,7 @@ pub(crate) fn build_application(managers: &Managers, runtime_state: &RuntimeStat
         Arc::clone(&triple_store_assertions),
         Arc::clone(&managers.network),
         Arc::clone(&assertion_validation),
-        Arc::clone(&runtime_state.peer_directory),
+        Arc::clone(&node_state.peer_registry),
     ));
 
     ApplicationDeps {

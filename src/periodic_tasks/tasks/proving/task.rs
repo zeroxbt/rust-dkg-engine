@@ -24,7 +24,7 @@ use crate::{
     },
     periodic_tasks::ProvingDeps,
     periodic_tasks::runner::run_with_shutdown,
-    runtime_state::PeerDirectory,
+    node_state::PeerRegistry,
 };
 
 pub(crate) struct ProvingTask {
@@ -33,7 +33,7 @@ pub(crate) struct ProvingTask {
     triple_store_assertions: Arc<TripleStoreAssertions>,
     network_manager: Arc<NetworkManager>,
     assertion_validation: Arc<AssertionValidation>,
-    peer_directory: Arc<PeerDirectory>,
+    peer_registry: Arc<PeerRegistry>,
 }
 
 impl ProvingTask {
@@ -44,14 +44,14 @@ impl ProvingTask {
             triple_store_assertions: deps.triple_store_assertions,
             network_manager: deps.network_manager,
             assertion_validation: deps.assertion_validation,
-            peer_directory: deps.peer_directory,
+            peer_registry: deps.peer_registry,
         }
     }
 
     /// Check if node is part of the shard for this blockchain.
     fn is_in_shard(&self, blockchain_id: &BlockchainId) -> bool {
         let peer_id = self.network_manager.peer_id();
-        self.peer_directory.is_peer_in_shard(blockchain_id, peer_id)
+        self.peer_registry.is_peer_in_shard(blockchain_id, peer_id)
     }
 
     /// Get the identity ID for this blockchain.
@@ -93,7 +93,7 @@ impl ProvingTask {
     /// Load shard peers for the given blockchain.
     fn load_shard_peers(&self, blockchain_id: &BlockchainId) -> Vec<PeerId> {
         let my_peer_id = self.network_manager.peer_id();
-        self.peer_directory
+        self.peer_registry
             .select_shard_peers(blockchain_id, STREAM_PROTOCOL_GET, Some(my_peer_id))
     }
 
@@ -121,7 +121,7 @@ impl ProvingTask {
         tracing::Span::current().record("peer_count", tracing::field::display(peers.len()));
 
         // Sort by latency (best performers first)
-        self.peer_directory.sort_by_latency(&mut peers);
+        self.peer_registry.sort_by_latency(&mut peers);
 
         tracing::debug!(
             total_peers = peers.len(),

@@ -15,7 +15,7 @@ use crate::{
     commands::SendPublishStoreRequestsDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
     operations::{PublishStoreOperation, PublishStoreOperationResult},
-    application::{OperationTracking as GenericOperationService}, runtime_state::PeerDirectory,
+    application::{OperationTracking as GenericOperationService}, node_state::PeerRegistry,
 };
 
 /// Maximum number of in-flight peer requests for this operation.
@@ -52,7 +52,7 @@ impl SendPublishStoreRequestsCommandData {
 
 pub(crate) struct SendPublishStoreRequestsCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
-    pub(super) peer_directory: Arc<PeerDirectory>,
+    pub(super) peer_registry: Arc<PeerRegistry>,
     pub(super) blockchain_manager: Arc<BlockchainManager>,
     pub(super) publish_store_operation_tracking:
         Arc<GenericOperationService<PublishStoreOperation>>,
@@ -63,7 +63,7 @@ impl SendPublishStoreRequestsCommandHandler {
     pub(crate) fn new(deps: SendPublishStoreRequestsDeps) -> Self {
         Self {
             network_manager: deps.network_manager,
-            peer_directory: deps.peer_directory,
+            peer_registry: deps.peer_registry,
             blockchain_manager: deps.blockchain_manager,
             publish_store_operation_tracking: deps.publish_store_operation_tracking,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
@@ -118,10 +118,10 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         let my_peer_id = *self.network_manager.peer_id();
 
         // Check if we are in the shard nodes (publisher node)
-        let self_in_shard = self.peer_directory.is_peer_in_shard(blockchain, &my_peer_id);
+        let self_in_shard = self.peer_registry.is_peer_in_shard(blockchain, &my_peer_id);
 
         // Get remote peers that support the store protocol, excluding self
-        let remote_peers = self.peer_directory.select_shard_peers(
+        let remote_peers = self.peer_registry.select_shard_peers(
             blockchain,
             STREAM_PROTOCOL_STORE,
             Some(&my_peer_id),

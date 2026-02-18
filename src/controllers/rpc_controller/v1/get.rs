@@ -10,7 +10,7 @@ use crate::{
         scheduler::CommandScheduler,
     },
     controllers::rpc_controller::GetRpcControllerDeps,
-    state::ResponseChannels,
+    node_state::ResponseChannels,
 };
 
 pub(crate) struct GetRpcController {

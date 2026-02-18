@@ -10,8 +10,8 @@ use uuid::Uuid;
 use crate::{
     commands::HandlePublishStoreRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    runtime_state::PeerDirectory,
-    state::ResponseChannels,
+    node_state::PeerRegistry,
+    node_state::ResponseChannels,
 };
 
 /// Command data for handling incoming publish store requests.
@@ -46,7 +46,7 @@ impl HandlePublishStoreRequestCommandData {
 pub(crate) struct HandlePublishStoreRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
-    peer_directory: Arc<PeerDirectory>,
+    peer_registry: Arc<PeerRegistry>,
     response_channels: Arc<ResponseChannels<StoreAck>>,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 }
@@ -56,7 +56,7 @@ impl HandlePublishStoreRequestCommandHandler {
         Self {
             network_manager: deps.network_manager,
             blockchain_manager: deps.blockchain_manager,
-            peer_directory: deps.peer_directory,
+            peer_registry: deps.peer_registry,
             response_channels: deps.store_response_channels,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
         }
@@ -148,7 +148,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
         // (The sender being in shard is not the relevant check here.)
         let local_peer_id = self.network_manager.peer_id();
         if self
-            .peer_directory
+            .peer_registry
             .is_peer_in_shard(blockchain, local_peer_id)
         {
             tracing::debug!(

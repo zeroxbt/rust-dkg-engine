@@ -3,7 +3,7 @@
 ## Goal
 Replace the old mixed `services` layer with explicit architecture layers:
 - `managers`: infrastructure adapters
-- `runtime_state`: in-memory runtime coordination state
+- `node_state`: in-memory runtime coordination state
 - `application`: use-cases/workflows
 - adapters (`commands`, `periodic_tasks`, `controllers`) kept thin
 
@@ -11,7 +11,7 @@ Behavior policy: preserve behavior first, optimize later.
 
 ## Decisions Locked
 - Rollout: incremental slices
-- Naming: `application` + `runtime_state`
+- Naming: `application` + `node_state`
 - Compatibility: preserve runtime behavior during migration
 - Canonical plan path: `docs/architecture/app-layer-refactor.md`
 
@@ -20,11 +20,13 @@ Behavior policy: preserve behavior first, optimize later.
 ### Completed in this checkpoint
 - Phase 1: module scaffolding created
   - Added `src/application/*`
-  - Added `src/runtime_state/*`
-- Phase 2: runtime state moved out of services
-  - `PeerService` moved/renamed to `PeerDirectory`
-  - `ResponseChannelsSet` moved/renamed to `ProtocolResponseChannels`
-  - Runtime startup/deps rewired to `runtime_state`
+  - Added `src/node_state/*`
+- Phase 2: node state moved out of services
+  - `PeerService` moved into `node_state::PeerRegistry` (wrapper removed)
+  - `ResponseChannelsSet` moved into `node_state` and flattened into explicit per-protocol fields on `NodeState`
+  - Legacy `src/state/*` internals (`PeerRegistry`, `ResponseChannels`) collapsed into `src/node_state/*`
+  - Peer event loop ownership moved to `runtime`; `PeerRegistry` only applies events/state transitions
+  - Runtime startup/deps rewired to `node_state`
 - Phase 3: application use-case extraction
   - `GetFetchService` -> `GetAssertionUseCase`
   - `OperationStatusService` -> `OperationTracking`
@@ -40,12 +42,12 @@ Behavior policy: preserve behavior first, optimize later.
   - Proving path uses strict mode
 - Phase 7 (major part): legacy `services` module removed
   - Deleted `src/services/*`
-  - Imports and wiring moved to `application` + `runtime_state`
+  - Imports and wiring moved to `application` + `node_state`
 - Compile validation
   - `cargo check --all-targets` passes
 - Targeted unit tests added
-  - `runtime_state::peer_directory` event loop/state tests
-  - `runtime_state::protocol_response_channels` initialization test
+  - `node_state::peer_registry` state + peer-event application tests
+  - `node_state::initialize` response-channel initialization test
   - `application::get_assertion::network_fetch` response-validation tests
 - Architecture guardrails deferred
   - We decided to remove the initial CI architecture guard for now.
@@ -76,14 +78,14 @@ Behavior policy: preserve behavior first, optimize later.
   - `config.rs`
   - `network_fetch.rs`
 
-### `src/runtime_state`
-- `peer_directory.rs`
-- `protocol_response_channels.rs`
+### `src/node_state`
+- `peer_registry.rs`
+- `response_channels.rs`
 - `mod.rs`
 
 ### Bootstrap wiring
 - `src/bootstrap/application.rs` constructs application use-cases explicitly.
-- `src/bootstrap/{commands,periodic,controllers,core}.rs` inject `application` + `runtime_state` directly.
+- `src/bootstrap/{commands,periodic,controllers,core}.rs` inject `application` + `node_state` directly.
 
 ## Next Implementation Slice (after this commit)
 1. Add token-range policy tests (strict vs compatibility behavior).

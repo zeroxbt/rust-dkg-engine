@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use dkg_network::{BatchGetAck, FinalityAck, GetAck, StoreAck};
 
-use crate::{commands::scheduler::CommandScheduler, state::ResponseChannels};
+use crate::{commands::scheduler::CommandScheduler, node_state::ResponseChannels};
 
 #[derive(Clone)]
 pub(crate) struct PublishStoreRpcControllerDeps {

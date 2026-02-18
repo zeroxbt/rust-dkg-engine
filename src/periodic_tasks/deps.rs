@@ -12,19 +12,19 @@ use crate::{
     application::{AssertionValidation, GetAssertionUseCase, OperationTracking, TripleStoreAssertions},
     commands::scheduler::CommandScheduler,
     operations::{GetOperation, PublishStoreOperation},
-    runtime_state::PeerDirectory,
-    state::ResponseChannels,
+    node_state::PeerRegistry,
+    node_state::ResponseChannels,
 };
 
 #[derive(Clone)]
 pub(crate) struct DialPeersDeps {
     pub(crate) network_manager: Arc<NetworkManager>,
-    pub(crate) peer_directory: Arc<PeerDirectory>,
+    pub(crate) peer_registry: Arc<PeerRegistry>,
 }
 
 #[derive(Clone)]
 pub(crate) struct SavePeerAddressesDeps {
-    pub(crate) peer_directory: Arc<PeerDirectory>,
+    pub(crate) peer_registry: Arc<PeerRegistry>,
     pub(crate) peer_address_store: Arc<PeerAddressStore>,
 }
 
@@ -50,7 +50,7 @@ pub(crate) struct CleanupDeps {
 #[derive(Clone)]
 pub(crate) struct ShardingTableCheckDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
-    pub(crate) peer_directory: Arc<PeerDirectory>,
+    pub(crate) peer_registry: Arc<PeerRegistry>,
 }
 
 #[derive(Clone)]
@@ -67,7 +67,7 @@ pub(crate) struct ProvingDeps {
     pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) assertion_validation: Arc<AssertionValidation>,
-    pub(crate) peer_directory: Arc<PeerDirectory>,
+    pub(crate) peer_registry: Arc<PeerRegistry>,
 }
 
 #[derive(Clone)]
@@ -77,7 +77,7 @@ pub(crate) struct SyncDeps {
     pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) assertion_validation: Arc<AssertionValidation>,
-    pub(crate) peer_directory: Arc<PeerDirectory>,
+    pub(crate) peer_registry: Arc<PeerRegistry>,
 }
 
 #[derive(Clone)]

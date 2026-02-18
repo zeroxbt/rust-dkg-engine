@@ -209,7 +209,7 @@ impl SyncTask {
             let blockchain_id = blockchain_id.clone();
             let network_manager = Arc::clone(&self.deps.network_manager);
             let assertion_validation = Arc::clone(&self.deps.assertion_validation);
-            let peer_directory = Arc::clone(&self.deps.peer_directory);
+            let peer_registry = Arc::clone(&self.deps.peer_registry);
             tokio::spawn(
                 async move {
                     fetch_task(
@@ -219,7 +219,7 @@ impl SyncTask {
                         blockchain_id,
                         network_manager,
                         assertion_validation,
-                        peer_directory,
+                        peer_registry,
                         fetch_tx,
                     )
                     .await
@@ -452,10 +452,10 @@ impl SyncTask {
         }
 
         // Check if we have identified enough shard peers before attempting sync
-        let total_shard_peers = self.deps.peer_directory.shard_peer_count(blockchain_id);
+        let total_shard_peers = self.deps.peer_registry.shard_peer_count(blockchain_id);
         let identified_peers = self
             .deps
-            .peer_directory
+            .peer_registry
             .identified_shard_peer_count(blockchain_id);
         let min_required = (total_shard_peers / 3).max(GET_NETWORK_CONCURRENT_PEERS);
 

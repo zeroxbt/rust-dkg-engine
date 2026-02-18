@@ -9,8 +9,8 @@ use uuid::Uuid;
 use crate::{
     commands::HandleGetRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    application::{TripleStoreAssertions}, runtime_state::PeerDirectory,
-    state::ResponseChannels,
+    application::{TripleStoreAssertions}, node_state::PeerRegistry,
+    node_state::ResponseChannels,
 };
 
 /// Command data for handling incoming get requests.
@@ -47,7 +47,7 @@ impl HandleGetRequestCommandData {
 pub(crate) struct HandleGetRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
     triple_store_assertions: Arc<TripleStoreAssertions>,
-    peer_directory: Arc<PeerDirectory>,
+    peer_registry: Arc<PeerRegistry>,
     response_channels: Arc<ResponseChannels<GetAck>>,
     pub(super) blockchain_manager: Arc<BlockchainManager>,
 }
@@ -57,7 +57,7 @@ impl HandleGetRequestCommandHandler {
         Self {
             network_manager: deps.network_manager,
             triple_store_assertions: deps.triple_store_assertions,
-            peer_directory: deps.peer_directory,
+            peer_registry: deps.peer_registry,
             response_channels: deps.get_response_channels,
             blockchain_manager: deps.blockchain_manager,
         }
@@ -163,7 +163,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
         let local_peer_id = self.network_manager.peer_id();
         let blockchain = &parsed_ual.blockchain;
         if !self
-            .peer_directory
+            .peer_registry
             .is_peer_in_shard(blockchain, local_peer_id)
         {
             tracing::warn!(

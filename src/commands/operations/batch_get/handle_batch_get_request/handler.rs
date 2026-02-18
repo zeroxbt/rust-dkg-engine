@@ -11,8 +11,8 @@ use uuid::Uuid;
 use crate::{
     commands::HandleBatchGetRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    application::{TripleStoreAssertions}, runtime_state::PeerDirectory,
-    state::ResponseChannels,
+    application::{TripleStoreAssertions}, node_state::PeerRegistry,
+    node_state::ResponseChannels,
 };
 
 /// Maximum number of UALs allowed in a single batch get request.
@@ -49,7 +49,7 @@ impl HandleBatchGetRequestCommandData {
 pub(crate) struct HandleBatchGetRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
     triple_store_assertions: Arc<TripleStoreAssertions>,
-    peer_directory: Arc<PeerDirectory>,
+    peer_registry: Arc<PeerRegistry>,
     response_channels: Arc<ResponseChannels<BatchGetAck>>,
 }
 
@@ -58,7 +58,7 @@ impl HandleBatchGetRequestCommandHandler {
         Self {
             network_manager: deps.network_manager,
             triple_store_assertions: deps.triple_store_assertions,
-            peer_directory: deps.peer_directory,
+            peer_registry: deps.peer_registry,
             response_channels: deps.batch_get_response_channels,
         }
     }
@@ -178,7 +178,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         let local_peer_id = self.network_manager.peer_id();
         for blockchain in &blockchains {
             if !self
-                .peer_directory
+                .peer_registry
                 .is_peer_in_shard(blockchain, local_peer_id)
             {
                 tracing::warn!(

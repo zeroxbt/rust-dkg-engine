@@ -25,7 +25,7 @@ use super::types::{FetchStats, FetchedKc, KcToSync};
 use crate::{
     application::AssertionValidation,
     commands::operations::batch_get::handle_batch_get_request::UAL_MAX_LIMIT,
-    runtime_state::PeerDirectory,
+    node_state::PeerRegistry,
 };
 
 /// Maximum number of in-flight peer requests for this operation.
@@ -39,7 +39,7 @@ pub(crate) const CONCURRENT_PEERS: usize = 3;
         rx,
         network_manager,
         assertion_validation,
-        peer_directory,
+        peer_registry,
         tx
     ),
     fields(blockchain_id = %blockchain_id)
@@ -51,7 +51,7 @@ pub(crate) async fn fetch_task(
     blockchain_id: BlockchainId,
     network_manager: Arc<NetworkManager>,
     assertion_validation: Arc<AssertionValidation>,
-    peer_directory: Arc<PeerDirectory>,
+    peer_registry: Arc<PeerRegistry>,
     tx: mpsc::Sender<Vec<FetchedKc>>,
 ) -> FetchStats {
     let task_start = Instant::now();
@@ -62,10 +62,10 @@ pub(crate) async fn fetch_task(
     let mut total_received = 0usize;
 
     // Get shard peers once at the start, sorted by performance score
-    let (mut peers, peer_stats) = get_shard_peers(&blockchain_id, &network_manager, &peer_directory);
+    let (mut peers, peer_stats) = get_shard_peers(&blockchain_id, &network_manager, &peer_registry);
 
     if peers.is_empty() {
-        let identified = peer_directory.identified_shard_peer_count(&blockchain_id);
+        let identified = peer_registry.identified_shard_peer_count(&blockchain_id);
         tracing::warn!(
             blockchain_id = %blockchain_id,
             shard_members = peer_stats.shard_members,
@@ -80,14 +80,14 @@ pub(crate) async fn fetch_task(
     }
 
     // Sort peers by latency (fastest first)
-    peer_directory.sort_by_latency(&mut peers);
+    peer_registry.sort_by_latency(&mut peers);
     if tracing::enabled!(tracing::Level::DEBUG) {
         const MAX_PEERS_TO_LOG: usize = 20;
         let peer_latencies: Vec<String> = peers
             .iter()
             .take(MAX_PEERS_TO_LOG)
             .map(|peer| {
-                let latency = peer_directory.get_average_latency(peer);
+                let latency = peer_registry.get_average_latency(peer);
                 format!("{peer}:{latency}ms")
             })
             .collect();
@@ -104,7 +104,7 @@ pub(crate) async fn fetch_task(
 
     let min_required_peers = 1;
     if peers.len() < min_required_peers {
-        let identified = peer_directory.identified_shard_peer_count(&blockchain_id);
+        let identified = peer_registry.identified_shard_peer_count(&blockchain_id);
         tracing::warn!(
             blockchain_id = %blockchain_id,
             found = peers.len(),
@@ -249,16 +249,16 @@ fn estimate_asset_count(token_ids: &TokenIds) -> u64 {
 fn get_shard_peers(
     blockchain_id: &BlockchainId,
     network_manager: &NetworkManager,
-    peer_directory: &PeerDirectory,
+    peer_registry: &PeerRegistry,
 ) -> (std::vec::Vec<dkg_network::PeerId>, PeerSelectionStats) {
     let my_peer_id = network_manager.peer_id();
 
     // Get shard peers that support BatchGetProtocol, excluding self
     let peers =
-        peer_directory.select_shard_peers(blockchain_id, STREAM_PROTOCOL_BATCH_GET, Some(my_peer_id));
+        peer_registry.select_shard_peers(blockchain_id, STREAM_PROTOCOL_BATCH_GET, Some(my_peer_id));
 
     // Stats: total in shard vs usable (have identify + support protocol)
-    let shard_peer_count = peer_directory.shard_peer_count(blockchain_id);
+    let shard_peer_count = peer_registry.shard_peer_count(blockchain_id);
 
     let stats = PeerSelectionStats {
         shard_members: shard_peer_count,

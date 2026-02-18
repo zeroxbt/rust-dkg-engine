@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{AssertionValidation, TripleStoreAssertions},
-    runtime_state::PeerDirectory,
+    node_state::PeerRegistry,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -49,7 +49,7 @@ pub(crate) struct GetAssertionUseCase {
     triple_store_assertions: Arc<TripleStoreAssertions>,
     network_manager: Arc<NetworkManager>,
     assertion_validation: Arc<AssertionValidation>,
-    peer_directory: Arc<PeerDirectory>,
+    peer_registry: Arc<PeerRegistry>,
 }
 
 impl GetAssertionUseCase {
@@ -58,14 +58,14 @@ impl GetAssertionUseCase {
         triple_store_assertions: Arc<TripleStoreAssertions>,
         network_manager: Arc<NetworkManager>,
         assertion_validation: Arc<AssertionValidation>,
-        peer_directory: Arc<PeerDirectory>,
+        peer_registry: Arc<PeerRegistry>,
     ) -> Self {
         Self {
             blockchain_manager,
             triple_store_assertions,
             network_manager,
             assertion_validation,
-            peer_directory,
+            peer_registry,
         }
     }
 
@@ -202,7 +202,7 @@ impl GetAssertionUseCase {
             ));
         }
 
-        self.peer_directory.sort_by_latency(&mut peers);
+        self.peer_registry.sort_by_latency(&mut peers);
 
         let get_request_data = GetRequestData::new(
             parsed_ual.blockchain.clone(),
@@ -245,7 +245,7 @@ impl GetAssertionUseCase {
         paranet_ual: Option<&str>,
     ) -> Result<Vec<PeerId>, String> {
         let my_peer_id = self.network_manager.peer_id();
-        let all_shard_peers = self.peer_directory.select_shard_peers(
+        let all_shard_peers = self.peer_registry.select_shard_peers(
             &parsed_ual.blockchain,
             STREAM_PROTOCOL_GET,
             Some(my_peer_id),

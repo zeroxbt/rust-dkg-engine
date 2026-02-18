@@ -11,7 +11,7 @@ use crate::{
         registry::Command, scheduler::CommandScheduler,
     },
     controllers::rpc_controller::PublishStoreRpcControllerDeps,
-    state::ResponseChannels,
+    node_state::ResponseChannels,
 };
 
 pub(crate) struct PublishStoreRpcController {

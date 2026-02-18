@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     commands::HandlePublishFinalityRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    state::ResponseChannels,
+    node_state::ResponseChannels,
 };
 
 /// Command data for handling incoming publish finality requests from storage nodes.

@@ -14,7 +14,7 @@ use crate::{
     periodic_tasks::CleanupDeps,
     periodic_tasks::runner::run_with_shutdown,
     application::OperationTracking,
-    state::ResponseChannels,
+    node_state::ResponseChannels,
 };
 
 pub(crate) struct CleanupTask {

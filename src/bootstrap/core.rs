@@ -9,13 +9,13 @@ use crate::{
     commands::{executor::CommandExecutionRequest, scheduler::CommandScheduler},
     config::{self, AppPaths, Config},
     managers::{self, Managers},
-    runtime_state::{self, RuntimeState},
+    node_state::{self, NodeState},
 };
 
 pub(crate) struct CoreBootstrap {
     pub(crate) config: Arc<Config>,
     pub(crate) managers: Managers,
-    pub(crate) runtime_state: RuntimeState,
+    pub(crate) node_state: NodeState,
     pub(crate) application: ApplicationDeps,
     pub(crate) command_scheduler: CommandScheduler,
     pub(crate) command_rx: mpsc::Receiver<CommandExecutionRequest>,
@@ -36,8 +36,8 @@ pub(crate) async fn build_core() -> CoreBootstrap {
     let (managers, network_event_loop) =
         managers::initialize(&config.managers, &paths, network_key).await;
 
-    let runtime_state = runtime_state::initialize();
-    let application = build_application(&managers, &runtime_state);
+    let node_state = node_state::initialize();
+    let application = build_application(&managers, &node_state);
     let blockchain_ids = managers
         .blockchain
         .get_blockchain_ids()
@@ -48,7 +48,7 @@ pub(crate) async fn build_core() -> CoreBootstrap {
     CoreBootstrap {
         config,
         managers,
-        runtime_state,
+        node_state,
         application,
         command_scheduler,
         command_rx,

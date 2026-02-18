@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 use dkg_blockchain::BlockchainId;
 
-use crate::{commands::scheduler::CommandScheduler, periodic_tasks, runtime_state::PeerDirectory};
+use crate::{commands::scheduler::CommandScheduler, periodic_tasks, node_state::PeerRegistry};
 
 pub(crate) struct RuntimeDeps {
     pub(crate) command_scheduler: CommandScheduler,
     pub(crate) network_manager: Arc<dkg_network::NetworkManager>,
-    pub(crate) peer_directory: Arc<PeerDirectory>,
+    pub(crate) peer_registry: Arc<PeerRegistry>,
     pub(crate) periodic_tasks_deps: Arc<periodic_tasks::PeriodicTasksDeps>,
     pub(crate) blockchain_ids: Vec<BlockchainId>,
 }

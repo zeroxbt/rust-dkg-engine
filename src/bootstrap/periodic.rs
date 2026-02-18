@@ -8,12 +8,12 @@ use crate::{
         self, BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
         ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps, SyncDeps,
     },
-    runtime_state::RuntimeState,
+    node_state::NodeState,
 };
 
 pub(crate) fn build_periodic_tasks_deps(
     managers: &Managers,
-    runtime_state: &RuntimeState,
+    node_state: &NodeState,
     application: &ApplicationDeps,
     command_scheduler: &CommandScheduler,
 ) -> Arc<periodic_tasks::PeriodicTasksDeps> {
@@ -29,7 +29,7 @@ pub(crate) fn build_periodic_tasks_deps(
     Arc::new(periodic_tasks::PeriodicTasksDeps {
         dial_peers: DialPeersDeps {
             network_manager: Arc::clone(&managers.network),
-            peer_directory: Arc::clone(&runtime_state.peer_directory),
+            peer_registry: Arc::clone(&node_state.peer_registry),
         },
         cleanup: CleanupDeps {
             operation_repository,
@@ -38,18 +38,18 @@ pub(crate) fn build_periodic_tasks_deps(
             publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
             publish_operation_tracking: Arc::clone(&application.publish_store_operation_tracking),
             get_operation_tracking: Arc::clone(&application.get_operation_tracking),
-            store_response_channels: Arc::clone(&runtime_state.response_channels.store),
-            get_response_channels: Arc::clone(&runtime_state.response_channels.get),
-            finality_response_channels: Arc::clone(&runtime_state.response_channels.finality),
-            batch_get_response_channels: Arc::clone(&runtime_state.response_channels.batch_get),
+            store_response_channels: Arc::clone(&node_state.store_response_channels),
+            get_response_channels: Arc::clone(&node_state.get_response_channels),
+            finality_response_channels: Arc::clone(&node_state.finality_response_channels),
+            batch_get_response_channels: Arc::clone(&node_state.batch_get_response_channels),
         },
         save_peer_addresses: SavePeerAddressesDeps {
-            peer_directory: Arc::clone(&runtime_state.peer_directory),
+            peer_registry: Arc::clone(&node_state.peer_registry),
             peer_address_store: Arc::clone(&peer_address_store),
         },
         sharding_table_check: ShardingTableCheckDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
-            peer_directory: Arc::clone(&runtime_state.peer_directory),
+            peer_registry: Arc::clone(&node_state.peer_registry),
         },
         blockchain_event_listener: BlockchainEventListenerDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
@@ -65,7 +65,7 @@ pub(crate) fn build_periodic_tasks_deps(
             triple_store_assertions: Arc::clone(&application.triple_store_assertions),
             network_manager: Arc::clone(&managers.network),
             assertion_validation: Arc::clone(&application.assertion_validation),
-            peer_directory: Arc::clone(&runtime_state.peer_directory),
+            peer_registry: Arc::clone(&node_state.peer_registry),
         },
         sync: SyncDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
@@ -73,7 +73,7 @@ pub(crate) fn build_periodic_tasks_deps(
             triple_store_assertions: Arc::clone(&application.triple_store_assertions),
             network_manager: Arc::clone(&managers.network),
             assertion_validation: Arc::clone(&application.assertion_validation),
-            peer_directory: Arc::clone(&runtime_state.peer_directory),
+            peer_registry: Arc::clone(&node_state.peer_registry),
         },
         paranet_sync: ParanetSyncDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),

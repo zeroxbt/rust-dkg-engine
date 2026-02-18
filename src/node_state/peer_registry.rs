@@ -5,7 +5,10 @@ use std::{
 
 use dashmap::DashMap;
 use dkg_domain::BlockchainId;
-use dkg_network::{IdentifyInfo, Multiaddr, PeerId, StreamProtocol};
+use dkg_network::{
+    IdentifyInfo, Multiaddr, PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_GET, PeerEvent, PeerId,
+    RequestOutcomeKind, StreamProtocol,
+};
 
 // Performance tracking constants
 const HISTORY_SIZE: usize = 20;
@@ -322,6 +325,44 @@ impl PeerRegistry {
         })
     }
 
+    pub(crate) fn discovery_backoff(&self, peer_id: &PeerId) -> Option<Duration> {
+        self.get_discovery_backoff(peer_id)
+    }
+
+    pub(crate) fn apply_peer_event(&self, event: PeerEvent) {
+        match event {
+            PeerEvent::IdentifyReceived { peer_id, info } => {
+                self.update_identify(peer_id, info);
+            }
+            PeerEvent::RequestOutcome(outcome) => match outcome.protocol {
+                protocol if protocol == PROTOCOL_NAME_BATCH_GET => match outcome.outcome {
+                    RequestOutcomeKind::Success => {
+                        self.record_latency(outcome.peer_id, outcome.elapsed);
+                    }
+                    RequestOutcomeKind::ResponseError | RequestOutcomeKind::Failure => {
+                        self.record_request_failure(outcome.peer_id);
+                    }
+                },
+                protocol if protocol == PROTOCOL_NAME_GET => {
+                    if matches!(outcome.outcome, RequestOutcomeKind::Failure) {
+                        self.record_request_failure(outcome.peer_id);
+                    }
+                }
+                _ => {}
+            },
+            PeerEvent::KadLookup { target, found } => {
+                if found {
+                    self.record_discovery_success(target);
+                } else {
+                    self.record_discovery_failure(target);
+                }
+            }
+            PeerEvent::ConnectionEstablished { peer_id } => {
+                self.record_discovery_success(peer_id);
+            }
+        }
+    }
+
     /// Calculate backoff delay based on failure count.
     /// Uses exponential backoff: base_delay * 2^(failures-1), capped at max_delay.
     fn calculate_backoff(&self, failure_count: u32) -> Duration {
@@ -343,6 +384,8 @@ impl Default for PeerRegistry {
 
 #[cfg(test)]
 mod tests {
+    use dkg_network::{PROTOCOL_NAME_BATCH_GET, PeerEvent, RequestOutcome, RequestOutcomeKind};
+
     use super::*;
 
     const TEST_BLOCKCHAIN: &str = "test:chain";
@@ -491,5 +534,52 @@ mod tests {
         assert_eq!(registry.calculate_backoff(5), Duration::from_secs(960));
         // Should cap at max
         assert_eq!(registry.calculate_backoff(10), Duration::from_secs(960));
+    }
+
+    #[test]
+    fn test_apply_peer_event_updates_identify() {
+        let registry = PeerRegistry::new();
+        let blockchain = BlockchainId::from(TEST_BLOCKCHAIN.to_string());
+        let peer = PeerId::random();
+        register_peer(&registry, peer);
+
+        registry.apply_peer_event(PeerEvent::IdentifyReceived {
+            peer_id: peer,
+            info: IdentifyInfo {
+                protocols: vec![StreamProtocol::new("/my-protocol/1.0.0")],
+                listen_addrs: vec!["/ip4/127.0.0.1/tcp/4100".parse().expect("valid addr")],
+            },
+        });
+
+        assert!(registry.peer_supports_protocol(&peer, "/my-protocol/1.0.0"));
+        assert_eq!(registry.identified_shard_peer_count(&blockchain), 1);
+    }
+
+    #[test]
+    fn test_apply_peer_event_updates_latency_and_discovery() {
+        let registry = PeerRegistry::new();
+        let blockchain = BlockchainId::from(TEST_BLOCKCHAIN.to_string());
+        let peer = PeerId::random();
+        register_peer(&registry, peer);
+        assert!(registry.is_peer_in_shard(&blockchain, &peer));
+
+        registry.apply_peer_event(PeerEvent::RequestOutcome(RequestOutcome {
+            peer_id: peer,
+            protocol: PROTOCOL_NAME_BATCH_GET,
+            outcome: RequestOutcomeKind::Success,
+            elapsed: Duration::from_millis(25),
+        }));
+        assert_eq!(registry.get_average_latency(&peer), 25);
+
+        registry.apply_peer_event(PeerEvent::KadLookup {
+            target: peer,
+            found: false,
+        });
+        assert!(!registry.should_attempt_discovery(&peer));
+        assert!(registry.discovery_backoff(&peer).is_some());
+
+        registry.apply_peer_event(PeerEvent::ConnectionEstablished { peer_id: peer });
+        assert!(registry.should_attempt_discovery(&peer));
+        assert!(registry.discovery_backoff(&peer).is_none());
     }
 }

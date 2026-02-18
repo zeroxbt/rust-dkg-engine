@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     commands::{executor::CommandExecutionRequest, scheduler::CommandScheduler},
-    state::ResponseChannels,
+    node_state::ResponseChannels,
 };
 
 /// Store the response channel and try to schedule command execution.

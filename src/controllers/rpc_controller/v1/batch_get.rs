@@ -10,7 +10,7 @@ use crate::{
         registry::Command, scheduler::CommandScheduler,
     },
     controllers::rpc_controller::BatchGetRpcControllerDeps,
-    state::ResponseChannels,
+    node_state::ResponseChannels,
 };
 
 pub(crate) struct BatchGetRpcController {

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use dkg_network::NetworkEventLoop;
-use tokio::{select, signal::unix::SignalKind};
+use dkg_network::{NetworkEventLoop, PeerEvent};
+use tokio::{select, signal::unix::SignalKind, sync::broadcast};
 use tokio_util::sync::CancellationToken;
 
 use super::{RuntimeDeps, shutdown};
@@ -15,6 +15,7 @@ use crate::{
         cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, proving::ProvingConfig,
         sync::SyncConfig,
     },
+    node_state::PeerRegistry,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -31,10 +32,12 @@ pub(crate) async fn run(
 ) {
     let command_scheduler = deps.command_scheduler.clone();
     let network_manager = Arc::clone(&deps.network_manager);
-    // Spawn peer directory loop for network observations.
+    // Spawn peer registry updater loop for network observations.
     let peer_event_rx = deps.network_manager.subscribe_peer_events();
-    let peer_directory = Arc::clone(&deps.peer_directory);
-    let _peer_registry_task = peer_directory.start(peer_event_rx);
+    let peer_registry_for_events = Arc::clone(&deps.peer_registry);
+    let _peer_registry_task = tokio::task::spawn(async move {
+        run_peer_registry_updater(peer_registry_for_events, peer_event_rx).await;
+    });
 
     // Create HTTP shutdown channel (oneshot for single signal)
     let (http_shutdown_tx, http_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -93,4 +96,17 @@ pub(crate) async fn run(
         handle_http_events_task,
     })
     .await;
+}
+
+async fn run_peer_registry_updater(
+    peer_registry: Arc<PeerRegistry>,
+    mut peer_event_rx: broadcast::Receiver<PeerEvent>,
+) {
+    loop {
+        match peer_event_rx.recv().await {
+            Ok(event) => peer_registry.apply_peer_event(event),
+            Err(broadcast::error::RecvError::Closed) => break,
+            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+        }
+    }
 }
