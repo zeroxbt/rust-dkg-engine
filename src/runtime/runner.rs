@@ -34,10 +34,10 @@ pub(crate) async fn run(
     let network_manager = Arc::clone(&deps.network_manager);
     // Spawn peer registry updater loop for network observations.
     let peer_event_rx = deps.network_manager.subscribe_peer_events();
-    let peer_registry_for_events = Arc::clone(&deps.peer_registry);
-    let _peer_registry_task = tokio::task::spawn(async move {
-        run_peer_registry_updater(peer_registry_for_events, peer_event_rx).await;
-    });
+    let peer_registry_task = tokio::task::spawn(run_peer_registry_updater(
+        Arc::clone(&deps.peer_registry),
+        peer_event_rx,
+    ));
 
     // Create HTTP shutdown channel (oneshot for single signal)
     let (http_shutdown_tx, http_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -92,6 +92,7 @@ pub(crate) async fn run(
         periodic_handle,
         execute_commands_task,
         network_event_loop_task,
+        peer_registry_task,
         http_shutdown_tx,
         handle_http_events_task,
     })
@@ -106,7 +107,9 @@ async fn run_peer_registry_updater(
         match peer_event_rx.recv().await {
             Ok(event) => peer_registry.apply_peer_event(event),
             Err(broadcast::error::RecvError::Closed) => break,
-            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                tracing::warn!(skipped, "Peer registry updater lagged, events were dropped");
+            }
         }
     }
 }
