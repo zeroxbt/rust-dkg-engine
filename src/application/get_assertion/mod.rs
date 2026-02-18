@@ -342,14 +342,24 @@ pub(crate) async fn resolve_token_ids(
         return Ok(TokenIds::single(token_id as u64));
     }
 
-    match blockchain_manager
+    let chain_result = blockchain_manager
         .get_knowledge_assets_range(
             &parsed_ual.blockchain,
             parsed_ual.contract,
             parsed_ual.knowledge_collection_id,
         )
-        .await
-    {
+        .await;
+
+    resolve_token_ids_from_chain_result(operation_id, parsed_ual, policy, chain_result)
+}
+
+fn resolve_token_ids_from_chain_result<E: std::fmt::Display>(
+    operation_id: Uuid,
+    parsed_ual: &ParsedUal,
+    policy: TokenRangeResolutionPolicy,
+    chain_result: Result<Option<(u64, u64, Vec<u64>)>, E>,
+) -> Result<TokenIds, String> {
+    match chain_result {
         Ok(Some((start, end, burned))) => {
             tracing::debug!(
                 operation_id = %operation_id,
@@ -380,5 +390,82 @@ pub(crate) async fn resolve_token_ids(
                 Ok(TokenIds::single(1))
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use dkg_domain::parse_ual;
+
+    use super::*;
+
+    fn test_kc_ual() -> ParsedUal {
+        parse_ual("did:dkg:hardhat1:31337/0x6C1AeF3601cd0e04cD5e8E70e7ea2c11D2eF60f4/2")
+            .expect("valid test UAL")
+    }
+
+    #[test]
+    fn token_policy_strict_returns_error() {
+        let parsed = test_kc_ual();
+        let result = resolve_token_ids_from_chain_result(
+            Uuid::nil(),
+            &parsed,
+            TokenRangeResolutionPolicy::Strict,
+            Err("rpc failure"),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn token_policy_compatible_falls_back_to_single_token() {
+        let parsed = test_kc_ual();
+        let result = resolve_token_ids_from_chain_result(
+            Uuid::nil(),
+            &parsed,
+            TokenRangeResolutionPolicy::CompatibleSingleTokenFallback,
+            Err("rpc failure"),
+        )
+        .expect("compatible policy should fall back");
+
+        assert_eq!(result.start_token_id(), 1);
+        assert_eq!(result.end_token_id(), 1);
+        assert!(result.burned().is_empty());
+    }
+
+    #[test]
+    fn token_ids_convert_from_global_range() {
+        let parsed = test_kc_ual();
+        let result = resolve_token_ids_from_chain_result(
+            Uuid::nil(),
+            &parsed,
+            TokenRangeResolutionPolicy::Strict,
+            Ok::<Option<(u64, u64, Vec<u64>)>, &str>(Some((
+                1_000_001,
+                1_000_004,
+                vec![1_000_002],
+            ))),
+        )
+        .expect("on-chain range should resolve");
+
+        assert_eq!(result.start_token_id(), 1);
+        assert_eq!(result.end_token_id(), 4);
+        assert_eq!(result.burned(), &[2]);
+    }
+
+    #[test]
+    fn token_ids_none_from_chain_defaults_to_single_token() {
+        let parsed = test_kc_ual();
+        let result = resolve_token_ids_from_chain_result(
+            Uuid::nil(),
+            &parsed,
+            TokenRangeResolutionPolicy::Strict,
+            Ok::<Option<(u64, u64, Vec<u64>)>, &str>(None),
+        )
+        .expect("none from chain should default");
+
+        assert_eq!(result.start_token_id(), 1);
+        assert_eq!(result.end_token_id(), 1);
+        assert!(result.burned().is_empty());
     }
 }

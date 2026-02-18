@@ -156,3 +156,118 @@ impl Default for PeerDirectory {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{sync::Arc, time::Duration};
+
+    use dkg_network::{
+        IdentifyInfo, PROTOCOL_NAME_BATCH_GET, PeerEvent, RequestOutcome,
+        RequestOutcomeKind, StreamProtocol,
+        STREAM_PROTOCOL_GET,
+    };
+    use tokio::sync::broadcast;
+
+    use super::*;
+
+    async fn wait_until<F>(mut condition: F)
+    where
+        F: FnMut() -> bool,
+    {
+        for _ in 0..50 {
+            if condition() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("condition not met within timeout");
+    }
+
+    #[tokio::test]
+    async fn start_loop_updates_protocol_support_and_addresses() {
+        let peer_directory = Arc::new(PeerDirectory::new());
+        let blockchain_id = BlockchainId::from("hardhat1:31337".to_string());
+        let peer = PeerId::random();
+
+        peer_directory.set_shard_membership(&blockchain_id, &[peer]);
+        assert!(peer_directory.is_peer_in_shard(&blockchain_id, &peer));
+
+        let (peer_tx, peer_rx) = broadcast::channel(16);
+        let task = Arc::clone(&peer_directory).start(peer_rx);
+
+        let identify = IdentifyInfo {
+            protocols: vec![StreamProtocol::new(STREAM_PROTOCOL_GET)],
+            listen_addrs: vec!["/ip4/127.0.0.1/tcp/4100".parse().expect("valid addr")],
+        };
+        peer_tx
+            .send(PeerEvent::IdentifyReceived {
+                peer_id: peer,
+                info: identify,
+            })
+            .expect("send identify");
+
+        wait_until(|| peer_directory.peer_supports_protocol(&peer, STREAM_PROTOCOL_GET)).await;
+
+        let addresses = peer_directory.get_all_addresses();
+        assert!(addresses.contains_key(&peer));
+
+        drop(peer_tx);
+        task.await.expect("peer loop task");
+    }
+
+    #[tokio::test]
+    async fn event_loop_tracks_latency_and_discovery_backoff() {
+        let peer_directory = Arc::new(PeerDirectory::new());
+        let blockchain_id = BlockchainId::from("hardhat1:31337".to_string());
+        let fast_peer = PeerId::random();
+        let slow_peer = PeerId::random();
+
+        peer_directory.set_shard_membership(&blockchain_id, &[fast_peer, slow_peer]);
+
+        let (peer_tx, peer_rx) = broadcast::channel(16);
+        let task = Arc::clone(&peer_directory).start(peer_rx);
+
+        peer_tx
+            .send(PeerEvent::RequestOutcome(RequestOutcome {
+                peer_id: fast_peer,
+                protocol: PROTOCOL_NAME_BATCH_GET,
+                outcome: RequestOutcomeKind::Success,
+                elapsed: Duration::from_millis(10),
+            }))
+            .expect("send fast outcome");
+
+        peer_tx
+            .send(PeerEvent::RequestOutcome(RequestOutcome {
+                peer_id: slow_peer,
+                protocol: PROTOCOL_NAME_BATCH_GET,
+                outcome: RequestOutcomeKind::Failure,
+                elapsed: Duration::from_millis(5),
+            }))
+            .expect("send slow outcome");
+
+        wait_until(|| peer_directory.get_average_latency(&fast_peer) < peer_directory.get_average_latency(&slow_peer)).await;
+
+        let mut peers = vec![slow_peer, fast_peer];
+        peer_directory.sort_by_latency(&mut peers);
+        assert_eq!(peers[0], fast_peer);
+
+        peer_tx
+            .send(PeerEvent::KadLookup {
+                target: fast_peer,
+                found: false,
+            })
+            .expect("send failed lookup");
+
+        wait_until(|| !peer_directory.should_attempt_discovery(&fast_peer)).await;
+        assert!(peer_directory.discovery_backoff(&fast_peer).is_some());
+
+        peer_tx
+            .send(PeerEvent::ConnectionEstablished { peer_id: fast_peer })
+            .expect("send connection established");
+        wait_until(|| peer_directory.should_attempt_discovery(&fast_peer)).await;
+        assert!(peer_directory.discovery_backoff(&fast_peer).is_none());
+
+        drop(peer_tx);
+        task.await.expect("peer loop task");
+    }
+}

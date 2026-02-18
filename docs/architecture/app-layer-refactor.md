@@ -43,6 +43,13 @@ Behavior policy: preserve behavior first, optimize later.
   - Imports and wiring moved to `application` + `runtime_state`
 - Compile validation
   - `cargo check --all-targets` passes
+- Targeted unit tests added
+  - `runtime_state::peer_directory` event loop/state tests
+  - `runtime_state::protocol_response_channels` initialization test
+  - `application::get_assertion::network_fetch` response-validation tests
+- Architecture guardrails deferred
+  - We decided to remove the initial CI architecture guard for now.
+  - Rule enforcement remains documentation/process-based until reintroduced.
 
 ### In progress / remaining
 - Phase 6: adapter thinning
@@ -50,14 +57,12 @@ Behavior policy: preserve behavior first, optimize later.
 - Phase 8: final naming cleanup
   - There are still some internal variable names/comments that can be normalized for clarity.
 - Phase 9: test hardening
-  - Need targeted unit/regression tests for:
-    - `application/get_assertion`
-    - `runtime_state/peer_directory`
-    - `runtime_state/protocol_response_channels`
+  - Remaining unit/regression tests:
     - strict vs compatibility token range behavior
     - proving/get shared fetch parity
+    - additional `application/get_assertion` integration-path tests
 - Phase 10: architecture guardrails
-  - Add CI checks preventing reintroduction of `services` and adapter->application rule violations
+  - Optional: reintroduce CI guard checks if architectural drift becomes a recurring issue
   - Add contributor guidance/checklist entries
 
 ## Current Architecture Snapshot
@@ -81,10 +86,10 @@ Behavior policy: preserve behavior first, optimize later.
 - `src/bootstrap/{commands,periodic,controllers,core}.rs` inject `application` + `runtime_state` directly.
 
 ## Next Implementation Slice (after this commit)
-1. Add targeted tests for `application/get_assertion` and token policy behavior.
-2. Add targeted tests for `runtime_state` (`peer_directory`, `protocol_response_channels`).
+1. Add token-range policy tests (strict vs compatibility behavior).
+2. Add proving/get parity tests for shared fetch validation flow.
 3. Refine adapter thinness in heavy handlers/tasks (follow-up cleanup pass).
-4. Add CI guard script + workflow checks for architectural boundaries.
+4. Optional: add/expand architecture guard rules when team/process needs it.
 5. Update contributor docs/checklist.
 
 ## Risks and Mitigations
