@@ -5,10 +5,10 @@ use dkg_domain::Assertion;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{KeyValueStoreError, KeyValueStoreManager, Table};
+use crate::{KeyValueStoreError, Table};
 
 /// Table name for publish temporary datasets.
-const TABLE_NAME: &str = "publish_tmp_dataset";
+pub(crate) const TABLE_NAME: &str = "publish_tmp_dataset";
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PublishTmpDataset {
@@ -51,14 +51,14 @@ fn default_stored_at() -> i64 {
 }
 
 /// Store for publish temporary datasets awaiting finality confirmation.
+#[derive(Clone)]
 pub struct PublishTmpDatasetStore {
     table: Table<PublishTmpDataset>,
 }
 
 impl PublishTmpDatasetStore {
-    pub fn new(kv_store_manager: &KeyValueStoreManager) -> Result<Self, KeyValueStoreError> {
-        let table = kv_store_manager.table(TABLE_NAME)?;
-        Ok(Self { table })
+    pub(crate) fn from_table(table: Table<PublishTmpDataset>) -> Self {
+        Self { table }
     }
 
     pub async fn store(

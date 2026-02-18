@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
-use dkg_key_value_store::PublishTmpDatasetStore;
+use dkg_key_value_store::{PeerAddressStore, PublishTmpDatasetStore};
 use dkg_network::{BatchGetAck, FinalityAck, GetAck, NetworkManager, StoreAck};
 use dkg_repository::RepositoryManager;
 
@@ -9,8 +9,8 @@ use crate::{
     commands::scheduler::CommandScheduler,
     operations::{GetOperation, PublishStoreOperation},
     services::{
-        AssertionValidationService, GetFetchService, OperationStatusService, PeerAddressStore,
-        PeerService, TripleStoreService,
+        AssertionValidationService, GetFetchService, OperationStatusService, PeerService,
+        TripleStoreService,
     },
     state::ResponseChannels,
 };

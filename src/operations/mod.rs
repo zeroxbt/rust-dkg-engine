@@ -1,13 +1,17 @@
 mod get;
 mod publish;
 
-pub(crate) use get::GetOperationResult;
-pub(crate) use publish::{PublishStoreOperationResult, PublishStoreSignatureData};
+use dkg_key_value_store::KeyValueStoreManager;
+pub(crate) use dkg_key_value_store::{
+    GetOperationResult, OperationResultStore, PublishStoreOperationResult,
+    PublishStoreSignatureData,
+};
 use serde::{Serialize, de::DeserializeOwned};
 
 pub(crate) trait OperationKind {
     const NAME: &'static str;
     type Result: Serialize + DeserializeOwned + Send + Sync + 'static;
+    fn result_store(kv_store_manager: &KeyValueStoreManager) -> OperationResultStore<Self::Result>;
 }
 
 pub(crate) use get::GetOperation;

@@ -53,7 +53,7 @@ pub async fn run() {
 
     // Load persisted peer addresses and inject into Kademlia routing table.
     // This must happen after sharding table seeding so dial_peers knows who to connect to.
-    bootstrap::hydrate_persisted_peer_addresses(&managers, &services).await;
+    bootstrap::hydrate_persisted_peer_addresses(&managers).await;
     let periodic_tasks_deps =
         bootstrap::build_periodic_tasks_deps(&managers, &services, &command_scheduler);
     let command_executor =

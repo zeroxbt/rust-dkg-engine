@@ -22,7 +22,7 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         cleanup: CleanupDeps {
             repository_manager: Arc::clone(&managers.repository),
-            publish_tmp_dataset_store: Arc::clone(&services.publish_tmp_dataset_store),
+            publish_tmp_dataset_store: Arc::clone(&managers.publish_tmp_dataset_store),
             publish_operation_results: Arc::clone(&services.publish_store_operation),
             get_operation_results: Arc::clone(&services.get_operation),
             store_response_channels: Arc::clone(&services.response_channels.store),
@@ -32,7 +32,7 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         save_peer_addresses: SavePeerAddressesDeps {
             peer_service: Arc::clone(&services.peer_service),
-            peer_address_store: Arc::clone(&services.peer_address_store),
+            peer_address_store: Arc::clone(&managers.peer_address_store),
         },
         sharding_table_check: ShardingTableCheckDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),

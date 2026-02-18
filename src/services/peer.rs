@@ -1,7 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use dkg_domain::BlockchainId;
-pub(crate) use dkg_key_value_store::PeerAddressStore;
 use dkg_network::{
     Multiaddr, PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_GET, PeerEvent, PeerId, RequestOutcomeKind,
 };

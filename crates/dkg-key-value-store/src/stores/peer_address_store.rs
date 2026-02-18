@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{KeyValueStoreError, KeyValueStoreManager, Table};
+use crate::Table;
 
-const TABLE_NAME: &str = "peer_addresses";
+pub(crate) const TABLE_NAME: &str = "peer_addresses";
 const MAX_PEERS_TO_PERSIST: usize = 500;
 
 pub type PersistedPeerAddresses = HashMap<String, Vec<String>>;
@@ -12,14 +12,14 @@ pub type PersistedPeerAddresses = HashMap<String, Vec<String>>;
 /// Saves `peer_id_string -> Vec<multiaddr_string>` to a KVS table so the node can
 /// restore known peer addresses on restart without relying solely on
 /// bootstrap nodes for discovery.
+#[derive(Clone)]
 pub struct PeerAddressStore {
     table: Table<Vec<String>>,
 }
 
 impl PeerAddressStore {
-    pub fn new(kv_store_manager: &KeyValueStoreManager) -> Result<Self, KeyValueStoreError> {
-        let table = kv_store_manager.table(TABLE_NAME)?;
-        Ok(Self { table })
+    pub(crate) fn from_table(table: Table<Vec<String>>) -> Self {
+        Self { table }
     }
 
     pub async fn load_all(&self) -> PersistedPeerAddresses {
@@ -93,7 +93,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::KeyValueStoreManagerConfig;
+    use crate::{KeyValueStoreManager, KeyValueStoreManagerConfig};
 
     fn default_config() -> KeyValueStoreManagerConfig {
         KeyValueStoreManagerConfig {
@@ -108,7 +108,7 @@ mod tests {
         let kv_store = KeyValueStoreManager::connect(&db_path, &default_config())
             .await
             .unwrap();
-        let store = PeerAddressStore::new(&kv_store).unwrap();
+        let store = kv_store.peer_address_store();
 
         let peer1 = "12D3KooWJ6b8uMzkA4q7hCkC4DKf8YqthpF9q2Mce3rLrFK2dP8V".to_string();
         let peer2 = "12D3KooWLA1M67Yf7dU6jMqZPyfSgh2pJf5ZQvWrcxNf4t8i3QpM".to_string();
@@ -137,7 +137,7 @@ mod tests {
         let kv_store = KeyValueStoreManager::connect(&db_path, &default_config())
             .await
             .unwrap();
-        let store = PeerAddressStore::new(&kv_store).unwrap();
+        let store = kv_store.peer_address_store();
 
         let peer1 = "12D3KooWJ6b8uMzkA4q7hCkC4DKf8YqthpF9q2Mce3rLrFK2dP8V".to_string();
         let peer2 = "12D3KooWLA1M67Yf7dU6jMqZPyfSgh2pJf5ZQvWrcxNf4t8i3QpM".to_string();
@@ -164,7 +164,7 @@ mod tests {
         let kv_store = KeyValueStoreManager::connect(&db_path, &default_config())
             .await
             .unwrap();
-        let store = PeerAddressStore::new(&kv_store).unwrap();
+        let store = kv_store.peer_address_store();
 
         let loaded = store.load_all().await;
         assert!(loaded.is_empty());

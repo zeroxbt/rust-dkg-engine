@@ -1,11 +1,11 @@
 use std::{sync::Arc, time::Duration};
 
+use dkg_key_value_store::PeerAddressStore;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    periodic_tasks::SavePeerAddressesDeps,
-    periodic_tasks::runner::run_with_shutdown,
-    services::{PeerService, peer::PeerAddressStore},
+    periodic_tasks::SavePeerAddressesDeps, periodic_tasks::runner::run_with_shutdown,
+    services::PeerService,
 };
 
 const SAVE_PEER_ADDRESSES_PERIOD: Duration = Duration::from_secs(60);

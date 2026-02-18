@@ -27,13 +27,13 @@ where
     pub(crate) fn new(
         repository: Arc<RepositoryManager>,
         kv_store_manager: &KeyValueStoreManager,
-    ) -> Result<Self, ResultStoreError> {
-        let result_store = kv_store_manager.operation_result_store()?;
-        Ok(Self {
+    ) -> Self {
+        let result_store = K::result_store(kv_store_manager);
+        Self {
             repository,
             result_store,
             _marker: std::marker::PhantomData,
-        })
+        }
     }
 
     /// Create a new operation status record in the database.

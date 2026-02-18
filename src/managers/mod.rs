@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 pub(crate) use config::{ManagersConfig, ManagersConfigRaw};
 use dkg_blockchain::BlockchainManager;
-use dkg_key_value_store::KeyValueStoreManager;
+use dkg_key_value_store::{KeyValueStoreManager, PeerAddressStore, PublishTmpDatasetStore};
 use dkg_network::{Keypair, NetworkEventLoop, NetworkManager};
 use dkg_repository::RepositoryManager;
 use dkg_triple_store::TripleStoreManager;
@@ -18,6 +18,8 @@ pub(crate) struct Managers {
     pub blockchain: Arc<BlockchainManager>,
     pub triple_store: Arc<TripleStoreManager>,
     pub key_value_store: Arc<KeyValueStoreManager>,
+    pub peer_address_store: Arc<PeerAddressStore>,
+    pub publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 }
 
 /// Initialize all managers.
@@ -60,6 +62,8 @@ pub(crate) async fn initialize(
             .await
             .expect("Failed to initialize key-value store manager"),
     );
+    let peer_address_store = Arc::new(key_value_store.peer_address_store());
+    let publish_tmp_dataset_store = Arc::new(key_value_store.publish_tmp_dataset_store());
 
     let managers = Managers {
         network,
@@ -67,6 +71,8 @@ pub(crate) async fn initialize(
         blockchain,
         triple_store,
         key_value_store,
+        peer_address_store,
+        publish_tmp_dataset_store,
     };
 
     (managers, network_service)

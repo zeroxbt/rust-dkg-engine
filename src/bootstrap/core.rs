@@ -53,8 +53,8 @@ pub(crate) async fn build_core() -> CoreBootstrap {
     }
 }
 
-pub(crate) async fn hydrate_persisted_peer_addresses(managers: &Managers, services: &Services) {
-    let persisted_addresses = services.peer_address_store.load_all().await;
+pub(crate) async fn hydrate_persisted_peer_addresses(managers: &Managers) {
+    let persisted_addresses = managers.peer_address_store.load_all().await;
     if persisted_addresses.is_empty() {
         return;
     }

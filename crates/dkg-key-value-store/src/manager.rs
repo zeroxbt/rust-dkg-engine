@@ -6,7 +6,12 @@ use tokio::sync::Semaphore;
 
 use super::{
     KeyValueStoreError, KeyValueStoreManagerConfig,
-    stores::{OperationResultStore, PeerAddressStore, PublishTmpDatasetStore, ResultStoreError},
+    stores::{
+        GetOperationResult, OperationResultStore, PeerAddressStore, PublishStoreOperationResult,
+        PublishTmpDatasetStore, operation_result_store as operation_result_store_mod,
+        peer_address_store as peer_address_store_mod,
+        publish_tmp_dataset_store as publish_tmp_dataset_store_mod,
+    },
     table::{Table, TableDef},
 };
 
@@ -17,6 +22,10 @@ use super::{
 pub struct KeyValueStoreManager {
     db: Arc<Database>,
     concurrency_limiter: Arc<Semaphore>,
+    peer_address_store: PeerAddressStore,
+    publish_tmp_dataset_store: PublishTmpDatasetStore,
+    get_operation_result_store: OperationResultStore<GetOperationResult>,
+    publish_store_operation_result_store: OperationResultStore<PublishStoreOperationResult>,
 }
 
 impl KeyValueStoreManager {
@@ -44,9 +53,63 @@ impl KeyValueStoreManager {
                 max_concurrent = max_concurrent,
                 "Key-value store concurrency limiter initialized"
             );
+
+            // Initialize required tables up-front. After connect succeeds,
+            // required store handles are guaranteed to be available.
+            let write_txn = db.begin_write()?;
+            {
+                let peer_addresses_def: TableDef =
+                    TableDefinition::new(peer_address_store_mod::TABLE_NAME);
+                let publish_tmp_def: TableDef =
+                    TableDefinition::new(publish_tmp_dataset_store_mod::TABLE_NAME);
+                let get_operation_results_def: TableDef = TableDefinition::new(
+                    operation_result_store_mod::GET_OPERATION_RESULTS_TABLE_NAME,
+                );
+                let publish_store_operation_results_def: TableDef = TableDefinition::new(
+                    operation_result_store_mod::PUBLISH_STORE_OPERATION_RESULTS_TABLE_NAME,
+                );
+
+                let _peer_addresses = write_txn.open_table(peer_addresses_def)?;
+                let _publish_tmp = write_txn.open_table(publish_tmp_def)?;
+                let _get_operation_results = write_txn.open_table(get_operation_results_def)?;
+                let _publish_store_operation_results =
+                    write_txn.open_table(publish_store_operation_results_def)?;
+            }
+            write_txn.commit()?;
+
+            let db = Arc::new(db);
+            let concurrency_limiter = Arc::new(Semaphore::new(max_concurrent));
+            let peer_address_store = PeerAddressStore::from_table(Table::new(
+                Arc::clone(&db),
+                TableDefinition::new(peer_address_store_mod::TABLE_NAME),
+                Arc::clone(&concurrency_limiter),
+            ));
+            let publish_tmp_dataset_store = PublishTmpDatasetStore::from_table(Table::new(
+                Arc::clone(&db),
+                TableDefinition::new(publish_tmp_dataset_store_mod::TABLE_NAME),
+                Arc::clone(&concurrency_limiter),
+            ));
+            let get_operation_result_store = OperationResultStore::from_table(Table::new(
+                Arc::clone(&db),
+                TableDefinition::new(operation_result_store_mod::GET_OPERATION_RESULTS_TABLE_NAME),
+                Arc::clone(&concurrency_limiter),
+            ));
+            let publish_store_operation_result_store =
+                OperationResultStore::from_table(Table::new(
+                    Arc::clone(&db),
+                    TableDefinition::new(
+                        operation_result_store_mod::PUBLISH_STORE_OPERATION_RESULTS_TABLE_NAME,
+                    ),
+                    Arc::clone(&concurrency_limiter),
+                ));
+
             Ok(Self {
-                db: Arc::new(db),
-                concurrency_limiter: Arc::new(Semaphore::new(max_concurrent)),
+                db,
+                concurrency_limiter,
+                peer_address_store,
+                publish_tmp_dataset_store,
+                get_operation_result_store,
+                publish_store_operation_result_store,
             })
         })
         .await?
@@ -77,18 +140,23 @@ impl KeyValueStoreManager {
         ))
     }
 
-    pub fn publish_tmp_dataset_store(&self) -> Result<PublishTmpDatasetStore, KeyValueStoreError> {
-        PublishTmpDatasetStore::new(self)
+    /// Return the initialized handle to the publish temporary dataset store.
+    pub fn publish_tmp_dataset_store(&self) -> PublishTmpDatasetStore {
+        self.publish_tmp_dataset_store.clone()
     }
 
-    pub fn peer_address_store(&self) -> Result<PeerAddressStore, KeyValueStoreError> {
-        PeerAddressStore::new(self)
+    /// Return the initialized handle to the peer address store.
+    pub fn peer_address_store(&self) -> PeerAddressStore {
+        self.peer_address_store.clone()
     }
 
-    pub fn operation_result_store<R>(&self) -> Result<OperationResultStore<R>, ResultStoreError>
-    where
-        R: Serialize + DeserializeOwned + Send + Sync + 'static,
-    {
-        OperationResultStore::new(self)
+    pub fn get_operation_result_store(&self) -> OperationResultStore<GetOperationResult> {
+        self.get_operation_result_store.clone()
+    }
+
+    pub fn publish_store_operation_result_store(
+        &self,
+    ) -> OperationResultStore<PublishStoreOperationResult> {
+        self.publish_store_operation_result_store.clone()
     }
 }

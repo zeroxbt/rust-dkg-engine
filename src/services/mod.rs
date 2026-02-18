@@ -7,13 +7,12 @@ pub(crate) mod triple_store;
 use std::sync::Arc;
 
 pub(crate) use assertion_validation::AssertionValidationService;
-use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{BatchGetAck, FinalityAck, GetAck, StoreAck};
 pub(crate) use get_fetch::{
     GET_NETWORK_CONCURRENT_PEERS, GetFetchRequest, GetFetchService, GetFetchSource,
 };
 pub(crate) use operation_status::OperationStatusService;
-pub(crate) use peer::{PeerAddressStore, PeerService};
+pub(crate) use peer::PeerService;
 pub(crate) use triple_store::TripleStoreService;
 
 use crate::{
@@ -56,8 +55,6 @@ pub(crate) struct Services {
 
     // Infrastructure services
     pub peer_service: Arc<PeerService>,
-    pub peer_address_store: Arc<PeerAddressStore>,
-    pub publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 
     // Response channels for all protocols
     pub response_channels: ResponseChannelsSet,
@@ -71,21 +68,15 @@ pub(crate) struct Services {
 /// - Controllers/Commands: highest level, depends on explicit deps structs
 pub(crate) fn initialize(managers: &Managers) -> Services {
     // Operation status services
-    let publish_store_operation = Arc::new(
-        OperationStatusService::<PublishStoreOperation>::new(
-            Arc::clone(&managers.repository),
-            &managers.key_value_store,
-        )
-        .expect("Failed to create publish store operation service"),
-    );
+    let publish_store_operation = Arc::new(OperationStatusService::<PublishStoreOperation>::new(
+        Arc::clone(&managers.repository),
+        &managers.key_value_store,
+    ));
 
-    let get_operation = Arc::new(
-        OperationStatusService::<GetOperation>::new(
-            Arc::clone(&managers.repository),
-            &managers.key_value_store,
-        )
-        .expect("Failed to create get operation service"),
-    );
+    let get_operation = Arc::new(OperationStatusService::<GetOperation>::new(
+        Arc::clone(&managers.repository),
+        &managers.key_value_store,
+    ));
 
     // Storage services
     let triple_store = Arc::new(TripleStoreService::new(Arc::clone(&managers.triple_store)));
@@ -106,19 +97,6 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
         Arc::clone(&peer_service),
     ));
 
-    let peer_address_store = Arc::new(
-        managers
-            .key_value_store
-            .peer_address_store()
-            .expect("Failed to create peer address store"),
-    );
-    let publish_tmp_dataset_store = Arc::new(
-        managers
-            .key_value_store
-            .publish_tmp_dataset_store()
-            .expect("Failed to create publish tmp dataset store"),
-    );
-
     // Response channels
     let response_channels = ResponseChannelsSet::new();
 
@@ -129,8 +107,6 @@ pub(crate) fn initialize(managers: &Managers) -> Services {
         assertion_validation,
         get_fetch,
         peer_service,
-        peer_address_store,
-        publish_tmp_dataset_store,
         response_channels,
     }
 }
