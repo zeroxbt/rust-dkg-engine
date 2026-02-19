@@ -5,9 +5,9 @@ use dkg_domain::{ParsedUal, Visibility, parse_ual};
 use dkg_network::{NetworkManager, PeerId, STREAM_PROTOCOL_GET};
 use uuid::Uuid;
 
+use super::paranet_policy::filter_shard_peers_for_paranet;
 use crate::application::{
-    AssertionRetrieval, AssertionSource, FetchRequest, ParanetAccessResolution,
-    TokenRangeResolutionPolicy, resolve_paranet_access,
+    AssertionRetrieval, AssertionSource, FetchRequest, TokenRangeResolutionPolicy,
 };
 use crate::node_state::PeerRegistry;
 
@@ -132,31 +132,11 @@ impl GetAssertionUseCase {
         );
 
         if let Some(paranet_ual) = paranet_ual {
-            self.filter_peers_by_paranet(paranet_ual, parsed_ual, peers)
+            filter_shard_peers_for_paranet(&self.blockchain_manager, parsed_ual, paranet_ual, peers)
                 .await
+                .map_err(|e| e.to_string())
         } else {
             Ok(peers)
-        }
-    }
-
-    async fn filter_peers_by_paranet(
-        &self,
-        paranet_ual: &str,
-        target_ual: &ParsedUal,
-        all_shard_peers: Vec<PeerId>,
-    ) -> Result<Vec<PeerId>, String> {
-        match resolve_paranet_access(&self.blockchain_manager, target_ual, paranet_ual, true)
-            .await
-            .map_err(|e| e.to_string())?
-        {
-            ParanetAccessResolution::Permissioned {
-                permissioned_peer_ids,
-                ..
-            } => Ok(all_shard_peers
-                .into_iter()
-                .filter(|peer_id| permissioned_peer_ids.contains(peer_id))
-                .collect()),
-            ParanetAccessResolution::Open { .. } => Ok(all_shard_peers),
         }
     }
 }

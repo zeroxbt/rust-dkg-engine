@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
-use dkg_domain::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual};
+use dkg_domain::{Assertion, TokenIds, Visibility, parse_ual};
 use dkg_network::PeerId;
 use uuid::Uuid;
 
-use crate::{
-    application::{ParanetAccessResolution, TripleStoreAssertions, resolve_paranet_access},
-    node_state::PeerRegistry,
-};
+use super::paranet_policy::resolve_effective_visibility_for_paranet;
+use crate::{application::TripleStoreAssertions, node_state::PeerRegistry};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ServeGetInput {
@@ -84,14 +82,27 @@ impl ServeGetWorkflow {
             };
         }
 
-        let effective_visibility = self
-            .determine_visibility_for_paranet(
-                &parsed_ual,
-                input.paranet_ual.as_deref(),
-                &input.remote_peer_id,
-                &input.local_peer_id,
-            )
-            .await;
+        let effective_visibility = match resolve_effective_visibility_for_paranet(
+            &self.blockchain_manager,
+            &parsed_ual,
+            input.paranet_ual.as_deref(),
+            &input.local_peer_id,
+            &input.remote_peer_id,
+        )
+        .await
+        {
+            Ok(visibility) => visibility,
+            Err(error) => {
+                if let Some(paranet_ual) = input.paranet_ual.as_deref() {
+                    tracing::debug!(
+                        paranet_ual = %paranet_ual,
+                        error = %error,
+                        "Failed to resolve paranet access, using Public visibility"
+                    );
+                }
+                Visibility::Public
+            }
+        };
 
         tracing::debug!(
             operation_id = %input.operation_id,
@@ -145,67 +156,6 @@ impl ServeGetWorkflow {
                 );
                 ServeGetOutcome::Nack {
                     error_message: format!("Triple store query failed: {}", e),
-                }
-            }
-        }
-    }
-
-    async fn determine_visibility_for_paranet(
-        &self,
-        target_ual: &ParsedUal,
-        paranet_ual: Option<&str>,
-        remote_peer_id: &PeerId,
-        local_peer_id: &PeerId,
-    ) -> Visibility {
-        let Some(paranet_ual) = paranet_ual else {
-            return Visibility::Public;
-        };
-
-        let resolution =
-            match resolve_paranet_access(&self.blockchain_manager, target_ual, paranet_ual, false)
-                .await
-            {
-                Ok(resolution) => resolution,
-                Err(error) => {
-                    tracing::debug!(
-                        paranet_ual = %paranet_ual,
-                        error = %error,
-                        "Failed to resolve paranet access, using Public visibility"
-                    );
-                    return Visibility::Public;
-                }
-            };
-
-        match resolution {
-            ParanetAccessResolution::Open { paranet_id } => {
-                tracing::debug!(
-                    paranet_id = %paranet_id,
-                    "Paranet is not PERMISSIONED, using Public visibility"
-                );
-                Visibility::Public
-            }
-            ParanetAccessResolution::Permissioned {
-                paranet_id,
-                permissioned_peer_ids,
-            } => {
-                if permissioned_peer_ids.contains(local_peer_id)
-                    && permissioned_peer_ids.contains(remote_peer_id)
-                {
-                    tracing::debug!(
-                        paranet_id = %paranet_id,
-                        local_peer = %local_peer_id,
-                        remote_peer = %remote_peer_id,
-                        "Both peers are permissioned, using All visibility"
-                    );
-                    Visibility::All
-                } else {
-                    tracing::debug!(
-                        paranet_id = %paranet_id,
-                        local_peer = %local_peer_id,
-                        remote_peer = %remote_peer_id,
-                        "One or both peers not permissioned, using Public visibility"
-                    );
-                    Visibility::Public
                 }
             }
         }

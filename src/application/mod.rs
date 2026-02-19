@@ -1,4 +1,5 @@
 pub(crate) mod get;
+pub(crate) mod paranet;
 pub(crate) mod publish;
 pub(crate) mod shared;
 
@@ -12,6 +13,7 @@ pub(crate) use get::{
     ServeBatchGetWorkflow, ServeGetInput, ServeGetOutcome, ServeGetWorkflow,
     TokenRangeResolutionPolicy,
 };
+pub(crate) use paranet::parse_paranet_ual_with_id;
 pub(crate) use publish::{
     ExecutePublishStoreInput, ExecutePublishStoreWorkflow, ProcessPublishFinalityEventInput,
     ProcessPublishFinalityEventWorkflow, ServePublishFinalityInput, ServePublishFinalityOutcome,
@@ -19,6 +21,5 @@ pub(crate) use publish::{
     ServePublishStoreWorkflow,
 };
 pub(crate) use shared::{
-    AssertionValidation, OperationTracking, ParanetAccessResolution, TripleStoreAssertions,
-    group_and_sort_public_triples, resolve_paranet_access,
+    AssertionValidation, OperationTracking, TripleStoreAssertions, group_and_sort_public_triples,
 };

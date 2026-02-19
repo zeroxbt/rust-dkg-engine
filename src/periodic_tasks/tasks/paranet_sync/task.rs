@@ -1,7 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use dkg_blockchain::BlockchainId;
-use dkg_domain::{AccessPolicy, construct_paranet_id, derive_ual, parse_ual};
+use dkg_domain::{AccessPolicy, derive_ual};
 use dkg_repository::ParanetKcSyncEntry;
 use dkg_triple_store::parse_metadata_from_triples;
 use futures::StreamExt;
@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use super::ParanetSyncConfig;
 use crate::{
-    application::{AssertionSource, GetAssertionInput},
+    application::{AssertionSource, GetAssertionInput, parse_paranet_ual_with_id},
     periodic_tasks::ParanetSyncDeps,
     periodic_tasks::runner::run_with_shutdown,
 };
@@ -89,8 +89,8 @@ impl ParanetSyncTask {
         let mut targets = Vec::new();
 
         for paranet_ual in &self.config.sync_paranets {
-            let parsed = match parse_ual(paranet_ual) {
-                Ok(parsed) => parsed,
+            let parsed_paranet = match parse_paranet_ual_with_id(paranet_ual) {
+                Ok(parsed_paranet) => parsed_paranet,
                 Err(e) => {
                     tracing::warn!(
                         paranet_ual = %paranet_ual,
@@ -101,24 +101,13 @@ impl ParanetSyncTask {
                 }
             };
 
-            if &parsed.blockchain != blockchain_id {
+            if &parsed_paranet.parsed_ual.blockchain != blockchain_id {
                 continue;
             }
-
-            let Some(ka_id) = parsed.knowledge_asset_id else {
-                tracing::warn!(
-                    paranet_ual = %paranet_ual,
-                    "Paranet UAL missing knowledge asset ID in config"
-                );
-                continue;
-            };
-
-            let paranet_id =
-                construct_paranet_id(parsed.contract, parsed.knowledge_collection_id, ka_id);
             let access_policy = match self
                 .deps
                 .blockchain_manager
-                .get_nodes_access_policy(blockchain_id, paranet_id)
+                .get_nodes_access_policy(blockchain_id, parsed_paranet.paranet_id)
                 .await
             {
                 Ok(policy) => policy,
@@ -135,8 +124,8 @@ impl ParanetSyncTask {
 
             targets.push(ParanetSyncTarget {
                 paranet_ual: paranet_ual.clone(),
-                paranet_id: format!("{paranet_id:?}"),
-                paranet_id_b256: paranet_id,
+                paranet_id: format!("{:?}", parsed_paranet.paranet_id),
+                paranet_id_b256: parsed_paranet.paranet_id,
                 access_policy,
             });
         }

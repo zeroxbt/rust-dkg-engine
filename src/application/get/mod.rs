@@ -1,6 +1,7 @@
 pub(crate) mod assertion_retrieval;
 pub(crate) mod get_assertion;
 pub(crate) mod get_operation;
+pub(super) mod paranet_policy;
 pub(crate) mod serve_batch_get;
 pub(crate) mod serve_get;
 
