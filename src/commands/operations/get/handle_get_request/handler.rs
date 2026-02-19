@@ -7,9 +7,10 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    application::{TripleStoreAssertions, paranet},
     commands::HandleGetRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    application::{TripleStoreAssertions}, node_state::PeerRegistry,
+    node_state::PeerRegistry,
     node_state::ResponseChannels,
 };
 
@@ -180,13 +181,14 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
         // Determine effective visibility based on paranet authorization
         // For PERMISSIONED paranets where both peers are authorized, returns All visibility
         // Otherwise returns Public visibility
-        let effective_visibility = self
-            .determine_visibility_for_paranet(
-                &parsed_ual,
-                data.paranet_ual.as_deref(),
-                remote_peer_id,
-            )
-            .await;
+        let effective_visibility = paranet::determine_get_visibility_for_paranet(
+            self.blockchain_manager.as_ref(),
+            &parsed_ual,
+            data.paranet_ual.as_deref(),
+            local_peer_id,
+            remote_peer_id,
+        )
+        .await;
         tracing::Span::current().record(
             "effective_visibility",
             tracing::field::debug(&effective_visibility),

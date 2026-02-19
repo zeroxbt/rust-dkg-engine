@@ -4,15 +4,12 @@ pub(crate) mod network_fetch;
 use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
-use dkg_domain::{
-    Assertion, ParsedUal, TokenIds, Visibility, construct_knowledge_collection_onchain_id,
-    construct_paranet_id, parse_ual,
-};
+use dkg_domain::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual};
 use dkg_network::{GetRequestData, NetworkManager, PeerId, STREAM_PROTOCOL_GET};
 use uuid::Uuid;
 
 use crate::{
-    application::{AssertionValidation, TripleStoreAssertions},
+    application::{AssertionValidation, TripleStoreAssertions, paranet},
     node_state::PeerRegistry,
 };
 
@@ -227,7 +224,10 @@ impl GetAssertionUseCase {
         .await
         {
             return Ok(GetAssertionOutput {
-                assertion: Assertion::new(ack.assertion.public.clone(), ack.assertion.private.clone()),
+                assertion: Assertion::new(
+                    ack.assertion.public.clone(),
+                    ack.assertion.private.clone(),
+                ),
                 metadata: ack.metadata.clone(),
                 source: AssertionSource::Network,
             });
@@ -252,82 +252,15 @@ impl GetAssertionUseCase {
         );
 
         if let Some(paranet_ual) = paranet_ual {
-            self.handle_paranet_node_selection(paranet_ual, parsed_ual, all_shard_peers)
-                .await
+            paranet::select_shard_peers_for_paranet(
+                self.blockchain_manager.as_ref(),
+                parsed_ual,
+                paranet_ual,
+                all_shard_peers,
+            )
+            .await
         } else {
             Ok(all_shard_peers)
-        }
-    }
-
-    async fn handle_paranet_node_selection(
-        &self,
-        paranet_ual: &str,
-        target_ual: &ParsedUal,
-        all_shard_peers: Vec<PeerId>,
-    ) -> Result<Vec<PeerId>, String> {
-        let paranet_parsed =
-            parse_ual(paranet_ual).map_err(|e| format!("Invalid paranet UAL: {}", e))?;
-        let ka_id = paranet_parsed
-            .knowledge_asset_id
-            .ok_or_else(|| "Paranet UAL must include knowledge asset ID".to_string())?;
-
-        let paranet_id = construct_paranet_id(
-            paranet_parsed.contract,
-            paranet_parsed.knowledge_collection_id,
-            ka_id,
-        );
-
-        let exists = self
-            .blockchain_manager
-            .paranet_exists(&target_ual.blockchain, paranet_id)
-            .await
-            .map_err(|e| format!("Failed to check paranet existence: {}", e))?;
-        if !exists {
-            return Err(format!("Paranet does not exist: {}", paranet_ual));
-        }
-
-        let policy = self
-            .blockchain_manager
-            .get_nodes_access_policy(&target_ual.blockchain, paranet_id)
-            .await
-            .map_err(|e| format!("Failed to get access policy: {}", e))?;
-
-        let kc_onchain_id = construct_knowledge_collection_onchain_id(
-            target_ual.contract,
-            target_ual.knowledge_collection_id,
-        );
-        let kc_registered = self
-            .blockchain_manager
-            .is_knowledge_collection_registered(&target_ual.blockchain, paranet_id, kc_onchain_id)
-            .await
-            .map_err(|e| format!("Failed to check KC registration in paranet: {}", e))?;
-        if !kc_registered {
-            return Err("Knowledge collection not registered in paranet".to_string());
-        }
-
-        match policy {
-            dkg_domain::AccessPolicy::Permissioned => {
-                let permissioned_nodes = self
-                    .blockchain_manager
-                    .get_permissioned_nodes(&target_ual.blockchain, paranet_id)
-                    .await
-                    .map_err(|e| format!("Failed to get permissioned nodes: {}", e))?;
-
-                let permissioned_peer_ids: std::collections::HashSet<PeerId> = permissioned_nodes
-                    .iter()
-                    .filter_map(|node| {
-                        String::from_utf8(node.nodeId.to_vec())
-                            .ok()
-                            .and_then(|s| s.parse::<PeerId>().ok())
-                    })
-                    .collect();
-
-                Ok(all_shard_peers
-                    .into_iter()
-                    .filter(|peer_id| permissioned_peer_ids.contains(peer_id))
-                    .collect())
-            }
-            dkg_domain::AccessPolicy::Open => Ok(all_shard_peers),
         }
     }
 }
@@ -470,11 +403,7 @@ mod tests {
             Uuid::nil(),
             &parsed,
             TokenRangeResolutionPolicy::Strict,
-            Ok::<Option<(u64, u64, Vec<u64>)>, &str>(Some((
-                1_000_001,
-                1_000_004,
-                vec![1_000_002],
-            ))),
+            Ok::<Option<(u64, u64, Vec<u64>)>, &str>(Some((1_000_001, 1_000_004, vec![1_000_002]))),
         )
         .expect("on-chain range should resolve");
 
