@@ -214,7 +214,7 @@ fn development() -> ConfigRaw {
         environment: "development".to_string(),
         app_data_path: PathBuf::from("data"),
         logger: LoggerConfig {
-            level: "rust_dkg_engine=trace".to_string(),
+            level: "trace".to_string(),
             format: LogFormat::Pretty,
         },
         telemetry: telemetry(true),
@@ -275,7 +275,7 @@ fn testnet() -> ConfigRaw {
         environment: "testnet".to_string(),
         app_data_path: PathBuf::from("data"),
         logger: LoggerConfig {
-            level: "rust_dkg_engine=info".to_string(),
+            level: "info".to_string(),
             format: LogFormat::Pretty,
         },
         telemetry: telemetry(false),
@@ -352,7 +352,7 @@ fn mainnet() -> ConfigRaw {
         environment: "mainnet".to_string(),
         app_data_path: PathBuf::from("data"),
         logger: LoggerConfig {
-            level: "rust_dkg_engine=info".to_string(),
+            level: "info".to_string(),
             format: LogFormat::Pretty,
         },
         telemetry: telemetry(false),
@@ -445,7 +445,7 @@ mod tests {
             .extract()
             .expect("development defaults failed to extract");
         assert_eq!(extracted.environment, "development");
-        assert_eq!(extracted.logger.level, "rust_dkg_engine=trace");
+        assert_eq!(extracted.logger.level, "trace");
         assert!(extracted.telemetry.traces.enabled);
         assert_eq!(extracted.managers.blockchain.0.len(), 2);
     }
@@ -459,7 +459,7 @@ mod tests {
             .extract()
             .expect("testnet defaults failed to extract");
         assert_eq!(extracted.environment, "testnet");
-        assert_eq!(extracted.logger.level, "rust_dkg_engine=info");
+        assert_eq!(extracted.logger.level, "info");
         assert!(!extracted.telemetry.traces.enabled);
         assert_eq!(extracted.managers.blockchain.0.len(), 3);
     }
