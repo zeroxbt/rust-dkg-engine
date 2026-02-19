@@ -19,21 +19,24 @@ struct EnvironmentConfig {
 
 /// Returns the currently selected environment.
 /// This is set during configuration initialization.
-pub(crate) fn current_env() -> String {
+pub(crate) fn current_env() -> &'static str {
     CONFIG_ENV
         .get()
-        .cloned()
+        .map(std::string::String::as_str)
         .expect("configuration environment not initialized")
 }
 
 /// Returns true if running in a development environment.
 /// Derived from config/environment (true if "development").
 pub(crate) fn is_dev_env() -> bool {
-    matches!(current_env().as_str(), "development")
+    matches!(current_env(), "development")
 }
 
 pub(crate) fn initialize_configuration() -> Config {
-    load_configuration().expect("Failed to load configuration")
+    load_configuration().unwrap_or_else(|error| {
+        tracing::error!(error = %error, "Failed to load configuration");
+        panic!("Failed to load configuration: {error}");
+    })
 }
 
 fn load_configuration() -> Result<Config, ConfigError> {
@@ -52,10 +55,10 @@ fn load_configuration() -> Result<Config, ConfigError> {
     let node_env = resolve_environment(custom_config_path)?;
     set_config_env(&node_env);
 
-    tracing::info!("Loading configuration for environment: {}", node_env);
+    tracing::info!(environment = %node_env, "Loading configuration");
 
     // Build configuration with layered sources (priority: lowest to highest)
-    let mut figment = Figment::from(Serialized::defaults(defaults::config_for(&node_env)));
+    let mut figment = Figment::from(Serialized::defaults(defaults::config_for(&node_env)?));
 
     // User overrides from config.toml
     if Path::new("config.toml").exists() {
@@ -64,12 +67,12 @@ fn load_configuration() -> Result<Config, ConfigError> {
 
     // If custom config file is provided, merge it with highest priority
     if let Some(config_path) = custom_config_path {
-        tracing::info!("Loading custom config file: {}", config_path);
+        tracing::info!(path = %config_path, "Loading custom config file");
         figment = figment.merge(Toml::file(config_path));
     }
 
     // Extract configuration from files
-    let config: ConfigRaw = figment.extract().map_err(Box::new)?;
+    let config: ConfigRaw = figment.extract().map_err(ConfigError::from)?;
     if config.environment != node_env {
         return Err(ConfigError::UnknownEnvironment(format!(
             "config environment '{}' does not match selected '{}'",
@@ -77,7 +80,7 @@ fn load_configuration() -> Result<Config, ConfigError> {
         )));
     }
 
-    tracing::info!("Configuration loaded successfully");
+    tracing::info!(environment = %node_env, "Configuration loaded successfully");
 
     config.resolve()
 }
@@ -115,7 +118,7 @@ fn read_environment_from(path: &str) -> Result<Option<String>, ConfigError> {
 
     let config: EnvironmentConfig = Figment::from(Toml::file(path))
         .extract()
-        .map_err(Box::new)?;
+        .map_err(ConfigError::from)?;
     Ok(config.environment.map(normalize_env))
 }
 

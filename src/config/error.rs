@@ -3,7 +3,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub(crate) enum ConfigError {
     #[error("Configuration loading failed: {0}")]
-    LoadError(#[from] Box<figment::Error>),
+    LoadError(#[from] figment::Error),
 
     #[error("Missing required secret: {0}")]
     MissingSecret(String),

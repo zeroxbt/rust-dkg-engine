@@ -15,7 +15,7 @@ use dkg_network::NetworkManagerConfig;
 use dkg_repository::RepositoryManagerConfigRaw;
 use dkg_triple_store::{TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig};
 
-use super::ConfigRaw;
+use super::{ConfigError, ConfigRaw};
 use crate::{
     controllers::{
         http_api_controller::{
@@ -38,16 +38,12 @@ use crate::{
 };
 
 /// Returns the default [`ConfigRaw`] for the given environment name.
-///
-/// # Panics
-///
-/// Panics if the environment name is not one of: `development`, `testnet`, `mainnet`.
-pub(crate) fn config_for(environment: &str) -> ConfigRaw {
+pub(crate) fn config_for(environment: &str) -> Result<ConfigRaw, ConfigError> {
     match environment {
-        "development" => development(),
-        "testnet" => testnet(),
-        "mainnet" => mainnet(),
-        _ => panic!("no defaults for unknown environment: {environment}"),
+        "development" => Ok(development()),
+        "testnet" => Ok(testnet()),
+        "mainnet" => Ok(mainnet()),
+        _ => Err(ConfigError::UnknownEnvironment(environment.to_string())),
     }
 }
 
@@ -423,7 +419,7 @@ mod tests {
     /// Verify that development defaults can round-trip through Figment.
     #[test]
     fn development_defaults_round_trip() {
-        let config = config_for("development");
+        let config = config_for("development").expect("development defaults should resolve");
         let figment = Figment::from(Serialized::defaults(&config));
         let extracted: ConfigRaw = figment
             .extract()
@@ -437,7 +433,7 @@ mod tests {
     /// Verify that testnet defaults can round-trip through Figment.
     #[test]
     fn testnet_defaults_round_trip() {
-        let config = config_for("testnet");
+        let config = config_for("testnet").expect("testnet defaults should resolve");
         let figment = Figment::from(Serialized::defaults(&config));
         let extracted: ConfigRaw = figment
             .extract()
@@ -451,7 +447,7 @@ mod tests {
     /// Verify that mainnet defaults can round-trip through Figment.
     #[test]
     fn mainnet_defaults_round_trip() {
-        let config = config_for("mainnet");
+        let config = config_for("mainnet").expect("mainnet defaults should resolve");
         let figment = Figment::from(Serialized::defaults(&config));
         let extracted: ConfigRaw = figment
             .extract()
@@ -466,7 +462,7 @@ mod tests {
     fn user_toml_overrides_defaults() {
         use figment::providers::{Format, Toml};
 
-        let defaults = config_for("development");
+        let defaults = config_for("development").expect("development defaults should resolve");
         let user_toml = r#"
             environment = "development"
             [managers.repository]
@@ -481,8 +477,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "no defaults for unknown environment")]
-    fn unknown_environment_panics() {
-        config_for("staging");
+    fn unknown_environment_returns_error() {
+        let error = config_for("staging").expect_err("unknown env should fail");
+        assert!(matches!(error, ConfigError::UnknownEnvironment(env) if env == "staging"));
     }
 }

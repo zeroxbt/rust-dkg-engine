@@ -76,14 +76,7 @@ pub(crate) async fn run(
     });
 
     // Wait for shutdown signal (SIGINT or SIGTERM)
-    let ctrl_c = tokio::signal::ctrl_c();
-    let mut sigterm = tokio::signal::unix::signal(SignalKind::terminate())
-        .expect("Failed to install SIGTERM handler");
-
-    select! {
-        _ = ctrl_c => tracing::info!("Received SIGINT, initiating shutdown..."),
-        _ = sigterm.recv() => tracing::info!("Received SIGTERM, initiating shutdown..."),
-    }
+    wait_for_shutdown_signal().await;
 
     shutdown::graceful_shutdown(shutdown::ShutdownContext {
         command_scheduler,
@@ -109,6 +102,41 @@ async fn run_peer_registry_updater(
             Err(broadcast::error::RecvError::Closed) => break,
             Err(broadcast::error::RecvError::Lagged(skipped)) => {
                 tracing::warn!(skipped, "Peer registry updater lagged, events were dropped");
+            }
+        }
+    }
+}
+
+async fn wait_for_shutdown_signal() {
+    let sigterm = tokio::signal::unix::signal(SignalKind::terminate());
+
+    match sigterm {
+        Ok(mut sigterm) => {
+            select! {
+                ctrl_c_result = tokio::signal::ctrl_c() => {
+                    match ctrl_c_result {
+                        Ok(()) => tracing::info!("Received SIGINT, initiating shutdown..."),
+                        Err(error) => tracing::warn!(
+                            error = %error,
+                            "Failed to receive SIGINT; initiating shutdown"
+                        ),
+                    }
+                },
+                _ = sigterm.recv() => tracing::info!("Received SIGTERM, initiating shutdown..."),
+            }
+        }
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Failed to install SIGTERM handler; waiting for SIGINT only"
+            );
+
+            match tokio::signal::ctrl_c().await {
+                Ok(()) => tracing::info!("Received SIGINT, initiating shutdown..."),
+                Err(ctrl_c_error) => tracing::warn!(
+                    error = %ctrl_c_error,
+                    "Failed to receive SIGINT; initiating shutdown"
+                ),
             }
         }
     }
