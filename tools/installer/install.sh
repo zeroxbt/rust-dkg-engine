@@ -525,6 +525,9 @@ write_config_toml() {
   local operator_fee="${12}"
   local chain_blocks="${13}"
   local bootstrap_lines="${14}"
+  local telemetry_enabled="${15}"
+  local telemetry_endpoint="${16}"
+  local telemetry_service_name="${17}"
 
   umask 077
   mkdir -p "$ETC_DIR"
@@ -538,7 +541,7 @@ write_config_toml() {
 
   local tmp
   tmp="$(mktemp)"
-  local environment_esc db_host_esc db_name_esc db_user_esc db_pass_esc external_ip_esc triple_url_esc
+  local environment_esc db_host_esc db_name_esc db_user_esc db_pass_esc external_ip_esc triple_url_esc telemetry_endpoint_esc telemetry_service_name_esc
   environment_esc="$(toml_escape_basic_string "$environment")"
   db_host_esc="$(toml_escape_basic_string "$db_host")"
   db_name_esc="$(toml_escape_basic_string "$db_name")"
@@ -546,6 +549,8 @@ write_config_toml() {
   db_pass_esc="$(toml_escape_basic_string "$db_pass")"
   external_ip_esc="$(toml_escape_basic_string "$external_ip")"
   triple_url_esc="$(toml_escape_basic_string "$triple_url")"
+  telemetry_endpoint_esc="$(toml_escape_basic_string "$telemetry_endpoint")"
+  telemetry_service_name_esc="$(toml_escape_basic_string "$telemetry_service_name")"
 
   cat >"$tmp" <<EOF
 environment = "${environment_esc}"
@@ -609,6 +614,11 @@ max_requests = 10
 [http_api.auth]
 enabled = true
 ip_whitelist = ["127.0.0.1", "::1"]
+
+[telemetry]
+enabled = ${telemetry_enabled}
+otlp_endpoint = "${telemetry_endpoint_esc}"
+service_name = "${telemetry_service_name_esc}"
 EOF
 
   install -m 0640 "$tmp" "$CONFIG_PATH"
@@ -675,6 +685,41 @@ prompt_bootstrap_list() {
   done
   # strip last newline
   printf "%b" "$out"
+}
+
+prompt_nonempty() {
+  local label="$1"
+  local def="${2:-}"
+  local value=""
+
+  while true; do
+    value="$(prompt "$label" "$def")"
+    value="$(echo "$value" | xargs)"
+    if [[ -n "$value" ]]; then
+      printf '%s' "$value"
+      return 0
+    fi
+    warn "Invalid input: value cannot be empty."
+  done
+}
+
+prompt_telemetry_config() {
+  local choice telemetry_enabled telemetry_endpoint telemetry_service_name
+  choice="$(prompt "Enable OpenTelemetry trace export? (y/N)" "n")"
+  case "$choice" in
+    y|Y|yes|YES)
+      telemetry_enabled="true"
+      telemetry_endpoint="$(prompt_nonempty "OTLP endpoint (traces)" "http://127.0.0.1:4317")"
+      telemetry_service_name="$(prompt_nonempty "Telemetry service name" "rust-dkg-engine")"
+      ;;
+    *)
+      telemetry_enabled="false"
+      telemetry_endpoint="http://127.0.0.1:4317"
+      telemetry_service_name="rust-dkg-engine"
+      ;;
+  esac
+
+  printf '%s|%s|%s\n' "$telemetry_enabled" "$telemetry_endpoint" "$telemetry_service_name"
 }
 
 prompt_rpc_endpoints_csv() {
@@ -1040,6 +1085,11 @@ main() {
   operator_fee="$(prompt_operator_fee)"
   chain_blocks="$(build_chain_blocks "$environment" "$node_name" "$operator_fee")"
 
+  # 5b) Telemetry setup (trace export only; does not install local observability services)
+  local telemetry_enabled telemetry_endpoint telemetry_service_name telemetry_tuple
+  telemetry_tuple="$(prompt_telemetry_config)"
+  IFS='|' read -r telemetry_enabled telemetry_endpoint telemetry_service_name <<<"$telemetry_tuple"
+
   write_config_toml \
     "$environment" \
     "$p2p_port" \
@@ -1054,7 +1104,10 @@ main() {
     "$node_name" \
     "$operator_fee" \
     "$chain_blocks" \
-    "$bootstrap_lines"
+    "$bootstrap_lines" \
+    "$telemetry_enabled" \
+    "$telemetry_endpoint" \
+    "$telemetry_service_name"
 
   # 6) Install service
   local wants_units after_units
