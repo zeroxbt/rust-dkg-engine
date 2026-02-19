@@ -6,10 +6,10 @@ mod controllers;
 mod error;
 mod logger;
 mod managers;
-mod node_state;
 mod operations;
 mod periodic_tasks;
 mod runtime;
+mod node_state;
 
 use std::sync::Arc;
 
@@ -68,13 +68,8 @@ pub async fn run() {
         &command_scheduler,
         command_rx,
     );
-    let controllers = bootstrap::build_controllers(
-        &config,
-        &managers,
-        &node_state,
-        &application,
-        &command_scheduler,
-    );
+    let controllers =
+        bootstrap::build_controllers(&config, &managers, &node_state, &application, &command_scheduler);
 
     runtime::run(
         runtime::RuntimeDeps {

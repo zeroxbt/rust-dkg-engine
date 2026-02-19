@@ -49,9 +49,7 @@ pub(crate) fn build_controllers(
             operation_repository: managers.repository.operation_repository(),
             finality_status_repository: managers.repository.finality_status_repository(),
             get_operation_tracking: Arc::clone(&application.get_operation_tracking),
-            publish_store_operation_tracking: Arc::clone(
-                &application.publish_store_operation_tracking,
-            ),
+            publish_store_operation_tracking: Arc::clone(&application.publish_store_operation_tracking),
         },
     )
 }

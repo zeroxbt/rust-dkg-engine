@@ -4,11 +4,11 @@ use crate::{
     bootstrap::ApplicationDeps,
     commands::scheduler::CommandScheduler,
     managers::Managers,
-    node_state::NodeState,
     periodic_tasks::{
         self, BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
         ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps, SyncDeps,
     },
+    node_state::NodeState,
 };
 
 pub(crate) fn build_periodic_tasks_deps(
@@ -61,10 +61,11 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         proving: ProvingDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
-            network_manager: Arc::clone(&managers.network),
-            peer_registry: Arc::clone(&node_state.peer_registry),
             proof_challenge_repository,
-            assertion_retrieval: Arc::clone(&application.assertion_retrieval),
+            triple_store_assertions: Arc::clone(&application.triple_store_assertions),
+            network_manager: Arc::clone(&managers.network),
+            assertion_validation: Arc::clone(&application.assertion_validation),
+            peer_registry: Arc::clone(&node_state.peer_registry),
         },
         sync: SyncDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),

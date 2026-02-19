@@ -132,13 +132,8 @@ async fn process_filter_batch(
     let mut expired = Vec::new();
 
     // Step 1: Check local existence by UAL first (cheap, no RPC needed)
-    let kcs_needing_sync = check_local_existence(
-        chunk,
-        blockchain_id,
-        contract_address,
-        triple_store_assertions,
-    )
-    .await;
+    let kcs_needing_sync =
+        check_local_existence(chunk, blockchain_id, contract_address, triple_store_assertions).await;
 
     // Track already synced
     let needing_sync_ids: std::collections::HashSet<u64> =

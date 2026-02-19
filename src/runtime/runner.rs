@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use dkg_network::{NetworkEventLoop, PeerEvent};
-use dkg_peer_registry::PeerRegistry;
 use tokio::{select, signal::unix::SignalKind, sync::broadcast};
 use tokio_util::sync::CancellationToken;
 
@@ -16,6 +15,7 @@ use crate::{
         cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, proving::ProvingConfig,
         sync::SyncConfig,
     },
+    node_state::PeerRegistry,
 };
 
 #[allow(clippy::too_many_arguments)]

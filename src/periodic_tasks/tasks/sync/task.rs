@@ -7,7 +7,6 @@ use std::{sync::Arc, time::Duration};
 use dkg_blockchain::{Address, BlockchainId, ContractName};
 use futures::future::join_all;
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
@@ -19,53 +18,13 @@ use super::{
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
 use crate::{
-    application::NETWORK_CONCURRENT_PEERS, periodic_tasks::SyncDeps,
-    periodic_tasks::runner::run_with_shutdown,
+    periodic_tasks::SyncDeps, periodic_tasks::runner::run_with_shutdown,
+    application::GET_NETWORK_CONCURRENT_PEERS,
 };
 
 pub(crate) struct SyncTask {
     config: SyncConfig,
     deps: SyncDeps,
-}
-
-struct PendingContractBatch {
-    enqueued: u64,
-    pending_kc_ids: Vec<u64>,
-}
-
-#[derive(Default)]
-struct SyncCycleTotals {
-    total_enqueued: u64,
-    total_pending: usize,
-    total_synced: u64,
-    total_failed: u64,
-}
-
-struct SyncCycleDurations {
-    idle: Duration,
-    catching_up: Duration,
-    no_peers_retry: Duration,
-}
-
-fn min_required_identified_peers(total_shard_peers: usize) -> usize {
-    (total_shard_peers / 3).max(NETWORK_CONCURRENT_PEERS)
-}
-
-fn should_use_catching_up_delay(totals: &SyncCycleTotals) -> bool {
-    totals.total_pending > 0 || totals.total_enqueued > 0
-}
-
-fn compute_enqueue_window(
-    latest_on_chain: u64,
-    last_checked: u64,
-    limit: u64,
-) -> Option<(u64, u64)> {
-    if latest_on_chain <= last_checked {
-        return None;
-    }
-
-    let capped_end = std::cmp::min(latest_on_chain, last_checked.saturating_add(limit.max(1)));
-    Some((last_checked.saturating_add(1), capped_end))
 }
 
 impl SyncTask {
@@ -94,11 +53,57 @@ impl SyncTask {
         let contract_addr_str = format!("{:?}", contract_address);
         let sync_start = std::time::Instant::now();
 
-        let pending_batch = self
-            .collect_pending_contract_batch(blockchain_id, contract_address, &contract_addr_str)
-            .await?;
-        let enqueued = pending_batch.enqueued;
-        let pending = pending_batch.pending_kc_ids.len();
+        // Step 1: Get pending KCs from queue
+
+        let mut pending_kcs = self
+            .deps
+            .kc_sync_repository
+            .get_pending_kcs_for_contract(
+                blockchain_id.as_str(),
+                &contract_addr_str,
+                chrono::Utc::now().timestamp(),
+                self.config.max_retry_attempts,
+                self.config.max_new_kcs_per_contract,
+            )
+            .await
+            .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
+
+        // Step 2: Enqueue new KCs if needed
+
+        let existing_count = pending_kcs.len() as u64;
+        let max_new_kcs_per_contract = self.config.max_new_kcs_per_contract;
+        let enqueued = if existing_count < max_new_kcs_per_contract {
+            let needed = max_new_kcs_per_contract - existing_count;
+            let newly_enqueued = self
+                .enqueue_new_kcs(blockchain_id, contract_address, &contract_addr_str, needed)
+                .await?;
+
+            if newly_enqueued > 0 {
+                pending_kcs = self
+                    .deps
+                    .kc_sync_repository
+                    .get_pending_kcs_for_contract(
+                        blockchain_id.as_str(),
+                        &contract_addr_str,
+                        chrono::Utc::now().timestamp(),
+                        self.config.max_retry_attempts,
+                        max_new_kcs_per_contract,
+                    )
+                    .await
+                    .map_err(|e| format!("Failed to fetch pending KCs after enqueue: {}", e))?;
+            }
+            newly_enqueued
+        } else {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                existing_count,
+                "Queue already has enough pending KCs, skipping enqueue"
+            );
+            0
+        };
+
+        let pending = pending_kcs.len();
 
         if pending == 0 {
             tracing::debug!("No pending KCs");
@@ -110,9 +115,11 @@ impl SyncTask {
             });
         }
 
+        let pending_kc_ids: Vec<u64> = pending_kcs.into_iter().map(|kc| kc.kc_id).collect();
+
         let (filter_stats, fetch_stats, insert_stats) = self
             .run_pipeline(
-                pending_batch.pending_kc_ids,
+                pending_kc_ids,
                 blockchain_id.clone(),
                 contract_address,
                 contract_addr_str.clone(),
@@ -134,12 +141,18 @@ impl SyncTask {
         let insert_failures_count = insert_stats.failed.len();
         let synced = filter_stats.already_synced.len() as u64 + insert_stats.synced.len() as u64;
         let failed = (fetch_failures_count + insert_failures_count) as u64;
-        self.log_contract_sync_timing(
-            sync_start,
-            pending,
-            &filter_stats,
-            fetch_failures_count,
-            &insert_stats,
+
+        let total_ms = sync_start.elapsed().as_millis();
+
+        tracing::info!(
+            total_ms,
+            kcs_pending = pending,
+            kcs_already_synced = filter_stats.already_synced.len(),
+            kcs_expired = filter_stats.expired.len(),
+            kcs_fetch_failed = fetch_failures_count,
+            kcs_synced = insert_stats.synced.len(),
+            kcs_insert_failed = insert_failures_count,
+            "Contract sync timing breakdown (pipelined)"
         );
 
         Ok(ContractSyncResult {
@@ -148,85 +161,6 @@ impl SyncTask {
             synced,
             failed,
         })
-    }
-
-    async fn collect_pending_contract_batch(
-        &self,
-        blockchain_id: &BlockchainId,
-        contract_address: Address,
-        contract_addr_str: &str,
-    ) -> Result<PendingContractBatch, String> {
-        let mut pending_kcs = self
-            .deps
-            .kc_sync_repository
-            .get_pending_kcs_for_contract(
-                blockchain_id.as_str(),
-                contract_addr_str,
-                chrono::Utc::now().timestamp(),
-                self.config.max_retry_attempts,
-                self.config.max_new_kcs_per_contract,
-            )
-            .await
-            .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
-
-        let existing_count = pending_kcs.len() as u64;
-        let max_new_kcs_per_contract = self.config.max_new_kcs_per_contract;
-        let enqueued = if existing_count < max_new_kcs_per_contract {
-            let needed = max_new_kcs_per_contract - existing_count;
-            let newly_enqueued = self
-                .enqueue_new_kcs(blockchain_id, contract_address, contract_addr_str, needed)
-                .await?;
-
-            if newly_enqueued > 0 {
-                pending_kcs = self
-                    .deps
-                    .kc_sync_repository
-                    .get_pending_kcs_for_contract(
-                        blockchain_id.as_str(),
-                        contract_addr_str,
-                        chrono::Utc::now().timestamp(),
-                        self.config.max_retry_attempts,
-                        max_new_kcs_per_contract,
-                    )
-                    .await
-                    .map_err(|e| format!("Failed to fetch pending KCs after enqueue: {}", e))?;
-            }
-            newly_enqueued
-        } else {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
-                existing_count,
-                "Queue already has enough pending KCs, skipping enqueue"
-            );
-            0
-        };
-
-        Ok(PendingContractBatch {
-            enqueued,
-            pending_kc_ids: pending_kcs.into_iter().map(|kc| kc.kc_id).collect(),
-        })
-    }
-
-    fn log_contract_sync_timing(
-        &self,
-        sync_start: std::time::Instant,
-        pending: usize,
-        filter_stats: &FilterStats,
-        fetch_failures_count: usize,
-        insert_stats: &InsertStats,
-    ) {
-        let total_ms = sync_start.elapsed().as_millis();
-        tracing::info!(
-            total_ms,
-            kcs_pending = pending,
-            kcs_already_synced = filter_stats.already_synced.len(),
-            kcs_expired = filter_stats.expired.len(),
-            kcs_fetch_failed = fetch_failures_count,
-            kcs_synced = insert_stats.synced.len(),
-            kcs_insert_failed = insert_stats.failed.len(),
-            "Contract sync timing breakdown (pipelined)"
-        );
     }
 
     /// Run the three-stage pipeline with spawned tasks.
@@ -246,22 +180,72 @@ impl SyncTask {
         let (filter_tx, filter_rx) = mpsc::channel::<Vec<KcToSync>>(pipeline_channel_buffer);
         let (fetch_tx, fetch_rx) = mpsc::channel::<Vec<FetchedKc>>(pipeline_channel_buffer);
 
-        let filter_handle = self.spawn_filter_stage(
-            pending_kc_ids,
-            filter_batch_size,
-            blockchain_id.clone(),
-            contract_address,
-            contract_addr_str.clone(),
-            filter_tx,
-        );
-        let fetch_handle = self.spawn_fetch_stage(
-            filter_rx,
-            network_fetch_batch_size,
-            max_assets_per_fetch_batch,
-            blockchain_id.clone(),
-            fetch_tx,
-        );
-        let insert_handle = self.spawn_insert_stage(fetch_rx, blockchain_id, contract_addr_str);
+        // Spawn filter task (with current span as parent for trace propagation)
+        let filter_handle = {
+            let blockchain_id = blockchain_id.clone();
+            let contract_addr_str = contract_addr_str.clone();
+            let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
+            let blockchain_manager = Arc::clone(&self.deps.blockchain_manager);
+            tokio::spawn(
+                async move {
+                    filter_task(
+                        pending_kc_ids,
+                        filter_batch_size,
+                        blockchain_id,
+                        contract_address,
+                        contract_addr_str,
+                        blockchain_manager,
+                        triple_store_assertions,
+                        filter_tx,
+                    )
+                    .await
+                }
+                .in_current_span(),
+            )
+        };
+
+        // Spawn fetch task (with current span as parent for trace propagation)
+        let fetch_handle = {
+            let blockchain_id = blockchain_id.clone();
+            let network_manager = Arc::clone(&self.deps.network_manager);
+            let assertion_validation = Arc::clone(&self.deps.assertion_validation);
+            let peer_registry = Arc::clone(&self.deps.peer_registry);
+            tokio::spawn(
+                async move {
+                    fetch_task(
+                        filter_rx,
+                        network_fetch_batch_size,
+                        max_assets_per_fetch_batch,
+                        blockchain_id,
+                        network_manager,
+                        assertion_validation,
+                        peer_registry,
+                        fetch_tx,
+                    )
+                    .await
+                }
+                .in_current_span(),
+            )
+        };
+
+        // Spawn insert task (with current span as parent for trace propagation)
+        let insert_handle = {
+            let blockchain_id = blockchain_id.clone();
+            let contract_addr_str = contract_addr_str.clone();
+            let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
+            tokio::spawn(
+                async move {
+                    insert_task(
+                        fetch_rx,
+                        blockchain_id,
+                        contract_addr_str,
+                        triple_store_assertions,
+                    )
+                    .await
+                }
+                .in_current_span(),
+            )
+        };
 
         // Wait for all tasks
         let (filter_result, fetch_result, insert_result) =
@@ -274,85 +258,6 @@ impl SyncTask {
         Ok((filter_stats, fetch_stats, insert_stats))
     }
 
-    fn spawn_filter_stage(
-        &self,
-        pending_kc_ids: Vec<u64>,
-        filter_batch_size: usize,
-        blockchain_id: BlockchainId,
-        contract_address: Address,
-        contract_addr_str: String,
-        filter_tx: mpsc::Sender<Vec<KcToSync>>,
-    ) -> JoinHandle<FilterStats> {
-        let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
-        let blockchain_manager = Arc::clone(&self.deps.blockchain_manager);
-        tokio::spawn(
-            async move {
-                filter_task(
-                    pending_kc_ids,
-                    filter_batch_size,
-                    blockchain_id,
-                    contract_address,
-                    contract_addr_str,
-                    blockchain_manager,
-                    triple_store_assertions,
-                    filter_tx,
-                )
-                .await
-            }
-            .in_current_span(),
-        )
-    }
-
-    fn spawn_fetch_stage(
-        &self,
-        filter_rx: mpsc::Receiver<Vec<KcToSync>>,
-        network_fetch_batch_size: usize,
-        max_assets_per_fetch_batch: u64,
-        blockchain_id: BlockchainId,
-        fetch_tx: mpsc::Sender<Vec<FetchedKc>>,
-    ) -> JoinHandle<FetchStats> {
-        let network_manager = Arc::clone(&self.deps.network_manager);
-        let assertion_validation = Arc::clone(&self.deps.assertion_validation);
-        let peer_registry = Arc::clone(&self.deps.peer_registry);
-        tokio::spawn(
-            async move {
-                fetch_task(
-                    filter_rx,
-                    network_fetch_batch_size,
-                    max_assets_per_fetch_batch,
-                    blockchain_id,
-                    network_manager,
-                    assertion_validation,
-                    peer_registry,
-                    fetch_tx,
-                )
-                .await
-            }
-            .in_current_span(),
-        )
-    }
-
-    fn spawn_insert_stage(
-        &self,
-        fetch_rx: mpsc::Receiver<Vec<FetchedKc>>,
-        blockchain_id: BlockchainId,
-        contract_addr_str: String,
-    ) -> JoinHandle<InsertStats> {
-        let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
-        tokio::spawn(
-            async move {
-                insert_task(
-                    fetch_rx,
-                    blockchain_id,
-                    contract_addr_str,
-                    triple_store_assertions,
-                )
-                .await
-            }
-            .in_current_span(),
-        )
-    }
-
     /// Update the sync queue based on pipeline results.
     async fn update_sync_queue(
         &self,
@@ -362,85 +267,77 @@ impl SyncTask {
         fetch_stats: &FetchStats,
         insert_stats: &InsertStats,
     ) {
-        self.remove_kcs_from_queue(
-            blockchain_id,
-            contract_addr_str,
-            &filter_stats.already_synced,
-            "already-synced",
-        )
-        .await;
-        self.remove_kcs_from_queue(
-            blockchain_id,
-            contract_addr_str,
-            &filter_stats.expired,
-            "expired",
-        )
-        .await;
-        self.remove_kcs_from_queue(
-            blockchain_id,
-            contract_addr_str,
-            &insert_stats.synced,
-            "synced",
-        )
-        .await;
+        let repo = &self.deps.kc_sync_repository;
+
+        // Remove already-synced KCs (found locally in filter stage)
+        if !filter_stats.already_synced.is_empty()
+            && let Err(e) = repo
+                .remove_kcs(
+                    blockchain_id.as_str(),
+                    contract_addr_str,
+                    &filter_stats.already_synced,
+                )
+                .await
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "Failed to remove already-synced KCs from queue"
+            );
+        }
+
+        // Remove expired KCs
+        if !filter_stats.expired.is_empty()
+            && let Err(e) = repo
+                .remove_kcs(
+                    blockchain_id.as_str(),
+                    contract_addr_str,
+                    &filter_stats.expired,
+                )
+                .await
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "Failed to remove expired KCs from queue"
+            );
+        }
+
+        // Remove successfully synced KCs
+        if !insert_stats.synced.is_empty()
+            && let Err(e) = repo
+                .remove_kcs(
+                    blockchain_id.as_str(),
+                    contract_addr_str,
+                    &insert_stats.synced,
+                )
+                .await
+        {
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %e,
+                "Failed to remove synced KCs from queue"
+            );
+        }
 
         // Increment retry count for failed KCs
         let mut all_failed: Vec<u64> = fetch_stats.failures.to_vec();
         all_failed.extend(&insert_stats.failed);
 
-        self.increment_retry_count_for_failures(blockchain_id, contract_addr_str, &all_failed)
-            .await;
-    }
-
-    async fn remove_kcs_from_queue(
-        &self,
-        blockchain_id: &BlockchainId,
-        contract_addr_str: &str,
-        kc_ids: &[u64],
-        reason: &str,
-    ) {
-        if kc_ids.is_empty() {
-            return;
-        }
-
-        if let Err(e) = self
-            .deps
-            .kc_sync_repository
-            .remove_kcs(blockchain_id.as_str(), contract_addr_str, kc_ids)
-            .await
-        {
-            tracing::error!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
-                reason = %reason,
-                error = %e,
-                "Failed to remove KCs from sync queue"
-            );
-        }
-    }
-
-    async fn increment_retry_count_for_failures(
-        &self,
-        blockchain_id: &BlockchainId,
-        contract_addr_str: &str,
-        failed_kc_ids: &[u64],
-    ) {
-        if failed_kc_ids.is_empty() {
-            return;
-        }
-
-        if let Err(e) = self
-            .deps
-            .kc_sync_repository
-            .increment_retry_count(
-                blockchain_id.as_str(),
-                contract_addr_str,
-                failed_kc_ids,
-                self.config.retry_base_delay_secs,
-                self.config.retry_max_delay_secs,
-                self.config.retry_jitter_secs,
-            )
-            .await
+        if !all_failed.is_empty()
+            && let Err(e) = repo
+                .increment_retry_count(
+                    blockchain_id.as_str(),
+                    contract_addr_str,
+                    &all_failed,
+                    self.config.retry_base_delay_secs,
+                    self.config.retry_max_delay_secs,
+                    self.config.retry_jitter_secs,
+                )
+                .await
         {
             tracing::error!(
                 blockchain_id = %blockchain_id,
@@ -458,37 +355,6 @@ impl SyncTask {
         contract_address: Address,
         contract_addr_str: &str,
         limit: u64,
-    ) -> Result<u64, String> {
-        let latest_on_chain = self
-            .load_latest_on_chain_kc_id(blockchain_id, contract_address, contract_addr_str)
-            .await?;
-        let last_checked = self
-            .load_last_checked_progress(blockchain_id, contract_addr_str)
-            .await?;
-
-        let Some((start_id, end_id)) = compute_enqueue_window(latest_on_chain, last_checked, limit)
-        else {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
-                "No new KCs to enqueue (latest_on_chain <= last_checked)"
-            );
-            return Ok(0);
-        };
-        let new_kc_ids: Vec<u64> = (start_id..=end_id).collect();
-        let count = new_kc_ids.len() as u64;
-
-        self.persist_enqueued_window(blockchain_id, contract_addr_str, &new_kc_ids, end_id)
-            .await?;
-
-        Ok(count)
-    }
-
-    async fn load_latest_on_chain_kc_id(
-        &self,
-        blockchain_id: &BlockchainId,
-        contract_address: Address,
-        contract_addr_str: &str,
     ) -> Result<u64, String> {
         tracing::debug!(
             blockchain_id = %blockchain_id,
@@ -509,14 +375,7 @@ impl SyncTask {
             latest_on_chain,
             "Got latest KC ID from chain"
         );
-        Ok(latest_on_chain)
-    }
 
-    async fn load_last_checked_progress(
-        &self,
-        blockchain_id: &BlockchainId,
-        contract_addr_str: &str,
-    ) -> Result<u64, String> {
         tracing::debug!(
             blockchain_id = %blockchain_id,
             contract = %contract_addr_str,
@@ -538,19 +397,24 @@ impl SyncTask {
             last_checked,
             "Got sync progress from DB"
         );
-        Ok(last_checked)
-    }
 
-    async fn persist_enqueued_window(
-        &self,
-        blockchain_id: &BlockchainId,
-        contract_addr_str: &str,
-        new_kc_ids: &[u64],
-        end_id: u64,
-    ) -> Result<(), String> {
+        if latest_on_chain <= last_checked {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                "No new KCs to enqueue (latest_on_chain <= last_checked)"
+            );
+            return Ok(0);
+        }
+
+        let start_id = last_checked + 1;
+        let end_id = std::cmp::min(latest_on_chain, last_checked + limit);
+        let new_kc_ids: Vec<u64> = (start_id..=end_id).collect();
+        let count = new_kc_ids.len() as u64;
+
         self.deps
             .kc_sync_repository
-            .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, new_kc_ids)
+            .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, &new_kc_ids)
             .await
             .map_err(|e| format!("Failed to enqueue KCs: {}", e))?;
 
@@ -559,7 +423,8 @@ impl SyncTask {
             .upsert_progress(blockchain_id.as_str(), contract_addr_str, end_id)
             .await
             .map_err(|e| format!("Failed to update progress: {}", e))?;
-        Ok(())
+
+        Ok(count)
     }
 }
 
@@ -574,50 +439,25 @@ impl SyncTask {
         fields(blockchain_id = %blockchain_id)
     )]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
-        let periods = self.cycle_durations();
+        let idle_period = Duration::from_secs(self.config.period_idle_secs);
+        let catching_up_period = Duration::from_secs(self.config.period_catching_up_secs);
+        let no_peers_retry_delay = Duration::from_secs(self.config.no_peers_retry_delay_secs);
 
         if !self.config.enabled {
             tracing::trace!(
                 blockchain_id = %blockchain_id,
                 "Sync task disabled by configuration"
             );
-            return periods.idle;
+            return idle_period;
         }
 
-        if let Some(delay) = self.delay_for_unready_peer_state(blockchain_id, &periods) {
-            return delay;
-        }
-
-        let Some(contract_addresses) = self.load_contract_addresses(blockchain_id).await else {
-            return periods.idle;
-        };
-
-        let totals = self
-            .run_contract_sync_cycle(blockchain_id, &contract_addresses)
-            .await;
-
-        self.next_cycle_delay(blockchain_id, &totals, &periods)
-    }
-
-    fn cycle_durations(&self) -> SyncCycleDurations {
-        SyncCycleDurations {
-            idle: Duration::from_secs(self.config.period_idle_secs),
-            catching_up: Duration::from_secs(self.config.period_catching_up_secs),
-            no_peers_retry: Duration::from_secs(self.config.no_peers_retry_delay_secs),
-        }
-    }
-
-    fn delay_for_unready_peer_state(
-        &self,
-        blockchain_id: &BlockchainId,
-        periods: &SyncCycleDurations,
-    ) -> Option<Duration> {
+        // Check if we have identified enough shard peers before attempting sync
         let total_shard_peers = self.deps.peer_registry.shard_peer_count(blockchain_id);
         let identified_peers = self
             .deps
             .peer_registry
             .identified_shard_peer_count(blockchain_id);
-        let min_required = min_required_identified_peers(total_shard_peers);
+        let min_required = (total_shard_peers / 3).max(GET_NETWORK_CONCURRENT_PEERS);
 
         if identified_peers < min_required {
             tracing::debug!(
@@ -627,7 +467,7 @@ impl SyncTask {
                 required = min_required,
                 "Not enough shard peers identified yet, retrying later"
             );
-            return Some(periods.no_peers_retry);
+            return no_peers_retry_delay;
         }
 
         tracing::debug!(
@@ -636,10 +476,7 @@ impl SyncTask {
             total_shard_peers,
             "Starting sync cycle"
         );
-        None
-    }
 
-    async fn load_contract_addresses(&self, blockchain_id: &BlockchainId) -> Option<Vec<Address>> {
         let contract_addresses = match self
             .deps
             .blockchain_manager
@@ -653,7 +490,7 @@ impl SyncTask {
                     error = %e,
                     "Failed to get KC storage contract addresses"
                 );
-                return None;
+                return idle_period;
             }
         };
 
@@ -662,170 +499,80 @@ impl SyncTask {
             contract_count = contract_addresses.len(),
             "Found KC storage contracts"
         );
-        Some(contract_addresses)
-    }
 
-    async fn run_contract_sync_cycle(
-        &self,
-        blockchain_id: &BlockchainId,
-        contract_addresses: &[Address],
-    ) -> SyncCycleTotals {
+        // Sync each contract in parallel
         let sync_futures = contract_addresses
             .iter()
             .map(|&contract_address| self.sync_contract(blockchain_id, contract_address));
+
         let results = join_all(sync_futures).await;
 
-        let mut totals = SyncCycleTotals::default();
+        // Aggregate results
+        let mut total_enqueued = 0u64;
+        let mut total_pending = 0usize;
+        let mut total_synced = 0u64;
+        let mut total_failed = 0u64;
+
         for (i, result) in results.into_iter().enumerate() {
-            self.aggregate_contract_result(
-                blockchain_id,
-                contract_addresses[i],
-                result,
-                &mut totals,
-            );
-        }
-        totals
-    }
+            match result {
+                Ok(r) => {
+                    total_enqueued += r.enqueued;
+                    total_pending += r.pending;
+                    total_synced += r.synced;
+                    total_failed += r.failed;
 
-    fn aggregate_contract_result(
-        &self,
-        blockchain_id: &BlockchainId,
-        contract_address: Address,
-        result: Result<ContractSyncResult, String>,
-        totals: &mut SyncCycleTotals,
-    ) {
-        match result {
-            Ok(r) => {
-                totals.total_enqueued += r.enqueued;
-                totals.total_pending += r.pending;
-                totals.total_synced += r.synced;
-                totals.total_failed += r.failed;
-
-                if r.enqueued > 0 || r.pending > 0 {
-                    tracing::debug!(
+                    if r.enqueued > 0 || r.pending > 0 {
+                        tracing::debug!(
+                            blockchain_id = %blockchain_id,
+                            contract = ?contract_addresses[i],
+                            enqueued = r.enqueued,
+                            pending = r.pending,
+                            synced = r.synced,
+                            failed = r.failed,
+                            "Contract sync completed"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
                         blockchain_id = %blockchain_id,
-                        contract = ?contract_address,
-                        enqueued = r.enqueued,
-                        pending = r.pending,
-                        synced = r.synced,
-                        failed = r.failed,
-                        "Contract sync completed"
+                        contract = ?contract_addresses[i],
+                        error = %e,
+                        "Failed to sync contract"
                     );
                 }
             }
-            Err(e) => {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    contract = ?contract_address,
-                    error = %e,
-                    "Failed to sync contract"
-                );
-            }
         }
-    }
 
-    fn next_cycle_delay(
-        &self,
-        blockchain_id: &BlockchainId,
-        totals: &SyncCycleTotals,
-        periods: &SyncCycleDurations,
-    ) -> Duration {
-        if totals.total_enqueued > 0 || totals.total_pending > 0 {
+        if total_enqueued > 0 || total_pending > 0 {
             tracing::info!(
                 blockchain_id = %blockchain_id,
-                total_enqueued = totals.total_enqueued,
-                total_pending = totals.total_pending,
-                total_synced = totals.total_synced,
-                total_failed = totals.total_failed,
+                total_enqueued,
+                total_pending,
+                total_synced,
+                total_failed,
                 "Sync cycle summary"
             );
         }
 
-        if should_use_catching_up_delay(totals) {
+        // Use short delay while catching up, longer delay when idle
+        // - total_pending > 0: still have KCs in queue to process
+        // - total_enqueued > 0: just discovered new KCs on chain (might be more due to limit)
+
+        if total_pending > 0 || total_enqueued > 0 {
             tracing::debug!(
                 blockchain_id = %blockchain_id,
-                total_pending = totals.total_pending,
-                total_enqueued = totals.total_enqueued,
+                total_pending,
+                total_enqueued,
                 "Still catching up, scheduling immediate resync"
             );
-            periods.catching_up
+            catching_up_period
         } else {
             tracing::debug!(
                 blockchain_id = %blockchain_id,
                 "Caught up, scheduling idle poll"
             );
-            periods.idle
+            idle_period
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn min_required_identified_peers_uses_network_floor() {
-        assert_eq!(min_required_identified_peers(0), NETWORK_CONCURRENT_PEERS);
-        assert_eq!(min_required_identified_peers(2), NETWORK_CONCURRENT_PEERS);
-    }
-
-    #[test]
-    fn min_required_identified_peers_grows_with_shard_size() {
-        let total_shard_peers = NETWORK_CONCURRENT_PEERS * 9;
-        assert_eq!(
-            min_required_identified_peers(total_shard_peers),
-            total_shard_peers / 3
-        );
-    }
-
-    #[test]
-    fn catching_up_delay_selected_when_pending_or_enqueued() {
-        let totals = SyncCycleTotals {
-            total_enqueued: 1,
-            total_pending: 0,
-            total_synced: 0,
-            total_failed: 0,
-        };
-        assert!(should_use_catching_up_delay(&totals));
-
-        let totals = SyncCycleTotals {
-            total_enqueued: 0,
-            total_pending: 3,
-            total_synced: 0,
-            total_failed: 0,
-        };
-        assert!(should_use_catching_up_delay(&totals));
-    }
-
-    #[test]
-    fn idle_delay_selected_when_no_backlog_and_no_new_items() {
-        let totals = SyncCycleTotals::default();
-        assert!(!should_use_catching_up_delay(&totals));
-    }
-
-    #[test]
-    fn enqueue_window_none_when_up_to_date() {
-        assert_eq!(compute_enqueue_window(10, 10, 5), None);
-        assert_eq!(compute_enqueue_window(9, 10, 5), None);
-    }
-
-    #[test]
-    fn enqueue_window_respects_limit() {
-        assert_eq!(compute_enqueue_window(100, 10, 5), Some((11, 15)));
-    }
-
-    #[test]
-    fn enqueue_window_uses_latest_when_limit_exceeds_gap() {
-        assert_eq!(compute_enqueue_window(12, 10, 50), Some((11, 12)));
-    }
-
-    #[test]
-    fn enqueue_window_uses_saturating_add_for_end() {
-        let latest = u64::MAX - 1;
-        let last_checked = u64::MAX - 2;
-        assert_eq!(
-            compute_enqueue_window(latest, last_checked, 10),
-            Some((u64::MAX - 1, u64::MAX - 1))
-        );
     }
 }

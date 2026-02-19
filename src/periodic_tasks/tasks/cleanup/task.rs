@@ -10,11 +10,11 @@ use super::{
     proof_challenges::cleanup_proof_challenges, publish_tmp_dataset::cleanup_publish_tmp_datasets,
 };
 use crate::{
-    application::OperationTracking,
-    node_state::ResponseChannels,
     operations::{GetOperation, PublishStoreOperation},
     periodic_tasks::CleanupDeps,
     periodic_tasks::runner::run_with_shutdown,
+    application::OperationTracking,
+    node_state::ResponseChannels,
 };
 
 pub(crate) struct CleanupTask {

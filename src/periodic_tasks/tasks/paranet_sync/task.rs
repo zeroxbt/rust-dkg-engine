@@ -1,7 +1,7 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use dkg_blockchain::BlockchainId;
-use dkg_domain::{AccessPolicy, derive_ual};
+use dkg_domain::{AccessPolicy, construct_paranet_id, derive_ual, parse_ual};
 use dkg_repository::ParanetKcSyncEntry;
 use dkg_triple_store::parse_metadata_from_triples;
 use futures::StreamExt;
@@ -10,9 +10,9 @@ use uuid::Uuid;
 
 use super::ParanetSyncConfig;
 use crate::{
-    application::{AssertionSource, GetAssertionInput, parse_paranet_ual_with_id},
     periodic_tasks::ParanetSyncDeps,
     periodic_tasks::runner::run_with_shutdown,
+    application::{GetAssertionInput, AssertionSource},
 };
 
 pub(crate) struct ParanetSyncTask {
@@ -89,8 +89,8 @@ impl ParanetSyncTask {
         let mut targets = Vec::new();
 
         for paranet_ual in &self.config.sync_paranets {
-            let parsed_paranet = match parse_paranet_ual_with_id(paranet_ual) {
-                Ok(parsed_paranet) => parsed_paranet,
+            let parsed = match parse_ual(paranet_ual) {
+                Ok(parsed) => parsed,
                 Err(e) => {
                     tracing::warn!(
                         paranet_ual = %paranet_ual,
@@ -101,13 +101,24 @@ impl ParanetSyncTask {
                 }
             };
 
-            if &parsed_paranet.parsed_ual.blockchain != blockchain_id {
+            if &parsed.blockchain != blockchain_id {
                 continue;
             }
+
+            let Some(ka_id) = parsed.knowledge_asset_id else {
+                tracing::warn!(
+                    paranet_ual = %paranet_ual,
+                    "Paranet UAL missing knowledge asset ID in config"
+                );
+                continue;
+            };
+
+            let paranet_id =
+                construct_paranet_id(parsed.contract, parsed.knowledge_collection_id, ka_id);
             let access_policy = match self
                 .deps
                 .blockchain_manager
-                .get_nodes_access_policy(blockchain_id, parsed_paranet.paranet_id)
+                .get_nodes_access_policy(blockchain_id, paranet_id)
                 .await
             {
                 Ok(policy) => policy,
@@ -124,8 +135,8 @@ impl ParanetSyncTask {
 
             targets.push(ParanetSyncTarget {
                 paranet_ual: paranet_ual.clone(),
-                paranet_id: format!("{:?}", parsed_paranet.paranet_id),
-                paranet_id_b256: parsed_paranet.paranet_id,
+                paranet_id: format!("{paranet_id:?}"),
+                paranet_id_b256: paranet_id,
                 access_policy,
             });
         }
@@ -319,11 +330,141 @@ impl ParanetSyncTask {
             .map(|target| (target.paranet_ual.clone(), target.clone()))
             .collect();
 
+        let paranet_kc_sync_repository = self.deps.paranet_kc_sync_repository.clone();
+        let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
+        let get_assertion_use_case = Arc::clone(&self.deps.get_assertion_use_case);
+        let retries_limit = self.config.retries_limit;
+        let retry_delay_secs = self.config.retry_delay_secs;
         let max_in_flight = self.config.max_in_flight.max(1);
+        let blockchain_id = blockchain_id.clone();
+
         let stream = futures::stream::iter(due_batch.into_iter())
             .map(|row| {
                 let target = target_map.get(&row.paranet_ual).cloned();
-                async move { self.process_due_row(blockchain_id, row, target).await }
+                let paranet_kc_sync_repository = paranet_kc_sync_repository.clone();
+                let triple_store_assertions = Arc::clone(&triple_store_assertions);
+                let get_assertion_use_case = Arc::clone(&get_assertion_use_case);
+                let blockchain_id = blockchain_id.clone();
+
+                async move {
+                    let Some(target) = target else {
+                        return RowOutcome::default();
+                    };
+
+                    let visibility = match target.access_policy {
+                        AccessPolicy::Open => dkg_domain::Visibility::Public,
+                        AccessPolicy::Permissioned => dkg_domain::Visibility::All,
+                    };
+
+                    let request = GetAssertionInput {
+                        operation_id: Uuid::new_v4(),
+                        ual: row.kc_ual.clone(),
+                        include_metadata: true,
+                        paranet_ual: Some(row.paranet_ual.clone()),
+                        visibility,
+                    };
+
+                    let repo = paranet_kc_sync_repository;
+
+                    let fetched = get_assertion_use_case.fetch(&request).await;
+                    match fetched {
+                        Ok(fetch_result) => {
+                            let mut outcome = RowOutcome::default();
+                            match fetch_result.source {
+                                AssertionSource::Local => outcome.local_hits = 1,
+                                AssertionSource::Network => outcome.network_hits = 1,
+                            }
+
+                            let metadata = fetch_result
+                                .metadata
+                                .as_ref()
+                                .and_then(|triples| parse_metadata_from_triples(triples));
+
+                            match triple_store_assertions
+                                .insert_knowledge_collection(
+                                    &row.kc_ual,
+                                    &fetch_result.assertion,
+                                    &metadata,
+                                    Some(&row.paranet_ual),
+                                )
+                                .await
+                            {
+                                Ok(_) => {
+                                    if let Err(e) =
+                                        repo.mark_synced(&row.paranet_ual, &row.kc_ual).await
+                                    {
+                                        tracing::warn!(
+                                            blockchain_id = %blockchain_id,
+                                            paranet = %row.paranet_ual,
+                                            kc_ual = %row.kc_ual,
+                                            error = %e,
+                                            "Failed to mark paranet KC as synced"
+                                        );
+                                    } else {
+                                        outcome.synced = 1;
+                                    }
+                                }
+                                Err(e) => {
+                                    outcome.failed = 1;
+                                    let now_ts = chrono::Utc::now().timestamp();
+                                    if let Err(update_error) = repo
+                                        .mark_failed_attempt(
+                                            &row.paranet_ual,
+                                            &row.kc_ual,
+                                            now_ts,
+                                            retry_delay_secs,
+                                            &format!("Triple store insert failed: {}", e),
+                                        )
+                                        .await
+                                    {
+                                        tracing::warn!(
+                                            blockchain_id = %blockchain_id,
+                                            paranet = %row.paranet_ual,
+                                            kc_ual = %row.kc_ual,
+                                            error = %update_error,
+                                            "Failed to update retry state after insert failure"
+                                        );
+                                    }
+
+                                    if row.retry_count.saturating_add(1) >= retries_limit {
+                                        outcome.retry_exhausted = 1;
+                                    }
+                                }
+                            }
+                            outcome
+                        }
+                        Err(error_message) => {
+                            let mut outcome = RowOutcome {
+                                failed: 1,
+                                ..Default::default()
+                            };
+                            let now_ts = chrono::Utc::now().timestamp();
+                            if let Err(e) = repo
+                                .mark_failed_attempt(
+                                    &row.paranet_ual,
+                                    &row.kc_ual,
+                                    now_ts,
+                                    retry_delay_secs,
+                                    &error_message,
+                                )
+                                .await
+                            {
+                                tracing::warn!(
+                                    blockchain_id = %blockchain_id,
+                                    paranet = %row.paranet_ual,
+                                    kc_ual = %row.kc_ual,
+                                    error = %e,
+                                    "Failed to update retry state after fetch failure"
+                                );
+                            }
+
+                            if row.retry_count.saturating_add(1) >= retries_limit {
+                                outcome.retry_exhausted = 1;
+                            }
+                            outcome
+                        }
+                    }
+                }
             })
             .buffer_unordered(max_in_flight);
 
@@ -343,131 +484,6 @@ impl ParanetSyncTask {
         }
 
         (synced, failed, retry_exhausted, local_hits, network_hits)
-    }
-
-    async fn process_due_row(
-        &self,
-        blockchain_id: &BlockchainId,
-        row: ParanetKcSyncEntry,
-        target: Option<ParanetSyncTarget>,
-    ) -> RowOutcome {
-        let Some(target) = target else {
-            return RowOutcome::default();
-        };
-
-        let visibility = match target.access_policy {
-            AccessPolicy::Open => dkg_domain::Visibility::Public,
-            AccessPolicy::Permissioned => dkg_domain::Visibility::All,
-        };
-
-        let request = GetAssertionInput {
-            operation_id: Uuid::new_v4(),
-            ual: row.kc_ual.clone(),
-            include_metadata: true,
-            paranet_ual: Some(row.paranet_ual.clone()),
-            visibility,
-        };
-
-        let fetched = self.deps.get_assertion_use_case.fetch(&request).await;
-        match fetched {
-            Ok(fetch_result) => {
-                let mut outcome = RowOutcome::default();
-                match fetch_result.source {
-                    AssertionSource::Local => outcome.local_hits = 1,
-                    AssertionSource::Network => outcome.network_hits = 1,
-                }
-
-                let metadata = fetch_result
-                    .metadata
-                    .as_ref()
-                    .and_then(|triples| parse_metadata_from_triples(triples));
-
-                match self
-                    .deps
-                    .triple_store_assertions
-                    .insert_knowledge_collection(
-                        &row.kc_ual,
-                        &fetch_result.assertion,
-                        &metadata,
-                        Some(&row.paranet_ual),
-                    )
-                    .await
-                {
-                    Ok(_) => {
-                        if let Err(e) = self
-                            .deps
-                            .paranet_kc_sync_repository
-                            .mark_synced(&row.paranet_ual, &row.kc_ual)
-                            .await
-                        {
-                            tracing::warn!(
-                                blockchain_id = %blockchain_id,
-                                paranet = %row.paranet_ual,
-                                kc_ual = %row.kc_ual,
-                                error = %e,
-                                "Failed to mark paranet KC as synced"
-                            );
-                        } else {
-                            outcome.synced = 1;
-                        }
-                    }
-                    Err(e) => {
-                        outcome.failed = 1;
-                        self.handle_row_failure(
-                            blockchain_id,
-                            &row,
-                            &format!("Triple store insert failed: {}", e),
-                            &mut outcome,
-                        )
-                        .await;
-                    }
-                }
-                outcome
-            }
-            Err(error_message) => {
-                let mut outcome = RowOutcome {
-                    failed: 1,
-                    ..Default::default()
-                };
-                self.handle_row_failure(blockchain_id, &row, &error_message, &mut outcome)
-                    .await;
-                outcome
-            }
-        }
-    }
-
-    async fn handle_row_failure(
-        &self,
-        blockchain_id: &BlockchainId,
-        row: &ParanetKcSyncEntry,
-        error_message: &str,
-        outcome: &mut RowOutcome,
-    ) {
-        let now_ts = chrono::Utc::now().timestamp();
-        if let Err(e) = self
-            .deps
-            .paranet_kc_sync_repository
-            .mark_failed_attempt(
-                &row.paranet_ual,
-                &row.kc_ual,
-                now_ts,
-                self.config.retry_delay_secs,
-                error_message,
-            )
-            .await
-        {
-            tracing::warn!(
-                blockchain_id = %blockchain_id,
-                paranet = %row.paranet_ual,
-                kc_ual = %row.kc_ual,
-                error = %e,
-                "Failed to update retry state after row failure"
-            );
-        }
-
-        if row.retry_count.saturating_add(1) >= self.config.retries_limit {
-            outcome.retry_exhausted = 1;
-        }
     }
 }
 
