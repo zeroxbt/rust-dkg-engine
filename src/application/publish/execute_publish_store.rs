@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dkg_blockchain::{B256, BlockchainId, BlockchainManager, keccak256_encode_packed};
+use dkg_blockchain::{BlockchainId, BlockchainManager};
 use dkg_domain::Assertion;
 use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
 use dkg_network::{
@@ -11,10 +11,16 @@ use futures::{StreamExt, stream::FuturesUnordered};
 use uuid::Uuid;
 
 use crate::{
-    application::OperationTracking,
+    application::{
+        OperationTracking,
+        signatures::{
+            create_publisher_signature, dataset_root_payload, sign_dataset_root,
+            signature_data_from_components,
+        },
+    },
     error::NodeError,
     node_state::PeerRegistry,
-    operations::{PublishStoreOperation, PublishStoreOperationResult, PublishStoreSignatureData},
+    operations::{PublishStoreOperation, PublishStoreOperationResult},
 };
 
 /// Maximum number of in-flight peer requests for this operation.
@@ -128,16 +134,20 @@ impl ExecutePublishStoreWorkflow {
 
         let identity_id = self.blockchain_manager.identity_id(blockchain);
 
-        let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
+        if let Err(error) = dataset_root_payload(dataset_root) {
             self.publish_store_operation_tracking
-                .mark_failed(operation_id, "Dataset root missing '0x' prefix".to_string())
+                .mark_failed(operation_id, error.to_string())
                 .await;
             return;
-        };
+        }
 
-        match self
-            .create_publisher_signature(blockchain, dataset_root, identity_id)
-            .await
+        match create_publisher_signature(
+            &self.blockchain_manager,
+            blockchain,
+            dataset_root,
+            identity_id,
+        )
+        .await
         {
             Ok(sig) => {
                 if let Err(e) = self
@@ -196,7 +206,7 @@ impl ExecutePublishStoreWorkflow {
                 "Processing self-node (publisher), handling signature locally"
             );
             if let Err(e) = self
-                .handle_self_node_signature(operation_id, blockchain, dataset_root_hex, identity_id)
+                .handle_self_node_signature(operation_id, blockchain, dataset_root, identity_id)
                 .await
             {
                 tracing::warn!(
@@ -324,14 +334,7 @@ impl ExecutePublishStoreWorkflow {
         match response {
             StoreResponseData::Ack(ack) => {
                 let identity_id = ack.identity_id;
-                let signature = &ack.signature;
-                let sig_data = PublishStoreSignatureData::new(
-                    identity_id.to_string(),
-                    signature.v,
-                    signature.r.clone(),
-                    signature.s.clone(),
-                    signature.vs.clone(),
-                );
+                let sig_data = signature_data_from_components(identity_id, &ack.signature);
 
                 if let Err(e) = self
                     .publish_store_operation_tracking
@@ -377,21 +380,13 @@ impl ExecutePublishStoreWorkflow {
         &self,
         operation_id: Uuid,
         blockchain: &BlockchainId,
-        dataset_root_hex: &str,
+        dataset_root: &str,
         identity_id: u128,
     ) -> Result<(), NodeError> {
-        let signature = self
-            .blockchain_manager
-            .sign_message(blockchain, dataset_root_hex)
-            .await?;
-
-        let sig_data = PublishStoreSignatureData::new(
-            identity_id.to_string(),
-            signature.v,
-            signature.r.clone(),
-            signature.s.clone(),
-            signature.vs.clone(),
-        );
+        let signature = sign_dataset_root(&self.blockchain_manager, blockchain, dataset_root)
+            .await
+            .map_err(|e| NodeError::Other(e.to_string()))?;
+        let sig_data = signature_data_from_components(identity_id, &signature);
 
         self.publish_store_operation_tracking
             .update_result(
@@ -404,40 +399,6 @@ impl ExecutePublishStoreWorkflow {
             .await?;
 
         Ok(())
-    }
-
-    async fn create_publisher_signature(
-        &self,
-        blockchain: &BlockchainId,
-        dataset_root: &str,
-        identity_id: u128,
-    ) -> Result<PublishStoreSignatureData, NodeError> {
-        let dataset_root_b256: B256 = dataset_root
-            .parse()
-            .map_err(|e| NodeError::Other(format!("Invalid dataset root hex: {e}")))?;
-        let identity_bytes = {
-            let bytes = identity_id.to_be_bytes();
-            let mut out = [0u8; 9];
-            out.copy_from_slice(&bytes[16 - 9..]);
-            out
-        };
-        let message_hash =
-            keccak256_encode_packed(&[&identity_bytes, dataset_root_b256.as_slice()]);
-        let signature = self
-            .blockchain_manager
-            .sign_message(
-                blockchain,
-                &format!("0x{}", dkg_blockchain::to_hex_string(message_hash)),
-            )
-            .await?;
-
-        Ok(PublishStoreSignatureData::new(
-            identity_id.to_string(),
-            signature.v,
-            signature.r,
-            signature.s,
-            signature.vs,
-        ))
     }
 }
 

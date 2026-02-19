@@ -4,7 +4,6 @@ mod publish;
 use dkg_key_value_store::KeyValueStoreManager;
 pub(crate) use dkg_key_value_store::{
     GetOperationResult, OperationResultStore, PublishStoreOperationResult,
-    PublishStoreSignatureData,
 };
 use serde::{Serialize, de::DeserializeOwned};
 

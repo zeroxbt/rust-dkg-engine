@@ -6,6 +6,7 @@ use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
 use dkg_network::PeerId;
 use uuid::Uuid;
 
+use crate::application::signatures::{SignatureError, sign_dataset_root};
 use crate::node_state::PeerRegistry;
 
 #[derive(Debug, Clone)]
@@ -82,18 +83,19 @@ impl ServePublishStoreWorkflow {
 
         let identity_id = self.blockchain_manager.identity_id(&input.blockchain);
 
-        let Some(dataset_root_hex) = input.dataset_root.strip_prefix("0x") else {
-            return ServePublishStoreOutcome::Nack {
-                error_message: "Dataset root missing '0x' prefix".to_string(),
-            };
-        };
-
-        let signature = match self
-            .blockchain_manager
-            .sign_message(&input.blockchain, dataset_root_hex)
-            .await
+        let signature = match sign_dataset_root(
+            &self.blockchain_manager,
+            &input.blockchain,
+            &input.dataset_root,
+        )
+        .await
         {
             Ok(sig) => sig,
+            Err(SignatureError::DatasetRootMissingHexPrefix) => {
+                return ServePublishStoreOutcome::Nack {
+                    error_message: "Dataset root missing '0x' prefix".to_string(),
+                };
+            }
             Err(e) => {
                 tracing::error!(
                     operation_id = %input.operation_id,
