@@ -176,7 +176,7 @@ fn initialize_metrics(metrics_config: &TelemetryMetricsConfig) {
 
     match PrometheusBuilder::new()
         .with_http_listener(bind_address)
-        .install_recorder()
+        .install()
     {
         Ok(_) => tracing::info!(
             bind_address = %bind_address,

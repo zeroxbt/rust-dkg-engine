@@ -1,6 +1,6 @@
-use std::{fs, path::Path, process::Command as StdCommand};
+use std::{fs, path::Path};
 
-use crate::constants::{BLAZEGRAPH_URL, BOOTSTRAP_KEY_PATH};
+use crate::constants::BOOTSTRAP_KEY_PATH;
 
 pub(crate) fn drop_database(database_name: &str) {
     let drop_command = format!(
@@ -72,36 +72,5 @@ pub(crate) fn clear_rust_node_data(data_folder: &str, preserve_network_key: bool
         }
         fs::write(&key_path, key_bytes).expect("Failed to restore network key");
         println!("Restored network key: {}", key_path.display());
-    }
-}
-
-/// Delete Blazegraph namespaces for a node.
-/// Each JS node uses three namespaces: dkg-{i}, private-current-{i}, public-current-{i}
-pub(crate) fn delete_blazegraph_namespaces(node_index: usize) {
-    let namespaces = [
-        format!("dkg-{}", node_index),
-        format!("private-current-{}", node_index),
-        format!("public-current-{}", node_index),
-    ];
-
-    for namespace in &namespaces {
-        let url = format!("{}/blazegraph/namespace/{}", BLAZEGRAPH_URL, namespace);
-
-        // Use curl to send DELETE request to Blazegraph
-        let output = StdCommand::new("curl")
-            .args(["-s", "-X", "DELETE", &url])
-            .output();
-
-        match output {
-            Ok(result) => {
-                if result.status.success() {
-                    println!("Deleted Blazegraph namespace: {}", namespace);
-                }
-                // Silently ignore errors (namespace might not exist)
-            }
-            Err(_) => {
-                // curl not available or other error - silently continue
-            }
-        }
     }
 }

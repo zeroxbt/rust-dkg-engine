@@ -201,7 +201,7 @@ fn telemetry(enabled: bool) -> TelemetryConfig {
             service_name: telemetry_default_traces_service_name(),
         },
         metrics: TelemetryMetricsConfig {
-            enabled: false,
+            enabled,
             bind_address: telemetry_default_metrics_bind_address(),
         },
     }

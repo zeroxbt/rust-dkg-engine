@@ -1,7 +1,10 @@
 use std::fs;
 
+use alloy::signers::local::PrivateKeySigner;
+
 use crate::constants::{
-    MANAGEMENT_PRIVATE_KEYS_PATH, MANAGEMENT_PUBLIC_KEYS_PATH, PRIVATE_KEYS_PATH, PUBLIC_KEYS_PATH,
+    MANAGEMENT_PRIVATE_KEYS_PATH, PRIVATE_KEYS_PATH, PUBLIC_KEYS_PATH,
+    resolve_repo_relative_candidates, resolve_repo_relative_path,
 };
 
 pub(crate) struct NodeKeys {
@@ -13,11 +16,14 @@ pub(crate) struct NodeKeys {
 
 impl NodeKeys {
     pub(crate) fn load() -> Self {
+        let management_private_keys = load_keys(MANAGEMENT_PRIVATE_KEYS_PATH);
+        let management_public_keys = derive_public_keys(&management_private_keys);
+
         Self {
             private_keys: load_keys(PRIVATE_KEYS_PATH),
             public_keys: load_keys(PUBLIC_KEYS_PATH),
-            management_private_keys: load_keys(MANAGEMENT_PRIVATE_KEYS_PATH),
-            management_public_keys: load_keys(MANAGEMENT_PUBLIC_KEYS_PATH),
+            management_private_keys,
+            management_public_keys,
         }
     }
 
@@ -47,8 +53,21 @@ impl NodeKeys {
 }
 
 fn load_keys(path: &str) -> Vec<String> {
-    serde_json::from_str(&fs::read_to_string(path).expect("Failed to read key file"))
-        .expect("Failed to parse key file")
+    let resolved = resolve_repo_relative_path(path).unwrap_or_else(|| {
+        let searched = resolve_repo_relative_candidates(path)
+            .into_iter()
+            .map(|candidate| candidate.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        panic!("Failed to read key file '{path}': file not found (searched: {searched})");
+    });
+
+    let file = fs::read_to_string(&resolved).unwrap_or_else(|error| {
+        panic!("Failed to read key file '{}': {error}", resolved.display())
+    });
+    serde_json::from_str(&file).unwrap_or_else(|error| {
+        panic!("Failed to parse key file '{}': {error}", resolved.display())
+    })
 }
 
 fn validate_len(label: &str, actual: usize, required: usize) {
@@ -58,4 +77,16 @@ fn validate_len(label: &str, actual: usize, required: usize) {
             label, required, actual
         );
     }
+}
+
+fn derive_public_keys(private_keys: &[String]) -> Vec<String> {
+    private_keys
+        .iter()
+        .map(|private_key| {
+            let signer: PrivateKeySigner = private_key.parse().unwrap_or_else(|error| {
+                panic!("Invalid management private key '{}': {error}", private_key)
+            });
+            signer.address().to_checksum(None)
+        })
+        .collect()
 }
