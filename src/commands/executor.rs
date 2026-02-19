@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use chrono::Utc;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -10,6 +10,7 @@ use super::{
     constants::{COMMAND_CONCURRENT_LIMIT, MAX_COMMAND_LIFETIME},
     registry::{Command, CommandResolver},
 };
+use crate::observability;
 
 /// Outcome of a command execution.
 ///
@@ -120,14 +121,19 @@ impl CommandExecutor {
     /// Execute a command.
     async fn execute(command_resolver: Arc<CommandResolver>, request: CommandExecutionRequest) {
         let command_name = request.command().name();
+        let started_at = Instant::now();
 
         // Check if command has expired
         if request.is_expired() {
             tracing::warn!(command = %command_name, "Command expired, dropping");
+            observability::record_command_total(command_name, "expired");
+            observability::record_command_duration(command_name, "expired", started_at.elapsed());
             return;
         }
 
         let _outcome = command_resolver.execute(request.command()).await;
         tracing::trace!(command = %command_name, "Command completed");
+        observability::record_command_total(command_name, "completed");
+        observability::record_command_duration(command_name, "completed", started_at.elapsed());
     }
 }

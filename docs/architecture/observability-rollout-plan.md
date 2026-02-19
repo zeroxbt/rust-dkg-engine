@@ -26,6 +26,20 @@ Goal: make observability opt-in, production-safe, and easy for fresh VPS operato
 - Ship reusable dashboards and alerting defaults.
 - Keep default install simple and secure.
 
+## 2.1 Delivery Strategy (Vertical Slice First)
+
+Before broad observability coverage, deliver one complete thin slice:
+
+1. Minimal telemetry plumbing for metrics (in addition to existing traces)
+2. Minimal instrumentation set (command/task + sync heartbeat)
+3. One dashboard (`Node Overview`)
+4. End-to-end validation in Grafana
+
+Why:
+- validates data model and label conventions early
+- catches exporter/query/dashboard issues before scaling
+- gives immediate operator value with low implementation risk
+
 ## 3. Non-Goals (for initial rollout)
 
 - Full multi-tenant observability control plane.
@@ -35,13 +49,16 @@ Goal: make observability opt-in, production-safe, and easy for fresh VPS operato
 ## 4. Current Baseline
 
 - `src/logger/mod.rs`:
-  - supports `telemetry.enabled`, `telemetry.otlp_endpoint`, `telemetry.service_name`
-  - exports traces via OTLP
+  - supports structured telemetry config:
+    - `[telemetry.traces]` (OTLP traces)
+    - `[telemetry.metrics]` (Prometheus `/metrics`)
+  - traces and metrics can be enabled independently
   - gracefully falls back to local logging if exporter init fails
 - `src/config/defaults.rs`:
-  - telemetry defaults currently environment-based
+  - telemetry defaults currently environment-based (`traces` enabled in development)
 - `tools/installer/install.sh`:
   - installs node + db + optional blazegraph + systemd units
+  - prompts for trace and metrics export config
   - does not configure observability stack/services/dashboards
 
 ## 5. Target Architecture
@@ -101,37 +118,31 @@ Important: `local` should be opt-in and clearly labeled as higher-resource mode.
 
 ## 7. Configuration Design
 
-Extend telemetry config from a single bool/endpoint to structured options.
+Use structured telemetry config with independent signals.
 
-Proposed TOML shape:
+Current TOML shape:
 
 ```toml
 [telemetry]
-enabled = true
-service_name = "rust-dkg-engine"
-service_namespace = "origintrail"
-node_id = "node-01"
-environment = "mainnet"
 
 [telemetry.traces]
 enabled = true
 otlp_endpoint = "http://127.0.0.1:4317"
-sampling_ratio = 0.2
+service_name = "rust-dkg-engine"
 
 [telemetry.metrics]
 enabled = true
-exporter = "prometheus" # or "otlp"
-bind_address = "127.0.0.1:9464" # for prometheus exporter
-# otlp_endpoint = "http://127.0.0.1:4317" # for otlp exporter
-
-[telemetry.logs]
-structured = true
-include_trace_context = true
+bind_address = "127.0.0.1:9464"
 ```
 
-Backward compatibility:
-- keep existing fields working
-- map old config to new structure during load/resolve
+Breaking change:
+- legacy flat keys under `[telemetry]` are no longer supported:
+  - `enabled`
+  - `otlp_endpoint`
+  - `service_name`
+- supported shape is nested only:
+  - `[telemetry.traces]`
+  - `[telemetry.metrics]`
 
 ## 8. Instrumentation Standards
 
@@ -160,7 +171,7 @@ Add span boundaries at:
 - operation lifecycle (create -> in_progress -> completed/failed)
 - external IO calls (network, chain, db, triple store)
 
-## 9. Metrics Catalog (Initial)
+## 9. Metrics Catalog
 
 Create metrics for dashboards and alerting:
 
@@ -185,7 +196,32 @@ Create metrics for dashboards and alerting:
   - `node_repository_query_duration_seconds{query,status}` (histogram)
   - `node_triple_store_query_duration_seconds{type,status}` (histogram)
 
+### 9.1 Pilot Metric Set (implement first)
+
+Use this subset for the first dashboard:
+
+- `node_command_total{command,status}` (counter)
+- `node_command_duration_seconds{command,status}` (histogram)
+- `node_task_runs_total{task,status}` (counter)
+- `node_task_duration_seconds{task,status}` (histogram)
+- `node_sync_last_success_unix` (gauge heartbeat)
+
+Everything else in section 9 follows only after the pilot is validated.
+
 ## 10. Dashboard Pack
+
+### 10.1 Pilot dashboard (ship first)
+
+- `observability/grafana/dashboards/node-overview.json`
+
+Panels (minimum):
+- command throughput (`rate(node_command_total[5m])`)
+- command error ratio
+- command latency p95/p99 from histogram
+- task success/failure rate
+- sync heartbeat/no-progress panel from `node_sync_last_success_unix`
+
+### 10.2 Full dashboard pack (after pilot)
 
 Ship versioned dashboard pack in repo:
 
@@ -254,42 +290,47 @@ Validation workflow:
 
 ## 14. Rollout Phases and Milestones
 
-### Milestone 1: Config + trace consistency
+### Milestone 1: Pilot telemetry slice
 
-- telemetry schema extension
-- instrumentation standards documented and applied to critical paths
-- no metrics yet
+- telemetry metrics config extension (minimal)
+- implement pilot metric set (section 9.1)
+- ship `Node Overview` dashboard
+- verify dashboard correctness in local Grafana
 
-### Milestone 2: Metrics foundation
+### Milestone 2: Config + trace consistency expansion
 
-- add metrics crate wiring
-- implement core counters/histograms/gauges
-- expose metrics endpoint or OTLP metrics export
+- telemetry schema hardening + backward compatibility cleanup
+- instrumentation standards applied beyond pilot boundaries
 
-### Milestone 3: Dashboard pack + local stack
+### Milestone 3: Metrics foundation expansion
+
+- extend from pilot metrics to full catalog in section 9
+- add remaining counters/histograms/gauges incrementally
+
+### Milestone 4: Dashboard pack + local stack
 
 - commit dashboard JSON + provisioning
 - add local observability compose bundle
 - document local testing workflow
 
-### Milestone 4: Installer support
+### Milestone 5: Installer support
 
 - add installer flags/prompts
 - support remote mode
 - optional local mode script
 
-### Milestone 5: Alerts + operator docs
+### Milestone 6: Alerts + operator docs
 
 - baseline alerts for failure/backlog/no-progress
 - production hardening checklist
 
 ## 15. Concrete Next Steps (Execution Order)
 
-1. Implement telemetry config schema extension with backward compatibility.
-2. Add observability mode handling to installer config generation (`none`/`remote`).
-3. Add shared instrumentation guidelines doc and enforce span field consistency in command/task boundaries.
-4. Introduce metrics (start with command/task/operation duration + status).
-5. Create local `observability/` stack and first 3 dashboards.
+1. Implement minimal metrics export plumbing and pilot metrics set (section 9.1).
+2. Create and validate `Node Overview` dashboard in local Grafana.
+3. Expand telemetry schema and span-field consistency after pilot validation.
+4. Add observability mode handling to installer config generation (`none`/`remote`/`local`).
+5. Create local `observability/` stack and additional dashboards.
 6. Add optional `install-observability.sh` and wire it behind installer opt-in.
 
 ---

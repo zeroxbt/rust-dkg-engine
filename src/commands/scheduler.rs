@@ -3,6 +3,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::constants::COMMAND_QUEUE_SIZE;
 use crate::commands::executor::CommandExecutionRequest;
+use crate::observability;
 
 /// Handle for scheduling commands. Can be cloned and shared across the application.
 ///
@@ -43,6 +44,7 @@ impl CommandScheduler {
     /// network event loop.
     pub(crate) async fn schedule(&self, request: CommandExecutionRequest) {
         if self.shutdown.is_cancelled() {
+            observability::record_command_total(request.command().name(), "rejected_shutdown");
             tracing::debug!(
                 command = %request.command().name(),
                 "Shutdown in progress, not scheduling command"
@@ -53,6 +55,7 @@ impl CommandScheduler {
         let command_name = request.command().name();
 
         if let Err(e) = self.tx.send(request).await {
+            observability::record_command_total(command_name, "rejected_channel_closed");
             tracing::error!(
                 command = %command_name,
                 error = %e,
@@ -68,6 +71,7 @@ impl CommandScheduler {
     /// returns `false`.
     pub(crate) fn try_schedule(&self, request: CommandExecutionRequest) -> bool {
         if self.shutdown.is_cancelled() {
+            observability::record_command_total(request.command().name(), "rejected_shutdown");
             tracing::debug!(
                 command = %request.command().name(),
                 "Shutdown in progress, not scheduling command"
@@ -77,11 +81,19 @@ impl CommandScheduler {
 
         match self.tx.try_send(request) {
             Ok(()) => true,
-            Err(mpsc::error::TrySendError::Full(_)) => {
+            Err(mpsc::error::TrySendError::Full(request)) => {
+                observability::record_command_total(
+                    request.command().name(),
+                    "rejected_queue_full",
+                );
                 tracing::warn!("Command queue full, rejecting command");
                 false
             }
-            Err(mpsc::error::TrySendError::Closed(_)) => {
+            Err(mpsc::error::TrySendError::Closed(request)) => {
+                observability::record_command_total(
+                    request.command().name(),
+                    "rejected_channel_closed",
+                );
                 tracing::error!("Command channel closed");
                 false
             }

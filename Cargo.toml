@@ -23,6 +23,8 @@ tokio = { workspace = true, features = [
 tokio-util = { workspace = true }
 futures = { workspace = true }
 tracing = { workspace = true }
+metrics = "0.24.2"
+metrics-exporter-prometheus = "0.17.2"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json"] }
 tracing-opentelemetry = "0.32.1"
 opentelemetry = { version = "0.31.0", default-features = false, features = [

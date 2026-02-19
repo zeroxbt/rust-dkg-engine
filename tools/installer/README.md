@@ -31,13 +31,19 @@ Optional flags:
 
 ## Telemetry setup
 
-During interactive install (when generating a new config), the installer asks whether to enable OpenTelemetry trace export:
+During interactive install (when generating a new config), the installer asks separately about traces and metrics:
 
-- If enabled:
+- Traces: request/operation timelines (good for drill-down in Tempo/Jaeger)
+- Metrics: numeric time series (good for Grafana dashboards/alerts via Prometheus)
+
+- If traces are enabled:
   - prompts for OTLP endpoint (for example `http://127.0.0.1:4317` or a remote collector URL)
   - prompts for telemetry service name
-- If disabled:
-  - writes `telemetry.enabled = false`
+- If metrics are enabled:
+  - prompts for metrics bind address (for example `127.0.0.1:9464`)
+  - writes `[telemetry.metrics]` config with `enabled = true`
+- If either is disabled:
+  - keeps the section in config with `enabled = false` for clarity
 
 Note:
 - This installer step configures node export only.

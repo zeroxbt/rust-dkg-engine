@@ -19,7 +19,7 @@ use super::{
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
 use crate::{
-    application::GET_NETWORK_CONCURRENT_PEERS, periodic_tasks::SyncDeps,
+    application::GET_NETWORK_CONCURRENT_PEERS, observability, periodic_tasks::SyncDeps,
     periodic_tasks::runner::run_with_shutdown,
 };
 
@@ -538,6 +538,8 @@ impl SyncTask {
                 "Sync cycle summary"
             );
         }
+
+        observability::record_sync_last_success_heartbeat();
 
         // Use short delay while catching up, longer delay when idle
         // - total_pending > 0: still have KCs in queue to process

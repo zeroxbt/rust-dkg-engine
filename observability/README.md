@@ -1,0 +1,54 @@
+# Observability Quick Start (Pilot)
+
+This directory contains the first pilot dashboard for validating node telemetry end-to-end.
+
+Telemetry signals used here:
+
+- Traces: timeline of one request/operation across components (for drill-down)
+- Metrics: aggregated numeric time series (for dashboards/alerts)
+
+Quick intuition:
+
+- A trace answers: "why was this specific publish/get slow or failing?"
+- A metric answers: "how many publishes failed in the last 10 minutes?"
+- You can enable one without the other.
+
+## Prerequisites
+
+1. Node config enables telemetry signals you need:
+
+```toml
+[telemetry.traces]
+enabled = false
+otlp_endpoint = "http://127.0.0.1:4317"
+service_name = "rust-dkg-engine"
+
+[telemetry.metrics]
+enabled = true
+bind_address = "127.0.0.1:9464"
+```
+
+2. Start/restart the node.
+3. If metrics are enabled, Prometheus scrapes `http://<node-host>:9464/metrics`.
+4. Grafana has a Prometheus datasource.
+
+## Dashboard import
+
+- Dashboard file: `observability/grafana/dashboards/node-overview.json`
+- In Grafana:
+  - Dashboards -> New -> Import
+  - Upload the JSON file
+  - Select your Prometheus datasource
+
+## What this pilot dashboard validates
+
+- Command throughput and rejection/error signals
+- Command p95/p99 latency
+- Task run rates by task/status
+- Task p95/p99 latency
+- Sync heartbeat freshness (`time() - node_sync_last_success_unix`)
+
+## Notes
+
+- This is intentionally minimal and used to validate instrumentation and queries.
+- After validation, expand with operation/network/storage dashboards.

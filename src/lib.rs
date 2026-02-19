@@ -7,6 +7,7 @@ mod error;
 mod logger;
 mod managers;
 mod node_state;
+mod observability;
 mod operations;
 mod periodic_tasks;
 mod runtime;

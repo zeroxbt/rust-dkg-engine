@@ -24,7 +24,9 @@ use crate::{
         },
         rpc_controller::{config::RpcConfig, rate_limiter::PeerRateLimiterConfig},
     },
-    logger::{LogFormat, LoggerConfig, TelemetryConfig},
+    logger::{
+        LogFormat, LoggerConfig, TelemetryConfig, TelemetryMetricsConfig, TelemetryTracesConfig,
+    },
     managers::ManagersConfigRaw,
     periodic_tasks::tasks::{
         cleanup::{
@@ -48,6 +50,18 @@ pub(crate) fn config_for(environment: &str) -> Result<ConfigRaw, ConfigError> {
 }
 
 // ── Shared defaults (identical across all environments) ─────────
+
+fn telemetry_default_metrics_bind_address() -> String {
+    "127.0.0.1:9464".to_string()
+}
+
+fn telemetry_default_traces_otlp_endpoint() -> String {
+    "http://127.0.0.1:4317".to_string()
+}
+
+fn telemetry_default_traces_service_name() -> String {
+    "rust-dkg-engine".to_string()
+}
 
 fn cleanup() -> CleanupConfig {
     CleanupConfig {
@@ -181,9 +195,15 @@ fn network(bootstrap: Vec<String>) -> NetworkManagerConfig {
 
 fn telemetry(enabled: bool) -> TelemetryConfig {
     TelemetryConfig {
-        enabled,
-        otlp_endpoint: "http://localhost:4317".to_string(),
-        service_name: "rust-dkg-engine".to_string(),
+        traces: TelemetryTracesConfig {
+            enabled,
+            otlp_endpoint: telemetry_default_traces_otlp_endpoint(),
+            service_name: telemetry_default_traces_service_name(),
+        },
+        metrics: TelemetryMetricsConfig {
+            enabled: false,
+            bind_address: telemetry_default_metrics_bind_address(),
+        },
     }
 }
 
@@ -426,7 +446,7 @@ mod tests {
             .expect("development defaults failed to extract");
         assert_eq!(extracted.environment, "development");
         assert_eq!(extracted.logger.level, "rust_dkg_engine=trace");
-        assert!(extracted.telemetry.enabled);
+        assert!(extracted.telemetry.traces.enabled);
         assert_eq!(extracted.managers.blockchain.0.len(), 2);
     }
 
@@ -440,7 +460,7 @@ mod tests {
             .expect("testnet defaults failed to extract");
         assert_eq!(extracted.environment, "testnet");
         assert_eq!(extracted.logger.level, "rust_dkg_engine=info");
-        assert!(!extracted.telemetry.enabled);
+        assert!(!extracted.telemetry.traces.enabled);
         assert_eq!(extracted.managers.blockchain.0.len(), 3);
     }
 

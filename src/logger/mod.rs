@@ -8,9 +8,12 @@
 
 mod config;
 
-use std::sync::OnceLock;
+use std::{net::SocketAddr, sync::OnceLock};
 
-pub(crate) use config::{LogFormat, LoggerConfig, TelemetryConfig};
+pub(crate) use config::{
+    LogFormat, LoggerConfig, TelemetryConfig, TelemetryMetricsConfig, TelemetryTracesConfig,
+};
+use metrics_exporter_prometheus::PrometheusBuilder;
 use opentelemetry::{KeyValue, trace::TracerProvider};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
@@ -26,11 +29,13 @@ pub(crate) fn initialize(logger_config: &LoggerConfig, telemetry_config: &Teleme
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&logger_config.level));
 
-    if telemetry_config.enabled {
+    if telemetry_config.traces.enabled {
         initialize_with_otel(logger_config, telemetry_config, filter);
     } else {
         initialize_without_otel(logger_config, filter);
     }
+
+    initialize_metrics(&telemetry_config.metrics);
 }
 
 /// Initialize logger without OpenTelemetry.
@@ -66,7 +71,7 @@ fn create_tracer_provider(
     // Build the OTLP span exporter
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_tonic()
-        .with_endpoint(&telemetry_config.otlp_endpoint)
+        .with_endpoint(&telemetry_config.traces.otlp_endpoint)
         .build()?;
 
     // Build the tracer provider with resource attributes
@@ -75,7 +80,7 @@ fn create_tracer_provider(
         .with_resource(
             Resource::builder_empty()
                 .with_attributes([
-                    KeyValue::new("service.name", telemetry_config.service_name.clone()),
+                    KeyValue::new("service.name", telemetry_config.traces.service_name.clone()),
                     KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
                 ])
                 .build(),
@@ -136,8 +141,8 @@ fn initialize_with_otel(
     }
 
     tracing::info!(
-        endpoint = %telemetry_config.otlp_endpoint,
-        service = %telemetry_config.service_name,
+        endpoint = %telemetry_config.traces.otlp_endpoint,
+        service = %telemetry_config.traces.service_name,
         "OpenTelemetry tracing enabled"
     );
 }
@@ -149,5 +154,38 @@ pub(crate) fn shutdown_telemetry() {
         && let Err(err) = provider.shutdown()
     {
         eprintln!("OpenTelemetry shutdown failed: {err}");
+    }
+}
+
+fn initialize_metrics(metrics_config: &TelemetryMetricsConfig) {
+    if !metrics_config.enabled {
+        return;
+    }
+
+    let bind_address: SocketAddr = match metrics_config.bind_address.parse() {
+        Ok(address) => address,
+        Err(error) => {
+            tracing::warn!(
+                bind_address = %metrics_config.bind_address,
+                error = %error,
+                "Invalid metrics bind address; metrics exporter disabled"
+            );
+            return;
+        }
+    };
+
+    match PrometheusBuilder::new()
+        .with_http_listener(bind_address)
+        .install_recorder()
+    {
+        Ok(_) => tracing::info!(
+            bind_address = %bind_address,
+            "Prometheus metrics exporter enabled"
+        ),
+        Err(error) => tracing::warn!(
+            bind_address = %bind_address,
+            error = %error,
+            "Failed to initialize Prometheus metrics exporter"
+        ),
     }
 }
