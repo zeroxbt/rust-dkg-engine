@@ -9,7 +9,7 @@ impl BlockchainManager {
     pub async fn connect(config: &BlockchainManagerConfig) -> Result<Self, BlockchainError> {
         let mut blockchains = HashMap::new();
 
-        for blockchain in config.0.iter() {
+        for blockchain in &config.0 {
             let blockchain_config = blockchain.get_config();
             let blockchain_id = blockchain_config.blockchain_id().clone();
 
@@ -34,7 +34,11 @@ impl BlockchainManager {
                 blockchain.native_token_ticker(),
                 blockchain.requires_evm_account_mapping(),
             )
-            .await?;
+            .await
+            .map_err(|source| BlockchainError::BlockchainInitialization {
+                blockchain_id: blockchain_id.to_string(),
+                source: Box::new(source),
+            })?;
             blockchains.insert(blockchain_id, evm_chain);
         }
 

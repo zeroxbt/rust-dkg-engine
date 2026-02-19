@@ -33,11 +33,11 @@ impl KeyManager {
     async fn read_private_key_from_file(
         key_path: &Path,
     ) -> io::Result<libp2p::identity::ed25519::Keypair> {
-        tracing::trace!("Reading private key from file: {}", key_path.display());
+        tracing::trace!(path = %key_path.display(), "Reading private key from file");
         let mut key_bytes = fs::read(key_path).await?;
-        tracing::trace!("Creating keypair from bytes");
+        tracing::trace!("Decoding Ed25519 keypair bytes");
         libp2p::identity::ed25519::Keypair::try_from_bytes(&mut key_bytes)
-            .map_err(|e| io::Error::other(e.to_string()))
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
     }
 
     /// Load an existing keypair from the specified path, or generate and save a new one.
@@ -50,13 +50,13 @@ impl KeyManager {
     pub async fn load_or_generate(key_path: &Path) -> Result<libp2p::identity::Keypair> {
         match Self::read_private_key_from_file(key_path).await {
             Ok(pk) => {
-                tracing::info!("Loaded existing network key from {}", key_path.display());
+                tracing::info!(path = %key_path.display(), "Loaded existing network key");
                 Ok(pk.into())
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 tracing::info!(
-                    "No existing key found at {}, generating new key",
-                    key_path.display()
+                    path = %key_path.display(),
+                    "Network key not found; generating a new key"
                 );
 
                 let new_key = identity::Keypair::generate_ed25519();
@@ -68,15 +68,15 @@ impl KeyManager {
                     .map_err(NetworkError::KeyConversion)?;
 
                 Self::save_private_key_to_file(&ed25519_key, key_path).await?;
-                tracing::info!("Saved new network key to {}", key_path.display());
+                tracing::info!(path = %key_path.display(), "Saved newly generated network key");
 
                 Ok(new_key)
             }
             Err(error) => {
                 tracing::error!(
-                    "Failed to load existing network key from {}: {}",
-                    key_path.display(),
-                    error
+                    path = %key_path.display(),
+                    error = %error,
+                    "Failed to load network key"
                 );
                 Err(NetworkError::PeerIdIo(error))
             }

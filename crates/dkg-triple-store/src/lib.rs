@@ -56,12 +56,7 @@ impl TripleStoreManager {
 
                 // Ensure the directory exists
                 if let Some(parent) = store_path.parent() {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        TripleStoreError::Other(format!(
-                            "Failed to create Oxigraph store directory: {}",
-                            e
-                        ))
-                    })?;
+                    std::fs::create_dir_all(parent)?;
                 }
 
                 Box::new(OxigraphBackend::open(store_path)?)

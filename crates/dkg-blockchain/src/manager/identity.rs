@@ -11,8 +11,14 @@ impl BlockchainManager {
     }
 
     pub async fn initialize_identities(&mut self, peer_id: &str) -> Result<(), BlockchainError> {
-        for blockchain in self.blockchains.values_mut() {
-            blockchain.initialize_identity(peer_id).await?;
+        for (blockchain_id, blockchain) in &mut self.blockchains {
+            blockchain
+                .initialize_identity(peer_id)
+                .await
+                .map_err(|source| BlockchainError::IdentityInitialization {
+                    blockchain_id: blockchain_id.to_string(),
+                    source: Box::new(source),
+                })?;
         }
 
         Ok(())

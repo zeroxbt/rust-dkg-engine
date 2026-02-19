@@ -77,6 +77,20 @@ pub enum BlockchainError {
     #[error("Contract initialization failed: {reason}")]
     ContractInit { reason: String },
 
+    #[error("Failed to initialize blockchain '{blockchain_id}': {source}")]
+    BlockchainInitialization {
+        blockchain_id: String,
+        #[source]
+        source: Box<BlockchainError>,
+    },
+
+    #[error("Failed to initialize identity for blockchain '{blockchain_id}': {source}")]
+    IdentityInitialization {
+        blockchain_id: String,
+        #[source]
+        source: Box<BlockchainError>,
+    },
+
     #[error("EVM account mapping required for {wallet_type} wallet {wallet_address}")]
     EvmAccountMappingRequired {
         wallet_type: String,

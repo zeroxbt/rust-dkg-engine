@@ -198,6 +198,11 @@ impl NetworkManager {
     }
 
     /// Send a get request and await the response.
+    #[instrument(
+        name = "network_get",
+        skip(self, request_data),
+        fields(peer_id = %peer, operation_id = %operation_id)
+    )]
     pub async fn send_get_request(
         &self,
         peer: PeerId,
@@ -250,6 +255,11 @@ impl NetworkManager {
     }
 
     /// Send a finality request and await the response.
+    #[instrument(
+        name = "network_finality",
+        skip(self, request_data),
+        fields(peer_id = %peer, operation_id = %operation_id)
+    )]
     pub async fn send_finality_request(
         &self,
         peer: PeerId,

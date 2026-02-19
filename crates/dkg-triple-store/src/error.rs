@@ -11,6 +11,10 @@ pub enum TripleStoreError {
     #[error("HTTP request failed: {0}")]
     Http(#[from] reqwest::Error),
 
+    /// I/O operation failed
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
     /// Triple store backend returned an error response
     #[error("Triple store error (status {status}): {message}")]
     Backend { status: u16, message: String },
