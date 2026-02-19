@@ -80,18 +80,15 @@ pub(crate) async fn determine_get_visibility_for_paranet(
         }
     };
 
-    let policy = match blockchain_manager
+    let Ok(policy) = blockchain_manager
         .get_nodes_access_policy(&target_ual.blockchain, paranet_id)
         .await
-    {
-        Ok(policy) => policy,
-        Err(_) => {
-            tracing::debug!(
-                paranet_id = %paranet_id,
-                "Failed to get access policy, using Public visibility"
-            );
-            return Visibility::Public;
-        }
+    else {
+        tracing::debug!(
+        paranet_id = %paranet_id,
+        "Failed to get access policy, using Public visibility"
+        );
+        return Visibility::Public;
     };
 
     if policy != AccessPolicy::Permissioned {
@@ -103,17 +100,15 @@ pub(crate) async fn determine_get_visibility_for_paranet(
         return Visibility::Public;
     }
 
-    let kc_registered =
-        match is_target_kc_registered(blockchain_manager, target_ual, paranet_id).await {
-            Ok(registered) => registered,
-            Err(_) => {
-                tracing::debug!(
-                    paranet_id = %paranet_id,
-                    "Failed to check KC registration, using Public visibility"
-                );
-                return Visibility::Public;
-            }
-        };
+    let Ok(kc_registered) =
+        is_target_kc_registered(blockchain_manager, target_ual, paranet_id).await
+    else {
+        tracing::debug!(
+        paranet_id = %paranet_id,
+        "Failed to check KC registration, using Public visibility"
+        );
+        return Visibility::Public;
+    };
 
     if !kc_registered {
         tracing::debug!(
@@ -124,17 +119,15 @@ pub(crate) async fn determine_get_visibility_for_paranet(
         return Visibility::Public;
     }
 
-    let permissioned_peer_ids =
-        match permissioned_peer_ids(blockchain_manager, &target_ual.blockchain, paranet_id).await {
-            Ok(peer_ids) => peer_ids,
-            Err(_) => {
-                tracing::debug!(
-                    paranet_id = %paranet_id,
-                    "Failed to get permissioned nodes, using Public visibility"
-                );
-                return Visibility::Public;
-            }
-        };
+    let Ok(permissioned_peer_ids) =
+        permissioned_peer_ids(blockchain_manager, &target_ual.blockchain, paranet_id).await
+    else {
+        tracing::debug!(
+        paranet_id = %paranet_id,
+        "Failed to get permissioned nodes, using Public visibility"
+        );
+        return Visibility::Public;
+    };
 
     if permissioned_peer_ids.contains(local_peer_id)
         && permissioned_peer_ids.contains(remote_peer_id)
