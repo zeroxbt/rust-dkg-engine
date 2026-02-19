@@ -19,7 +19,7 @@ impl PeerRegistry {
     // Identity methods
     // ─────────────────────────────────────────────────────────────────────────────
 
-    pub(crate) fn update_identify(&self, peer_id: PeerId, info: IdentifyInfo) {
+    pub fn update_identify(&self, peer_id: PeerId, info: IdentifyInfo) {
         let identify = IdentifyRecord {
             protocols: info.protocols,
             listen_addrs: info.listen_addrs,
@@ -40,7 +40,7 @@ impl PeerRegistry {
     // Shard membership methods
     // ─────────────────────────────────────────────────────────────────────────────
 
-    pub(crate) fn set_shard_membership(&self, blockchain_id: &BlockchainId, peer_ids: &[PeerId]) {
+    pub fn set_shard_membership(&self, blockchain_id: &BlockchainId, peer_ids: &[PeerId]) {
         let new_set: HashSet<PeerId> = peer_ids.iter().copied().collect();
 
         for peer_id in &new_set {
@@ -68,7 +68,7 @@ impl PeerRegistry {
     // ─────────────────────────────────────────────────────────────────────────────
 
     /// Record a successful request with its latency.
-    pub(crate) fn record_latency(&self, peer_id: PeerId, latency: Duration) {
+    pub fn record_latency(&self, peer_id: PeerId, latency: Duration) {
         if let Some(mut peer) = self.peers.get_mut(&peer_id) {
             peer.performance.record(latency.as_millis() as u64);
         }
@@ -76,7 +76,7 @@ impl PeerRegistry {
 
     /// Record a failed request (timeout, dial failure, etc.).
     /// Failures are recorded as high latency to naturally sort failing peers last.
-    pub(crate) fn record_request_failure(&self, peer_id: PeerId) {
+    pub fn record_request_failure(&self, peer_id: PeerId) {
         if let Some(mut peer) = self.peers.get_mut(&peer_id) {
             peer.performance.record(FAILURE_LATENCY_MS);
             peer.last_failure_at = Some(Instant::now());
@@ -88,7 +88,7 @@ impl PeerRegistry {
     // ─────────────────────────────────────────────────────────────────────────────
 
     /// Record a failed discovery attempt for a peer.
-    pub(crate) fn record_discovery_failure(&self, peer_id: PeerId) {
+    pub fn record_discovery_failure(&self, peer_id: PeerId) {
         if let Some(mut peer) = self.peers.get_mut(&peer_id) {
             peer.discovery_failure_count = peer.discovery_failure_count.saturating_add(1);
             peer.last_discovery_attempt = Some(Instant::now());
@@ -96,14 +96,14 @@ impl PeerRegistry {
     }
 
     /// Record a successful connection - resets failure tracking.
-    pub(crate) fn record_discovery_success(&self, peer_id: PeerId) {
+    pub fn record_discovery_success(&self, peer_id: PeerId) {
         if let Some(mut peer) = self.peers.get_mut(&peer_id) {
             peer.discovery_failure_count = 0;
             peer.last_discovery_attempt = None;
         }
     }
 
-    pub(crate) fn apply_peer_event(&self, event: PeerEvent) {
+    pub fn apply_peer_event(&self, event: PeerEvent) {
         match event {
             PeerEvent::IdentifyReceived { peer_id, info } => {
                 self.update_identify(peer_id, info);

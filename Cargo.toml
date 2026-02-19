@@ -11,6 +11,7 @@ dkg-network = { path = "crates/dkg-network" }
 dkg-repository = { path = "crates/dkg-repository" }
 dkg-key-value-store = { path = "crates/dkg-key-value-store" }
 dkg-triple-store = { path = "crates/dkg-triple-store" }
+dkg-peer-registry = { path = "crates/dkg-peer-registry" }
 tokio = { workspace = true, features = [
     "macros",
     "rt-multi-thread",
@@ -72,6 +73,7 @@ members = [
     "crates/dkg-repository",
     "crates/dkg-key-value-store",
     "crates/dkg-triple-store",
+    "crates/dkg-peer-registry",
 ]
 default-members = ["."]
 

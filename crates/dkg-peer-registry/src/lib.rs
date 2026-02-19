@@ -8,12 +8,12 @@ use dkg_network::PeerId;
 
 use state::PeerRecord;
 
-pub(crate) struct PeerRegistry {
+pub struct PeerRegistry {
     peers: DashMap<PeerId, PeerRecord>,
 }
 
 impl PeerRegistry {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             peers: DashMap::new(),
         }
