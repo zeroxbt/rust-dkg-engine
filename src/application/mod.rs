@@ -6,6 +6,7 @@ pub(crate) const UAL_MAX_LIMIT: usize = 1000;
 pub(crate) mod get_assertion;
 pub(crate) mod operation_tracking;
 pub(crate) mod paranet;
+pub(crate) mod signature;
 pub(crate) mod triple_store_assertions;
 
 pub(crate) use assertion_validation::{AssertionValidation, group_and_sort_public_triples};

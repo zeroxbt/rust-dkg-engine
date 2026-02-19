@@ -8,6 +8,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    application::signature,
     commands::HandlePublishStoreRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
     node_state::PeerRegistry,
@@ -220,10 +221,12 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandOutcome::Completed;
         };
 
-        let signature = match self
-            .blockchain_manager
-            .sign_message(blockchain, dataset_root_hex)
-            .await
+        let signature = match signature::sign_dataset_root_hex(
+            self.blockchain_manager.as_ref(),
+            blockchain,
+            dataset_root_hex,
+        )
+        .await
         {
             Ok(sig) => {
                 tracing::debug!(

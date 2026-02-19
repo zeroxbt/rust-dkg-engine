@@ -12,10 +12,11 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    application::{OperationTracking as GenericOperationService, signature},
     commands::SendPublishStoreRequestsDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    operations::{PublishStoreOperation, PublishStoreOperationResult},
-    application::{OperationTracking as GenericOperationService}, node_state::PeerRegistry,
+    operations::PublishStoreOperation,
+    node_state::PeerRegistry,
 };
 
 /// Maximum number of in-flight peer requests for this operation.
@@ -175,22 +176,22 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         };
 
         // Create and store publisher signature directly to result storage
-        match self
-            .create_publisher_signature(blockchain, dataset_root, identity_id)
-            .await
+        match signature::create_publisher_signature(
+            self.blockchain_manager.as_ref(),
+            blockchain,
+            dataset_root,
+            identity_id,
+        )
+        .await
         {
             Ok(sig) => {
                 // Store publisher signature to result storage immediately
-                if let Err(e) = self
-                    .publish_store_operation_tracking
-                    .update_result(
-                        operation_id,
-                        PublishStoreOperationResult::new(None, Vec::new()),
-                        |result| {
-                            result.publisher_signature = Some(sig);
-                        },
-                    )
-                    .await
+                if let Err(e) = signature::store_publisher_signature(
+                    self.publish_store_operation_tracking.as_ref(),
+                    operation_id,
+                    sig,
+                )
+                .await
                 {
                     tracing::warn!(
                         operation_id = %operation_id,
@@ -236,20 +237,42 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                 peer = %my_peer_id,
                 "Processing self-node (publisher), handling signature locally"
             );
-            if let Err(e) = self
-                .handle_self_node_signature(operation_id, blockchain, dataset_root_hex, identity_id)
-                .await
+            match signature::sign_dataset_root_hex(
+                self.blockchain_manager.as_ref(),
+                blockchain,
+                dataset_root_hex,
+            )
+            .await
             {
-                tracing::warn!(
-                    operation_id = %operation_id,
-                    error = %e,
-                    "Failed to handle self-node signature, continuing with other nodes"
-                );
-            } else {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    "Self-node signature handled successfully"
-                );
+                Ok(self_signature) => {
+                    let self_sig_data =
+                        signature::to_publish_store_signature_data(identity_id, &self_signature);
+                    if let Err(e) = signature::append_network_signature(
+                        self.publish_store_operation_tracking.as_ref(),
+                        operation_id,
+                        self_sig_data,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            operation_id = %operation_id,
+                            error = %e,
+                            "Failed to handle self-node signature, continuing with other nodes"
+                        );
+                    } else {
+                        tracing::debug!(
+                            operation_id = %operation_id,
+                            "Self-node signature handled successfully"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        operation_id = %operation_id,
+                        error = %e,
+                        "Failed to handle self-node signature, continuing with other nodes"
+                    );
+                }
             }
         }
 
@@ -284,9 +307,8 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             while let Some((peer, result)) = futures.next().await {
                 match result {
                     Ok(response) => {
-                        let is_valid = self
-                            .process_store_response(operation_id, &peer, &response)
-                            .await;
+                        let is_valid =
+                            process_store_response(self, operation_id, &peer, &response).await;
 
                         if !is_valid {
                             failure_count += 1;
@@ -358,6 +380,53 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             .await;
 
         CommandOutcome::Completed
+    }
+}
+
+async fn process_store_response(
+    handler: &SendPublishStoreRequestsCommandHandler,
+    operation_id: Uuid,
+    peer: &PeerId,
+    response: &StoreResponseData,
+) -> bool {
+    match response {
+        StoreResponseData::Ack(ack) => {
+            let identity_id = ack.identity_id;
+            let sig_data = signature::to_publish_store_signature_data(identity_id, &ack.signature);
+
+            if let Err(e) = signature::append_network_signature(
+                handler.publish_store_operation_tracking.as_ref(),
+                operation_id,
+                sig_data,
+            )
+            .await
+            {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    peer = %peer,
+                    error = %e,
+                    "Failed to store network signature"
+                );
+                return false;
+            }
+
+            tracing::debug!(
+                operation_id = %operation_id,
+                peer = %peer,
+                identity_id = %identity_id,
+                "Signature stored successfully"
+            );
+            true
+        }
+        StoreResponseData::Error(err) => {
+            tracing::debug!(
+                operation_id = %operation_id,
+                peer = %peer,
+                error = %err.error_message,
+                "Peer returned error response"
+            );
+            false
+        }
     }
 }
 
