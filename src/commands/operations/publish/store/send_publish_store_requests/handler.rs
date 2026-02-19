@@ -15,8 +15,8 @@ use crate::{
     application::{OperationTracking as GenericOperationService, signature},
     commands::SendPublishStoreRequestsDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    operations::PublishStoreOperation,
     node_state::PeerRegistry,
+    operations::PublishStoreOperation,
 };
 
 /// Maximum number of in-flight peer requests for this operation.
@@ -128,13 +128,6 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             Some(&my_peer_id),
         );
 
-        tracing::debug!(
-            operation_id = %operation_id,
-            remote_peers_count = remote_peers.len(),
-            self_in_shard = self_in_shard,
-            "Retrieved shard peers from peer service"
-        );
-
         // Total peers includes self if we're in the shard
         let total_peers = if self_in_shard {
             remote_peers.len() as u16 + 1
@@ -143,25 +136,32 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         };
         tracing::Span::current().record("peer_count", tracing::field::display(total_peers));
 
+        let min_ack_required = min_ack_responses as u16;
+        let min_required_peers = min_ack_required;
         tracing::debug!(
-            operation_id = %operation_id,
             total_peers = total_peers,
             remote_peers = remote_peers.len(),
             self_in_shard = self_in_shard,
+            min_ack_required = min_ack_required,
             my_peer_id = %my_peer_id,
-            "Parsed peer IDs from shard nodes"
+            "Prepared publish-store peers"
         );
-
-        let min_ack_required = min_ack_responses as u16;
-        let min_required_peers = min_ack_required;
         if total_peers < min_required_peers {
             let error_message = format!(
                 "Unable to find enough nodes for operation: {operation_id}. Minimum number of nodes required: {min_required_peers}"
             );
 
-            self.publish_store_operation_tracking
+            if let Err(e) = self
+                .publish_store_operation_tracking
                 .mark_failed(operation_id, error_message)
-                .await;
+                .await
+            {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Failed to mark publish-store operation as failed"
+                );
+            }
 
             return CommandOutcome::Completed;
         }
@@ -169,9 +169,17 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
         let identity_id = self.blockchain_manager.identity_id(blockchain);
 
         let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
-            self.publish_store_operation_tracking
+            if let Err(e) = self
+                .publish_store_operation_tracking
                 .mark_failed(operation_id, "Dataset root missing '0x' prefix".to_string())
-                .await;
+                .await
+            {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %e,
+                    "Failed to mark publish-store operation as failed"
+                );
+            }
             return CommandOutcome::Completed;
         };
 
@@ -224,19 +232,22 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                 error = %e,
                 "Failed to store dataset in publish tmp dataset store"
             );
-            self.publish_store_operation_tracking
+            if let Err(mark_failed_error) = self
+                .publish_store_operation_tracking
                 .mark_failed(operation_id, format!("Failed to store dataset: {}", e))
-                .await;
+                .await
+            {
+                tracing::error!(
+                    operation_id = %operation_id,
+                    error = %mark_failed_error,
+                    "Failed to mark publish-store operation as failed"
+                );
+            }
             return CommandOutcome::Completed;
         }
 
         // Handle self-node signature if we're in the shard
         if self_in_shard {
-            tracing::debug!(
-                operation_id = %operation_id,
-                peer = %my_peer_id,
-                "Processing self-node (publisher), handling signature locally"
-            );
             match signature::sign_dataset_root_hex(
                 self.blockchain_manager.as_ref(),
                 blockchain,
@@ -258,11 +269,6 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                             operation_id = %operation_id,
                             error = %e,
                             "Failed to handle self-node signature, continuing with other nodes"
-                        );
-                    } else {
-                        tracing::debug!(
-                            operation_id = %operation_id,
-                            "Self-node signature handled successfully"
                         );
                     }
                 }
@@ -318,8 +324,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                     }
                     Err(e) => {
                         failure_count += 1;
-                        tracing::debug!(
-                            operation_id = %operation_id,
+                        tracing::trace!(
                             peer = %peer,
                             error = %e,
                             "Store request failed"
@@ -345,7 +350,6 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
 
         if reached_threshold {
             tracing::info!(
-                operation_id = %operation_id,
                 success_count = success_count,
                 failure_count = failure_count,
                 "Publish store completed"
@@ -361,9 +365,17 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
                     error = %e,
                     "Failed to complete operation"
                 );
-                self.publish_store_operation_tracking
+                if let Err(mark_failed_error) = self
+                    .publish_store_operation_tracking
                     .mark_failed(operation_id, e.to_string())
-                    .await;
+                    .await
+                {
+                    tracing::error!(
+                        operation_id = %operation_id,
+                        error = %mark_failed_error,
+                        "Failed to mark publish-store operation as failed"
+                    );
+                }
             }
 
             return CommandOutcome::Completed;
@@ -375,9 +387,17 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             success_count, failure_count, min_ack_responses
         );
         tracing::warn!(operation_id = %operation_id, %error_message, "Publish store failed");
-        self.publish_store_operation_tracking
+        if let Err(e) = self
+            .publish_store_operation_tracking
             .mark_failed(operation_id, error_message)
-            .await;
+            .await
+        {
+            tracing::error!(
+                operation_id = %operation_id,
+                error = %e,
+                "Failed to mark publish-store operation as failed"
+            );
+        }
 
         CommandOutcome::Completed
     }
@@ -410,17 +430,10 @@ async fn process_store_response(
                 return false;
             }
 
-            tracing::debug!(
-                operation_id = %operation_id,
-                peer = %peer,
-                identity_id = %identity_id,
-                "Signature stored successfully"
-            );
             true
         }
         StoreResponseData::Error(err) => {
-            tracing::debug!(
-                operation_id = %operation_id,
+            tracing::trace!(
                 peer = %peer,
                 error = %err.error_message,
                 "Peer returned error response"

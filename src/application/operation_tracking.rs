@@ -1,4 +1,4 @@
-use dkg_key_value_store::{KeyValueStoreManager, OperationResultStore, ResultStoreError};
+use dkg_key_value_store::{KeyValueStoreManager, OperationResultStore};
 use dkg_repository::{OperationRepository, OperationStatus};
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
@@ -42,8 +42,9 @@ where
 
         tracing::debug!(
             operation_id = %operation_id,
-            "[{}] Operation record created ",
-            K::NAME
+            operation_kind = K::NAME,
+            status = "in_progress",
+            "Operation record created"
         );
 
         Ok(())
@@ -54,27 +55,27 @@ where
         &self,
         operation_id: Uuid,
         result: K::Result,
-    ) -> Result<(), ResultStoreError> {
+    ) -> Result<(), NodeError> {
         self.result_store.store_result(operation_id, result).await?;
         tracing::debug!(
             operation_id = %operation_id,
-            "[{}] Result stored",
-            K::NAME
+            operation_kind = K::NAME,
+            "Operation result stored"
         );
         Ok(())
     }
 
     /// Remove a result from the key-value store.
-    pub(crate) async fn remove_result(&self, operation_id: Uuid) -> Result<bool, ResultStoreError> {
-        self.result_store.remove_result(operation_id).await
+    pub(crate) async fn remove_result(&self, operation_id: Uuid) -> Result<bool, NodeError> {
+        Ok(self.result_store.remove_result(operation_id).await?)
     }
 
     /// Get a cached operation result from the key-value store.
     pub(crate) async fn get_result(
         &self,
         operation_id: Uuid,
-    ) -> Result<Option<K::Result>, ResultStoreError> {
-        self.result_store.get_result(operation_id).await
+    ) -> Result<Option<K::Result>, NodeError> {
+        Ok(self.result_store.get_result(operation_id).await?)
     }
 
     /// Update a result in the key-value store using a closure.
@@ -85,7 +86,7 @@ where
         operation_id: Uuid,
         default: K::Result,
         update_fn: F,
-    ) -> Result<(), ResultStoreError>
+    ) -> Result<(), NodeError>
     where
         F: FnOnce(&mut K::Result) + Send + 'static,
     {
@@ -94,8 +95,8 @@ where
             .await?;
         tracing::trace!(
             operation_id = %operation_id,
-            "[{}] Result updated",
-            K::NAME
+            operation_kind = K::NAME,
+            "Operation result updated"
         );
         Ok(())
     }
@@ -116,7 +117,12 @@ where
     /// Mark an operation as completed, ensuring a result exists first.
     pub(crate) async fn complete(&self, operation_id: Uuid) -> Result<(), NodeError> {
         if self.get_result(operation_id).await?.is_none() {
-            return Err(NodeError::Other(Self::MISSING_RESULT_ERROR.to_string()));
+            return Err(NodeError::Other(format!(
+                "{} (operation_id={}, operation_kind={})",
+                Self::MISSING_RESULT_ERROR,
+                operation_id,
+                K::NAME
+            )));
         }
         self.mark_completed(operation_id).await
     }
@@ -130,37 +136,35 @@ where
 
         tracing::info!(
             operation_id = %operation_id,
-            "[{}] Operation marked as completed",
-            K::NAME
+            operation_kind = K::NAME,
+            status = "completed",
+            "Operation marked as completed"
         );
 
         Ok(())
     }
 
     /// Manually fail an operation (e.g., due to external error before sending requests).
-    pub(crate) async fn mark_failed(&self, operation_id: Uuid, reason: String) {
-        let result = self
-            .operation_repository
+    pub(crate) async fn mark_failed(
+        &self,
+        operation_id: Uuid,
+        reason: String,
+    ) -> Result<(), NodeError> {
+        let reason_for_log = reason.clone();
+        self.operation_repository
             .update(operation_id, Some(OperationStatus::Failed), Some(reason))
-            .await;
+            .await?;
 
-        let _ = self.result_store.remove_result(operation_id).await;
+        let _ = self.result_store.remove_result(operation_id).await?;
 
-        match result {
-            Ok(_) => {
-                tracing::warn!(
-                    operation_id = %operation_id,
-                    "[{}] Operation failed",
-                    K::NAME
-                );
-            }
-            Err(e) => {
-                tracing::error!(
-                    operation_id = %operation_id,
-                    error = %e,
-                    "Unable to mark operation as failed"
-                );
-            }
-        }
+        tracing::warn!(
+            operation_id = %operation_id,
+            operation_kind = K::NAME,
+            status = "failed",
+            reason = %reason_for_log,
+            "Operation marked as failed"
+        );
+
+        Ok(())
     }
 }

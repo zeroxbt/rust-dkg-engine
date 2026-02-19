@@ -5,8 +5,8 @@ use crate::{
         AssertionValidation, GetAssertionUseCase, OperationTracking, TripleStoreAssertions,
     },
     managers::Managers,
-    operations::{GetOperation, PublishStoreOperation},
     node_state::NodeState,
+    operations::{GetOperation, PublishStoreOperation},
 };
 
 pub(crate) struct ApplicationDeps {
@@ -20,10 +20,11 @@ pub(crate) struct ApplicationDeps {
 pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> ApplicationDeps {
     let operation_repository = managers.repository.operation_repository();
 
-    let publish_store_operation_tracking = Arc::new(OperationTracking::<PublishStoreOperation>::new(
-        operation_repository.clone(),
-        &managers.key_value_store,
-    ));
+    let publish_store_operation_tracking =
+        Arc::new(OperationTracking::<PublishStoreOperation>::new(
+            operation_repository.clone(),
+            &managers.key_value_store,
+        ));
 
     let get_operation_tracking = Arc::new(OperationTracking::<GetOperation>::new(
         operation_repository,

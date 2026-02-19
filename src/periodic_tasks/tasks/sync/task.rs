@@ -6,6 +6,7 @@ use std::{sync::Arc, time::Duration};
 
 use dkg_blockchain::{Address, BlockchainId, ContractName};
 use futures::future::join_all;
+use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
@@ -18,13 +19,35 @@ use super::{
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
 use crate::{
-    periodic_tasks::SyncDeps, periodic_tasks::runner::run_with_shutdown,
-    application::GET_NETWORK_CONCURRENT_PEERS,
+    application::GET_NETWORK_CONCURRENT_PEERS, periodic_tasks::SyncDeps,
+    periodic_tasks::runner::run_with_shutdown,
 };
 
 pub(crate) struct SyncTask {
     config: SyncConfig,
     deps: SyncDeps,
+}
+
+#[derive(Debug, Error)]
+enum SyncTaskError {
+    #[error("Failed to fetch pending KCs from queue")]
+    FetchPendingKcs(#[source] dkg_repository::error::RepositoryError),
+    #[error("Failed to fetch pending KCs after enqueue")]
+    FetchPendingKcsAfterEnqueue(#[source] dkg_repository::error::RepositoryError),
+    #[error("Filter task panicked")]
+    FilterTaskPanicked(#[source] tokio::task::JoinError),
+    #[error("Fetch task panicked")]
+    FetchTaskPanicked(#[source] tokio::task::JoinError),
+    #[error("Insert task panicked")]
+    InsertTaskPanicked(#[source] tokio::task::JoinError),
+    #[error("Failed to get latest KC ID from chain")]
+    GetLatestKcId(#[source] dkg_blockchain::BlockchainError),
+    #[error("Failed to load sync progress")]
+    LoadSyncProgress(#[source] dkg_repository::error::RepositoryError),
+    #[error("Failed to enqueue KCs")]
+    EnqueueKcs(#[source] dkg_repository::error::RepositoryError),
+    #[error("Failed to update sync progress")]
+    UpdateSyncProgress(#[source] dkg_repository::error::RepositoryError),
 }
 
 impl SyncTask {
@@ -49,7 +72,7 @@ impl SyncTask {
         &self,
         blockchain_id: &BlockchainId,
         contract_address: Address,
-    ) -> Result<ContractSyncResult, String> {
+    ) -> Result<ContractSyncResult, SyncTaskError> {
         let contract_addr_str = format!("{:?}", contract_address);
         let sync_start = std::time::Instant::now();
 
@@ -66,7 +89,7 @@ impl SyncTask {
                 self.config.max_new_kcs_per_contract,
             )
             .await
-            .map_err(|e| format!("Failed to fetch pending KCs: {}", e))?;
+            .map_err(SyncTaskError::FetchPendingKcs)?;
 
         // Step 2: Enqueue new KCs if needed
 
@@ -90,13 +113,11 @@ impl SyncTask {
                         max_new_kcs_per_contract,
                     )
                     .await
-                    .map_err(|e| format!("Failed to fetch pending KCs after enqueue: {}", e))?;
+                    .map_err(SyncTaskError::FetchPendingKcsAfterEnqueue)?;
             }
             newly_enqueued
         } else {
             tracing::debug!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
                 existing_count,
                 "Queue already has enough pending KCs, skipping enqueue"
             );
@@ -170,7 +191,7 @@ impl SyncTask {
         blockchain_id: BlockchainId,
         contract_address: Address,
         contract_addr_str: String,
-    ) -> Result<(FilterStats, FetchStats, InsertStats), String> {
+    ) -> Result<(FilterStats, FetchStats, InsertStats), SyncTaskError> {
         let pipeline_channel_buffer = self.config.pipeline_channel_buffer.max(1);
         let filter_batch_size = self.config.filter_batch_size.max(1);
         let network_fetch_batch_size = self.config.network_fetch_batch_size.max(1);
@@ -251,9 +272,9 @@ impl SyncTask {
         let (filter_result, fetch_result, insert_result) =
             tokio::join!(filter_handle, fetch_handle, insert_handle);
 
-        let filter_stats = filter_result.map_err(|e| format!("Filter task panicked: {}", e))?;
-        let fetch_stats = fetch_result.map_err(|e| format!("Fetch task panicked: {}", e))?;
-        let insert_stats = insert_result.map_err(|e| format!("Insert task panicked: {}", e))?;
+        let filter_stats = filter_result.map_err(SyncTaskError::FilterTaskPanicked)?;
+        let fetch_stats = fetch_result.map_err(SyncTaskError::FetchTaskPanicked)?;
+        let insert_stats = insert_result.map_err(SyncTaskError::InsertTaskPanicked)?;
 
         Ok((filter_stats, fetch_stats, insert_stats))
     }
@@ -355,55 +376,25 @@ impl SyncTask {
         contract_address: Address,
         contract_addr_str: &str,
         limit: u64,
-    ) -> Result<u64, String> {
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
-            contract = %contract_addr_str,
-            "Fetching latest KC ID from chain..."
-        );
-
+    ) -> Result<u64, SyncTaskError> {
         let latest_on_chain = self
             .deps
             .blockchain_manager
             .get_latest_knowledge_collection_id(blockchain_id, contract_address)
             .await
-            .map_err(|e| format!("Failed to get latest KC ID: {}", e))?;
-
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
-            contract = %contract_addr_str,
-            latest_on_chain,
-            "Got latest KC ID from chain"
-        );
-
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
-            contract = %contract_addr_str,
-            "Fetching sync progress from DB..."
-        );
+            .map_err(SyncTaskError::GetLatestKcId)?;
 
         let last_checked = self
             .deps
             .kc_sync_repository
             .get_progress(blockchain_id.as_str(), contract_addr_str)
             .await
-            .map_err(|e| format!("Failed to get sync progress: {}", e))?
+            .map_err(SyncTaskError::LoadSyncProgress)?
             .map(|p| p.last_checked_id)
             .unwrap_or(0);
 
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
-            contract = %contract_addr_str,
-            last_checked,
-            "Got sync progress from DB"
-        );
-
         if latest_on_chain <= last_checked {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
-                "No new KCs to enqueue (latest_on_chain <= last_checked)"
-            );
+            tracing::trace!(latest_on_chain, last_checked, "No new KCs to enqueue");
             return Ok(0);
         }
 
@@ -416,13 +407,22 @@ impl SyncTask {
             .kc_sync_repository
             .enqueue_kcs(blockchain_id.as_str(), contract_addr_str, &new_kc_ids)
             .await
-            .map_err(|e| format!("Failed to enqueue KCs: {}", e))?;
+            .map_err(SyncTaskError::EnqueueKcs)?;
 
         self.deps
             .kc_sync_repository
             .upsert_progress(blockchain_id.as_str(), contract_addr_str, end_id)
             .await
-            .map_err(|e| format!("Failed to update progress: {}", e))?;
+            .map_err(SyncTaskError::UpdateSyncProgress)?;
+
+        tracing::debug!(
+            latest_on_chain,
+            last_checked,
+            start_id,
+            end_id,
+            enqueued = count,
+            "Enqueued new KCs for sync"
+        );
 
         Ok(count)
     }
@@ -444,10 +444,7 @@ impl SyncTask {
         let no_peers_retry_delay = Duration::from_secs(self.config.no_peers_retry_delay_secs);
 
         if !self.config.enabled {
-            tracing::trace!(
-                blockchain_id = %blockchain_id,
-                "Sync task disabled by configuration"
-            );
+            tracing::trace!("Sync task disabled by configuration");
             return idle_period;
         }
 
@@ -461,7 +458,6 @@ impl SyncTask {
 
         if identified_peers < min_required {
             tracing::debug!(
-                blockchain_id = %blockchain_id,
                 identified = identified_peers,
                 total = total_shard_peers,
                 required = min_required,
@@ -469,13 +465,6 @@ impl SyncTask {
             );
             return no_peers_retry_delay;
         }
-
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
-            identified_peers,
-            total_shard_peers,
-            "Starting sync cycle"
-        );
 
         let contract_addresses = match self
             .deps
@@ -493,12 +482,6 @@ impl SyncTask {
                 return idle_period;
             }
         };
-
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
-            contract_count = contract_addresses.len(),
-            "Found KC storage contracts"
-        );
 
         // Sync each contract in parallel
         let sync_futures = contract_addresses
@@ -522,8 +505,7 @@ impl SyncTask {
                     total_failed += r.failed;
 
                     if r.enqueued > 0 || r.pending > 0 {
-                        tracing::debug!(
-                            blockchain_id = %blockchain_id,
+                        tracing::trace!(
                             contract = ?contract_addresses[i],
                             enqueued = r.enqueued,
                             pending = r.pending,
@@ -546,7 +528,9 @@ impl SyncTask {
 
         if total_enqueued > 0 || total_pending > 0 {
             tracing::info!(
-                blockchain_id = %blockchain_id,
+                contract_count = contract_addresses.len(),
+                identified_peers,
+                total_shard_peers,
                 total_enqueued,
                 total_pending,
                 total_synced,
@@ -560,17 +544,17 @@ impl SyncTask {
         // - total_enqueued > 0: just discovered new KCs on chain (might be more due to limit)
 
         if total_pending > 0 || total_enqueued > 0 {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
+            tracing::trace!(
                 total_pending,
                 total_enqueued,
-                "Still catching up, scheduling immediate resync"
+                delay_secs = catching_up_period.as_secs(),
+                "Scheduling catch-up resync"
             );
             catching_up_period
         } else {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
-                "Caught up, scheduling idle poll"
+            tracing::trace!(
+                delay_secs = idle_period.as_secs(),
+                "Scheduling idle sync poll"
             );
             idle_period
         }

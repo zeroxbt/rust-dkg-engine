@@ -5,8 +5,8 @@ use dkg_repository::{OperationRepository, OperationStatus};
 use uuid::Uuid;
 
 use crate::{
-    operations::{GetOperation, PublishStoreOperation},
     application::OperationTracking,
+    operations::{GetOperation, PublishStoreOperation},
 };
 
 pub(crate) async fn cleanup_operations(

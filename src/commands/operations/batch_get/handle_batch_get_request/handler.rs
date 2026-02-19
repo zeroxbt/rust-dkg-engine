@@ -118,6 +118,8 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             remote_peer = %data.remote_peer_id,
             include_metadata = data.include_metadata,
             ual_count = tracing::field::Empty,
+            valid_ual_count = tracing::field::Empty,
+            invalid_ual_count = tracing::field::Empty,
         )
     )]
     async fn execute(&self, data: &HandleBatchGetRequestCommandData) -> CommandOutcome {
@@ -144,17 +146,17 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         // Parse UALs and pair with token IDs
         let mut uals_with_token_ids: Vec<(ParsedUal, TokenIds)> = Vec::new();
         let mut blockchains = HashSet::new();
+        let mut invalid_ual_count = 0usize;
+        let mut sample_parse_failure: Option<(&str, String)> = None;
 
         for ual in &uals {
             let parsed_ual = match parse_ual(ual) {
                 Ok(p) => p,
                 Err(e) => {
-                    tracing::warn!(
-                        operation_id = %operation_id,
-                        ual = %ual,
-                        error = %e,
-                        "Failed to parse UAL, skipping"
-                    );
+                    invalid_ual_count += 1;
+                    if sample_parse_failure.is_none() {
+                        sample_parse_failure = Some((ual, e.to_string()));
+                    }
                     continue;
                 }
             };
@@ -168,6 +170,24 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
 
             blockchains.insert(parsed_ual.blockchain.clone());
             uals_with_token_ids.push((parsed_ual, token_ids));
+        }
+        tracing::Span::current().record(
+            "valid_ual_count",
+            tracing::field::display(uals_with_token_ids.len()),
+        );
+        tracing::Span::current().record(
+            "invalid_ual_count",
+            tracing::field::display(invalid_ual_count),
+        );
+
+        if let Some((invalid_ual, parse_error)) = sample_parse_failure {
+            tracing::warn!(
+                operation_id = %operation_id,
+                invalid_ual_count = invalid_ual_count,
+                sample_ual = %invalid_ual,
+                sample_error = %parse_error,
+                "Skipped invalid UALs in batch-get request"
+            );
         }
 
         // Only serve batch get requests if this node is part of the shard for every requested
@@ -232,11 +252,10 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             }
         }
 
-        tracing::debug!(
-            operation_id = %operation_id,
+        tracing::info!(
             assertions_count = assertions.len(),
             metadata_count = metadata.len(),
-            "Sending batch get response"
+            "Batch-get request handled"
         );
 
         self.send_ack(channel, operation_id, assertions, metadata)

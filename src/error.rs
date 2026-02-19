@@ -19,6 +19,10 @@ pub(crate) enum NodeError {
     #[error("Triple store error: {0}")]
     TripleStore(#[from] dkg_triple_store::error::TripleStoreError),
 
+    /// Key-value result store errors
+    #[error("Result store error: {0}")]
+    ResultStore(#[from] dkg_key_value_store::ResultStoreError),
+
     /// I/O errors
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -26,10 +30,4 @@ pub(crate) enum NodeError {
     /// Generic application error
     #[error("{0}")]
     Other(String),
-}
-
-impl From<dkg_key_value_store::ResultStoreError> for NodeError {
-    fn from(err: dkg_key_value_store::ResultStoreError) -> Self {
-        Self::Other(err.to_string())
-    }
 }

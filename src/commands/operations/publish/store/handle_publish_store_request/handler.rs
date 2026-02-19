@@ -137,7 +137,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             .response_channels
             .retrieve(remote_peer_id, operation_id)
         else {
-            tracing::error!(
+            tracing::warn!(
                 operation_id = %operation_id,
                 peer = %remote_peer_id,
                 "No cached response channel found. Channel may have expired."
@@ -148,17 +148,10 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
         // Validate that *this node* is in the shard for the given blockchain.
         // (The sender being in shard is not the relevant check here.)
         let local_peer_id = self.network_manager.peer_id();
-        if self
+        if !self
             .peer_registry
             .is_peer_in_shard(blockchain, local_peer_id)
         {
-            tracing::debug!(
-                operation_id = %operation_id,
-                local_peer_id = %local_peer_id,
-                blockchain = %blockchain,
-                "Local node validated against shard membership"
-            );
-        } else {
             tracing::warn!(
                 operation_id = %operation_id,
                 local_peer_id = %local_peer_id,
@@ -173,14 +166,6 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
         }
 
         let computed_dataset_root = dkg_domain::calculate_merkle_root(&dataset.public);
-
-        tracing::debug!(
-            operation_id = %operation_id,
-            received_dataset_root = %dataset_root,
-            computed_dataset_root = %computed_dataset_root,
-            roots_match = (*dataset_root == computed_dataset_root),
-            "Dataset root validation"
-        );
 
         if *dataset_root != computed_dataset_root {
             tracing::warn!(
@@ -203,11 +188,6 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
         }
 
         let identity_id = self.blockchain_manager.identity_id(blockchain);
-        tracing::debug!(
-            operation_id = %operation_id,
-            identity_id = %identity_id,
-            "Identity ID resolved"
-        );
 
         let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
             tracing::warn!(
@@ -228,13 +208,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
         )
         .await
         {
-            Ok(sig) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    "Message signed successfully"
-                );
-                sig
-            }
+            Ok(sig) => sig,
             Err(e) => {
                 tracing::error!(
                     operation_id = %operation_id,
@@ -276,21 +250,13 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandOutcome::Completed;
         }
 
-        tracing::debug!(
-            operation_id = %operation_id,
-            peer = %remote_peer_id,
+        tracing::info!(
             identity_id = %identity_id,
-            "Sending ACK response with signature"
+            "Store request validated; sending ACK response"
         );
 
         self.send_ack(channel, operation_id, identity_id, signature)
             .await;
-
-        tracing::debug!(
-            operation_id = %operation_id,
-            peer = %remote_peer_id,
-            "Store request validated; ACK sent"
-        );
 
         CommandOutcome::Completed
     }

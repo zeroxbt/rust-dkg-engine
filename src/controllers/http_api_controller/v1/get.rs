@@ -54,10 +54,17 @@ impl GetHttpApiController {
                     .command_scheduler
                     .try_schedule(CommandExecutionRequest::new(command))
                 {
-                    context
+                    if let Err(e) = context
                         .get_operation_tracking
                         .mark_failed(operation_id, "Command queue full".to_string())
-                        .await;
+                        .await
+                    {
+                        tracing::error!(
+                            operation_id = %operation_id,
+                            error = %e,
+                            "Failed to mark get operation as failed"
+                        );
+                    }
 
                     return (
                         StatusCode::SERVICE_UNAVAILABLE,

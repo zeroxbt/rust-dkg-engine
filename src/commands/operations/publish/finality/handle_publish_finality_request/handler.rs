@@ -174,30 +174,10 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
             return CommandOutcome::Completed;
         }
 
-        tracing::debug!(
-            operation_id = %publish_finality_operation_id,
-            publish_operation_id = %publish_store_operation_id,
-            ual = %ual,
-            peer = %remote_peer_id,
-            "Finality ack saved successfully"
-        );
-
-        // Send ACK response back to the storage node
-        tracing::debug!(
-            operation_id = %publish_finality_operation_id,
-            peer = %remote_peer_id,
-            "Sending finality ACK response"
-        );
-
         self.send_ack(channel, publish_finality_operation_id, ual)
             .await;
 
-        tracing::debug!(
-            operation_id = %publish_finality_operation_id,
-            peer = %remote_peer_id,
-            ual = %ual,
-            "Finality request handled"
-        );
+        tracing::info!("Finality request handled");
 
         CommandOutcome::Completed
     }

@@ -4,7 +4,8 @@ use dkg_network::{NetworkManager, PeerId};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    periodic_tasks::DialPeersDeps, periodic_tasks::runner::run_with_shutdown, node_state::PeerRegistry,
+    node_state::PeerRegistry, periodic_tasks::DialPeersDeps,
+    periodic_tasks::runner::run_with_shutdown,
 };
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);

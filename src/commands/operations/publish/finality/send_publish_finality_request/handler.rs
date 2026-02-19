@@ -11,9 +11,10 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    application::TripleStoreAssertions,
     commands::SendPublishFinalityRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    application::{TripleStoreAssertions}, node_state::PeerRegistry,
+    node_state::PeerRegistry,
 };
 
 /// Raw event data from KnowledgeCollectionCreated event.
@@ -144,17 +145,11 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         {
             Ok(Some(data)) => data,
             Ok(None) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    publish_operation_id = %publish_operation_id,
-                    "Dataset not in publish tmp dataset store, skipping finality"
-                );
+                tracing::debug!("Dataset not in publish tmp dataset store, skipping finality");
                 return CommandOutcome::Completed;
             }
             Err(e) => {
                 tracing::debug!(
-                    operation_id = %operation_id,
-                    publish_operation_id = %publish_operation_id,
                     error = %e,
                     "Failed to read publish tmp dataset store, skipping finality"
                 );
@@ -186,16 +181,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             }
         };
 
-        tracing::debug!(
-            operation_id = %operation_id,
-            blockchain = %data.blockchain,
-            knowledge_collection_id = knowledge_collection_id,
-            byte_size = data.byte_size,
-            publisher = %publisher_address,
-            block_number = data.block_number,
-            "Processing publish finality event"
-        );
-
         // Validate merkle root matches
         let blockchain_merkle_root =
             format!("0x{}", dkg_blockchain::to_hex_string(data.dataset_root));
@@ -221,11 +206,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             return CommandOutcome::Completed;
         }
 
-        tracing::debug!(
-            operation_id = %operation_id,
-            "Publish data validation successful"
-        );
-
         let metadata = KnowledgeCollectionMetadata::new(
             publisher_address.to_string().to_lowercase(),
             data.block_number,
@@ -241,13 +221,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             None,
         );
 
-        tracing::debug!(
-            operation_id = %operation_id,
-            publish_operation_id = %publish_operation_id,
-            ual = %ual,
-            "Inserting knowledge collection into triple store"
-        );
-
         let total_triples = match self
             .triple_store_assertions
             .insert_knowledge_collection(&ual, pending_data.dataset(), &Some(metadata), None)
@@ -255,7 +228,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         {
             Ok(count) => {
                 tracing::info!(
-                    operation_id = %operation_id,
                     ual = %ual,
                     total_triples = count,
                     "Knowledge collection inserted into triple store"
@@ -299,12 +271,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                 error = %e,
                 "Failed to increment triples count, continuing anyway"
             );
-        } else {
-            tracing::debug!(
-                operation_id = %operation_id,
-                total_triples = total_triples,
-                "Triples counter incremented"
-            );
         }
 
         let publisher_peer_id: PeerId = match pending_data.publisher_peer_id().parse() {
@@ -321,12 +287,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         };
 
         if &publisher_peer_id == self.network_manager.peer_id() {
-            tracing::debug!(
-                operation_id = %operation_id,
-                publish_operation_id = %publish_operation_id,
-                ual = %ual,
-                "Saving finality ack"
-            );
             // Save the finality ack to the database
             if let Err(e) = self
                 .finality_status_repository
@@ -371,8 +331,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         match result {
             Ok(FinalityResponseData::Ack(_)) => {
                 tracing::debug!(
-                    operation_id = %operation_id,
-                    publish_operation_id = %publish_operation_id,
                     peer = %publisher_peer_id,
                     "Finality request acknowledged by publisher"
                 );

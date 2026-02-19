@@ -80,7 +80,7 @@ pub(crate) async fn fetch_task(
 
     // Sort peers by latency (fastest first)
     peer_registry.sort_by_latency(&mut peers);
-    if tracing::enabled!(tracing::Level::DEBUG) {
+    if tracing::enabled!(tracing::Level::TRACE) {
         const MAX_PEERS_TO_LOG: usize = 20;
         let peer_latencies: Vec<String> = peers
             .iter()
@@ -91,8 +91,7 @@ pub(crate) async fn fetch_task(
             })
             .collect();
 
-        tracing::debug!(
-            blockchain_id = %blockchain_id,
+        tracing::trace!(
             peer_count = peers.len(),
             displayed = peer_latencies.len(),
             truncated = peers.len() > MAX_PEERS_TO_LOG,
@@ -166,8 +165,7 @@ pub(crate) async fn fetch_task(
 
             // Send fetched KCs to insert stage
             if !fetched.is_empty() {
-                tracing::debug!(
-                    blockchain_id = %blockchain_id,
+                tracing::trace!(
                     batch_size = to_fetch.len(),
                     assets_in_batch = assets_total,
                     fetched_count = fetched.len(),
@@ -179,7 +177,7 @@ pub(crate) async fn fetch_task(
                     "Fetch: sending batch to insert stage"
                 );
                 if tx.send(fetched).await.is_err() {
-                    tracing::debug!("Fetch: insert stage receiver dropped, stopping");
+                    tracing::trace!("Fetch: insert stage receiver dropped, stopping");
                     failures.extend(accumulated.iter().map(|kc| kc.kc_id));
                     return FetchStats { failures };
                 }
@@ -212,8 +210,7 @@ pub(crate) async fn fetch_task(
         failures.extend(batch_failures);
 
         if !fetched.is_empty() {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
+            tracing::trace!(
                 remaining = accumulated.len(),
                 assets_in_batch = assets_total,
                 fetched_count = fetched.len(),
@@ -226,7 +223,6 @@ pub(crate) async fn fetch_task(
     }
 
     tracing::debug!(
-        blockchain_id = %blockchain_id,
         total_ms = task_start.elapsed().as_millis() as u64,
         total_fetched,
         failures = failures.len(),
@@ -253,8 +249,11 @@ fn get_shard_peers(
     let my_peer_id = network_manager.peer_id();
 
     // Get shard peers that support BatchGetProtocol, excluding self
-    let peers =
-        peer_registry.select_shard_peers(blockchain_id, STREAM_PROTOCOL_BATCH_GET, Some(my_peer_id));
+    let peers = peer_registry.select_shard_peers(
+        blockchain_id,
+        STREAM_PROTOCOL_BATCH_GET,
+        Some(my_peer_id),
+    );
 
     // Stats: total in shard vs usable (have identify + support protocol)
     let shard_peer_count = peer_registry.shard_peer_count(blockchain_id);
@@ -372,7 +371,7 @@ async fn fetch_kc_batch_from_network(
     // Process responses as they complete, adding new peers as slots free up
     while let Some((peer, result, elapsed)) = futures.next().await {
         // Create a span for this peer's response
-        let peer_span = tracing::debug_span!(
+        let peer_span = tracing::trace_span!(
             "peer_response",
             peer_id = %peer,
             latency_ms = elapsed.as_millis() as u64,

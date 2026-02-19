@@ -7,9 +7,9 @@ use dkg_repository::{FinalityStatusRepository, TriplesInsertCountRepository};
 
 use crate::{
     application::{GetAssertionUseCase, OperationTracking, TripleStoreAssertions},
-    operations::{GetOperation, PublishStoreOperation},
     node_state::PeerRegistry,
     node_state::ResponseChannels,
+    operations::{GetOperation, PublishStoreOperation},
 };
 
 #[derive(Clone)]

@@ -4,11 +4,11 @@ use crate::{
     bootstrap::ApplicationDeps,
     commands::scheduler::CommandScheduler,
     managers::Managers,
+    node_state::NodeState,
     periodic_tasks::{
         self, BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
         ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps, SyncDeps,
     },
-    node_state::NodeState,
 };
 
 pub(crate) fn build_periodic_tasks_deps(

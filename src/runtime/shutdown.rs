@@ -47,7 +47,7 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
         mut network_event_loop_task,
         mut peer_registry_task,
         http_shutdown_tx,
-        handle_http_events_task,
+        mut handle_http_events_task,
     } = context;
 
     tracing::info!("Shutting down gracefully...");
@@ -59,86 +59,89 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     periodic_shutdown.cancel();
 
     // Step 3: Wait for periodic tasks to finish current iteration and exit
-    tracing::info!("Waiting for periodic tasks to shut down...");
-    match tokio::time::timeout(PERIODIC_SHUTDOWN_TIMEOUT, &mut periodic_handle).await {
-        Ok(Ok(())) => tracing::info!("Periodic tasks shut down cleanly"),
-        Ok(Err(e)) => tracing::error!("Periodic tasks panicked: {:?}", e),
-        Err(_) => {
-            tracing::warn!(
-                timeout_secs = PERIODIC_SHUTDOWN_TIMEOUT.as_secs(),
-                "Periodic tasks shutdown timeout, aborting periodic task group"
-            );
-            periodic_handle.abort();
-            let _ = periodic_handle.await;
-        }
-    }
+    wait_for_shutdown_task(
+        "periodic_tasks",
+        PERIODIC_SHUTDOWN_TIMEOUT,
+        &mut periodic_handle,
+        true,
+    )
+    .await;
 
     // Step 4: Signal command scheduler to stop accepting new commands
     command_scheduler.shutdown();
 
     // Step 5: Wait for command executor to drain pending commands
-    tracing::info!("Waiting for command executor to drain...");
-    match tokio::time::timeout(
+    wait_for_shutdown_task(
+        "command_executor",
         COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT,
         &mut execute_commands_task,
+        true,
     )
-    .await
-    {
-        Ok(Ok(())) => tracing::info!("Command executor shut down cleanly"),
-        Ok(Err(e)) => tracing::error!("Command executor task panicked: {:?}", e),
-        Err(_) => {
-            tracing::warn!(
-                timeout_secs = COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT.as_secs(),
-                "Command executor shutdown timeout, aborting command executor task"
-            );
-            execute_commands_task.abort();
-            let _ = execute_commands_task.await;
-        }
-    }
+    .await;
 
     // Step 6: Signal network manager event loop to stop
     network_manager.shutdown();
 
     // Step 7: Wait for network manager to exit
-    tracing::info!("Waiting for network manager to shut down...");
-    match tokio::time::timeout(NETWORK_SHUTDOWN_TIMEOUT, &mut network_event_loop_task).await {
-        Ok(Ok(())) => tracing::info!("Network manager shut down cleanly"),
-        Ok(Err(e)) => tracing::error!("Network task panicked: {:?}", e),
-        Err(_) => {
-            tracing::warn!(
-                timeout_secs = NETWORK_SHUTDOWN_TIMEOUT.as_secs(),
-                "Network manager shutdown timeout, aborting"
-            );
-            network_event_loop_task.abort();
-            let _ = network_event_loop_task.await;
-        }
-    }
+    wait_for_shutdown_task(
+        "network_event_loop",
+        NETWORK_SHUTDOWN_TIMEOUT,
+        &mut network_event_loop_task,
+        true,
+    )
+    .await;
 
     // Step 8: Wait for peer registry updater to drain.
     // Exits when the network broadcast sender is dropped (step 7). The timeout guards
     // against any edge case where the sender outlives the network task.
-    match tokio::time::timeout(PEER_REGISTRY_SHUTDOWN_TIMEOUT, &mut peer_registry_task).await {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => tracing::error!("Peer registry updater panicked: {:?}", e),
-        Err(_) => {
-            tracing::warn!("Peer registry updater did not terminate in time, aborting");
-            peer_registry_task.abort();
-            let _ = peer_registry_task.await;
-        }
-    }
+    wait_for_shutdown_task(
+        "peer_registry_updater",
+        PEER_REGISTRY_SHUTDOWN_TIMEOUT,
+        &mut peer_registry_task,
+        true,
+    )
+    .await;
 
     // Step 9: Wait for HTTP server to finish in-flight requests
-    tracing::info!("Waiting for HTTP server to shut down...");
-    match tokio::time::timeout(HTTP_SHUTDOWN_TIMEOUT, handle_http_events_task).await {
-        Ok(Ok(())) => tracing::info!("HTTP server shut down cleanly"),
-        Ok(Err(e)) => tracing::error!("HTTP task panicked: {:?}", e),
-        Err(_) => tracing::warn!(
-            timeout_secs = HTTP_SHUTDOWN_TIMEOUT.as_secs(),
-            "HTTP server shutdown timeout"
-        ),
-    }
+    wait_for_shutdown_task(
+        "http_server",
+        HTTP_SHUTDOWN_TIMEOUT,
+        &mut handle_http_events_task,
+        false,
+    )
+    .await;
 
     // Step 10: Flush OpenTelemetry traces
     logger::shutdown_telemetry();
     tracing::info!("Shutdown complete");
+}
+
+async fn wait_for_shutdown_task(
+    task: &str,
+    timeout: Duration,
+    handle: &mut JoinHandle<()>,
+    abort_on_timeout: bool,
+) {
+    match tokio::time::timeout(timeout, &mut *handle).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => tracing::error!(
+            task,
+            error = ?error,
+            "Shutdown task panicked"
+        ),
+        Err(_) if abort_on_timeout => {
+            tracing::warn!(
+                task,
+                timeout_secs = timeout.as_secs(),
+                "Shutdown timeout reached, aborting task"
+            );
+            handle.abort();
+            let _ = handle.await;
+        }
+        Err(_) => tracing::warn!(
+            task,
+            timeout_secs = timeout.as_secs(),
+            "Shutdown timeout reached"
+        ),
+    }
 }

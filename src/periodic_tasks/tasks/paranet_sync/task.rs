@@ -10,9 +10,9 @@ use uuid::Uuid;
 
 use super::ParanetSyncConfig;
 use crate::{
+    application::{AssertionSource, GetAssertionInput},
     periodic_tasks::ParanetSyncDeps,
     periodic_tasks::runner::run_with_shutdown,
-    application::{GetAssertionInput, AssertionSource},
 };
 
 pub(crate) struct ParanetSyncTask {
@@ -35,7 +35,6 @@ impl ParanetSyncTask {
 
         if !self.config.enabled || self.config.sync_paranets.is_empty() {
             tracing::trace!(
-                blockchain_id = %blockchain_id,
                 enabled = self.config.enabled,
                 configured_paranets = self.config.sync_paranets.len(),
                 "Paranet sync disabled or no paranets configured"
@@ -46,10 +45,7 @@ impl ParanetSyncTask {
         let cycle_start = std::time::Instant::now();
         let targets = self.resolve_targets(blockchain_id).await;
         if targets.is_empty() {
-            tracing::trace!(
-                blockchain_id = %blockchain_id,
-                "No valid paranet sync targets for this blockchain"
-            );
+            tracing::trace!("No valid paranet sync targets for this blockchain");
             return interval;
         }
 
@@ -69,7 +65,6 @@ impl ParanetSyncTask {
             .await;
 
         tracing::info!(
-            blockchain_id = %blockchain_id,
             discovered = discovered_total,
             enqueued = enqueued_total,
             batch_due = batch_due,
@@ -433,12 +428,13 @@ impl ParanetSyncTask {
                             }
                             outcome
                         }
-                        Err(error_message) => {
+                        Err(error) => {
                             let mut outcome = RowOutcome {
                                 failed: 1,
                                 ..Default::default()
                             };
                             let now_ts = chrono::Utc::now().timestamp();
+                            let error_message = error.to_string();
                             if let Err(e) = repo
                                 .mark_failed_attempt(
                                     &row.paranet_ual,

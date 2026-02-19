@@ -194,12 +194,6 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             tracing::field::debug(&effective_visibility),
         );
 
-        tracing::debug!(
-            operation_id = %operation_id,
-            effective_visibility = ?effective_visibility,
-            "Determined effective visibility for query"
-        );
-
         // Query the triple store using the shared service
         let query_result = self
             .triple_store_assertions
@@ -213,24 +207,10 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
 
         match query_result {
             Ok(Some(result)) if result.assertion.has_data() => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    ual = %ual,
-                    public_count = result.assertion.public.len(),
-                    has_private = result.assertion.private.is_some(),
-                    has_metadata = result.metadata.is_some(),
-                    "Found assertion data; sending ACK"
-                );
-
                 self.send_ack(channel, operation_id, result.assertion, result.metadata)
                     .await;
             }
             Ok(_) => {
-                tracing::debug!(
-                    operation_id = %operation_id,
-                    ual = %ual,
-                    "No assertion data found - sending NACK"
-                );
                 self.send_nack(
                     channel,
                     operation_id,

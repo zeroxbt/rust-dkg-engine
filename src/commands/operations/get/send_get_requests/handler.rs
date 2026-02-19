@@ -5,12 +5,10 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    application::{GetAssertionInput, OperationTracking as GenericOperationService},
     commands::SendGetRequestsDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
     operations::{GetOperation, GetOperationResult},
-    application::{
-        GetAssertionInput, OperationTracking as GenericOperationService,
-    },
 };
 
 /// Command data for sending get requests to network nodes.
@@ -93,20 +91,36 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
                         error = %e,
                         "Failed to complete get operation"
                     );
-                    self.get_operation_tracking
+                    if let Err(mark_failed_error) = self
+                        .get_operation_tracking
                         .mark_failed(operation_id, e.to_string())
-                        .await;
+                        .await
+                    {
+                        tracing::error!(
+                            operation_id = %operation_id,
+                            error = %mark_failed_error,
+                            "Failed to mark get operation as failed"
+                        );
+                    }
                 }
             }
-            Err(error_message) => {
+            Err(error) => {
                 tracing::warn!(
                     operation_id = %operation_id,
-                    error = %error_message,
+                    error = %error,
                     "Get operation failed"
                 );
-                self.get_operation_tracking
-                    .mark_failed(operation_id, error_message)
-                    .await;
+                if let Err(mark_failed_error) = self
+                    .get_operation_tracking
+                    .mark_failed(operation_id, error.to_string())
+                    .await
+                {
+                    tracing::error!(
+                        operation_id = %operation_id,
+                        error = %mark_failed_error,
+                        "Failed to mark get operation as failed"
+                    );
+                }
             }
         }
 

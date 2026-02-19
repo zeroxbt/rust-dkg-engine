@@ -1,9 +1,6 @@
 //! Proving periodic task implementation.
 
-use std::{
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use dkg_blockchain::{BlockchainManager, U256};
@@ -17,12 +14,13 @@ use super::{PROVING_PERIOD, REORG_BUFFER};
 use crate::{
     application::{
         AssertionValidation, TokenRangeResolutionPolicy, TripleStoreAssertions,
-        fetch_assertion_from_local, group_and_sort_public_triples,
+        fetch_assertion_from_local,
         get_assertion::{network_fetch, resolve_token_ids},
+        group_and_sort_public_triples,
     },
+    node_state::PeerRegistry,
     periodic_tasks::ProvingDeps,
     periodic_tasks::runner::run_with_shutdown,
-    node_state::PeerRegistry,
 };
 
 pub(crate) struct ProvingTask {
@@ -384,7 +382,10 @@ impl ProvingTask {
             }
             None => {
                 tracing::debug!(ual = %ual, "Assertion not found locally or invalid, trying network");
-                match self.fetch_from_network(&parsed_ual, token_ids.clone()).await {
+                match self
+                    .fetch_from_network(&parsed_ual, token_ids.clone())
+                    .await
+                {
                     Some(assertion) => assertion,
                     None => {
                         tracing::warn!(ual = %ual, "Assertion not found on network");

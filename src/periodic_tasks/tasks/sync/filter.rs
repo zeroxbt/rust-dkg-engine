@@ -75,9 +75,7 @@ pub(crate) async fn filter_task(
 
         // Send to fetch stage (blocks if channel full - backpressure)
         if !batch_result.to_sync.is_empty() {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
+            tracing::trace!(
                 batch_size = batch_result.to_sync.len(),
                 processed,
                 total_kcs,
@@ -85,15 +83,13 @@ pub(crate) async fn filter_task(
                 "Filter: sending batch to fetch stage"
             );
             if tx.send(batch_result.to_sync).await.is_err() {
-                tracing::debug!("Filter: fetch stage receiver dropped, stopping");
+                tracing::trace!("Filter: fetch stage receiver dropped, stopping");
                 break;
             }
         }
     }
 
-    tracing::debug!(
-        blockchain_id = %blockchain_id,
-        contract = %contract_addr_str,
+    tracing::trace!(
         total_ms = task_start.elapsed().as_millis() as u64,
         already_synced = already_synced.len(),
         expired = expired.len(),
@@ -132,8 +128,13 @@ async fn process_filter_batch(
     let mut expired = Vec::new();
 
     // Step 1: Check local existence by UAL first (cheap, no RPC needed)
-    let kcs_needing_sync =
-        check_local_existence(chunk, blockchain_id, contract_address, triple_store_assertions).await;
+    let kcs_needing_sync = check_local_existence(
+        chunk,
+        blockchain_id,
+        contract_address,
+        triple_store_assertions,
+    )
+    .await;
 
     // Track already synced
     let needing_sync_ids: std::collections::HashSet<u64> =
@@ -288,9 +289,7 @@ async fn fetch_rpc_data_and_filter(
         if let (Some(current), Some(end)) = (current_epoch, end_epoch)
             && current > end
         {
-            tracing::debug!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
+            tracing::trace!(
                 kc_id = kc_id,
                 current_epoch = current,
                 end_epoch = end,

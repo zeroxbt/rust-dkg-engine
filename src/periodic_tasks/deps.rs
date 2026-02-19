@@ -9,11 +9,13 @@ use dkg_repository::{
 };
 
 use crate::{
-    application::{AssertionValidation, GetAssertionUseCase, OperationTracking, TripleStoreAssertions},
+    application::{
+        AssertionValidation, GetAssertionUseCase, OperationTracking, TripleStoreAssertions,
+    },
     commands::scheduler::CommandScheduler,
-    operations::{GetOperation, PublishStoreOperation},
     node_state::PeerRegistry,
     node_state::ResponseChannels,
+    operations::{GetOperation, PublishStoreOperation},
 };
 
 #[derive(Clone)]

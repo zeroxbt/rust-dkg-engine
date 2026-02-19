@@ -40,8 +40,6 @@ pub(crate) async fn insert_task(
         let batch_start = Instant::now();
         total_received += batch.len();
         tracing::debug!(
-            blockchain_id = %blockchain_id,
-            contract = %contract_addr_str,
             batch_size = batch.len(),
             total_received,
             elapsed_ms = task_start.elapsed().as_millis() as u64,
@@ -63,8 +61,6 @@ pub(crate) async fn insert_task(
         failed.extend(batch_failed);
 
         tracing::debug!(
-            blockchain_id = %blockchain_id,
-            contract = %contract_addr_str,
             batch_ms = batch_start.elapsed().as_millis() as u64,
             batch_synced = batch_synced_count,
             batch_failed = batch_failed_count,
@@ -74,8 +70,6 @@ pub(crate) async fn insert_task(
     }
 
     tracing::debug!(
-        blockchain_id = %blockchain_id,
-        contract = %contract_addr_str,
         total_ms = task_start.elapsed().as_millis() as u64,
         synced = synced.len(),
         failed = failed.len(),
@@ -120,8 +114,6 @@ async fn insert_kcs_to_store(
         match result {
             Ok(triples_inserted) => {
                 tracing::trace!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
                     kc_id = kc_id,
                     ual = %ual,
                     triples = triples_inserted,

@@ -4,8 +4,11 @@ pub(crate) mod network_fetch;
 use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
-use dkg_domain::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual};
+use dkg_domain::{
+    Assertion, BlockchainId, ParsedUal, TokenIds, UalParseError, Visibility, parse_ual,
+};
 use dkg_network::{GetRequestData, NetworkManager, PeerId, STREAM_PROTOCOL_GET};
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
@@ -23,6 +26,29 @@ pub(crate) enum AssertionSource {
 pub(crate) enum TokenRangeResolutionPolicy {
     Strict,
     CompatibleSingleTokenFallback,
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum GetAssertionError {
+    #[error("Invalid UAL: {0}")]
+    InvalidUal(#[from] UalParseError),
+    #[error(
+        "Knowledge collection {knowledge_collection_id} does not exist on blockchain {blockchain}"
+    )]
+    MissingKnowledgeCollection {
+        blockchain: BlockchainId,
+        knowledge_collection_id: u128,
+    },
+    #[error(
+        "Unable to find enough nodes for operation: {operation_id}. Found 0 nodes, need at least 1"
+    )]
+    NotEnoughPeers { operation_id: Uuid },
+    #[error("Failed to get data from network for operation: {operation_id}")]
+    NetworkFetchFailed { operation_id: Uuid },
+    #[error("Failed to resolve token range for operation {operation_id}: {reason}")]
+    TokenRangeResolution { operation_id: Uuid, reason: String },
+    #[error("{0}")]
+    ShardPeerSelection(String),
 }
 
 #[derive(Debug, Clone)]
@@ -69,8 +95,8 @@ impl GetAssertionUseCase {
     pub(crate) async fn fetch(
         &self,
         request: &GetAssertionInput,
-    ) -> Result<GetAssertionOutput, String> {
-        let parsed_ual = parse_ual(&request.ual).map_err(|e| format!("Invalid UAL: {}", e))?;
+    ) -> Result<GetAssertionOutput, GetAssertionError> {
+        let parsed_ual = parse_ual(&request.ual)?;
 
         // Validate on-chain existence when possible. If call fails, continue (old contracts may
         // not support all paths, matching existing behavior).
@@ -85,10 +111,10 @@ impl GetAssertionUseCase {
         {
             Ok(Some(_)) => {}
             Ok(None) => {
-                return Err(format!(
-                    "Knowledge collection {} does not exist on blockchain {}",
-                    parsed_ual.knowledge_collection_id, parsed_ual.blockchain
-                ));
+                return Err(GetAssertionError::MissingKnowledgeCollection {
+                    blockchain: parsed_ual.blockchain.clone(),
+                    knowledge_collection_id: parsed_ual.knowledge_collection_id,
+                });
             }
             Err(e) => {
                 tracing::warn!(
@@ -129,7 +155,7 @@ impl GetAssertionUseCase {
         operation_id: Uuid,
         parsed_ual: &ParsedUal,
         policy: TokenRangeResolutionPolicy,
-    ) -> Result<TokenIds, String> {
+    ) -> Result<TokenIds, GetAssertionError> {
         resolve_token_ids(
             self.blockchain_manager.as_ref(),
             operation_id,
@@ -187,16 +213,13 @@ impl GetAssertionUseCase {
         parsed_ual: &ParsedUal,
         token_ids: TokenIds,
         request: &GetAssertionInput,
-    ) -> Result<GetAssertionOutput, String> {
+    ) -> Result<GetAssertionOutput, GetAssertionError> {
         let mut peers = self
             .load_shard_peers(parsed_ual, request.paranet_ual.as_deref())
             .await?;
 
         if peers.is_empty() {
-            return Err(format!(
-                "Unable to find enough nodes for operation: {}. Found 0 nodes, need at least 1",
-                operation_id
-            ));
+            return Err(GetAssertionError::NotEnoughPeers { operation_id });
         }
 
         self.peer_registry.sort_by_latency(&mut peers);
@@ -233,17 +256,14 @@ impl GetAssertionUseCase {
             });
         }
 
-        Err(format!(
-            "Failed to get data from network for operation: {}",
-            operation_id
-        ))
+        Err(GetAssertionError::NetworkFetchFailed { operation_id })
     }
 
     async fn load_shard_peers(
         &self,
         parsed_ual: &ParsedUal,
         paranet_ual: Option<&str>,
-    ) -> Result<Vec<PeerId>, String> {
+    ) -> Result<Vec<PeerId>, GetAssertionError> {
         let my_peer_id = self.network_manager.peer_id();
         let all_shard_peers = self.peer_registry.select_shard_peers(
             &parsed_ual.blockchain,
@@ -259,6 +279,7 @@ impl GetAssertionUseCase {
                 all_shard_peers,
             )
             .await
+            .map_err(GetAssertionError::ShardPeerSelection)
         } else {
             Ok(all_shard_peers)
         }
@@ -300,7 +321,7 @@ pub(crate) async fn resolve_token_ids(
     operation_id: Uuid,
     parsed_ual: &ParsedUal,
     policy: TokenRangeResolutionPolicy,
-) -> Result<TokenIds, String> {
+) -> Result<TokenIds, GetAssertionError> {
     if let Some(token_id) = parsed_ual.knowledge_asset_id {
         return Ok(TokenIds::single(token_id as u64));
     }
@@ -321,7 +342,7 @@ fn resolve_token_ids_from_chain_result<E: std::fmt::Display>(
     parsed_ual: &ParsedUal,
     policy: TokenRangeResolutionPolicy,
     chain_result: Result<Option<(u64, u64, Vec<u64>)>, E>,
-) -> Result<TokenIds, String> {
+) -> Result<TokenIds, GetAssertionError> {
     match chain_result {
         Ok(Some((start, end, burned))) => {
             tracing::debug!(
@@ -340,10 +361,10 @@ fn resolve_token_ids_from_chain_result<E: std::fmt::Display>(
         }
         Ok(None) => Ok(TokenIds::single(1)),
         Err(e) => match policy {
-            TokenRangeResolutionPolicy::Strict => Err(format!(
-                "Failed to resolve token range for operation {}: {}",
-                operation_id, e
-            )),
+            TokenRangeResolutionPolicy::Strict => Err(GetAssertionError::TokenRangeResolution {
+                operation_id,
+                reason: e.to_string(),
+            }),
             TokenRangeResolutionPolicy::CompatibleSingleTokenFallback => {
                 tracing::warn!(
                     operation_id = %operation_id,

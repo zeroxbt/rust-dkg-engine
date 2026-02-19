@@ -5,7 +5,9 @@ use dkg_network::{GetAck, GetRequestData, GetResponseData, NetworkError, Network
 use futures::{StreamExt, stream::FuturesUnordered};
 use uuid::Uuid;
 
-use crate::application::{AssertionValidation, get_assertion::config::GET_NETWORK_CONCURRENT_PEERS};
+use crate::application::{
+    AssertionValidation, get_assertion::config::GET_NETWORK_CONCURRENT_PEERS,
+};
 
 pub(crate) async fn fetch_first_valid_ack_from_peers(
     network_manager: Arc<NetworkManager>,
