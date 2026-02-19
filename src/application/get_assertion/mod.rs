@@ -47,8 +47,8 @@ pub(crate) enum GetAssertionError {
     NetworkFetchFailed { operation_id: Uuid },
     #[error("Failed to resolve token range for operation {operation_id}: {reason}")]
     TokenRangeResolution { operation_id: Uuid, reason: String },
-    #[error("{0}")]
-    ShardPeerSelection(String),
+    #[error("Failed to select shard peers for paranet: {0}")]
+    ShardPeerSelection(#[source] paranet::ParanetError),
 }
 
 #[derive(Debug, Clone)]
@@ -173,11 +173,21 @@ impl GetAssertionUseCase {
         visibility: Visibility,
         include_metadata: bool,
     ) -> Option<GetAssertionOutput> {
-        let local_result = self
+        let local_result = match self
             .triple_store_assertions
             .query_assertion(parsed_ual, token_ids, visibility, include_metadata)
             .await
-            .ok()?;
+        {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::debug!(
+                    operation_id = %operation_id,
+                    error = %error,
+                    "Local assertion query failed"
+                );
+                return None;
+            }
+        };
 
         let result = local_result?;
         if !result.assertion.has_data() {
@@ -297,10 +307,20 @@ pub(crate) async fn fetch_assertion_from_local(
     token_ids: &TokenIds,
     visibility: Visibility,
 ) -> Option<Assertion> {
-    let result = triple_store_assertions
+    let result = match triple_store_assertions
         .query_assertion(parsed_ual, token_ids, visibility, false)
         .await
-        .ok()??;
+    {
+        Ok(result) => result?,
+        Err(error) => {
+            tracing::debug!(
+                ual = %parsed_ual.to_ual_string(),
+                error = %error,
+                "Local assertion query failed"
+            );
+            return None;
+        }
+    };
 
     if !result.assertion.has_data() {
         return None;

@@ -18,6 +18,13 @@ pub(crate) async fn fetch_first_valid_ack_from_peers(
     parsed_ual: ParsedUal,
     visibility: Visibility,
 ) -> Option<GetAck> {
+    tracing::debug!(
+        operation_id = %operation_id,
+        peer_count = peers.len(),
+        visibility = ?visibility,
+        "Starting network assertion fetch"
+    );
+
     let mut futures = FuturesUnordered::new();
     let mut peers_iter = peers.iter().cloned();
     let limit = GET_NETWORK_CONCURRENT_PEERS.max(1).min(peers.len());

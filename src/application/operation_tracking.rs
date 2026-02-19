@@ -19,8 +19,6 @@ where
     K: OperationKind,
     K::Result: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
-    const MISSING_RESULT_ERROR: &'static str = "operation result missing for completion";
-
     /// Create a new operation status service.
     pub(crate) fn new(
         operation_repository: OperationRepository,
@@ -118,8 +116,7 @@ where
     pub(crate) async fn complete(&self, operation_id: Uuid) -> Result<(), NodeError> {
         if self.get_result(operation_id).await?.is_none() {
             return Err(NodeError::Other(format!(
-                "{} (operation_id={}, operation_kind={})",
-                Self::MISSING_RESULT_ERROR,
+                "operation result missing for completion (operation_id={}, operation_kind={})",
                 operation_id,
                 K::NAME
             )));

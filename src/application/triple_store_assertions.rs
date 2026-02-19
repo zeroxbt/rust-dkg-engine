@@ -379,10 +379,21 @@ impl TripleStoreAssertions {
         &self,
         kc_uals: &[String],
     ) -> std::collections::HashSet<String> {
-        self.triple_store_manager
+        match self
+            .triple_store_manager
             .knowledge_collections_exist_by_uals(kc_uals)
             .await
-            .unwrap_or_default()
+        {
+            Ok(existing) => existing,
+            Err(error) => {
+                tracing::warn!(
+                    requested = kc_uals.len(),
+                    error = %error,
+                    "Failed to query existing knowledge collections by UALs"
+                );
+                std::collections::HashSet::new()
+            }
+        }
     }
 
     /// Build knowledge assets from a dataset.
@@ -413,18 +424,14 @@ impl TripleStoreAssertions {
 
         // Group public triples by subject, then append private-hash groups
         let mut public_ka_triples_grouped =
-            group_triples_by_subject(&filtered_public).map_err(|e| {
-                TripleStoreError::Other(format!(
-                    "Failed to group public triples by parsed subject: {}",
-                    e
-                ))
+            group_triples_by_subject(&filtered_public).map_err(|error| {
+                TripleStoreError::ParseError {
+                    reason: format!("Failed to group public triples by parsed subject: {error}"),
+                }
             })?;
         public_ka_triples_grouped.extend(group_triples_by_subject(&private_hash_triples).map_err(
-            |e| {
-                TripleStoreError::Other(format!(
-                    "Failed to group private-hash triples by parsed subject: {}",
-                    e
-                ))
+            |error| TripleStoreError::ParseError {
+                reason: format!("Failed to group private-hash triples by parsed subject: {error}"),
             },
         )?);
 
@@ -446,11 +453,8 @@ impl TripleStoreAssertions {
         {
             let normalized_private = normalize_triple_lines(private_triples);
             let private_ka_triples_grouped = group_triples_by_subject(&normalized_private)
-                .map_err(|e| {
-                    TripleStoreError::Other(format!(
-                        "Failed to group private triples by parsed subject: {}",
-                        e
-                    ))
+                .map_err(|error| TripleStoreError::ParseError {
+                    reason: format!("Failed to group private triples by parsed subject: {error}"),
                 })?;
 
             // Build a map from public subject -> index for matching

@@ -6,6 +6,22 @@ use dkg_triple_store::{
     PRIVATE_HASH_SUBJECT_PREFIX, PRIVATE_MERKLE_ROOT, compare_js_default_string_order,
     extract_quoted_string, group_triples_by_subject,
 };
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+enum AssertionValidationError {
+    #[error("Failed to calculate public merkle root: {reason}")]
+    PublicMerkleRootCalculation { reason: String },
+    #[error("Failed to get on-chain merkle root: {source}")]
+    OnChainMerkleRootFetch {
+        #[source]
+        source: dkg_blockchain::BlockchainError,
+    },
+    #[error("Knowledge collection not found on-chain")]
+    KnowledgeCollectionNotFound,
+    #[error("Failed to extract private merkle root from triple")]
+    PrivateMerkleRootExtractionFailed,
+}
 
 /// Service for validating assertion responses.
 ///
@@ -63,11 +79,15 @@ impl AssertionValidation {
             {
                 Ok(true) => {}
                 Ok(false) => {
-                    tracing::debug!("Public assertion validation failed");
+                    tracing::debug!(kc_ual = %parsed_ual.knowledge_collection_ual(), "Public assertion validation failed");
                     return false;
                 }
                 Err(e) => {
-                    tracing::debug!(error = %e, "Error validating public assertion");
+                    tracing::debug!(
+                        kc_ual = %parsed_ual.knowledge_collection_ual(),
+                        error = %e,
+                        "Error validating public assertion"
+                    );
                     return false;
                 }
             }
@@ -80,11 +100,15 @@ impl AssertionValidation {
             match self.validate_private_assertion(&assertion.public, private) {
                 Ok(true) => {}
                 Ok(false) => {
-                    tracing::debug!("Private assertion validation failed");
+                    tracing::debug!(kc_ual = %parsed_ual.knowledge_collection_ual(), "Private assertion validation failed");
                     return false;
                 }
                 Err(e) => {
-                    tracing::debug!(error = %e, "Error validating private assertion");
+                    tracing::debug!(
+                        kc_ual = %parsed_ual.knowledge_collection_ual(),
+                        error = %e,
+                        "Error validating private assertion"
+                    );
                     return false;
                 }
             }
@@ -111,7 +135,10 @@ impl AssertionValidation {
         // Validate public assertion if present
         if !assertion.public.is_empty() {
             let Some(on_chain_root) = merkle_root else {
-                tracing::debug!("No merkle root provided for validation");
+                tracing::debug!(
+                    kc_ual = %parsed_ual.knowledge_collection_ual(),
+                    "No merkle root provided for validation"
+                );
                 return false;
             };
 
@@ -120,7 +147,7 @@ impl AssertionValidation {
                 on_chain_root,
                 parsed_ual,
             ) {
-                tracing::debug!("Public assertion validation failed");
+                tracing::debug!(kc_ual = %parsed_ual.knowledge_collection_ual(), "Public assertion validation failed");
                 return false;
             }
         }
@@ -132,11 +159,15 @@ impl AssertionValidation {
             match self.validate_private_assertion(&assertion.public, private) {
                 Ok(true) => {}
                 Ok(false) => {
-                    tracing::debug!("Private assertion validation failed");
+                    tracing::debug!(kc_ual = %parsed_ual.knowledge_collection_ual(), "Private assertion validation failed");
                     return false;
                 }
                 Err(e) => {
-                    tracing::debug!(error = %e, "Error validating private assertion");
+                    tracing::debug!(
+                        kc_ual = %parsed_ual.knowledge_collection_ual(),
+                        error = %e,
+                        "Error validating private assertion"
+                    );
                     return false;
                 }
             }
@@ -155,7 +186,11 @@ impl AssertionValidation {
         let calculated_root = match Self::calculate_public_merkle_root(public_triples) {
             Ok(root) => root,
             Err(e) => {
-                tracing::debug!(error = %e, "Failed to calculate public merkle root");
+                tracing::debug!(
+                    kc_ual = %parsed_ual.knowledge_collection_ual(),
+                    error = %e,
+                    "Failed to calculate public merkle root"
+                );
                 return false;
             }
         };
@@ -177,12 +212,15 @@ impl AssertionValidation {
     }
 
     /// Calculate the merkle root for public triples.
-    fn calculate_public_merkle_root(public_triples: &[String]) -> Result<String, String> {
+    fn calculate_public_merkle_root(
+        public_triples: &[String],
+    ) -> Result<String, AssertionValidationError> {
         // Network payloads can contain multiple triples per string entry.
         // Normalize to one triple per line before grouping/sorting so hashing
         // matches JS behavior and on-chain roots.
         let normalized = Self::normalize_public_triples(public_triples);
-        let sorted_flat = group_and_sort_public_triples(&normalized)?;
+        let sorted_flat = group_and_sort_public_triples(&normalized)
+            .map_err(|reason| AssertionValidationError::PublicMerkleRootCalculation { reason })?;
         Ok(dkg_domain::calculate_merkle_root(&sorted_flat))
     }
 
@@ -207,9 +245,8 @@ impl AssertionValidation {
         &self,
         public_triples: &[String],
         parsed_ual: &ParsedUal,
-    ) -> Result<bool, String> {
-        let calculated_root = Self::calculate_public_merkle_root(public_triples)
-            .map_err(|e| format!("Failed to calculate public merkle root: {}", e))?;
+    ) -> Result<bool, AssertionValidationError> {
+        let calculated_root = Self::calculate_public_merkle_root(public_triples)?;
 
         // Get on-chain merkle root
         let on_chain_root = self
@@ -220,8 +257,8 @@ impl AssertionValidation {
                 parsed_ual.knowledge_collection_id,
             )
             .await
-            .map_err(|e| format!("Failed to get on-chain merkle root: {}", e))?
-            .ok_or_else(|| "Knowledge collection not found on-chain".to_string())?;
+            .map_err(|source| AssertionValidationError::OnChainMerkleRootFetch { source })?
+            .ok_or(AssertionValidationError::KnowledgeCollectionNotFound)?;
 
         if calculated_root != on_chain_root {
             let assertion_public = serialize_triples_for_log(public_triples);
@@ -250,7 +287,7 @@ impl AssertionValidation {
         &self,
         public_triples: &[String],
         private_triples: &[String],
-    ) -> Result<bool, String> {
+    ) -> Result<bool, AssertionValidationError> {
         // Find the triple with privateMerkleRoot predicate
         let private_root_triple = public_triples
             .iter()
@@ -265,7 +302,7 @@ impl AssertionValidation {
         // Extract the merkle root value from the triple
         // Format: <subject> <predicate> "0x..." .
         let expected_root = extract_private_merkle_root(root_triple)
-            .ok_or_else(|| "Failed to extract private merkle root from triple".to_string())?;
+            .ok_or(AssertionValidationError::PrivateMerkleRootExtractionFailed)?;
 
         // Sort private triples and calculate merkle root
         let mut sorted_private: Vec<String> = private_triples.to_vec();

@@ -74,8 +74,8 @@ pub(crate) async fn create_publisher_signature(
     identity_id: u128,
 ) -> Result<PublishStoreSignatureData, NodeError> {
     let dataset_root_b256: B256 = dataset_root
-        .parse()
-        .map_err(|e| NodeError::Other(format!("Invalid dataset root hex: {e}")))?;
+        .parse::<B256>()
+        .map_err(|error| NodeError::Other(format!("Invalid dataset root hex: {error}")))?;
     // JS uses: keccak256EncodePacked(['uint72', 'bytes32'], [identityId, datasetRoot])
     // uint72 = 9 bytes, so we encode identity_id as FixedBytes(9) to match Solidity's packed
     // encoding
