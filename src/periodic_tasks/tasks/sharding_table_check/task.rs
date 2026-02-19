@@ -2,10 +2,11 @@ use std::{sync::Arc, time::Duration};
 
 use dkg_blockchain::{BlockchainId, BlockchainManager, NodeInfo};
 use dkg_network::PeerId;
+use dkg_peer_registry::PeerRegistry;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    error::NodeError, node_state::PeerRegistry, periodic_tasks::ShardingTableCheckDeps,
+    error::NodeError, periodic_tasks::ShardingTableCheckDeps,
     periodic_tasks::runner::run_with_shutdown,
 };
 

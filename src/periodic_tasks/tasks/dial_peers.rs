@@ -1,12 +1,10 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use dkg_network::{NetworkManager, PeerId};
+use dkg_peer_registry::PeerRegistry;
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    node_state::PeerRegistry, periodic_tasks::DialPeersDeps,
-    periodic_tasks::runner::run_with_shutdown,
-};
+use crate::{periodic_tasks::DialPeersDeps, periodic_tasks::runner::run_with_shutdown};
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
 const CONCURRENT_PEER_DIALS: usize = 20;

@@ -6,10 +6,11 @@ use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
 use dkg_network::{
     FinalityRequestData, FinalityResponseData, NetworkManager, PeerId, STREAM_PROTOCOL_FINALITY,
 };
+use dkg_peer_registry::PeerRegistry;
 use dkg_repository::{FinalityStatusRepository, TriplesInsertCountRepository};
 use uuid::Uuid;
 
-use crate::{application::TripleStoreAssertions, node_state::PeerRegistry};
+use crate::application::TripleStoreAssertions;
 
 #[derive(Clone)]
 pub(crate) struct ProcessPublishFinalityEventInput {

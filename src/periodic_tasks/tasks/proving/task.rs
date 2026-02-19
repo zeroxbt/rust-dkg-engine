@@ -6,6 +6,7 @@ use chrono::Utc;
 use dkg_blockchain::{BlockchainManager, U256};
 use dkg_domain::{Assertion, BlockchainId, ParsedUal, Visibility, derive_ual};
 use dkg_network::{NetworkManager, STREAM_PROTOCOL_GET};
+use dkg_peer_registry::PeerRegistry;
 use dkg_repository::{ChallengeState, ProofChallengeRepository};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -15,7 +16,6 @@ use crate::{
     application::{
         AssertionRetrieval, FetchRequest, TokenRangeResolutionPolicy, group_and_sort_public_triples,
     },
-    node_state::PeerRegistry,
     periodic_tasks::ProvingDeps,
     periodic_tasks::runner::run_with_shutdown,
 };

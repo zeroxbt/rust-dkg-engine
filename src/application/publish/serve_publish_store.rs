@@ -4,10 +4,10 @@ use dkg_blockchain::{BlockchainId, BlockchainManager};
 use dkg_domain::{Assertion, SignatureComponents};
 use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
 use dkg_network::PeerId;
+use dkg_peer_registry::PeerRegistry;
 use uuid::Uuid;
 
 use crate::application::signatures::{SignatureError, sign_dataset_root};
-use crate::node_state::PeerRegistry;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ServePublishStoreInput {

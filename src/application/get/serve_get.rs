@@ -3,10 +3,11 @@ use std::sync::Arc;
 use dkg_blockchain::BlockchainManager;
 use dkg_domain::{Assertion, TokenIds, Visibility, parse_ual};
 use dkg_network::PeerId;
+use dkg_peer_registry::PeerRegistry;
 use uuid::Uuid;
 
 use super::paranet_policy::resolve_effective_visibility_for_paranet;
-use crate::{application::TripleStoreAssertions, node_state::PeerRegistry};
+use crate::application::TripleStoreAssertions;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ServeGetInput {

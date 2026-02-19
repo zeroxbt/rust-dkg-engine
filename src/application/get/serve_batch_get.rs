@@ -5,9 +5,10 @@ use std::{
 
 use dkg_domain::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual};
 use dkg_network::PeerId;
+use dkg_peer_registry::PeerRegistry;
 use uuid::Uuid;
 
-use crate::{application::TripleStoreAssertions, node_state::PeerRegistry};
+use crate::application::TripleStoreAssertions;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ServeBatchGetInput {

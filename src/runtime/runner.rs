@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use dkg_network::{NetworkEventLoop, PeerEvent};
+use dkg_peer_registry::PeerRegistry;
 use tokio::{select, signal::unix::SignalKind, sync::broadcast};
 use tokio_util::sync::CancellationToken;
 
@@ -10,7 +11,6 @@ use crate::{
     controllers::{
         http_api_controller::router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
     },
-    node_state::PeerRegistry,
     periodic_tasks,
     periodic_tasks::tasks::{
         cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, proving::ProvingConfig,

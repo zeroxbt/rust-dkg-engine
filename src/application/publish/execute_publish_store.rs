@@ -7,6 +7,7 @@ use dkg_network::{
     NetworkError, NetworkManager, PeerId, STREAM_PROTOCOL_STORE, StoreRequestData,
     StoreResponseData,
 };
+use dkg_peer_registry::PeerRegistry;
 use futures::{StreamExt, stream::FuturesUnordered};
 use uuid::Uuid;
 
@@ -19,7 +20,6 @@ use crate::{
         },
     },
     error::NodeError,
-    node_state::PeerRegistry,
     operations::{PublishStoreOperation, PublishStoreOperationResult},
 };
 

@@ -3,13 +3,13 @@ use std::sync::Arc;
 use dkg_blockchain::BlockchainManager;
 use dkg_domain::{ParsedUal, Visibility, parse_ual};
 use dkg_network::{NetworkManager, PeerId, STREAM_PROTOCOL_GET};
+use dkg_peer_registry::PeerRegistry;
 use uuid::Uuid;
 
 use super::paranet_policy::filter_shard_peers_for_paranet;
 use crate::application::{
     AssertionRetrieval, AssertionSource, FetchRequest, TokenRangeResolutionPolicy,
 };
-use crate::node_state::PeerRegistry;
 
 #[derive(Debug, Clone)]
 pub(crate) struct GetAssertionInput {

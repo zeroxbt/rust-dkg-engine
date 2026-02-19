@@ -4,8 +4,9 @@ mod shutdown;
 use std::sync::Arc;
 
 use dkg_blockchain::BlockchainId;
+use dkg_peer_registry::PeerRegistry;
 
-use crate::{commands::scheduler::CommandScheduler, node_state::PeerRegistry, periodic_tasks};
+use crate::{commands::scheduler::CommandScheduler, periodic_tasks};
 
 pub(crate) struct RuntimeDeps {
     pub(crate) command_scheduler: CommandScheduler,

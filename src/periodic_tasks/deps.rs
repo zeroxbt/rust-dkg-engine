@@ -3,6 +3,7 @@ use std::sync::Arc;
 use dkg_blockchain::BlockchainManager;
 use dkg_key_value_store::{PeerAddressStore, PublishTmpDatasetStore};
 use dkg_network::{BatchGetAck, FinalityAck, GetAck, NetworkManager, StoreAck};
+use dkg_peer_registry::PeerRegistry;
 use dkg_repository::{
     BlockchainRepository, FinalityStatusRepository, KcSyncRepository, OperationRepository,
     ParanetKcSyncRepository, ProofChallengeRepository,
@@ -14,7 +15,6 @@ use crate::{
         TripleStoreAssertions,
     },
     commands::scheduler::CommandScheduler,
-    node_state::PeerRegistry,
     node_state::ResponseChannels,
     operations::{GetOperation, PublishStoreOperation},
 };

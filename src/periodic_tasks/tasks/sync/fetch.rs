@@ -16,16 +16,14 @@ use dkg_network::{
     BatchGetRequestData, BatchGetResponseData, NetworkError, NetworkManager, PeerId,
     STREAM_PROTOCOL_BATCH_GET,
 };
+use dkg_peer_registry::PeerRegistry;
 use dkg_triple_store::parse_metadata_from_triples;
 use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
 use super::types::{FetchStats, FetchedKc, KcToSync};
-use crate::{
-    application::{AssertionValidation, UAL_MAX_LIMIT},
-    node_state::PeerRegistry,
-};
+use crate::application::{AssertionValidation, UAL_MAX_LIMIT};
 
 /// Maximum number of in-flight peer requests for this operation.
 pub(crate) const CONCURRENT_PEERS: usize = 3;
