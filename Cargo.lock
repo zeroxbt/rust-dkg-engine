@@ -2406,6 +2406,7 @@ version = "0.1.7"
 dependencies = [
  "async-trait",
  "dkg-domain",
+ "dkg-observability",
  "futures",
  "libp2p",
  "libp2p-mplex",

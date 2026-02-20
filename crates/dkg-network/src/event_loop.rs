@@ -5,6 +5,7 @@
 
 use std::time::Instant;
 
+use dkg_observability as observability;
 use libp2p::{
     Multiaddr, PeerId, Swarm, identify, kad,
     multiaddr::Protocol,
@@ -60,14 +61,26 @@ fn handle_protocol_event<P, H>(
                     ResponsePayload::Error(_) => RequestOutcomeKind::ResponseError,
                 };
                 if let Some(context) = pending.complete_success(request_id, response.data) {
+                    let elapsed = context.started_at.elapsed();
+                    let outcome_label = match outcome_kind {
+                        RequestOutcomeKind::Success => "success",
+                        RequestOutcomeKind::ResponseError => "response_error",
+                        RequestOutcomeKind::Failure => "failure",
+                    };
+                    observability::record_network_outbound_request(
+                        context.protocol,
+                        outcome_label,
+                        elapsed,
+                    );
                     let outcome = RequestOutcome {
                         peer_id: context.peer_id,
                         protocol: context.protocol,
                         outcome: outcome_kind,
-                        elapsed: context.started_at.elapsed(),
+                        elapsed,
                     };
                     let _ = peer_event_tx.send(PeerEvent::RequestOutcome(outcome));
                 }
+                observability::record_network_pending_requests(P::NAME, pending.len());
             }
             request_response::Message::Request {
                 request, channel, ..
@@ -82,12 +95,19 @@ fn handle_protocol_event<P, H>(
                         let (response, message) = immediate_response.into_parts();
                         if let Err(response) = send_response(swarm, response.into_inner(), message)
                         {
+                            observability::record_network_response_send(
+                                P::NAME,
+                                "immediate",
+                                "failed",
+                            );
                             tracing::warn!(
                                 %peer,
                                 response_header = ?response.header,
                                 "{} immediate response could not be sent",
                                 P::NAME
                             );
+                        } else {
+                            observability::record_network_response_send(P::NAME, "immediate", "ok");
                         }
                     }
                 }
@@ -102,6 +122,11 @@ fn handle_protocol_event<P, H>(
             tracing::warn!(%peer, ?request_id, ?error, "{} request failed", P::NAME);
             if let Some(context) = pending.complete_failure(request_id, NetworkError::from(&error))
             {
+                observability::record_network_outbound_request(
+                    context.protocol,
+                    "failure",
+                    context.started_at.elapsed(),
+                );
                 let outcome = RequestOutcome {
                     peer_id: context.peer_id,
                     protocol: context.protocol,
@@ -110,6 +135,7 @@ fn handle_protocol_event<P, H>(
                 };
                 let _ = peer_event_tx.send(PeerEvent::RequestOutcome(outcome));
             }
+            observability::record_network_pending_requests(P::NAME, pending.len());
         }
         request_response::Event::InboundFailure {
             peer,
@@ -211,6 +237,7 @@ fn send_protocol_request<P, B>(
             started_at,
         },
     );
+    observability::record_network_pending_requests(P::NAME, pending.len());
 }
 
 fn strip_p2p_protocol(addr: &Multiaddr) -> Multiaddr {
@@ -256,6 +283,13 @@ impl NetworkEventLoop {
         peer_event_tx: broadcast::Sender<PeerEvent>,
         shutdown: CancellationToken,
     ) -> Self {
+        observability::record_network_action_queue_depth("control", 0);
+        observability::record_network_action_queue_depth("data", 0);
+        observability::record_network_pending_requests(StoreProtocol::NAME, 0);
+        observability::record_network_pending_requests(GetProtocol::NAME, 0);
+        observability::record_network_pending_requests(FinalityProtocol::NAME, 0);
+        observability::record_network_pending_requests(BatchGetProtocol::NAME, 0);
+
         Self {
             swarm,
             control_rx,
@@ -369,11 +403,19 @@ impl NetworkEventLoop {
                 }
 
                 match self.control_rx.try_recv() {
-                    Ok(action) => self.handle_control_action(action),
+                    Ok(action) => {
+                        observability::record_network_action_dequeue("control", action.kind());
+                        self.handle_control_action(action);
+                        observability::record_network_action_queue_depth(
+                            "control",
+                            self.control_rx.len(),
+                        );
+                    }
                     Err(mpsc::error::TryRecvError::Empty) => break,
                     Err(mpsc::error::TryRecvError::Disconnected) => {
                         tracing::info!("Control channel closed");
                         control_closed = true;
+                        observability::record_network_action_queue_depth("control", 0);
                         break;
                     }
                 }
@@ -389,19 +431,35 @@ impl NetworkEventLoop {
                 }
                 control_action = self.control_rx.recv(), if !control_closed => {
                     match control_action {
-                        Some(action) => self.handle_control_action(action),
+                        Some(action) => {
+                            observability::record_network_action_dequeue("control", action.kind());
+                            self.handle_control_action(action);
+                            observability::record_network_action_queue_depth(
+                                "control",
+                                self.control_rx.len(),
+                            );
+                        }
                         None => {
                             tracing::info!("Control channel closed");
                             control_closed = true;
+                            observability::record_network_action_queue_depth("control", 0);
                         }
                     }
                 }
                 data_action = self.data_rx.recv(), if !data_closed => {
                     match data_action {
-                        Some(action) => self.handle_data_action(action),
+                        Some(action) => {
+                            observability::record_network_action_dequeue("data", action.kind());
+                            self.handle_data_action(action);
+                            observability::record_network_action_queue_depth(
+                                "data",
+                                self.data_rx.len(),
+                            );
+                        }
                         None => {
                             tracing::info!("Data channel closed");
                             data_closed = true;
+                            observability::record_network_action_queue_depth("data", 0);
                         }
                     }
                 }
@@ -477,6 +535,7 @@ impl NetworkEventLoop {
                 NodeBehaviourEvent::Identify(identify::Event::Received {
                     peer_id, info, ..
                 }) => {
+                    observability::record_network_peer_event("identify_received", "received");
                     let identify_info = IdentifyInfo {
                         protocols: info.protocols,
                         listen_addrs: info.listen_addrs,
@@ -499,12 +558,14 @@ impl NetworkEventLoop {
                     Ok(kad::GetClosestPeersOk { key, peers }) => {
                         if let Ok(target) = PeerId::from_bytes(&key) {
                             if peers.iter().any(|p| p.peer_id == target) {
+                                observability::record_network_peer_event("kad_lookup", "found");
                                 let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
                                     target,
                                     found: true,
                                 });
                                 dial_peer_if_needed(&mut self.swarm, target);
                             } else {
+                                observability::record_network_peer_event("kad_lookup", "not_found");
                                 let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
                                     target,
                                     found: false,
@@ -515,12 +576,14 @@ impl NetworkEventLoop {
                     Err(kad::GetClosestPeersError::Timeout { key, peers }) => {
                         if let Ok(target) = PeerId::from_bytes(&key) {
                             if peers.iter().any(|p| p.peer_id == target) {
+                                observability::record_network_peer_event("kad_lookup", "found");
                                 let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
                                     target,
                                     found: true,
                                 });
                                 dial_peer_if_needed(&mut self.swarm, target);
                             } else {
+                                observability::record_network_peer_event("kad_lookup", "not_found");
                                 let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
                                     target,
                                     found: false,
@@ -537,6 +600,7 @@ impl NetworkEventLoop {
                 tracing::info!("Listening on {}", address);
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                observability::record_network_peer_event("connection_established", "established");
                 let _ = self
                     .peer_event_tx
                     .send(PeerEvent::ConnectionEstablished { peer_id });
@@ -593,11 +657,18 @@ impl NetworkEventLoop {
                 |b| &mut b.store,
             ),
             NetworkDataAction::StoreResponse { channel, message } => {
-                let _ = self
+                let status = if self
                     .swarm
                     .behaviour_mut()
                     .store
-                    .send_response(channel, message);
+                    .send_response(channel, message)
+                    .is_ok()
+                {
+                    "ok"
+                } else {
+                    "failed"
+                };
+                observability::record_network_response_send(StoreProtocol::NAME, "queued", status);
             }
             NetworkDataAction::GetRequest {
                 peer,
@@ -614,11 +685,18 @@ impl NetworkEventLoop {
                 |b| &mut b.get,
             ),
             NetworkDataAction::GetResponse { channel, message } => {
-                let _ = self
+                let status = if self
                     .swarm
                     .behaviour_mut()
                     .get
-                    .send_response(channel, message);
+                    .send_response(channel, message)
+                    .is_ok()
+                {
+                    "ok"
+                } else {
+                    "failed"
+                };
+                observability::record_network_response_send(GetProtocol::NAME, "queued", status);
             }
             NetworkDataAction::FinalityRequest {
                 peer,
@@ -635,11 +713,22 @@ impl NetworkEventLoop {
                 |b| &mut b.finality,
             ),
             NetworkDataAction::FinalityResponse { channel, message } => {
-                let _ = self
+                let status = if self
                     .swarm
                     .behaviour_mut()
                     .finality
-                    .send_response(channel, message);
+                    .send_response(channel, message)
+                    .is_ok()
+                {
+                    "ok"
+                } else {
+                    "failed"
+                };
+                observability::record_network_response_send(
+                    FinalityProtocol::NAME,
+                    "queued",
+                    status,
+                );
             }
             NetworkDataAction::BatchGetRequest {
                 peer,
@@ -656,11 +745,22 @@ impl NetworkEventLoop {
                 |b| &mut b.batch_get,
             ),
             NetworkDataAction::BatchGetResponse { channel, message } => {
-                let _ = self
+                let status = if self
                     .swarm
                     .behaviour_mut()
                     .batch_get
-                    .send_response(channel, message);
+                    .send_response(channel, message)
+                    .is_ok()
+                {
+                    "ok"
+                } else {
+                    "failed"
+                };
+                observability::record_network_response_send(
+                    BatchGetProtocol::NAME,
+                    "queued",
+                    status,
+                );
             }
         }
     }

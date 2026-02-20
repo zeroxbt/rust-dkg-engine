@@ -9,7 +9,6 @@ use dkg_network::{
     IdentifyInfo, Multiaddr, PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_GET, PeerEvent, PeerId,
     RequestOutcomeKind, StreamProtocol,
 };
-use dkg_observability as observability;
 
 // Performance tracking constants
 const HISTORY_SIZE: usize = 20;
@@ -333,42 +332,25 @@ impl PeerRegistry {
     pub(crate) fn apply_peer_event(&self, event: PeerEvent) {
         match event {
             PeerEvent::IdentifyReceived { peer_id, info } => {
-                observability::record_network_peer_event("identify_received", "received");
                 self.update_identify(peer_id, info);
             }
-            PeerEvent::RequestOutcome(outcome) => {
-                let outcome_label = match outcome.outcome {
-                    RequestOutcomeKind::Success => "success",
-                    RequestOutcomeKind::ResponseError => "response_error",
-                    RequestOutcomeKind::Failure => "failure",
-                };
-                observability::record_network_outbound_request(
-                    outcome.protocol,
-                    outcome_label,
-                    outcome.elapsed,
-                );
-                match outcome.protocol {
-                    protocol if protocol == PROTOCOL_NAME_BATCH_GET => match outcome.outcome {
-                        RequestOutcomeKind::Success => {
-                            self.record_latency(outcome.peer_id, outcome.elapsed);
-                        }
-                        RequestOutcomeKind::ResponseError | RequestOutcomeKind::Failure => {
-                            self.record_request_failure(outcome.peer_id);
-                        }
-                    },
-                    protocol if protocol == PROTOCOL_NAME_GET => {
-                        if matches!(outcome.outcome, RequestOutcomeKind::Failure) {
-                            self.record_request_failure(outcome.peer_id);
-                        }
+            PeerEvent::RequestOutcome(outcome) => match outcome.protocol {
+                protocol if protocol == PROTOCOL_NAME_BATCH_GET => match outcome.outcome {
+                    RequestOutcomeKind::Success => {
+                        self.record_latency(outcome.peer_id, outcome.elapsed);
                     }
-                    _ => {}
+                    RequestOutcomeKind::ResponseError | RequestOutcomeKind::Failure => {
+                        self.record_request_failure(outcome.peer_id);
+                    }
+                },
+                protocol if protocol == PROTOCOL_NAME_GET => {
+                    if matches!(outcome.outcome, RequestOutcomeKind::Failure) {
+                        self.record_request_failure(outcome.peer_id);
+                    }
                 }
-            }
+                _ => {}
+            },
             PeerEvent::KadLookup { target, found } => {
-                observability::record_network_peer_event(
-                    "kad_lookup",
-                    if found { "found" } else { "not_found" },
-                );
                 if found {
                     self.record_discovery_success(target);
                 } else {
@@ -376,7 +358,6 @@ impl PeerRegistry {
                 }
             }
             PeerEvent::ConnectionEstablished { peer_id } => {
-                observability::record_network_peer_event("connection_established", "established");
                 self.record_discovery_success(peer_id);
             }
         }

@@ -28,6 +28,16 @@ pub enum NetworkControlAction {
     },
 }
 
+impl NetworkControlAction {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::FindPeers(_) => "find_peers",
+            Self::GetConnectedPeers(_) => "get_connected_peers",
+            Self::AddAddresses { .. } => "add_addresses",
+        }
+    }
+}
+
 /// Data-plane protocol actions sent to the swarm event loop.
 pub enum NetworkDataAction {
     // Protocol-specific request actions
@@ -73,4 +83,19 @@ pub enum NetworkDataAction {
         channel: request_response::ResponseChannel<ResponseMessage<BatchGetAck>>,
         message: ResponseMessage<BatchGetAck>,
     },
+}
+
+impl NetworkDataAction {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::StoreRequest { .. } => "store_request",
+            Self::GetRequest { .. } => "get_request",
+            Self::FinalityRequest { .. } => "finality_request",
+            Self::BatchGetRequest { .. } => "batch_get_request",
+            Self::StoreResponse { .. } => "store_response",
+            Self::GetResponse { .. } => "get_response",
+            Self::FinalityResponse { .. } => "finality_response",
+            Self::BatchGetResponse { .. } => "batch_get_response",
+        }
+    }
 }

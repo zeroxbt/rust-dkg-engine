@@ -105,6 +105,10 @@ where
             None
         }
     }
+
+    pub fn len(&self) -> usize {
+        self.pending.len()
+    }
 }
 
 impl<T> Default for PendingRequests<T>

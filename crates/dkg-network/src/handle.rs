@@ -3,6 +3,9 @@
 //! This is the public-facing API that callers use to interact with the network.
 //! It communicates with the NetworkEventLoop via an action channel.
 
+use std::time::Instant;
+
+use dkg_observability as observability;
 use libp2p::{Multiaddr, PeerId, identity};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
@@ -88,17 +91,31 @@ impl NetworkManager {
         &self,
         action: NetworkControlAction,
     ) -> Result<(), NetworkError> {
-        self.control_tx
-            .send(action)
-            .await
-            .map_err(|_| NetworkError::ActionChannelClosed)
+        let action_kind = action.kind();
+        let started = Instant::now();
+        let result = self.control_tx.send(action).await;
+        let status = if result.is_ok() { "ok" } else { "closed" };
+        observability::record_network_action_enqueue(
+            "control",
+            action_kind,
+            status,
+            started.elapsed(),
+        );
+        result.map_err(|_| NetworkError::ActionChannelClosed)
     }
 
     async fn enqueue_data_action(&self, action: NetworkDataAction) -> Result<(), NetworkError> {
-        self.data_tx
-            .send(action)
-            .await
-            .map_err(|_| NetworkError::ActionChannelClosed)
+        let action_kind = action.kind();
+        let started = Instant::now();
+        let result = self.data_tx.send(action).await;
+        let status = if result.is_ok() { "ok" } else { "closed" };
+        observability::record_network_action_enqueue(
+            "data",
+            action_kind,
+            status,
+            started.elapsed(),
+        );
+        result.map_err(|_| NetworkError::ActionChannelClosed)
     }
 
     /// Gracefully stop the network event loop.

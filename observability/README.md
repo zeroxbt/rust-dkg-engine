@@ -75,6 +75,8 @@ bind_address = "127.0.0.1:9464"
 - Inbound request decisions (scheduled vs rate-limited/controller-busy)
 - Peer-event rates (identify, discovery, connection)
 - 1h outbound request volume by protocol/outcome
+- Network action queue backpressure (enqueue wait, depth, enqueue/dequeue rate)
+- Pending outbound request gauges and response-send success/failure rates
 
 `sync.json`:
 - Fetch batch rates/latency by status (success/partial/failed)

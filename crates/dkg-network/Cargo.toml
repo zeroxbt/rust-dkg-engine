@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 dkg-domain = { path = "../dkg-domain" }
+dkg-observability = { path = "../dkg-observability" }
 async-trait = { workspace = true }
 futures = { workspace = true }
 libp2p = { version = "0.56.0", features = [
