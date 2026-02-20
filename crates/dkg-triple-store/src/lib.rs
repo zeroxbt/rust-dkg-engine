@@ -3,11 +3,16 @@ mod config;
 pub mod error;
 mod knowledge_asset;
 mod knowledge_collection;
+mod metrics;
 mod query;
 mod rdf;
 pub(crate) mod sparql;
 pub mod types;
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{
+    path::Path,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
 pub use config::{DKG_REPOSITORY, TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig};
@@ -151,18 +156,51 @@ impl TripleStoreManager {
 
     // ========== Internal Backend Wrappers (with concurrency limiting) ==========
 
-    async fn acquire_permit(&self) -> Result<OwnedSemaphorePermit> {
-        self.concurrency_limiter
+    fn max_concurrent_operations(&self) -> usize {
+        self.config.max_concurrent_operations.max(1)
+    }
+
+    fn record_permit_snapshot(&self, backend: &str) {
+        metrics::record_backend_permit_snapshot(
+            backend,
+            self.max_concurrent_operations(),
+            self.concurrency_limiter.available_permits(),
+        );
+    }
+
+    async fn acquire_permit(&self, backend: &str, op: &str) -> Result<OwnedSemaphorePermit> {
+        let wait_started = Instant::now();
+        let permit = self
+            .concurrency_limiter
             .clone()
             .acquire_owned()
             .await
-            .map_err(|_| TripleStoreError::SemaphoreClosed)
+            .map_err(|_| TripleStoreError::SemaphoreClosed)?;
+        metrics::record_backend_permit_wait(backend, op, wait_started.elapsed());
+        self.record_permit_snapshot(backend);
+        Ok(permit)
     }
 
     /// Execute a SPARQL UPDATE with concurrency limiting
     pub(crate) async fn backend_update(&self, query: &str, timeout: Duration) -> Result<()> {
-        let _permit = self.acquire_permit().await?;
-        self.backend.update(query, timeout).await
+        let backend = self.backend.name();
+        let op = "update";
+        let started = Instant::now();
+        metrics::record_backend_query_bytes_total(backend, op, query.len());
+
+        let permit = match self.acquire_permit(backend, op).await {
+            Ok(permit) => permit,
+            Err(error) => {
+                metrics::record_backend_operation(backend, op, Some(&error), started.elapsed());
+                return Err(error);
+            }
+        };
+
+        let result = self.backend.update(query, timeout).await;
+        drop(permit);
+        self.record_permit_snapshot(backend);
+        metrics::record_backend_operation(backend, op, result.as_ref().err(), started.elapsed());
+        result
     }
 
     #[cfg(test)]
@@ -174,20 +212,78 @@ impl TripleStoreManager {
 
     /// Execute a SPARQL CONSTRUCT with concurrency limiting
     pub(crate) async fn backend_construct(&self, query: &str, timeout: Duration) -> Result<String> {
-        let _permit = self.acquire_permit().await?;
-        self.backend.construct(query, timeout).await
+        let backend = self.backend.name();
+        let op = "construct";
+        let started = Instant::now();
+        metrics::record_backend_query_bytes_total(backend, op, query.len());
+
+        let permit = match self.acquire_permit(backend, op).await {
+            Ok(permit) => permit,
+            Err(error) => {
+                metrics::record_backend_operation(backend, op, Some(&error), started.elapsed());
+                return Err(error);
+            }
+        };
+
+        let result = self.backend.construct(query, timeout).await;
+        drop(permit);
+        self.record_permit_snapshot(backend);
+
+        if let Ok(body) = &result {
+            metrics::record_backend_result_bytes_total(backend, op, body.len());
+        }
+
+        metrics::record_backend_operation(backend, op, result.as_ref().err(), started.elapsed());
+        result
     }
 
     /// Execute a SPARQL ASK with concurrency limiting
     pub(crate) async fn backend_ask(&self, query: &str, timeout: Duration) -> Result<bool> {
-        let _permit = self.acquire_permit().await?;
-        self.backend.ask(query, timeout).await
+        let backend = self.backend.name();
+        let op = "ask";
+        let started = Instant::now();
+        metrics::record_backend_query_bytes_total(backend, op, query.len());
+
+        let permit = match self.acquire_permit(backend, op).await {
+            Ok(permit) => permit,
+            Err(error) => {
+                metrics::record_backend_operation(backend, op, Some(&error), started.elapsed());
+                return Err(error);
+            }
+        };
+
+        let result = self.backend.ask(query, timeout).await;
+        drop(permit);
+        self.record_permit_snapshot(backend);
+        metrics::record_backend_operation(backend, op, result.as_ref().err(), started.elapsed());
+        result
     }
 
     /// Execute a SPARQL SELECT with concurrency limiting
     pub(crate) async fn backend_select(&self, query: &str, timeout: Duration) -> Result<String> {
-        let _permit = self.acquire_permit().await?;
-        self.backend.select(query, timeout).await
+        let backend = self.backend.name();
+        let op = "select";
+        let started = Instant::now();
+        metrics::record_backend_query_bytes_total(backend, op, query.len());
+
+        let permit = match self.acquire_permit(backend, op).await {
+            Ok(permit) => permit,
+            Err(error) => {
+                metrics::record_backend_operation(backend, op, Some(&error), started.elapsed());
+                return Err(error);
+            }
+        };
+
+        let result = self.backend.select(query, timeout).await;
+        drop(permit);
+        self.record_permit_snapshot(backend);
+
+        if let Ok(body) = &result {
+            metrics::record_backend_result_bytes_total(backend, op, body.len());
+        }
+
+        metrics::record_backend_operation(backend, op, result.as_ref().err(), started.elapsed());
+        result
     }
 }
 

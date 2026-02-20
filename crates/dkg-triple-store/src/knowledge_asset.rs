@@ -1,6 +1,8 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, time::Instant};
 
-use crate::{TripleStoreManager, error::Result, query::named_graphs, types::GraphVisibility};
+use crate::{
+    TripleStoreManager, error::Result, metrics, query::named_graphs, types::GraphVisibility,
+};
 
 impl TripleStoreManager {
     /// Get knowledge asset from its named graph (public or private).
@@ -14,6 +16,8 @@ impl TripleStoreManager {
         visibility: GraphVisibility,
     ) -> Result<Vec<String>> {
         let suffix = visibility.as_suffix();
+        let started = Instant::now();
+        let backend = self.backend.name();
 
         let query = format!(
             r#"PREFIX schema: <http://schema.org/>
@@ -25,15 +29,32 @@ impl TripleStoreManager {
                 }}"#
         );
 
-        let rdf_lines = self
+        let result = self
             .backend_construct(&query, self.config.timeouts.query_timeout())
-            .await?;
+            .await
+            .map(|rdf_lines| {
+                rdf_lines
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .map(String::from)
+                    .collect::<Vec<_>>()
+            });
 
-        Ok(rdf_lines
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(String::from)
-            .collect())
+        let result_bytes = result.as_ref().map_or(0, |lines| joined_lines_bytes(lines));
+        let result_triples = result.as_ref().map_or(0, |lines| lines.len());
+        metrics::record_query_operation(
+            backend,
+            "get_knowledge_asset_named_graph",
+            suffix,
+            result.as_ref().err(),
+            started.elapsed(),
+            result_bytes,
+            result_triples,
+            Some(1),
+            Some(1),
+        );
+
+        result
     }
 
     /// Get knowledge collection from named graphs using token ID range.
@@ -54,24 +75,39 @@ impl TripleStoreManager {
 
         let suffix = visibility.as_suffix();
         let burned_set: HashSet<u64> = burned.iter().copied().collect();
+        let requested_uals = if end_token_id >= start_token_id {
+            let total_requested = end_token_id - start_token_id + 1;
+            let burned_in_range = burned_set
+                .iter()
+                .filter(|id| **id >= start_token_id && **id <= end_token_id)
+                .count() as u64;
+            total_requested.saturating_sub(burned_in_range) as usize
+        } else {
+            0
+        };
+        let requested_uals_opt = (requested_uals > 0).then_some(requested_uals);
+        let asset_count_opt = requested_uals_opt.map(|value| value as u64);
+        let started = Instant::now();
+        let backend = self.backend.name();
 
-        let mut all_triples = Vec::new();
-        let mut page_start = start_token_id;
+        let result: Result<Vec<String>> = async {
+            let mut all_triples = Vec::new();
+            let mut page_start = start_token_id;
 
-        // Paginate through token IDs in chunks of MAX_TOKEN_ID_PER_PAGE
-        while page_start <= end_token_id {
-            let page_end = (page_start + MAX_TOKEN_ID_PER_PAGE - 1).min(end_token_id);
+            // Paginate through token IDs in chunks of MAX_TOKEN_ID_PER_PAGE
+            while page_start <= end_token_id {
+                let page_end = (page_start + MAX_TOKEN_ID_PER_PAGE - 1).min(end_token_id);
 
-            // Build list of named graphs for this page, excluding burned tokens
-            let named_graphs: Vec<String> = (page_start..=page_end)
-                .filter(|id| !burned_set.contains(id))
-                .map(|id| format!("<{}/{}/{}>", kc_ual, id, suffix))
-                .collect();
+                // Build list of named graphs for this page, excluding burned tokens
+                let named_graphs: Vec<String> = (page_start..=page_end)
+                    .filter(|id| !burned_set.contains(id))
+                    .map(|id| format!("<{}/{}/{}>", kc_ual, id, suffix))
+                    .collect();
 
-            if !named_graphs.is_empty() {
-                // Use VALUES clause like JS implementation
-                let query = format!(
-                    r#"PREFIX schema: <http://schema.org/>
+                if !named_graphs.is_empty() {
+                    // Use VALUES clause like JS implementation
+                    let query = format!(
+                        r#"PREFIX schema: <http://schema.org/>
                         CONSTRUCT {{
                             ?s ?p ?o .
                         }}
@@ -83,25 +119,43 @@ impl TripleStoreManager {
                                 {}
                             }}
                         }}"#,
-                    named_graphs.join("\n        ")
-                );
+                        named_graphs.join("\n        ")
+                    );
 
-                let rdf_lines = self
-                    .backend_construct(&query, self.config.timeouts.query_timeout())
-                    .await?;
+                    let rdf_lines = self
+                        .backend_construct(&query, self.config.timeouts.query_timeout())
+                        .await?;
 
-                all_triples.extend(
-                    rdf_lines
-                        .lines()
-                        .filter(|line| !line.trim().is_empty())
-                        .map(String::from),
-                );
+                    all_triples.extend(
+                        rdf_lines
+                            .lines()
+                            .filter(|line| !line.trim().is_empty())
+                            .map(String::from),
+                    );
+                }
+
+                page_start = page_end + 1;
             }
 
-            page_start = page_end + 1;
+            Ok(all_triples)
         }
+        .await;
 
-        Ok(all_triples)
+        let result_bytes = result.as_ref().map_or(0, |lines| joined_lines_bytes(lines));
+        let result_triples = result.as_ref().map_or(0, |lines| lines.len());
+        metrics::record_query_operation(
+            backend,
+            "get_knowledge_collection_named_graphs",
+            suffix,
+            result.as_ref().err(),
+            started.elapsed(),
+            result_bytes,
+            result_triples,
+            asset_count_opt,
+            requested_uals_opt,
+        );
+
+        result
     }
 
     /// Check if a knowledge asset exists in the triple store.
@@ -109,6 +163,9 @@ impl TripleStoreManager {
     /// Checks for the existence of the named graph `{ka_ual}`.
     /// The ka_ual should include the visibility suffix (e.g., `did:dkg:.../1/public`).
     pub async fn knowledge_asset_exists(&self, ka_ual_with_visibility: &str) -> Result<bool> {
+        let started = Instant::now();
+        let backend = self.backend.name();
+        let visibility = visibility_from_graph_ual(ka_ual_with_visibility);
         let query = format!(
             r#"ASK {{
                 GRAPH <{ka_ual_with_visibility}> {{
@@ -117,14 +174,31 @@ impl TripleStoreManager {
             }}"#
         );
 
-        self.backend_ask(&query, self.config.timeouts.ask_timeout())
-            .await
+        let result = self
+            .backend_ask(&query, self.config.timeouts.ask_timeout())
+            .await;
+
+        metrics::record_query_operation(
+            backend,
+            "knowledge_asset_exists",
+            visibility,
+            result.as_ref().err(),
+            started.elapsed(),
+            0,
+            0,
+            Some(1),
+            Some(1),
+        );
+
+        result
     }
 
     /// Get metadata for a knowledge collection from the metadata graph
     ///
     /// Returns N-Triples with metadata predicates (publishedBy, publishedAtBlock, etc.)
     pub async fn get_metadata(&self, kc_ual: &str) -> Result<String> {
+        let started = Instant::now();
+        let backend = self.backend.name();
         let query = format!(
             r#"CONSTRUCT {{ <{kc_ual}> ?p ?o . }}
                 WHERE {{
@@ -135,7 +209,43 @@ impl TripleStoreManager {
             metadata = named_graphs::METADATA,
         );
 
-        self.backend_construct(&query, self.config.timeouts.query_timeout())
-            .await
+        let result = self
+            .backend_construct(&query, self.config.timeouts.query_timeout())
+            .await;
+
+        let result_bytes = result.as_ref().map_or(0, |rdf| rdf.len());
+        let result_triples = result.as_ref().map_or(0, |rdf| non_empty_lines_count(rdf));
+        metrics::record_query_operation(
+            backend,
+            "get_metadata",
+            "metadata",
+            result.as_ref().err(),
+            started.elapsed(),
+            result_bytes,
+            result_triples,
+            Some(1),
+            Some(1),
+        );
+
+        result
+    }
+}
+
+fn joined_lines_bytes(lines: &[String]) -> usize {
+    if lines.is_empty() {
+        return 0;
+    }
+    lines.iter().map(String::len).sum::<usize>() + lines.len().saturating_sub(1)
+}
+
+fn non_empty_lines_count(text: &str) -> usize {
+    text.lines().filter(|line| !line.trim().is_empty()).count()
+}
+
+fn visibility_from_graph_ual(ual: &str) -> &'static str {
+    match ual.rsplit('/').next() {
+        Some("public") => "public",
+        Some("private") => "private",
+        _ => "n/a",
     }
 }

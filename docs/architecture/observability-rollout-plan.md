@@ -227,6 +227,7 @@ Ship versioned dashboard pack in repo:
 
 - `observability/grafana/dashboards/node-overview.json`
 - `observability/grafana/dashboards/operations.json`
+- `observability/grafana/dashboards/triple-store.json`
 - `observability/grafana/dashboards/sync-pipeline.json`
 - `observability/grafana/dashboards/network-and-storage.json`
 

@@ -2440,6 +2440,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "dkg-domain",
+ "metrics",
  "oxigraph",
  "reqwest",
  "serde",

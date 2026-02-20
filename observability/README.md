@@ -37,10 +37,12 @@ bind_address = "127.0.0.1:9464"
 - Dashboard files:
   - `observability/grafana/dashboards/node-overview.json`
   - `observability/grafana/dashboards/operations.json`
+  - `observability/grafana/dashboards/triple-store.json`
 - In Grafana:
   - Dashboards -> New -> Import
   - Upload the JSON file
   - Select your Prometheus datasource
+  - If prompted for `DS_PROMETHEUS`, choose that same Prometheus datasource
 
 ## What this pilot dashboard validates
 
@@ -58,6 +60,13 @@ bind_address = "127.0.0.1:9464"
 - Completed volume (1h) by command
 - Command p95/p99 and average latency
 - Throughput/latency by operation family (publish/get/finality/batch-get)
+
+`triple-store.json`:
+- Triple-store backend op rates, errors, avg/p95/p99 durations
+- Concurrency pressure (permit wait + available/in-use permits)
+- Knowledge collection insert rates/latency segmented by KC size and KA count buckets
+- Query rates/errors/latency segmented by query type and visibility
+- Query result footprint (average result bytes and triples)
 
 ## Notes
 

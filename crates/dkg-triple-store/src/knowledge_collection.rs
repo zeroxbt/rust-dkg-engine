@@ -1,9 +1,12 @@
+use std::time::Instant;
+
 use chrono::{DateTime, SecondsFormat, Utc};
 use dkg_domain::{KnowledgeAsset, KnowledgeCollectionMetadata};
 
 use crate::{
     TripleStoreManager,
     error::Result,
+    metrics::{self, KcInsertCharacteristics},
     query::{named_graphs, predicates},
 };
 
@@ -33,6 +36,14 @@ impl TripleStoreManager {
         metadata: &Option<KnowledgeCollectionMetadata>,
         paranet_ual: Option<&str>,
     ) -> Result<usize> {
+        let started = Instant::now();
+        let backend = self.backend.name();
+        let insert_characteristics = KcInsertCharacteristics::from_assets(
+            knowledge_assets,
+            metadata.is_some(),
+            paranet_ual.is_some(),
+        );
+
         let mut total_triples = 0;
         let mut all_named_graphs: Vec<String> = Vec::new();
 
@@ -262,8 +273,19 @@ impl TripleStoreManager {
             "Built INSERT DATA query for knowledge collection"
         );
 
-        self.backend_update(&insert_query, self.config.timeouts.insert_timeout())
-            .await?;
+        let insert_result = self
+            .backend_update(&insert_query, self.config.timeouts.insert_timeout())
+            .await;
+
+        metrics::record_kc_insert(
+            backend,
+            &insert_characteristics,
+            total_triples,
+            insert_result.as_ref().err(),
+            started.elapsed(),
+        );
+
+        insert_result?;
 
         tracing::trace!(
             kc_ual = %kc_ual,
