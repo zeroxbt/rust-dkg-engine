@@ -138,7 +138,25 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 900
+              }
+            ]
           },
           "unit": "s"
         },
@@ -169,7 +187,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, command) (rate(node_command_duration_seconds_bucket[5m])))",
+          "expr": "node_command_duration_seconds{quantile=\"0.95\",status=\"completed\"}",
           "instant": false,
           "legendFormat": "{{command}} p95",
           "range": true,
@@ -181,7 +199,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, command) (rate(node_command_duration_seconds_bucket[5m])))",
+          "expr": "node_command_duration_seconds{quantile=\"0.99\",status=\"completed\"}",
           "instant": false,
           "legendFormat": "{{command}} p99",
           "range": true,
@@ -279,7 +297,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, task) (rate(node_task_duration_seconds_bucket[5m])))",
+          "expr": "node_task_duration_seconds{quantile=\"0.95\",status=\"completed\"}",
           "instant": false,
           "legendFormat": "{{task}} p95",
           "range": true,
@@ -291,7 +309,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, task) (rate(node_task_duration_seconds_bucket[5m])))",
+          "expr": "node_task_duration_seconds{quantile=\"0.99\",status=\"completed\"}",
           "instant": false,
           "legendFormat": "{{task}} p99",
           "range": true,
@@ -309,25 +327,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 300
-              },
-              {
-                "color": "red",
-                "value": 900
-              }
-            ]
+            "mode": "palette-classic"
           },
           "unit": "s"
         },
@@ -351,7 +351,8 @@
           ],
           "fields": "",
           "values": false
-        },
+        }
+        ,
         "textMode": "auto"
       },
       "targets": [
