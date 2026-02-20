@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use dkg_domain::KnowledgeAsset;
-use metrics::{counter, gauge, histogram};
+use dkg_observability as observability;
 
 use crate::error::TripleStoreError;
 
@@ -43,44 +43,19 @@ impl KcInsertCharacteristics {
 }
 
 pub(crate) fn record_backend_query_bytes_total(backend: &str, op: &str, bytes: usize) {
-    counter!(
-        "node_triple_store_backend_query_bytes_total",
-        "backend" => backend.to_string(),
-        "op" => op.to_string()
-    )
-    .increment(bytes as u64);
+    observability::record_triple_store_backend_query_bytes_total(backend, op, bytes);
 }
 
 pub(crate) fn record_backend_result_bytes_total(backend: &str, op: &str, bytes: usize) {
-    counter!(
-        "node_triple_store_backend_result_bytes_total",
-        "backend" => backend.to_string(),
-        "op" => op.to_string()
-    )
-    .increment(bytes as u64);
+    observability::record_triple_store_backend_result_bytes_total(backend, op, bytes);
 }
 
 pub(crate) fn record_backend_permit_wait(backend: &str, op: &str, wait: Duration) {
-    histogram!(
-        "node_triple_store_backend_permit_wait_seconds",
-        "backend" => backend.to_string(),
-        "op" => op.to_string()
-    )
-    .record(wait.as_secs_f64());
+    observability::record_triple_store_backend_permit_wait(backend, op, wait);
 }
 
 pub(crate) fn record_backend_permit_snapshot(backend: &str, max: usize, available: usize) {
-    gauge!(
-        "node_triple_store_backend_available_permits",
-        "backend" => backend.to_string()
-    )
-    .set(available as f64);
-
-    gauge!(
-        "node_triple_store_backend_in_use_permits",
-        "backend" => backend.to_string()
-    )
-    .set(max.saturating_sub(available) as f64);
+    observability::record_triple_store_backend_permit_snapshot(backend, max, available);
 }
 
 pub(crate) fn record_backend_operation(
@@ -92,22 +67,13 @@ pub(crate) fn record_backend_operation(
     let status = if error.is_some() { "error" } else { "ok" };
     let error_class = error.map_or("none", classify_error);
 
-    counter!(
-        "node_triple_store_backend_operation_total",
-        "backend" => backend.to_string(),
-        "op" => op.to_string(),
-        "status" => status.to_string(),
-        "error_class" => error_class.to_string()
-    )
-    .increment(1);
-
-    histogram!(
-        "node_triple_store_backend_operation_duration_seconds",
-        "backend" => backend.to_string(),
-        "op" => op.to_string(),
-        "status" => status.to_string()
-    )
-    .record(duration.as_secs_f64());
+    observability::record_triple_store_backend_operation(
+        backend,
+        op,
+        status,
+        error_class,
+        duration,
+    );
 }
 
 pub(crate) fn record_kc_insert(
@@ -123,46 +89,20 @@ pub(crate) fn record_kc_insert(
     let ka_bucket = ka_count_bucket(insert.ka_count);
     let triples_bucket = triples_count_bucket(inserted_triples);
 
-    counter!(
-        "node_triple_store_kc_insert_total",
-        "backend" => backend.to_string(),
-        "status" => status.to_string(),
-        "error_class" => error_class.to_string(),
-        "size_bucket" => size_bucket.to_string(),
-        "ka_bucket" => ka_bucket.to_string(),
-        "triples_bucket" => triples_bucket.to_string(),
-        "has_private" => bool_label(insert.has_private).to_string(),
-        "has_metadata" => bool_label(insert.has_metadata).to_string(),
-        "has_paranet" => bool_label(insert.has_paranet).to_string()
-    )
-    .increment(1);
-
-    histogram!(
-        "node_triple_store_kc_insert_duration_seconds",
-        "backend" => backend.to_string(),
-        "status" => status.to_string(),
-        "size_bucket" => size_bucket.to_string(),
-        "ka_bucket" => ka_bucket.to_string(),
-        "triples_bucket" => triples_bucket.to_string()
-    )
-    .record(duration.as_secs_f64());
-
-    histogram!(
-        "node_triple_store_kc_insert_raw_bytes",
-        "backend" => backend.to_string(),
-        "status" => status.to_string(),
-        "size_bucket" => size_bucket.to_string(),
-        "ka_bucket" => ka_bucket.to_string()
-    )
-    .record(insert.raw_bytes as f64);
-
-    histogram!(
-        "node_triple_store_kc_insert_triples",
-        "backend" => backend.to_string(),
-        "status" => status.to_string(),
-        "triples_bucket" => triples_bucket.to_string()
-    )
-    .record(inserted_triples as f64);
+    observability::record_triple_store_kc_insert(
+        backend,
+        status,
+        error_class,
+        size_bucket,
+        ka_bucket,
+        triples_bucket,
+        insert.has_private,
+        insert.has_metadata,
+        insert.has_paranet,
+        duration,
+        insert.raw_bytes,
+        inserted_triples,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -182,50 +122,26 @@ pub(crate) fn record_query_operation(
     let asset_bucket = asset_count.map_or("n/a", asset_count_bucket);
     let requested_uals_bucket = requested_uals.map_or("n/a", requested_uals_bucket);
 
-    counter!(
-        "node_triple_store_query_total",
-        "backend" => backend.to_string(),
-        "query_kind" => query_kind.to_string(),
-        "visibility" => visibility.to_string(),
-        "status" => status.to_string(),
-        "error_class" => error_class.to_string(),
-        "asset_bucket" => asset_bucket.to_string(),
-        "requested_uals_bucket" => requested_uals_bucket.to_string()
-    )
-    .increment(1);
-
-    histogram!(
-        "node_triple_store_query_duration_seconds",
-        "backend" => backend.to_string(),
-        "query_kind" => query_kind.to_string(),
-        "visibility" => visibility.to_string(),
-        "status" => status.to_string(),
-        "asset_bucket" => asset_bucket.to_string(),
-        "requested_uals_bucket" => requested_uals_bucket.to_string()
-    )
-    .record(duration.as_secs_f64());
-
-    if error.is_none() {
-        histogram!(
-            "node_triple_store_query_result_bytes",
-            "backend" => backend.to_string(),
-            "query_kind" => query_kind.to_string(),
-            "visibility" => visibility.to_string(),
-            "asset_bucket" => asset_bucket.to_string(),
-            "requested_uals_bucket" => requested_uals_bucket.to_string()
-        )
-        .record(result_bytes as f64);
-
-        histogram!(
-            "node_triple_store_query_result_triples",
-            "backend" => backend.to_string(),
-            "query_kind" => query_kind.to_string(),
-            "visibility" => visibility.to_string(),
-            "asset_bucket" => asset_bucket.to_string(),
-            "requested_uals_bucket" => requested_uals_bucket.to_string()
-        )
-        .record(result_triples as f64);
-    }
+    observability::record_triple_store_query_operation(
+        backend,
+        query_kind,
+        visibility,
+        status,
+        error_class,
+        asset_bucket,
+        requested_uals_bucket,
+        duration,
+        if error.is_none() {
+            Some(result_bytes)
+        } else {
+            None
+        },
+        if error.is_none() {
+            Some(result_triples)
+        } else {
+            None
+        },
+    );
 }
 
 fn joined_lines_bytes(lines: &[String]) -> usize {
@@ -297,8 +213,4 @@ fn requested_uals_bucket(count: usize) -> &'static str {
         51..=200 => "51-200",
         _ => ">200",
     }
-}
-
-fn bool_label(value: bool) -> &'static str {
-    if value { "true" } else { "false" }
 }

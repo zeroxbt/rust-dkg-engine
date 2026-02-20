@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use chrono::Utc;
+use dkg_observability as observability;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -10,7 +11,6 @@ use super::{
     constants::{COMMAND_CONCURRENT_LIMIT, MAX_COMMAND_LIFETIME},
     registry::{Command, CommandResolver},
 };
-use crate::observability;
 
 /// Outcome of a command execution.
 ///

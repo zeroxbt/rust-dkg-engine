@@ -11,6 +11,7 @@ dkg-network = { path = "crates/dkg-network" }
 dkg-repository = { path = "crates/dkg-repository" }
 dkg-key-value-store = { path = "crates/dkg-key-value-store" }
 dkg-triple-store = { path = "crates/dkg-triple-store" }
+dkg-observability = { path = "crates/dkg-observability" }
 tokio = { workspace = true, features = [
     "macros",
     "rt-multi-thread",
@@ -23,7 +24,6 @@ tokio = { workspace = true, features = [
 tokio-util = { workspace = true }
 futures = { workspace = true }
 tracing = { workspace = true }
-metrics = "0.24.2"
 metrics-exporter-prometheus = "0.17.2"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json"] }
 tracing-opentelemetry = "0.32.1"
@@ -74,6 +74,7 @@ members = [
     "crates/dkg-repository",
     "crates/dkg-key-value-store",
     "crates/dkg-triple-store",
+    "crates/dkg-observability",
 ]
 default-members = ["."]
 

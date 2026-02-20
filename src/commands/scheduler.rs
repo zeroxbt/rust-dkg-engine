@@ -1,9 +1,9 @@
+use dkg_observability as observability;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::constants::COMMAND_QUEUE_SIZE;
 use crate::commands::executor::CommandExecutionRequest;
-use crate::observability;
 
 /// Handle for scheduling commands. Can be cloned and shared across the application.
 ///

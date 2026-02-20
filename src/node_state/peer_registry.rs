@@ -3,13 +3,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::observability;
 use dashmap::DashMap;
 use dkg_domain::BlockchainId;
 use dkg_network::{
     IdentifyInfo, Multiaddr, PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_GET, PeerEvent, PeerId,
     RequestOutcomeKind, StreamProtocol,
 };
+use dkg_observability as observability;
 
 // Performance tracking constants
 const HISTORY_SIZE: usize = 20;
@@ -337,9 +337,14 @@ impl PeerRegistry {
                 self.update_identify(peer_id, info);
             }
             PeerEvent::RequestOutcome(outcome) => {
+                let outcome_label = match outcome.outcome {
+                    RequestOutcomeKind::Success => "success",
+                    RequestOutcomeKind::ResponseError => "response_error",
+                    RequestOutcomeKind::Failure => "failure",
+                };
                 observability::record_network_outbound_request(
                     outcome.protocol,
-                    outcome.outcome,
+                    outcome_label,
                     outcome.elapsed,
                 );
                 match outcome.protocol {

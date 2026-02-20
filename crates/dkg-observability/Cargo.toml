@@ -1,0 +1,11 @@
+[package]
+name = "dkg-observability"
+version = "0.1.7"
+rust-version = "1.92.0"
+edition = "2024"
+
+[dependencies]
+metrics = "0.24.2"
+
+[lints]
+workspace = true

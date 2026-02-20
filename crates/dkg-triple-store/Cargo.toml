@@ -8,9 +8,9 @@ edition = "2024"
 async-trait = { workspace = true }
 chrono = { workspace = true }
 dkg-domain = { path = "../dkg-domain" }
+dkg-observability = { path = "../dkg-observability" }
 oxigraph = { version = "0.5.4" }
 reqwest = { workspace = true, features = ["json", "rustls-tls"] }
-metrics = "0.24.2"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

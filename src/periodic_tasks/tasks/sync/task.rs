@@ -5,6 +5,7 @@
 use std::{sync::Arc, time::Duration};
 
 use dkg_blockchain::{Address, BlockchainId, ContractName};
+use dkg_observability as observability;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -18,7 +19,7 @@ use super::{
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
 use crate::{
-    application::GET_NETWORK_CONCURRENT_PEERS, observability, periodic_tasks::SyncDeps,
+    application::GET_NETWORK_CONCURRENT_PEERS, periodic_tasks::SyncDeps,
     periodic_tasks::runner::run_with_shutdown,
 };
 

@@ -6,6 +6,7 @@ use dkg_network::{
     PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_FINALITY, PROTOCOL_NAME_GET, PROTOCOL_NAME_STORE,
     ResponseHandle, StoreAck, StoreRequestData,
 };
+use dkg_observability as observability;
 
 use super::deps::RpcRouterDeps;
 use super::{PeerRateLimiter, RpcConfig};
@@ -13,7 +14,6 @@ use crate::controllers::rpc_controller::v1::{
     batch_get::BatchGetRpcController, get::GetRpcController,
     publish_finality::PublishFinalityRpcController, publish_store::PublishStoreRpcController,
 };
-use crate::observability;
 
 pub(crate) struct RpcRouter {
     store_controller: Arc<PublishStoreRpcController>,

@@ -2421,6 +2421,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "dkg-observability"
+version = "0.1.7"
+dependencies = [
+ "metrics",
+]
+
+[[package]]
 name = "dkg-repository"
 version = "0.1.7"
 dependencies = [
@@ -2440,7 +2447,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "dkg-domain",
- "metrics",
+ "dkg-observability",
  "oxigraph",
  "reqwest",
  "serde",
@@ -6170,12 +6177,12 @@ dependencies = [
  "dkg-domain",
  "dkg-key-value-store",
  "dkg-network",
+ "dkg-observability",
  "dkg-repository",
  "dkg-triple-store",
  "figment",
  "futures",
  "governor",
- "metrics",
  "metrics-exporter-prometheus",
  "opentelemetry",
  "opentelemetry-otlp",
