@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use dkg_network::{
     BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
-    ImmediateResponse, InboundDecision, InboundRequest, NetworkEventHandler, ResponseHandle,
-    StoreAck, StoreRequestData,
+    ImmediateResponse, InboundDecision, InboundRequest, NetworkEventHandler,
+    PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_FINALITY, PROTOCOL_NAME_GET, PROTOCOL_NAME_STORE,
+    ResponseHandle, StoreAck, StoreRequestData,
 };
 
 use super::deps::RpcRouterDeps;
@@ -12,6 +13,7 @@ use crate::controllers::rpc_controller::v1::{
     batch_get::BatchGetRpcController, get::GetRpcController,
     publish_finality::PublishFinalityRpcController, publish_store::PublishStoreRpcController,
 };
+use crate::observability;
 
 pub(crate) struct RpcRouter {
     store_controller: Arc<PublishStoreRpcController>,
@@ -73,11 +75,14 @@ impl NetworkEventHandler for RpcRouter {
     ) -> InboundDecision<StoreAck> {
         let operation_id = request.operation_id();
         if !self.peer_rate_limiter.check(request.peer_id()) {
+            observability::record_network_inbound_request(PROTOCOL_NAME_STORE, "rate_limited");
             return InboundDecision::RespondNow(Self::store_busy_response(channel, operation_id));
         }
         if let Some(channel) = self.store_controller.handle_request(request, channel) {
+            observability::record_network_inbound_request(PROTOCOL_NAME_STORE, "controller_busy");
             return InboundDecision::RespondNow(Self::store_busy_response(channel, operation_id));
         }
+        observability::record_network_inbound_request(PROTOCOL_NAME_STORE, "scheduled");
         InboundDecision::Scheduled
     }
 
@@ -88,11 +93,14 @@ impl NetworkEventHandler for RpcRouter {
     ) -> InboundDecision<GetAck> {
         let operation_id = request.operation_id();
         if !self.peer_rate_limiter.check(request.peer_id()) {
+            observability::record_network_inbound_request(PROTOCOL_NAME_GET, "rate_limited");
             return InboundDecision::RespondNow(Self::get_busy_response(channel, operation_id));
         }
         if let Some(channel) = self.get_controller.handle_request(request, channel) {
+            observability::record_network_inbound_request(PROTOCOL_NAME_GET, "controller_busy");
             return InboundDecision::RespondNow(Self::get_busy_response(channel, operation_id));
         }
+        observability::record_network_inbound_request(PROTOCOL_NAME_GET, "scheduled");
         InboundDecision::Scheduled
     }
 
@@ -103,17 +111,23 @@ impl NetworkEventHandler for RpcRouter {
     ) -> InboundDecision<FinalityAck> {
         let operation_id = request.operation_id();
         if !self.peer_rate_limiter.check(request.peer_id()) {
+            observability::record_network_inbound_request(PROTOCOL_NAME_FINALITY, "rate_limited");
             return InboundDecision::RespondNow(Self::finality_busy_response(
                 channel,
                 operation_id,
             ));
         }
         if let Some(channel) = self.finality_controller.handle_request(request, channel) {
+            observability::record_network_inbound_request(
+                PROTOCOL_NAME_FINALITY,
+                "controller_busy",
+            );
             return InboundDecision::RespondNow(Self::finality_busy_response(
                 channel,
                 operation_id,
             ));
         }
+        observability::record_network_inbound_request(PROTOCOL_NAME_FINALITY, "scheduled");
         InboundDecision::Scheduled
     }
 
@@ -124,17 +138,23 @@ impl NetworkEventHandler for RpcRouter {
     ) -> InboundDecision<BatchGetAck> {
         let operation_id = request.operation_id();
         if !self.peer_rate_limiter.check(request.peer_id()) {
+            observability::record_network_inbound_request(PROTOCOL_NAME_BATCH_GET, "rate_limited");
             return InboundDecision::RespondNow(Self::batch_get_busy_response(
                 channel,
                 operation_id,
             ));
         }
         if let Some(channel) = self.batch_get_controller.handle_request(request, channel) {
+            observability::record_network_inbound_request(
+                PROTOCOL_NAME_BATCH_GET,
+                "controller_busy",
+            );
             return InboundDecision::RespondNow(Self::batch_get_busy_response(
                 channel,
                 operation_id,
             ));
         }
+        observability::record_network_inbound_request(PROTOCOL_NAME_BATCH_GET, "scheduled");
         InboundDecision::Scheduled
     }
 }

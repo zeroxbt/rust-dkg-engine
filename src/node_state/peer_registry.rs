@@ -3,6 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::observability;
 use dashmap::DashMap;
 use dkg_domain::BlockchainId;
 use dkg_network::{
@@ -332,25 +333,37 @@ impl PeerRegistry {
     pub(crate) fn apply_peer_event(&self, event: PeerEvent) {
         match event {
             PeerEvent::IdentifyReceived { peer_id, info } => {
+                observability::record_network_peer_event("identify_received", "received");
                 self.update_identify(peer_id, info);
             }
-            PeerEvent::RequestOutcome(outcome) => match outcome.protocol {
-                protocol if protocol == PROTOCOL_NAME_BATCH_GET => match outcome.outcome {
-                    RequestOutcomeKind::Success => {
-                        self.record_latency(outcome.peer_id, outcome.elapsed);
+            PeerEvent::RequestOutcome(outcome) => {
+                observability::record_network_outbound_request(
+                    outcome.protocol,
+                    outcome.outcome,
+                    outcome.elapsed,
+                );
+                match outcome.protocol {
+                    protocol if protocol == PROTOCOL_NAME_BATCH_GET => match outcome.outcome {
+                        RequestOutcomeKind::Success => {
+                            self.record_latency(outcome.peer_id, outcome.elapsed);
+                        }
+                        RequestOutcomeKind::ResponseError | RequestOutcomeKind::Failure => {
+                            self.record_request_failure(outcome.peer_id);
+                        }
+                    },
+                    protocol if protocol == PROTOCOL_NAME_GET => {
+                        if matches!(outcome.outcome, RequestOutcomeKind::Failure) {
+                            self.record_request_failure(outcome.peer_id);
+                        }
                     }
-                    RequestOutcomeKind::ResponseError | RequestOutcomeKind::Failure => {
-                        self.record_request_failure(outcome.peer_id);
-                    }
-                },
-                protocol if protocol == PROTOCOL_NAME_GET => {
-                    if matches!(outcome.outcome, RequestOutcomeKind::Failure) {
-                        self.record_request_failure(outcome.peer_id);
-                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             PeerEvent::KadLookup { target, found } => {
+                observability::record_network_peer_event(
+                    "kad_lookup",
+                    if found { "found" } else { "not_found" },
+                );
                 if found {
                     self.record_discovery_success(target);
                 } else {
@@ -358,6 +371,7 @@ impl PeerRegistry {
                 }
             }
             PeerEvent::ConnectionEstablished { peer_id } => {
+                observability::record_network_peer_event("connection_established", "established");
                 self.record_discovery_success(peer_id);
             }
         }

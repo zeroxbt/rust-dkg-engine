@@ -38,6 +38,8 @@ bind_address = "127.0.0.1:9464"
   - `observability/grafana/dashboards/node-overview.json`
   - `observability/grafana/dashboards/operations.json`
   - `observability/grafana/dashboards/triple-store.json`
+  - `observability/grafana/dashboards/network.json`
+  - `observability/grafana/dashboards/sync.json`
 - In Grafana:
   - Dashboards -> New -> Import
   - Upload the JSON file
@@ -67,6 +69,18 @@ bind_address = "127.0.0.1:9464"
 - Knowledge collection insert rates/latency segmented by KC size and KA count buckets
 - Query rates/errors/latency segmented by query type and visibility
 - Query result footprint (average result bytes and triples)
+
+`network.json`:
+- Outbound request rates/errors/latency by protocol and outcome
+- Inbound request decisions (scheduled vs rate-limited/controller-busy)
+- Peer-event rates (identify, discovery, connection)
+- 1h outbound request volume by protocol/outcome
+
+`sync.json`:
+- Fetch batch rates/latency by status (success/partial/failed)
+- Peer request rates/latency/yield (valid KCs per request)
+- Fetched vs failed KC rates and failure ratio
+- Shard peer availability (shard members / identified / usable)
 
 ## Notes
 

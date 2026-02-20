@@ -25,6 +25,7 @@ use super::types::{FetchStats, FetchedKc, KcToSync};
 use crate::{
     application::{AssertionValidation, UAL_MAX_LIMIT},
     node_state::PeerRegistry,
+    observability,
 };
 
 /// Maximum number of in-flight peer requests for this operation.
@@ -62,13 +63,20 @@ pub(crate) async fn fetch_task(
 
     // Get shard peers once at the start, sorted by performance score
     let (mut peers, peer_stats) = get_shard_peers(&blockchain_id, &network_manager, &peer_registry);
+    let blockchain_label = blockchain_id.to_string();
+    let identified_peers = peer_registry.identified_shard_peer_count(&blockchain_id);
+    observability::record_sync_fetch_peer_selection(
+        &blockchain_label,
+        peer_stats.shard_members,
+        identified_peers,
+        peer_stats.usable,
+    );
 
     if peers.is_empty() {
-        let identified = peer_registry.identified_shard_peer_count(&blockchain_id);
         tracing::warn!(
             blockchain_id = %blockchain_id,
             shard_members = peer_stats.shard_members,
-            identified,
+            identified = identified_peers,
             usable = peer_stats.usable,
             "Fetch: no peers available"
         );
@@ -102,13 +110,12 @@ pub(crate) async fn fetch_task(
 
     let min_required_peers = 1;
     if peers.len() < min_required_peers {
-        let identified = peer_registry.identified_shard_peer_count(&blockchain_id);
         tracing::warn!(
             blockchain_id = %blockchain_id,
             found = peers.len(),
             required = min_required_peers,
             shard_members = peer_stats.shard_members,
-            identified,
+            identified = identified_peers,
             usable = peer_stats.usable,
             "Fetch: not enough peers available"
         );
@@ -159,6 +166,21 @@ pub(crate) async fn fetch_task(
                 &assertion_validation,
             )
             .await;
+            let batch_status = if batch_failures.is_empty() {
+                "success"
+            } else if fetched.is_empty() {
+                "failed"
+            } else {
+                "partial"
+            };
+            observability::record_sync_fetch_batch(
+                batch_status,
+                fetch_start.elapsed(),
+                to_fetch.len(),
+                assets_total,
+                fetched.len(),
+                batch_failures.len(),
+            );
 
             total_fetched += fetched.len();
             failures.extend(batch_failures);
@@ -205,6 +227,21 @@ pub(crate) async fn fetch_task(
             assertion_validation.as_ref(),
         )
         .await;
+        let batch_status = if batch_failures.is_empty() {
+            "success"
+        } else if fetched.is_empty() {
+            "failed"
+        } else {
+            "partial"
+        };
+        observability::record_sync_fetch_batch(
+            batch_status,
+            fetch_start.elapsed(),
+            accumulated.len(),
+            assets_total,
+            fetched.len(),
+            batch_failures.len(),
+        );
 
         total_fetched += fetched.len();
         failures.extend(batch_failures);
@@ -425,6 +462,7 @@ async fn fetch_kc_batch_from_network(
 
                 peer_span.record("valid_kcs", valid_count);
                 peer_span.record("status", tracing::field::display("ok"));
+                observability::record_sync_fetch_peer_request("ack", elapsed, valid_count);
 
                 // Break early if we got everything - don't wait for remaining in-flight requests
                 if uals_still_needed.is_empty() {
@@ -434,11 +472,13 @@ async fn fetch_kc_batch_from_network(
             Ok(BatchGetResponseData::Error(_)) => {
                 peer_span.record("valid_kcs", 0usize);
                 peer_span.record("status", tracing::field::display("nack"));
+                observability::record_sync_fetch_peer_request("nack", elapsed, 0);
             }
             Err(e) => {
                 let status = e.to_string();
                 peer_span.record("valid_kcs", 0usize);
                 peer_span.record("status", tracing::field::display(&status));
+                observability::record_sync_fetch_peer_request("failure", elapsed, 0);
             }
         }
 
