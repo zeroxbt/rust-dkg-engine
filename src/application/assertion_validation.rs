@@ -196,13 +196,11 @@ impl AssertionValidation {
         };
 
         if calculated_root != on_chain_root {
-            let assertion_public = serialize_triples_for_log(public_triples);
             tracing::debug!(
                 kc_ual = %parsed_ual.knowledge_collection_ual(),
                 calculated = %calculated_root,
                 on_chain = %on_chain_root,
                 public_count = public_triples.len(),
-                assertion_public = %assertion_public,
                 "Merkle root mismatch"
             );
             return false;
@@ -261,13 +259,11 @@ impl AssertionValidation {
             .ok_or(AssertionValidationError::KnowledgeCollectionNotFound)?;
 
         if calculated_root != on_chain_root {
-            let assertion_public = serialize_triples_for_log(public_triples);
             tracing::debug!(
                 kc_ual = %parsed_ual.knowledge_collection_ual(),
                 calculated = %calculated_root,
                 on_chain = %on_chain_root,
                 public_count = public_triples.len(),
-                assertion_public = %assertion_public,
                 "Merkle root mismatch"
             );
             return Ok(false);
@@ -372,10 +368,6 @@ fn extract_private_merkle_root(triple: &str) -> Option<String> {
     } else {
         None
     }
-}
-
-fn serialize_triples_for_log(triples: &[String]) -> String {
-    serde_json::to_string(triples).unwrap_or_else(|e| format!("\"<serialization_error:{}>\"", e))
 }
 
 #[cfg(test)]

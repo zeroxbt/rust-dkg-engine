@@ -1,6 +1,6 @@
 # Observability Quick Start (Pilot)
 
-This directory contains the first pilot dashboard for validating node telemetry end-to-end.
+This directory contains pilot dashboards for validating node telemetry end-to-end.
 
 Telemetry signals used here:
 
@@ -34,7 +34,9 @@ bind_address = "127.0.0.1:9464"
 
 ## Dashboard import
 
-- Dashboard file: `observability/grafana/dashboards/node-overview.json`
+- Dashboard files:
+  - `observability/grafana/dashboards/node-overview.json`
+  - `observability/grafana/dashboards/operations.json`
 - In Grafana:
   - Dashboards -> New -> Import
   - Upload the JSON file
@@ -42,11 +44,20 @@ bind_address = "127.0.0.1:9464"
 
 ## What this pilot dashboard validates
 
+`node-overview.json`:
 - Command throughput and rejection/error signals
 - Command p95/p99 latency
 - Task run rates by task/status
 - Task p95/p99 latency
 - Sync heartbeat freshness (`time() - node_sync_last_success_unix`)
+
+`operations.json`:
+- Completed throughput by command
+- Rejected/expired pressure by command
+- Reject/expire ratio by command
+- Completed volume (1h) by command
+- Command p95/p99 and average latency
+- Throughput/latency by operation family (publish/get/finality/batch-get)
 
 ## Notes
 
