@@ -765,6 +765,214 @@
       ],
       "title": "Query Result Footprint (avg)",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 56
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (backend, size_bucket) (increase(node_triple_store_kc_insert_total{status=\"ok\"}[5m]))",
+          "instant": false,
+          "legendFormat": "{{backend}} {{size_bucket}} samples_5m",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "KC Insert Samples by Size Bucket (5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 56
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "avg by (backend, size_bucket) (node_triple_store_kc_insert_duration_seconds{status=\"ok\",quantile=\"0.95\"})",
+          "instant": false,
+          "legendFormat": "{{backend}} {{size_bucket}} p95_approx",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "avg by (backend, size_bucket) (node_triple_store_kc_insert_duration_seconds{status=\"ok\",quantile=\"0.99\"})",
+          "instant": false,
+          "legendFormat": "{{backend}} {{size_bucket}} p99_approx",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "KC Insert p95/p99 by Size Bucket (approx)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 64
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "(sum by (backend, size_bucket) (rate(node_triple_store_kc_insert_duration_seconds_sum{status=\"ok\"}[5m])) / clamp_min(sum by (backend, size_bucket) (rate(node_triple_store_kc_insert_raw_bytes_sum{status=\"ok\"}[5m])), 1e-9)) * 1048576",
+          "instant": false,
+          "legendFormat": "{{backend}} {{size_bucket}} s_per_MiB",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "KC Insert Duration Normalized by Bytes (s/MiB)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 64
+      },
+      "id": 18,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (backend, size_bucket) (rate(node_triple_store_kc_insert_raw_bytes_sum{status=\"ok\"}[5m]))",
+          "instant": false,
+          "legendFormat": "{{backend}} {{size_bucket}} bytes_per_s",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "KC Insert Raw Bytes Throughput by Size Bucket",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
@@ -786,6 +994,6 @@
   "timezone": "",
   "title": "Rust DKG Engine - Triple Store (Pilot)",
   "uid": "rust-dkg-triple-store",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
