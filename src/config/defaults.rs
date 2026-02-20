@@ -113,6 +113,7 @@ fn sync() -> SyncConfig {
         filter_batch_size: 100,
         network_fetch_batch_size: 100,
         max_assets_per_fetch_batch: 10_000,
+        insert_batch_concurrency: 8,
         pipeline_channel_buffer: 6,
         retry_base_delay_secs: 5,
         retry_max_delay_secs: 300,

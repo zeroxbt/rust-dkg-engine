@@ -5,7 +5,6 @@
 use std::{sync::Arc, time::Duration};
 
 use dkg_blockchain::{Address, BlockchainId, ContractName};
-use futures::future::join_all;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -196,6 +195,7 @@ impl SyncTask {
         let filter_batch_size = self.config.filter_batch_size.max(1);
         let network_fetch_batch_size = self.config.network_fetch_batch_size.max(1);
         let max_assets_per_fetch_batch = self.config.max_assets_per_fetch_batch.max(1);
+        let insert_batch_concurrency = self.config.insert_batch_concurrency.max(1);
 
         // Create pipeline channels
         let (filter_tx, filter_rx) = mpsc::channel::<Vec<KcToSync>>(pipeline_channel_buffer);
@@ -260,6 +260,7 @@ impl SyncTask {
                         fetch_rx,
                         blockchain_id,
                         contract_addr_str,
+                        insert_batch_concurrency,
                         triple_store_assertions,
                     )
                     .await
@@ -488,7 +489,7 @@ impl SyncTask {
             .iter()
             .map(|&contract_address| self.sync_contract(blockchain_id, contract_address));
 
-        let results = join_all(sync_futures).await;
+        let results = futures::future::join_all(sync_futures).await;
 
         // Aggregate results
         let mut total_enqueued = 0u64;

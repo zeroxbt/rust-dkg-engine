@@ -7,7 +7,7 @@ use dkg_triple_store::{
     GraphVisibility, PRIVATE_HASH_SUBJECT_PREFIX, TripleStoreManager, error::TripleStoreError,
     extract_subject, group_triples_by_subject,
 };
-use futures::future::join_all;
+use futures::{StreamExt, stream};
 use tracing::instrument;
 
 /// Result of querying assertion data from the triple store.
@@ -250,22 +250,29 @@ impl TripleStoreAssertions {
         visibility: Visibility,
         include_metadata: bool,
     ) -> Result<HashMap<String, AssertionQueryResult>, TripleStoreError> {
-        // Create futures for all queries
-        let futures: Vec<_> = uals_with_token_ids
+        let max_in_flight = self.triple_store_manager.max_concurrent_operations();
+        let queries: Vec<_> = uals_with_token_ids
             .iter()
             .map(|(parsed_ual, token_ids)| {
-                let ual_string = parsed_ual.to_ual_string();
-                async move {
-                    let result = self
-                        .query_assertion(parsed_ual, token_ids, visibility, include_metadata)
-                        .await;
-                    (ual_string, result)
-                }
+                (
+                    parsed_ual.to_ual_string(),
+                    parsed_ual.clone(),
+                    token_ids.clone(),
+                )
             })
             .collect();
 
-        // Execute all queries concurrently
-        let query_results = join_all(futures).await;
+        // Execute queries with bounded fan-out to avoid unbounded permit queuing.
+        let query_results = stream::iter(queries.into_iter())
+            .map(|(ual_string, parsed_ual, token_ids)| async move {
+                let result = self
+                    .query_assertion(&parsed_ual, &token_ids, visibility, include_metadata)
+                    .await;
+                (ual_string, result)
+            })
+            .buffer_unordered(max_in_flight.max(1))
+            .collect::<Vec<_>>()
+            .await;
 
         // Collect successful results with data
         let mut results_map = HashMap::new();

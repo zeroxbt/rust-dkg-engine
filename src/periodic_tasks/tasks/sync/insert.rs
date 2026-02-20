@@ -6,7 +6,7 @@
 use std::{sync::Arc, time::Instant};
 
 use dkg_blockchain::BlockchainId;
-use futures::future::join_all;
+use futures::{StreamExt, stream};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
@@ -29,6 +29,7 @@ pub(crate) async fn insert_task(
     mut rx: mpsc::Receiver<Vec<FetchedKc>>,
     blockchain_id: BlockchainId,
     contract_addr_str: String,
+    insert_batch_concurrency: usize,
     triple_store_assertions: Arc<TripleStoreAssertions>,
 ) -> InsertStats {
     let task_start = Instant::now();
@@ -48,10 +49,11 @@ pub(crate) async fn insert_task(
 
         // Insert all KCs in parallel
         let (batch_synced, batch_failed) = insert_kcs_to_store(
-            &batch,
-            &triple_store_assertions,
-            &blockchain_id,
-            &contract_addr_str,
+            batch,
+            Arc::clone(&triple_store_assertions),
+            blockchain_id.clone(),
+            contract_addr_str.clone(),
+            insert_batch_concurrency,
         )
         .await;
 
@@ -82,22 +84,22 @@ pub(crate) async fn insert_task(
 /// Insert KCs into the triple store in parallel.
 /// Returns (synced KC IDs, failed KC IDs).
 async fn insert_kcs_to_store(
-    kcs: &[FetchedKc],
-    triple_store_assertions: &TripleStoreAssertions,
-    blockchain_id: &BlockchainId,
-    contract_addr_str: &str,
+    kcs: Vec<FetchedKc>,
+    triple_store_assertions: Arc<TripleStoreAssertions>,
+    blockchain_id: BlockchainId,
+    contract_addr_str: String,
+    insert_batch_concurrency: usize,
 ) -> (Vec<u64>, Vec<u64>) {
     let mut synced = Vec::new();
     let mut failed = Vec::new();
 
-    // Triple store's internal semaphore provides backpressure
-    let insert_futures: Vec<_> = kcs
-        .iter()
+    // Bound in-flight inserts to avoid large bursts and long permit waits.
+    let insert_results = stream::iter(kcs.into_iter())
         .map(|kc| {
-            let ts = triple_store_assertions;
-            let ual = kc.ual.clone();
-            let assertion = kc.assertion.clone();
-            let metadata = kc.metadata.clone();
+            let ts = Arc::clone(&triple_store_assertions);
+            let ual = kc.ual;
+            let assertion = kc.assertion;
+            let metadata = kc.metadata;
             let kc_id = kc.kc_id;
             async move {
                 let result = ts
@@ -106,9 +108,9 @@ async fn insert_kcs_to_store(
                 (kc_id, ual, result)
             }
         })
-        .collect();
-
-    let insert_results = join_all(insert_futures).await;
+        .buffer_unordered(insert_batch_concurrency.max(1))
+        .collect::<Vec<_>>()
+        .await;
 
     for (kc_id, ual, result) in insert_results {
         match result {

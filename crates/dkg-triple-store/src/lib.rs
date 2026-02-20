@@ -156,7 +156,8 @@ impl TripleStoreManager {
 
     // ========== Internal Backend Wrappers (with concurrency limiting) ==========
 
-    fn max_concurrent_operations(&self) -> usize {
+    /// Effective concurrency limit used by the internal semaphore.
+    pub fn max_concurrent_operations(&self) -> usize {
         self.config.max_concurrent_operations.max(1)
     }
 
