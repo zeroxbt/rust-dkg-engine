@@ -33,6 +33,68 @@
   "liveNow": false,
   "panels": [
     {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "panels": [],
+      "title": "Overview",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "time() - node_sync_last_success_unix",
+          "instant": false,
+          "legendFormat": "seconds_since_last_success",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Sync Freshness",
+      "type": "timeseries"
+    },
+    {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -48,11 +110,11 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 0
+        "w": 6,
+        "x": 6,
+        "y": 1
       },
-      "id": 1,
+      "id": 2,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -91,64 +153,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "s"
+          "unit": "ops"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 6,
         "x": 12,
-        "y": 0
-      },
-      "id": 2,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (status) (rate(node_sync_fetch_batch_duration_seconds_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_fetch_batch_duration_seconds_count[5m])), 1e-9)",
-          "instant": false,
-          "legendFormat": "{{status}} avg",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Fetch Batch Average Duration",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 8
+        "y": 1
       },
       "id": 3,
       "options": {
@@ -169,26 +182,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_fetch_batch_duration_seconds{quantile=\"0.95\"}",
+          "expr": "sum by (status) (rate(node_sync_fetch_kcs_total[5m]))",
           "instant": false,
-          "legendFormat": "{{status}} p95",
+          "legendFormat": "{{status}}",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "node_sync_fetch_batch_duration_seconds{quantile=\"0.99\"}",
-          "instant": false,
-          "legendFormat": "{{status}} p99",
-          "range": true,
-          "refId": "B"
         }
       ],
-      "title": "Fetch Batch Duration p95/p99",
+      "title": "Fetched vs Failed KCs (Rate)",
       "type": "timeseries"
     },
     {
@@ -201,15 +202,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "short"
+          "unit": "percent"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 8
+        "w": 6,
+        "x": 18,
+        "y": 1
       },
       "id": 4,
       "options": {
@@ -230,9 +231,267 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (status) (rate(node_sync_fetch_batch_kcs_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_fetch_batch_kcs_count[5m])), 1e-9)",
+          "expr": "100 * (sum(rate(node_sync_fetch_kcs_total{status=\"failed\"}[5m])) / clamp_min(sum(rate(node_sync_fetch_kcs_total[5m])), 1e-9))",
           "instant": false,
-          "legendFormat": "{{status}} avg_kcs",
+          "legendFormat": "failed_ratio",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "KC Fetch Failure Ratio",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "id": 101,
+      "panels": [],
+      "title": "Stage 1 - Filter",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 10
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rate(node_sync_filter_batch_total[5m])",
+          "instant": false,
+          "legendFormat": "batches",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Filter Batch Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 10
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(node_sync_filter_batch_duration_seconds_sum[5m])) / clamp_min(sum(rate(node_sync_filter_batch_duration_seconds_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "avg",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Filter Batch Average Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 10
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (result) (rate(node_sync_filter_kcs_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{result}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Filter Outcome Mix (Rate)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 10
+      },
+      "id": 26,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_sync_filter_rpc_duration_seconds_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_filter_rpc_duration_seconds_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{status}} avg",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Filter RPC Multicall Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(node_sync_filter_batch_to_sync_kcs_sum[5m])) / clamp_min(sum(rate(node_sync_filter_batch_to_sync_kcs_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "avg_to_sync_kcs",
           "range": true,
           "refId": "A"
         },
@@ -242,14 +501,161 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (status) (rate(node_sync_fetch_batch_assets_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_fetch_batch_assets_count[5m])), 1e-9)",
+          "expr": "sum(rate(node_sync_filter_batch_already_synced_kcs_sum[5m])) / clamp_min(sum(rate(node_sync_filter_batch_already_synced_kcs_count[5m])), 1e-9)",
           "instant": false,
-          "legendFormat": "{{status}} avg_assets",
+          "legendFormat": "avg_already_synced_kcs",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(node_sync_filter_batch_expired_kcs_sum[5m])) / clamp_min(sum(rate(node_sync_filter_batch_expired_kcs_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "avg_expired_kcs",
+          "range": true,
+          "refId": "C"
         }
       ],
-      "title": "Fetch Batch Size (Average KCs and Assets)",
+      "title": "Filter Batch Output (Average KCs)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(node_sync_filter_batch_kcs_sum[5m])) / clamp_min(sum(rate(node_sync_filter_batch_kcs_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "avg_input_kcs",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Filter Batch Size (Average Input KCs)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "id": 102,
+      "panels": [],
+      "title": "Stage 2 - Fetch",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 27
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_fetch_shard_members",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} shard_members",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_fetch_identified_peers",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} identified",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_fetch_usable_peers",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} usable",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Sync Peer Availability",
       "type": "timeseries"
     },
     {
@@ -269,10 +675,10 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 16
+        "x": 12,
+        "y": 27
       },
-      "id": 5,
+      "id": 11,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -318,10 +724,10 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 16
+        "x": 0,
+        "y": 35
       },
-      "id": 6,
+      "id": 12,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -379,10 +785,10 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 24
+        "x": 12,
+        "y": 35
       },
-      "id": 7,
+      "id": 13,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -421,17 +827,17 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "ops"
+          "unit": "s"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 24
+        "x": 0,
+        "y": 43
       },
-      "id": 8,
+      "id": 14,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -450,14 +856,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (status) (rate(node_sync_fetch_kcs_total[5m]))",
+          "expr": "sum by (status) (rate(node_sync_fetch_batch_duration_seconds_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_fetch_batch_duration_seconds_count[5m])), 1e-9)",
           "instant": false,
-          "legendFormat": "{{status}}",
+          "legendFormat": "{{status}} avg",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Fetched vs Failed KCs (Rate)",
+      "title": "Fetch Batch Average Duration",
       "type": "timeseries"
     },
     {
@@ -470,17 +876,17 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "percent"
+          "unit": "s"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 32
+        "x": 12,
+        "y": 43
       },
-      "id": 9,
+      "id": 15,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -499,14 +905,529 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * (sum(rate(node_sync_fetch_kcs_total{status=\"failed\"}[5m])) / clamp_min(sum(rate(node_sync_fetch_kcs_total[5m])), 1e-9))",
+          "expr": "node_sync_fetch_batch_duration_seconds{quantile=\"0.95\"}",
           "instant": false,
-          "legendFormat": "failed_ratio",
+          "legendFormat": "{{status}} p95",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_fetch_batch_duration_seconds{quantile=\"0.99\"}",
+          "instant": false,
+          "legendFormat": "{{status}} p99",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Fetch Batch Duration p95/p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 51
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_sync_fetch_batch_kcs_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_fetch_batch_kcs_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{status}} avg_kcs",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_sync_fetch_batch_assets_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_fetch_batch_assets_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{status}} avg_assets",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Fetch Batch Size (Average KCs and Assets)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 51
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_sync_fetch_batch_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{status}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "KC Fetch Failure Ratio",
+      "title": "Fetch Batch Rate by Status",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      },
+      "id": 103,
+      "panels": [],
+      "title": "Stage 3 - Insert",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 60
+      },
+      "id": 18,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_sync_insert_batch_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{status}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Insert Batch Rate by Status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 60
+      },
+      "id": 19,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_sync_insert_batch_duration_seconds_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_insert_batch_duration_seconds_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{status}} avg",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Insert Batch Average Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 68
+      },
+      "id": 20,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_sync_insert_batch_kcs_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_insert_batch_kcs_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{status}} avg_batch_kcs",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_sync_insert_batch_synced_kcs_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_insert_batch_synced_kcs_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{status}} avg_synced_kcs",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_sync_insert_batch_failed_kcs_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_insert_batch_failed_kcs_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{status}} avg_failed_kcs",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Insert Batch Size and Outcome (Average KCs)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 68
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_sync_insert_kcs_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{status}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Insert KC Outcome Rate",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 76
+      },
+      "id": 104,
+      "panels": [],
+      "title": "Runtime",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 77
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_task_runs_total{task=\"sync\"}[5m]))",
+          "instant": false,
+          "legendFormat": "{{status}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Sync Task Run Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 77
+      },
+      "id": 23,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(node_task_duration_seconds_sum{task=\"sync\"}[5m])) / clamp_min(sum by (status) (rate(node_task_duration_seconds_count{task=\"sync\"}[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{status}} avg",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Sync Task Average Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 85
+      },
+      "id": 24,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "increase(node_task_runs_total{task=\"sync\",status=\"panicked\"}[1h])",
+          "instant": false,
+          "legendFormat": "panics_1h",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Sync Panics (1h Increase)",
       "type": "timeseries"
     },
     {
@@ -527,9 +1448,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 32
+        "y": 85
       },
-      "id": 10,
+      "id": 25,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -548,38 +1469,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_fetch_shard_members",
+          "expr": "increase(node_task_runs_total{task=\"sync\",status=\"completed\"}[1h])",
           "instant": false,
-          "legendFormat": "{{blockchain_id}} shard_members",
+          "legendFormat": "completed_1h",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "node_sync_fetch_identified_peers",
-          "instant": false,
-          "legendFormat": "{{blockchain_id}} identified",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "node_sync_fetch_usable_peers",
-          "instant": false,
-          "legendFormat": "{{blockchain_id}} usable",
-          "range": true,
-          "refId": "C"
         }
       ],
-      "title": "Sync Peer Availability",
+      "title": "Sync Completions (1h Increase)",
       "type": "timeseries"
     }
   ],
@@ -602,6 +1499,6 @@
   "timezone": "",
   "title": "Rust DKG Engine - Sync (Pilot)",
   "uid": "rust-dkg-sync",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

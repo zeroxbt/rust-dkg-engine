@@ -205,6 +205,84 @@ pub fn record_sync_fetch_batch(
         .increment(failed_kcs as u64);
 }
 
+pub fn record_sync_filter_batch(
+    duration: Duration,
+    batch_kcs: usize,
+    to_sync_kcs: usize,
+    already_synced_kcs: usize,
+    expired_kcs: usize,
+) {
+    counter!("node_sync_filter_batch_total").increment(1);
+    histogram!("node_sync_filter_batch_duration_seconds").record(duration.as_secs_f64());
+    histogram!("node_sync_filter_batch_kcs").record(batch_kcs as f64);
+    histogram!("node_sync_filter_batch_to_sync_kcs").record(to_sync_kcs as f64);
+    histogram!("node_sync_filter_batch_already_synced_kcs").record(already_synced_kcs as f64);
+    histogram!("node_sync_filter_batch_expired_kcs").record(expired_kcs as f64);
+
+    counter!("node_sync_filter_kcs_total", "result" => "to_sync".to_string())
+        .increment(to_sync_kcs as u64);
+    counter!(
+        "node_sync_filter_kcs_total",
+        "result" => "already_synced".to_string()
+    )
+    .increment(already_synced_kcs as u64);
+    counter!("node_sync_filter_kcs_total", "result" => "expired".to_string())
+        .increment(expired_kcs as u64);
+}
+
+pub fn record_sync_filter_rpc(status: &str, duration: Duration, kc_count: usize) {
+    counter!(
+        "node_sync_filter_rpc_total",
+        "status" => status.to_string()
+    )
+    .increment(1);
+    histogram!(
+        "node_sync_filter_rpc_duration_seconds",
+        "status" => status.to_string()
+    )
+    .record(duration.as_secs_f64());
+    histogram!("node_sync_filter_rpc_kcs", "status" => status.to_string()).record(kc_count as f64);
+}
+
+pub fn record_sync_insert_batch(
+    status: &str,
+    duration: Duration,
+    batch_kcs: usize,
+    synced_kcs: usize,
+    failed_kcs: usize,
+) {
+    counter!(
+        "node_sync_insert_batch_total",
+        "status" => status.to_string()
+    )
+    .increment(1);
+    histogram!(
+        "node_sync_insert_batch_duration_seconds",
+        "status" => status.to_string()
+    )
+    .record(duration.as_secs_f64());
+    histogram!(
+        "node_sync_insert_batch_kcs",
+        "status" => status.to_string()
+    )
+    .record(batch_kcs as f64);
+    histogram!(
+        "node_sync_insert_batch_synced_kcs",
+        "status" => status.to_string()
+    )
+    .record(synced_kcs as f64);
+    histogram!(
+        "node_sync_insert_batch_failed_kcs",
+        "status" => status.to_string()
+    )
+    .record(failed_kcs as f64);
+
+    counter!("node_sync_insert_kcs_total", "status" => "synced".to_string())
+        .increment(synced_kcs as u64);
+    counter!("node_sync_insert_kcs_total", "status" => "failed".to_string())
+        .increment(failed_kcs as u64);
+}
+
 pub fn record_triple_store_backend_query_bytes_total(backend: &str, op: &str, bytes: usize) {
     counter!(
         "node_triple_store_backend_query_bytes_total",

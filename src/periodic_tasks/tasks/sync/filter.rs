@@ -14,6 +14,7 @@ use dkg_blockchain::{
     Address, BlockchainId, BlockchainManager, MulticallBatch, MulticallRequest, encoders,
 };
 use dkg_domain::{TokenIds, derive_ual};
+use dkg_observability as observability;
 use tokio::sync::mpsc;
 use tracing::instrument;
 
@@ -57,6 +58,7 @@ pub(crate) async fn filter_task(
 
     let filter_batch_size = filter_batch_size.max(1);
     for chunk in pending_kc_ids.chunks(filter_batch_size) {
+        let batch_start = Instant::now();
         let batch_result = process_filter_batch(
             chunk,
             &blockchain_id,
@@ -67,6 +69,14 @@ pub(crate) async fn filter_task(
             &blockchain_manager,
         )
         .await;
+
+        observability::record_sync_filter_batch(
+            batch_start.elapsed(),
+            chunk.len(),
+            batch_result.to_sync.len(),
+            batch_result.already_synced.len(),
+            batch_result.expired.len(),
+        );
 
         // Track already synced
         already_synced.extend(batch_result.already_synced);
@@ -260,12 +270,17 @@ async fn fetch_rpc_data_and_filter(
         ));
     }
 
+    let rpc_start = Instant::now();
     let results = match blockchain_manager
         .execute_multicall(blockchain_id, batch)
         .await
     {
-        Ok(r) => r,
+        Ok(r) => {
+            observability::record_sync_filter_rpc("ok", rpc_start.elapsed(), kc_ids.len());
+            r
+        }
         Err(e) => {
+            observability::record_sync_filter_rpc("error", rpc_start.elapsed(), kc_ids.len());
             tracing::warn!(
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,

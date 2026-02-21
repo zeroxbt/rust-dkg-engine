@@ -6,6 +6,7 @@
 use std::{sync::Arc, time::Instant};
 
 use dkg_blockchain::BlockchainId;
+use dkg_observability as observability;
 use futures::{StreamExt, stream};
 use tokio::sync::mpsc;
 use tracing::instrument;
@@ -39,9 +40,10 @@ pub(crate) async fn insert_task(
 
     while let Some(batch) = rx.recv().await {
         let batch_start = Instant::now();
-        total_received += batch.len();
+        let batch_len = batch.len();
+        total_received += batch_len;
         tracing::debug!(
-            batch_size = batch.len(),
+            batch_size = batch_len,
             total_received,
             elapsed_ms = task_start.elapsed().as_millis() as u64,
             "Insert: received batch"
@@ -59,6 +61,20 @@ pub(crate) async fn insert_task(
 
         let batch_synced_count = batch_synced.len();
         let batch_failed_count = batch_failed.len();
+        let batch_status = if batch_failed_count == 0 {
+            "success"
+        } else if batch_synced_count == 0 {
+            "failed"
+        } else {
+            "partial"
+        };
+        observability::record_sync_insert_batch(
+            batch_status,
+            batch_start.elapsed(),
+            batch_len,
+            batch_synced_count,
+            batch_failed_count,
+        );
         synced.extend(batch_synced);
         failed.extend(batch_failed);
 
