@@ -1,7 +1,12 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use dkg_blockchain::{Address, BlockchainManager};
 use dkg_domain::BlockchainId;
+use dkg_observability as observability;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio_util::sync::CancellationToken;
 
@@ -30,6 +35,7 @@ impl ClaimRewardsTask {
 
     #[tracing::instrument(name = "periodic_tasks.claim_rewards", skip(self))]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
+        let cycle_started = Instant::now();
         let identity_id = self.blockchain_manager.identity_id(blockchain_id);
 
         let delegators = match self
@@ -39,12 +45,33 @@ impl ClaimRewardsTask {
         {
             Ok(delegators) => delegators,
             Err(e) => {
+                observability::record_claim_rewards_cycle(
+                    blockchain_id.as_str(),
+                    "delegators_error",
+                    cycle_started.elapsed(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                );
                 tracing::warn!(error = %e, "Failed to fetch delegators");
                 return CLAIM_REWARDS_INTERVAL;
             }
         };
 
+        let delegator_count = delegators.len();
         if delegators.is_empty() {
+            observability::record_claim_rewards_cycle(
+                blockchain_id.as_str(),
+                "no_delegators",
+                cycle_started.elapsed(),
+                0,
+                0,
+                0,
+                0,
+                0,
+            );
             tracing::debug!("No delegators found");
             return CLAIM_REWARDS_INTERVAL;
         }
@@ -56,6 +83,16 @@ impl ClaimRewardsTask {
         {
             Ok(epoch) => epoch,
             Err(e) => {
+                observability::record_claim_rewards_cycle(
+                    blockchain_id.as_str(),
+                    "epoch_error",
+                    cycle_started.elapsed(),
+                    delegator_count,
+                    0,
+                    0,
+                    0,
+                    0,
+                );
                 tracing::warn!(error = %e, "Failed to get current epoch");
                 return CLAIM_REWARDS_INTERVAL;
             }
@@ -124,11 +161,16 @@ impl ClaimRewardsTask {
 
         let mut sorted_epochs: Vec<u64> = last_claimed_epochs.keys().copied().collect();
         sorted_epochs.sort_unstable();
+        let mut epochs_pending = 0usize;
+        let mut batches_attempted = 0usize;
+        let mut batches_succeeded = 0usize;
+        let mut batches_failed = 0usize;
 
         let mut idx = 0usize;
         while idx < sorted_epochs.len() {
             let epoch = sorted_epochs[idx];
             if epoch + 1 != current_epoch {
+                epochs_pending += 1;
                 let delegators_for_epoch = match last_claimed_epochs.get(&epoch) {
                     Some(delegators) => delegators.clone(),
                     None => {
@@ -138,6 +180,8 @@ impl ClaimRewardsTask {
                 };
 
                 for batch in delegators_for_epoch.chunks(CLAIM_REWARDS_BATCH_SIZE) {
+                    batches_attempted += 1;
+                    let batch_started = Instant::now();
                     let result = self
                         .blockchain_manager
                         .batch_claim_delegator_rewards(
@@ -150,6 +194,13 @@ impl ClaimRewardsTask {
 
                     match result {
                         Ok(()) => {
+                            batches_succeeded += 1;
+                            observability::record_claim_rewards_batch(
+                                blockchain_id.as_str(),
+                                "ok",
+                                batch.len(),
+                                batch_started.elapsed(),
+                            );
                             tracing::info!(
                                 epoch = epoch + 1,
                                 batch_size = batch.len(),
@@ -167,6 +218,13 @@ impl ClaimRewardsTask {
                             }
                         }
                         Err(e) => {
+                            batches_failed += 1;
+                            observability::record_claim_rewards_batch(
+                                blockchain_id.as_str(),
+                                "error",
+                                batch.len(),
+                                batch_started.elapsed(),
+                            );
                             tracing::warn!(
                                 error = %e,
                                 epoch = epoch + 1,
@@ -180,6 +238,17 @@ impl ClaimRewardsTask {
 
             idx += 1;
         }
+
+        observability::record_claim_rewards_cycle(
+            blockchain_id.as_str(),
+            "completed",
+            cycle_started.elapsed(),
+            delegator_count,
+            epochs_pending,
+            batches_attempted,
+            batches_succeeded,
+            batches_failed,
+        );
 
         CLAIM_REWARDS_INTERVAL
     }

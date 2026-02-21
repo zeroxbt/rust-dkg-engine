@@ -1,6 +1,11 @@
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use dkg_network::{NetworkManager, PeerId};
+use dkg_observability as observability;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -125,8 +130,15 @@ impl DialPeersTask {
         span.record("connected", tracing::field::display(connected_peers.len()));
         span.record("in_backoff", tracing::field::display(in_backoff));
         span.record("to_discover", tracing::field::display(peers_to_find.len()));
+        observability::record_dial_peers_snapshot(
+            total_peers,
+            connected_peers.len(),
+            in_backoff,
+            peers_to_find.len(),
+        );
 
         if peers_to_find.is_empty() {
+            observability::record_dial_peers_discovery("no_targets", 0, Duration::ZERO);
             if in_backoff > 0 {
                 tracing::debug!(
                     total_peers,
@@ -152,8 +164,21 @@ impl DialPeersTask {
             "discovering disconnected peers via DHT"
         );
 
+        let requested_peers = peers_to_find.len();
+        let discover_started = Instant::now();
         if let Err(e) = self.network_manager.find_peers(peers_to_find).await {
+            observability::record_dial_peers_discovery(
+                "error",
+                requested_peers,
+                discover_started.elapsed(),
+            );
             tracing::error!(error = %e, "failed to find peers");
+        } else {
+            observability::record_dial_peers_discovery(
+                "ok",
+                requested_peers,
+                discover_started.elapsed(),
+            );
         }
 
         repeat()

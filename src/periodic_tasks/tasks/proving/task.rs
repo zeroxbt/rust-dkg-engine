@@ -1,11 +1,15 @@
 //! Proving periodic task implementation.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use chrono::Utc;
 use dkg_blockchain::{BlockchainManager, U256};
 use dkg_domain::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual};
 use dkg_network::{GetRequestData, NetworkManager, PeerId, STREAM_PROTOCOL_GET};
+use dkg_observability as observability;
 use dkg_repository::{ChallengeState, ProofChallengeRepository};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -133,8 +137,10 @@ impl ProvingTask {
 
     #[tracing::instrument(name = "periodic_tasks.proving", skip(self,))]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
+        let blockchain_label = blockchain_id.as_str();
         // 1. Check if we're in the shard
         if !self.is_in_shard(blockchain_id) {
+            observability::record_proving_outcome(blockchain_label, "skipped_not_in_shard");
             tracing::debug!("Node not in shard, skipping proving");
             return PROVING_PERIOD;
         }
@@ -142,13 +148,32 @@ impl ProvingTask {
         let identity_id = self.identity_id(blockchain_id);
 
         // 2. Get active proof period status
+        let proof_period_started = Instant::now();
         let proof_period = match self
             .blockchain_manager
             .get_active_proof_period_status(blockchain_id)
             .await
         {
-            Ok(status) => status,
+            Ok(status) => {
+                observability::record_proving_stage(
+                    blockchain_label,
+                    "proof_period_status",
+                    "ok",
+                    proof_period_started.elapsed(),
+                );
+                status
+            }
             Err(e) => {
+                observability::record_proving_stage(
+                    blockchain_label,
+                    "proof_period_status",
+                    "error",
+                    proof_period_started.elapsed(),
+                );
+                observability::record_proving_outcome(
+                    blockchain_label,
+                    "proof_period_status_error",
+                );
                 tracing::warn!(error = %e, "Failed to get proof period status");
                 return PROVING_PERIOD;
             }
@@ -183,6 +208,10 @@ impl ProvingTask {
                 match state {
                     ChallengeState::Finalized => {
                         // Already finalized, nothing to do
+                        observability::record_proving_outcome(
+                            blockchain_label,
+                            "already_finalized",
+                        );
                         tracing::debug!("Challenge already finalized");
                         return PROVING_PERIOD;
                     }
@@ -206,6 +235,10 @@ impl ProvingTask {
                                 let elapsed = Duration::from_secs((now - updated_at).max(0) as u64);
 
                                 if elapsed < REORG_BUFFER {
+                                    observability::record_proving_outcome(
+                                        blockchain_label,
+                                        "waiting_reorg_buffer",
+                                    );
                                     tracing::debug!(
                                         elapsed_secs = elapsed.as_secs(),
                                         buffer_secs = REORG_BUFFER.as_secs(),
@@ -228,6 +261,10 @@ impl ProvingTask {
                                 {
                                     tracing::warn!(error = %e, "Failed to update challenge state");
                                 }
+                                observability::record_proving_outcome(
+                                    blockchain_label,
+                                    "finalized",
+                                );
                                 tracing::info!(score = %score, "Proof finalized successfully");
                                 return PROVING_PERIOD;
                             }
@@ -251,6 +288,10 @@ impl ProvingTask {
                                 // Fall through to re-submit proof
                             }
                             Err(e) => {
+                                observability::record_proving_outcome(
+                                    blockchain_label,
+                                    "score_lookup_error",
+                                );
                                 tracing::warn!(error = %e, "Failed to get proof score");
                                 return PROVING_PERIOD;
                             }
@@ -274,24 +315,55 @@ impl ProvingTask {
                 .unwrap_or(true)
         };
 
-        if needs_new_challenge
-            && let Err(e) = self
+        if needs_new_challenge {
+            let create_challenge_started = Instant::now();
+            if let Err(e) = self
                 .blockchain_manager
                 .create_challenge(blockchain_id)
                 .await
-        {
-            tracing::warn!(error = %e, "Failed to create challenge");
-            return PROVING_PERIOD;
+            {
+                observability::record_proving_stage(
+                    blockchain_label,
+                    "create_challenge",
+                    "error",
+                    create_challenge_started.elapsed(),
+                );
+                observability::record_proving_outcome(blockchain_label, "create_challenge_error");
+                tracing::warn!(error = %e, "Failed to create challenge");
+                return PROVING_PERIOD;
+            }
+            observability::record_proving_stage(
+                blockchain_label,
+                "create_challenge",
+                "ok",
+                create_challenge_started.elapsed(),
+            );
         }
 
         // 5. Get challenge details from chain
+        let node_challenge_started = Instant::now();
         let node_challenge = match self
             .blockchain_manager
             .get_node_challenge(blockchain_id, identity_id)
             .await
         {
-            Ok(c) => c,
+            Ok(c) => {
+                observability::record_proving_stage(
+                    blockchain_label,
+                    "load_challenge",
+                    "ok",
+                    node_challenge_started.elapsed(),
+                );
+                c
+            }
             Err(e) => {
+                observability::record_proving_stage(
+                    blockchain_label,
+                    "load_challenge",
+                    "error",
+                    node_challenge_started.elapsed(),
+                );
+                observability::record_proving_outcome(blockchain_label, "load_challenge_error");
                 tracing::warn!(error = %e, "Failed to get node challenge");
                 return PROVING_PERIOD;
             }
@@ -345,12 +417,14 @@ impl ProvingTask {
         let parsed_ual = match dkg_domain::parse_ual(&ual) {
             Ok(u) => u,
             Err(e) => {
+                observability::record_proving_outcome(blockchain_label, "parse_ual_error");
                 tracing::warn!(error = %e, ual = %ual, "Failed to parse UAL");
                 return PROVING_PERIOD;
             }
         };
 
         // Resolve token range with strict policy for blockchain errors.
+        let token_ids_started = Instant::now();
         let token_ids = match resolve_token_ids(
             self.blockchain_manager.as_ref(),
             Uuid::new_v4(),
@@ -359,35 +433,80 @@ impl ProvingTask {
         )
         .await
         {
-            Ok(token_ids) => token_ids,
+            Ok(token_ids) => {
+                observability::record_proving_stage(
+                    blockchain_label,
+                    "resolve_token_ids",
+                    "ok",
+                    token_ids_started.elapsed(),
+                );
+                token_ids
+            }
             Err(e) => {
+                observability::record_proving_stage(
+                    blockchain_label,
+                    "resolve_token_ids",
+                    "error",
+                    token_ids_started.elapsed(),
+                );
+                observability::record_proving_outcome(blockchain_label, "resolve_token_ids_error");
                 tracing::warn!(error = %e, "Failed to resolve knowledge asset token range");
                 return PROVING_PERIOD;
             }
         };
 
         // Try local triple store first, fall back to network.
-        let assertion = match fetch_assertion_from_local(
+        let local_fetch_started = Instant::now();
+        let local_assertion = fetch_assertion_from_local(
             &self.triple_store_assertions,
             &self.assertion_validation,
             &parsed_ual,
             &token_ids,
             Visibility::Public,
         )
-        .await
-        {
+        .await;
+        observability::record_proving_stage(
+            blockchain_label,
+            "fetch_local_assertion",
+            if local_assertion.is_some() {
+                "hit"
+            } else {
+                "miss"
+            },
+            local_fetch_started.elapsed(),
+        );
+        let assertion = match local_assertion {
             Some(local) => {
                 tracing::debug!("Found valid assertion locally");
                 local
             }
             None => {
                 tracing::debug!(ual = %ual, "Assertion not found locally or invalid, trying network");
+                let network_fetch_started = Instant::now();
                 match self
                     .fetch_from_network(&parsed_ual, token_ids.clone())
                     .await
                 {
-                    Some(assertion) => assertion,
+                    Some(assertion) => {
+                        observability::record_proving_stage(
+                            blockchain_label,
+                            "fetch_network_assertion",
+                            "ok",
+                            network_fetch_started.elapsed(),
+                        );
+                        assertion
+                    }
                     None => {
+                        observability::record_proving_stage(
+                            blockchain_label,
+                            "fetch_network_assertion",
+                            "error",
+                            network_fetch_started.elapsed(),
+                        );
+                        observability::record_proving_outcome(
+                            blockchain_label,
+                            "assertion_not_found",
+                        );
                         tracing::warn!(ual = %ual, "Assertion not found on network");
                         return PROVING_PERIOD;
                     }
@@ -399,9 +518,17 @@ impl ProvingTask {
         // Proving task receives triples already in single-triple-per-entry form from the
         // triple store / network ACK, so no normalization step is needed here (unlike
         // AssertionValidation which must handle multi-line network payloads).
+        let merkle_started = Instant::now();
         let prepared_quads = match group_and_sort_public_triples(&assertion.public) {
             Ok(quads) => quads,
             Err(e) => {
+                observability::record_proving_stage(
+                    blockchain_label,
+                    "build_merkle_proof",
+                    "error",
+                    merkle_started.elapsed(),
+                );
+                observability::record_proving_outcome(blockchain_label, "prepare_quads_error");
                 tracing::warn!(error = %e, "Failed to prepare quads for proof");
                 return PROVING_PERIOD;
             }
@@ -410,23 +537,53 @@ impl ProvingTask {
         let proof_result = match dkg_domain::calculate_merkle_proof(&prepared_quads, chunk_index) {
             Ok(result) => result,
             Err(e) => {
+                observability::record_proving_stage(
+                    blockchain_label,
+                    "build_merkle_proof",
+                    "error",
+                    merkle_started.elapsed(),
+                );
+                observability::record_proving_outcome(
+                    blockchain_label,
+                    "calculate_merkle_proof_error",
+                );
                 tracing::warn!(error = %e, chunk_index, "Failed to calculate Merkle proof");
                 return PROVING_PERIOD;
             }
         };
+        observability::record_proving_stage(
+            blockchain_label,
+            "build_merkle_proof",
+            "ok",
+            merkle_started.elapsed(),
+        );
 
         // Convert B256 to [u8; 32]
         let proof_bytes: Vec<[u8; 32]> = proof_result.proof.iter().map(|b| *b.as_ref()).collect();
 
         // 8. Submit proof
+        let submit_started = Instant::now();
         if let Err(e) = self
             .blockchain_manager
             .submit_proof(blockchain_id, &proof_result.chunk, &proof_bytes)
             .await
         {
+            observability::record_proving_stage(
+                blockchain_label,
+                "submit_proof",
+                "error",
+                submit_started.elapsed(),
+            );
+            observability::record_proving_outcome(blockchain_label, "submit_proof_error");
             tracing::warn!(error = %e, "Failed to submit proof");
             return PROVING_PERIOD;
         }
+        observability::record_proving_stage(
+            blockchain_label,
+            "submit_proof",
+            "ok",
+            submit_started.elapsed(),
+        );
 
         // 9. Update database state
         if let Err(e) = self
@@ -444,6 +601,7 @@ impl ProvingTask {
         }
 
         tracing::info!(epoch, chunk_index, "Proof submitted successfully");
+        observability::record_proving_outcome(blockchain_label, "submitted");
 
         PROVING_PERIOD
     }

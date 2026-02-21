@@ -1,7 +1,11 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use dkg_blockchain::{BlockchainId, BlockchainManager, NodeInfo};
 use dkg_network::PeerId;
+use dkg_observability as observability;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -274,6 +278,12 @@ pub(crate) struct ShardingTableCheckTask {
     peer_registry: Arc<PeerRegistry>,
 }
 
+struct ShardingSyncSnapshot {
+    refreshed: bool,
+    chain_length: u128,
+    local_count: usize,
+}
+
 impl ShardingTableCheckTask {
     pub(crate) fn new(deps: ShardingTableCheckDeps) -> Self {
         Self {
@@ -285,7 +295,7 @@ impl ShardingTableCheckTask {
     async fn sync_blockchain_sharding_table(
         &self,
         blockchain: &BlockchainId,
-    ) -> Result<bool, NodeError> {
+    ) -> Result<ShardingSyncSnapshot, NodeError> {
         let sharding_table_length = self
             .blockchain_manager
             .get_sharding_table_length(blockchain)
@@ -295,7 +305,11 @@ impl ShardingTableCheckTask {
 
         // Skip if counts match (optimization to avoid fetching unchanged data)
         if sharding_table_length == local_count as u128 {
-            return Ok(false);
+            return Ok(ShardingSyncSnapshot {
+                refreshed: false,
+                chain_length: sharding_table_length,
+                local_count,
+            });
         }
 
         tracing::debug!(
@@ -306,7 +320,11 @@ impl ShardingTableCheckTask {
         );
 
         pull_sharding_table(&self.blockchain_manager, &self.peer_registry, blockchain).await?;
-        Ok(true)
+        Ok(ShardingSyncSnapshot {
+            refreshed: true,
+            chain_length: sharding_table_length,
+            local_count,
+        })
     }
 
     pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
@@ -318,12 +336,35 @@ impl ShardingTableCheckTask {
 
     #[tracing::instrument(name = "periodic_tasks.sharding_table_check", skip(self))]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
-        if let Err(error) = self.sync_blockchain_sharding_table(blockchain_id).await {
-            tracing::error!(
-                blockchain_id = %blockchain_id,
-                error = %error,
-                "Error syncing sharding table"
-            );
+        let started = Instant::now();
+        match self.sync_blockchain_sharding_table(blockchain_id).await {
+            Ok(snapshot) => {
+                observability::record_sharding_table_check(
+                    blockchain_id.as_str(),
+                    if snapshot.refreshed {
+                        "refreshed"
+                    } else {
+                        "unchanged"
+                    },
+                    started.elapsed(),
+                    snapshot.chain_length,
+                    snapshot.local_count,
+                );
+            }
+            Err(error) => {
+                observability::record_sharding_table_check(
+                    blockchain_id.as_str(),
+                    "error",
+                    started.elapsed(),
+                    0,
+                    0,
+                );
+                tracing::error!(
+                    blockchain_id = %blockchain_id,
+                    error = %error,
+                    "Error syncing sharding table"
+                );
+            }
         }
 
         SHARDING_TABLE_CHECK_PERIOD

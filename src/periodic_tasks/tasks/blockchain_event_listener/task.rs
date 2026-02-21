@@ -1,11 +1,15 @@
 //! Blockchain event listener periodic task implementation.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use dkg_blockchain::{
     Address, BlockchainError, BlockchainId, BlockchainManager, ContractEvent, ContractLog,
     ContractName, decode_contract_event, monitored_contract_events, to_hex_string,
 };
+use dkg_observability as observability;
 use dkg_repository::BlockchainRepository;
 use tokio_util::sync::CancellationToken;
 
@@ -42,6 +46,14 @@ pub(crate) struct BlockchainEventListenerTask {
     poll_interval: Duration,
     /// Maximum number of blocks to sync historically (beyond this, events are skipped)
     max_blocks_to_sync: u64,
+}
+
+#[derive(Default)]
+struct EventListenerStats {
+    fetched_events: usize,
+    processed_events: usize,
+    skipped_ranges: usize,
+    contracts_updated: usize,
 }
 
 impl BlockchainEventListenerTask {
@@ -86,6 +98,7 @@ impl BlockchainEventListenerTask {
         )
     )]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
+        let started = Instant::now();
         tracing::Span::current().record(
             "poll_interval_ms",
             tracing::field::display(self.poll_interval.as_millis()),
@@ -100,12 +113,32 @@ impl BlockchainEventListenerTask {
             "Running blockchain event listener"
         );
 
-        if let Err(error) = self.fetch_and_handle_blockchain_events(blockchain_id).await {
-            tracing::error!(
-                blockchain_id = %blockchain_id,
-                error = %error,
-                "Error fetching/processing blockchain events"
-            );
+        match self.fetch_and_handle_blockchain_events(blockchain_id).await {
+            Ok(stats) => observability::record_blockchain_event_listener_cycle(
+                blockchain_id.as_str(),
+                "ok",
+                started.elapsed(),
+                stats.fetched_events,
+                stats.processed_events,
+                stats.skipped_ranges,
+                stats.contracts_updated,
+            ),
+            Err(error) => {
+                observability::record_blockchain_event_listener_cycle(
+                    blockchain_id.as_str(),
+                    "error",
+                    started.elapsed(),
+                    0,
+                    0,
+                    0,
+                    0,
+                );
+                tracing::error!(
+                    blockchain_id = %blockchain_id,
+                    error = %error,
+                    "Error fetching/processing blockchain events"
+                );
+            }
         }
 
         self.poll_interval
@@ -115,7 +148,9 @@ impl BlockchainEventListenerTask {
     async fn fetch_and_handle_blockchain_events(
         &self,
         blockchain_id: &BlockchainId,
-    ) -> Result<(), NodeError> {
+    ) -> Result<EventListenerStats, NodeError> {
+        let mut stats = EventListenerStats::default();
+
         // Get current block (use -2 for finality safety)
         let current_block = self
             .blockchain_manager
@@ -167,6 +202,7 @@ impl BlockchainEventListenerTask {
                 // Check for extended downtime - if we missed too many blocks, skip them
                 let blocks_behind = current_block.saturating_sub(last_checked_block);
                 if blocks_behind > self.max_blocks_to_sync {
+                    stats.skipped_ranges += 1;
                     tracing::warn!(
                         blockchain = %blockchain_id,
                         contract = %contract_name.as_str(),
@@ -220,6 +256,7 @@ impl BlockchainEventListenerTask {
                         .await?
                 };
 
+                stats.fetched_events += events.len();
                 all_events.extend(events);
                 contracts_to_update.push((contract_name.clone(), contract_address_str));
             }
@@ -257,10 +294,12 @@ impl BlockchainEventListenerTask {
             // Process all events sequentially
             for event in all_events {
                 self.process_event(blockchain_id, event).await?;
+                stats.processed_events += 1;
             }
         }
 
         // Update last checked block only after successful processing.
+        stats.contracts_updated = contracts_to_update.len();
         for (contract_name, contract_address_str) in contracts_to_update {
             self.blockchain_repository
                 .update_last_checked_block(
@@ -273,7 +312,7 @@ impl BlockchainEventListenerTask {
                 .await?;
         }
 
-        Ok(())
+        Ok(stats)
     }
 
     /// Process a single event - dispatch to appropriate handler
