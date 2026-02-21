@@ -9,6 +9,7 @@ use dkg_network::{
     IdentifyInfo, Multiaddr, PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_GET, PeerEvent, PeerId,
     RequestOutcomeKind, StreamProtocol,
 };
+use dkg_observability as observability;
 
 // Performance tracking constants
 const HISTORY_SIZE: usize = 20;
@@ -106,6 +107,15 @@ impl PeerRegistry {
                 identify: Some(identify),
                 ..Default::default()
             });
+
+        let shard_memberships = self
+            .peers
+            .get(&peer_id)
+            .map(|peer| peer.shard_membership.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        for blockchain_id in &shard_memberships {
+            self.record_population_metrics(blockchain_id);
+        }
     }
 
     pub(crate) fn peer_supports_protocol(&self, peer_id: &PeerId, protocol: &'static str) -> bool {
@@ -142,6 +152,8 @@ impl PeerRegistry {
                 entry.shard_membership.remove(blockchain_id);
             }
         }
+
+        self.record_population_metrics(blockchain_id);
     }
 
     /// Count peers in a shard (for change detection optimization).
@@ -170,7 +182,9 @@ impl PeerRegistry {
         protocol: &'static str,
         exclude_peer: Option<&PeerId>,
     ) -> Vec<PeerId> {
+        let protocol_label = protocol;
         let protocol = StreamProtocol::new(protocol);
+        let shard_peers = self.shard_peer_count(blockchain_id);
 
         let mut peers: Vec<PeerId> = self
             .peers
@@ -198,6 +212,12 @@ impl PeerRegistry {
 
         // Sort by latency
         self.sort_by_latency(&mut peers);
+        observability::record_peer_registry_selection(
+            blockchain_id.as_str(),
+            protocol_label,
+            shard_peers,
+            peers.len(),
+        );
         peers
     }
 
@@ -304,6 +324,7 @@ impl PeerRegistry {
             peer.discovery_failure_count = peer.discovery_failure_count.saturating_add(1);
             peer.last_discovery_attempt = Some(Instant::now());
         }
+        self.record_discovery_backoff_metric();
     }
 
     /// Record a successful connection - resets failure tracking.
@@ -312,6 +333,7 @@ impl PeerRegistry {
             peer.discovery_failure_count = 0;
             peer.last_discovery_attempt = None;
         }
+        self.record_discovery_backoff_metric();
     }
 
     /// Get the current backoff delay for a peer (for logging).
@@ -334,33 +356,93 @@ impl PeerRegistry {
             PeerEvent::IdentifyReceived { peer_id, info } => {
                 self.update_identify(peer_id, info);
             }
-            PeerEvent::RequestOutcome(outcome) => match outcome.protocol {
-                protocol if protocol == PROTOCOL_NAME_BATCH_GET => match outcome.outcome {
-                    RequestOutcomeKind::Success => {
-                        self.record_latency(outcome.peer_id, outcome.elapsed);
+            PeerEvent::RequestOutcome(outcome) => {
+                let outcome_label = match &outcome.outcome {
+                    RequestOutcomeKind::Success => "success",
+                    RequestOutcomeKind::ResponseError => "response_error",
+                    RequestOutcomeKind::Failure => "failure",
+                };
+                observability::record_peer_registry_request_outcome(
+                    outcome.protocol,
+                    outcome_label,
+                    outcome.elapsed,
+                );
+
+                match outcome.protocol {
+                    protocol if protocol == PROTOCOL_NAME_BATCH_GET => match outcome.outcome {
+                        RequestOutcomeKind::Success => {
+                            self.record_latency(outcome.peer_id, outcome.elapsed);
+                        }
+                        RequestOutcomeKind::ResponseError => {
+                            tracing::debug!(
+                                peer_id = %outcome.peer_id,
+                                protocol = outcome.protocol,
+                                elapsed_ms = outcome.elapsed.as_millis() as u64,
+                                "Peer request failed with response error"
+                            );
+                            self.record_request_failure(outcome.peer_id);
+                        }
+                        RequestOutcomeKind::Failure => {
+                            tracing::warn!(
+                                peer_id = %outcome.peer_id,
+                                protocol = outcome.protocol,
+                                elapsed_ms = outcome.elapsed.as_millis() as u64,
+                                "Peer request failed (timeout/dial/network)"
+                            );
+                            self.record_request_failure(outcome.peer_id);
+                        }
+                    },
+                    protocol if protocol == PROTOCOL_NAME_GET => {
+                        if matches!(outcome.outcome, RequestOutcomeKind::Failure) {
+                            tracing::warn!(
+                                peer_id = %outcome.peer_id,
+                                protocol = outcome.protocol,
+                                elapsed_ms = outcome.elapsed.as_millis() as u64,
+                                "GET request to peer failed (timeout/dial/network)"
+                            );
+                            self.record_request_failure(outcome.peer_id);
+                        }
                     }
-                    RequestOutcomeKind::ResponseError | RequestOutcomeKind::Failure => {
-                        self.record_request_failure(outcome.peer_id);
-                    }
-                },
-                protocol if protocol == PROTOCOL_NAME_GET => {
-                    if matches!(outcome.outcome, RequestOutcomeKind::Failure) {
-                        self.record_request_failure(outcome.peer_id);
-                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             PeerEvent::KadLookup { target, found } => {
                 if found {
                     self.record_discovery_success(target);
                 } else {
                     self.record_discovery_failure(target);
+                    if let Some(backoff) = self.get_discovery_backoff(&target) {
+                        tracing::debug!(
+                            peer_id = %target,
+                            backoff_secs = backoff.as_secs(),
+                            "Peer discovery failed, applying backoff"
+                        );
+                    }
                 }
             }
             PeerEvent::ConnectionEstablished { peer_id } => {
                 self.record_discovery_success(peer_id);
+                tracing::debug!(peer_id = %peer_id, "Peer connection established");
             }
         }
+    }
+
+    fn record_population_metrics(&self, blockchain_id: &BlockchainId) {
+        observability::record_peer_registry_population(
+            blockchain_id.as_str(),
+            self.peers.len(),
+            self.shard_peer_count(blockchain_id),
+            self.identified_shard_peer_count(blockchain_id),
+        );
+    }
+
+    fn record_discovery_backoff_metric(&self) {
+        let active = self
+            .peers
+            .iter()
+            .filter(|entry| entry.discovery_failure_count > 0)
+            .count();
+        observability::record_peer_registry_discovery_backoff(active);
     }
 
     /// Calculate backoff delay based on failure count.

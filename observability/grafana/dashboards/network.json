@@ -655,6 +655,238 @@
       ],
       "title": "Response Send Rate and Pending Requests",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 48
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_peer_registry_known_peers",
+          "instant": false,
+          "legendFormat": "known",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_peer_registry_shard_peers",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} shard",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_peer_registry_identified_shard_peers",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} identified",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Peer Registry Population",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 48
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (blockchain_id, protocol) (rate(node_peer_registry_select_shard_peers_sum[5m])) / clamp_min(sum by (blockchain_id, protocol) (rate(node_peer_registry_select_shard_peers_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{protocol}} shard_avg",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (blockchain_id, protocol) (rate(node_peer_registry_select_protocol_capable_peers_sum[5m])) / clamp_min(sum by (blockchain_id, protocol) (rate(node_peer_registry_select_protocol_capable_peers_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{protocol}} protocol_capable_avg",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Peer Selection Pool Sizes (Average)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 56
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (protocol, outcome) (rate(node_peer_registry_request_outcome_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{protocol}} {{outcome}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Peer Request Outcome Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 56
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_peer_registry_discovery_backoff_active",
+          "instant": false,
+          "legendFormat": "active_backoff_peers",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Discovery Backoff Active Peers",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
@@ -676,6 +908,6 @@
   "timezone": "",
   "title": "Rust DKG Engine - Network (Pilot)",
   "uid": "rust-dkg-network",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }
