@@ -3,9 +3,7 @@ use std::sync::Arc;
 use dkg_blockchain::{Address, B256, BlockchainId, BlockchainManager, U256};
 use dkg_domain::{KnowledgeCollectionMetadata, derive_ual};
 use dkg_key_value_store::PublishTmpDatasetStore;
-use dkg_network::{
-    FinalityRequestData, FinalityResponseData, NetworkManager, PeerId, STREAM_PROTOCOL_FINALITY,
-};
+use dkg_network::{FinalityRequestData, FinalityResponseData, NetworkManager, PeerId};
 use dkg_repository::{FinalityStatusRepository, TriplesInsertCountRepository};
 use tracing::instrument;
 use uuid::Uuid;
@@ -14,7 +12,6 @@ use crate::{
     application::TripleStoreAssertions,
     commands::SendPublishFinalityRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
-    node_state::PeerRegistry,
 };
 
 /// Raw event data from KnowledgeCollectionCreated event.
@@ -72,7 +69,6 @@ pub(crate) struct SendPublishFinalityRequestCommandHandler {
     finality_status_repository: FinalityStatusRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
     pub(super) network_manager: Arc<NetworkManager>,
-    peer_registry: Arc<PeerRegistry>,
     blockchain_manager: Arc<BlockchainManager>,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
     triple_store_assertions: Arc<TripleStoreAssertions>,
@@ -84,7 +80,6 @@ impl SendPublishFinalityRequestCommandHandler {
             finality_status_repository: deps.finality_status_repository,
             triples_insert_count_repository: deps.triples_insert_count_repository,
             network_manager: deps.network_manager,
-            peer_registry: deps.peer_registry,
             blockchain_manager: deps.blockchain_manager,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
             triple_store_assertions: deps.triple_store_assertions,
@@ -302,19 +297,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                 );
             }
 
-            return CommandOutcome::Completed;
-        }
-
-        if !self
-            .peer_registry
-            .peer_supports_protocol(&publisher_peer_id, STREAM_PROTOCOL_FINALITY)
-        {
-            tracing::warn!(
-                operation_id = %operation_id,
-                publish_operation_id = %publish_operation_id,
-                peer = %publisher_peer_id,
-                "Publisher does not advertise finality protocol; skipping request"
-            );
             return CommandOutcome::Completed;
         }
 

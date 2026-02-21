@@ -48,7 +48,6 @@ pub(crate) fn build_command_executor(
             finality_status_repository: finality_status_repository.clone(),
             triples_insert_count_repository: triples_insert_count_repository.clone(),
             network_manager: Arc::clone(&managers.network),
-            peer_registry: Arc::clone(&node_state.peer_registry),
             blockchain_manager: Arc::clone(&managers.blockchain),
             publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
             triple_store_assertions: Arc::clone(&application.triple_store_assertions),

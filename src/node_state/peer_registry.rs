@@ -118,17 +118,6 @@ impl PeerRegistry {
         }
     }
 
-    pub(crate) fn peer_supports_protocol(&self, peer_id: &PeerId, protocol: &'static str) -> bool {
-        let Some(protocol) = Self::parse_stream_protocol(protocol) else {
-            return false;
-        };
-        self.peers
-            .get(peer_id)
-            .and_then(|entry| entry.identify.as_ref().cloned())
-            .map(|identify| identify.protocols.contains(&protocol))
-            .unwrap_or(false)
-    }
-
     // ─────────────────────────────────────────────────────────────────────────────
     // Shard membership methods
     // ─────────────────────────────────────────────────────────────────────────────
@@ -679,7 +668,8 @@ mod tests {
             },
         });
 
-        assert!(registry.peer_supports_protocol(&peer, "/my-protocol/1.0.0"));
+        let selected = registry.select_shard_peers(&blockchain, "/my-protocol/1.0.0", None);
+        assert!(selected.contains(&peer));
         assert_eq!(registry.identified_shard_peer_count(&blockchain), 1);
     }
 
@@ -718,7 +708,6 @@ mod tests {
         let peer = PeerId::random();
         register_peer(&registry, peer);
 
-        assert!(!registry.peer_supports_protocol(&peer, "BatchGet"));
         assert_eq!(
             registry.protocol_capable_shard_peer_count(&blockchain, "BatchGet"),
             0
