@@ -7,7 +7,8 @@ use crate::{
     node_state::NodeState,
     periodic_tasks::{
         self, BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
-        ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps, SyncDeps,
+        ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps,
+        StateSnapshotDeps, SyncDeps,
     },
 };
 
@@ -69,10 +70,14 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         sync: SyncDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
-            kc_sync_repository,
+            kc_sync_repository: kc_sync_repository.clone(),
             triple_store_assertions: Arc::clone(&application.triple_store_assertions),
             network_manager: Arc::clone(&managers.network),
             assertion_validation: Arc::clone(&application.assertion_validation),
+            peer_registry: Arc::clone(&node_state.peer_registry),
+        },
+        state_snapshot: StateSnapshotDeps {
+            kc_sync_repository,
             peer_registry: Arc::clone(&node_state.peer_registry),
         },
         paranet_sync: ParanetSyncDeps {

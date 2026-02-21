@@ -147,6 +147,19 @@ pub fn record_peer_registry_population(
     .set(identified_shard_peers as f64);
 }
 
+pub fn record_peer_registry_protocol_capable_shard_peers(
+    blockchain_id: &str,
+    protocol: &str,
+    protocol_capable_peers: usize,
+) {
+    gauge!(
+        "node_peer_registry_protocol_capable_shard_peers",
+        "blockchain_id" => blockchain_id.to_string(),
+        "protocol" => protocol.to_string()
+    )
+    .set(protocol_capable_peers as f64);
+}
+
 pub fn record_peer_registry_selection(
     blockchain_id: &str,
     protocol: &str,
@@ -184,6 +197,48 @@ pub fn record_peer_registry_request_outcome(protocol: &str, outcome: &str, durat
         "outcome" => outcome.to_string()
     )
     .record(duration.as_secs_f64());
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn record_sync_queue_snapshot(
+    blockchain_id: &str,
+    queue_total: u64,
+    queue_due: u64,
+    queue_retrying: u64,
+    oldest_due_age_secs: u64,
+    progress_tracked_contracts: u64,
+    progress_last_update_age_secs: u64,
+) {
+    gauge!(
+        "node_sync_queue_total",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(queue_total as f64);
+    gauge!(
+        "node_sync_queue_due",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(queue_due as f64);
+    gauge!(
+        "node_sync_queue_retrying",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(queue_retrying as f64);
+    gauge!(
+        "node_sync_queue_oldest_due_age_seconds",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(oldest_due_age_secs as f64);
+    gauge!(
+        "node_sync_progress_tracked_contracts",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(progress_tracked_contracts as f64);
+    gauge!(
+        "node_sync_progress_last_update_age_seconds",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(progress_last_update_age_secs as f64);
 }
 
 pub fn record_sync_fetch_peer_selection(

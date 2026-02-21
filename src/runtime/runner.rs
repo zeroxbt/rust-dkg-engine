@@ -29,6 +29,7 @@ pub(crate) async fn run(
     sync_config: SyncConfig,
     paranet_sync_config: ParanetSyncConfig,
     proving_config: ProvingConfig,
+    metrics_enabled: bool,
 ) {
     let command_scheduler = deps.command_scheduler.clone();
     let network_manager = Arc::clone(&deps.network_manager);
@@ -49,6 +50,7 @@ pub(crate) async fn run(
     let periodic_handle = tokio::task::spawn(periodic_tasks::run(
         Arc::clone(&deps.periodic_tasks_deps),
         deps.blockchain_ids.clone(),
+        metrics_enabled,
         cleanup_config,
         sync_config,
         paranet_sync_config,

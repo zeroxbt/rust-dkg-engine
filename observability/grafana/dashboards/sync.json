@@ -1478,6 +1478,152 @@
       ],
       "title": "Sync Completions (1h Increase)",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 93
+      },
+      "id": 27,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_queue_total",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} queue_total",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_queue_due",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} queue_due",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_queue_retrying",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} queue_retrying",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_progress_tracked_contracts",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} tracked_contracts",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Sync Queue Snapshot by Chain",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 93
+      },
+      "id": 28,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_queue_oldest_due_age_seconds",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} oldest_due_age",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_progress_last_update_age_seconds",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} progress_last_update_age",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Sync Queue/Progress Age by Chain",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
@@ -1499,6 +1645,6 @@
   "timezone": "",
   "title": "Rust DKG Engine - Sync (Pilot)",
   "uid": "rust-dkg-sync",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }

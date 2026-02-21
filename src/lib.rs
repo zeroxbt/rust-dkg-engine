@@ -92,6 +92,7 @@ pub async fn run() {
         config.sync.clone(),
         config.paranet_sync.clone(),
         config.proving.clone(),
+        config.telemetry.metrics.enabled,
     )
     .await;
 }

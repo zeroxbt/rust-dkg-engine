@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 pub(crate) use deps::{
     BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, ParanetSyncDeps,
-    PeriodicTasksDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps, SyncDeps,
+    PeriodicTasksDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps,
+    StateSnapshotDeps, SyncDeps,
 };
 use dkg_blockchain::BlockchainId;
 pub(crate) use tasks::sharding_table_check::seed_sharding_tables;
@@ -19,6 +20,7 @@ use tasks::{
     proving::{ProvingConfig, ProvingTask},
     save_peer_addresses::SavePeerAddressesTask,
     sharding_table_check::ShardingTableCheckTask,
+    state_snapshot::{StateSnapshotConfig, StateSnapshotTask},
     sync::{SyncConfig, SyncTask},
 };
 use tokio_util::sync::CancellationToken;
@@ -56,6 +58,18 @@ impl GlobalPeriodicTask for SavePeerAddressesTask {
 
     fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
         Self::new(deps.save_peer_addresses.clone())
+    }
+
+    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
+        Self::run(self, shutdown)
+    }
+}
+
+impl GlobalPeriodicTask for StateSnapshotTask {
+    type Config = StateSnapshotConfig;
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
+        Self::new(deps.state_snapshot.clone(), config)
     }
 
     fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
@@ -131,6 +145,7 @@ macro_rules! spawn_registered_blockchain_tasks {
 pub(crate) async fn run(
     deps: Arc<PeriodicTasksDeps>,
     blockchain_ids: Vec<BlockchainId>,
+    metrics_enabled: bool,
     cleanup_config: CleanupConfig,
     sync_config: SyncConfig,
     paranet_sync_config: ParanetSyncConfig,
@@ -138,6 +153,11 @@ pub(crate) async fn run(
     shutdown: CancellationToken,
 ) {
     let mut set = tokio::task::JoinSet::new();
+    let cleanup_enabled = cleanup_config.enabled;
+    let sync_enabled = sync_config.enabled;
+    let paranet_sync_enabled =
+        paranet_sync_config.enabled && !paranet_sync_config.sync_paranets.is_empty();
+    let state_snapshot_enabled = sync_config.enabled && metrics_enabled;
 
     // Global periodic tasks
     spawn_registered_global_tasks!(
@@ -145,15 +165,29 @@ pub(crate) async fn run(
         &deps,
         &shutdown,
         DialPeersTask => (),
-        CleanupTask => cleanup_config,
         SavePeerAddressesTask => (),
     );
+    if cleanup_enabled {
+        spawn_global_task::<CleanupTask>(&mut set, &deps, &shutdown, cleanup_config);
+    }
+    if state_snapshot_enabled {
+        spawn_global_task::<StateSnapshotTask>(
+            &mut set,
+            &deps,
+            &shutdown,
+            StateSnapshotConfig {
+                interval_secs: 60,
+                blockchain_ids: blockchain_ids.clone(),
+                max_retry_attempts: sync_config.max_retry_attempts,
+            },
+        );
+    }
 
     // Per-blockchain periodic tasks
     for blockchain_id in blockchain_ids {
         // Per-blockchain sync task has dedicated config and does not fit
         // the generic BlockchainPeriodicTask registry helper.
-        {
+        if sync_enabled {
             let deps = Arc::clone(&deps);
             let shutdown = shutdown.clone();
             let blockchain_id = blockchain_id.clone();
@@ -167,7 +201,7 @@ pub(crate) async fn run(
 
         // Per-blockchain paranet sync task has dedicated config and does not fit
         // the generic BlockchainPeriodicTask registry helper.
-        {
+        if paranet_sync_enabled {
             let deps = Arc::clone(&deps);
             let shutdown = shutdown.clone();
             let blockchain_id = blockchain_id.clone();

@@ -83,6 +83,12 @@ pub(crate) struct SyncDeps {
 }
 
 #[derive(Clone)]
+pub(crate) struct StateSnapshotDeps {
+    pub(crate) kc_sync_repository: KcSyncRepository,
+    pub(crate) peer_registry: Arc<PeerRegistry>,
+}
+
+#[derive(Clone)]
 pub(crate) struct ParanetSyncDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) paranet_kc_sync_repository: ParanetKcSyncRepository,
@@ -100,5 +106,6 @@ pub(crate) struct PeriodicTasksDeps {
     pub(crate) claim_rewards: ClaimRewardsDeps,
     pub(crate) proving: ProvingDeps,
     pub(crate) sync: SyncDeps,
+    pub(crate) state_snapshot: StateSnapshotDeps,
     pub(crate) paranet_sync: ParanetSyncDeps,
 }

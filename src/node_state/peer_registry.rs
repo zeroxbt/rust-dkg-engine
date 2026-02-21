@@ -164,12 +164,37 @@ impl PeerRegistry {
             .count()
     }
 
+    /// Count all known peers in the registry.
+    pub(crate) fn known_peer_count(&self) -> usize {
+        self.peers.len()
+    }
+
     /// Count shard peers that have been identified (received identify info).
     pub(crate) fn identified_shard_peer_count(&self, blockchain_id: &BlockchainId) -> usize {
         self.peers
             .iter()
             .filter(|entry| {
                 entry.shard_membership.contains(blockchain_id) && entry.identify.is_some()
+            })
+            .count()
+    }
+
+    /// Count shard peers that support a specific protocol.
+    pub(crate) fn protocol_capable_shard_peer_count(
+        &self,
+        blockchain_id: &BlockchainId,
+        protocol: &'static str,
+    ) -> usize {
+        let protocol = StreamProtocol::new(protocol);
+        self.peers
+            .iter()
+            .filter(|entry| {
+                entry.shard_membership.contains(blockchain_id)
+                    && entry
+                        .identify
+                        .as_ref()
+                        .map(|id| id.protocols.contains(&protocol))
+                        .unwrap_or(false)
             })
             .count()
     }
@@ -351,6 +376,14 @@ impl PeerRegistry {
         self.get_discovery_backoff(peer_id)
     }
 
+    /// Count peers currently under discovery backoff.
+    pub(crate) fn discovery_backoff_active_count(&self) -> usize {
+        self.peers
+            .iter()
+            .filter(|entry| entry.discovery_failure_count > 0)
+            .count()
+    }
+
     pub(crate) fn apply_peer_event(&self, event: PeerEvent) {
         match event {
             PeerEvent::IdentifyReceived { peer_id, info } => {
@@ -430,18 +463,14 @@ impl PeerRegistry {
     fn record_population_metrics(&self, blockchain_id: &BlockchainId) {
         observability::record_peer_registry_population(
             blockchain_id.as_str(),
-            self.peers.len(),
+            self.known_peer_count(),
             self.shard_peer_count(blockchain_id),
             self.identified_shard_peer_count(blockchain_id),
         );
     }
 
     fn record_discovery_backoff_metric(&self) {
-        let active = self
-            .peers
-            .iter()
-            .filter(|entry| entry.discovery_failure_count > 0)
-            .count();
+        let active = self.discovery_backoff_active_count();
         observability::record_peer_registry_discovery_backoff(active);
     }
 

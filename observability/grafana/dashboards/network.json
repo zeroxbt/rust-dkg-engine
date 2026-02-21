@@ -785,6 +785,18 @@
           "legendFormat": "{{blockchain_id}} {{protocol}} protocol_capable_avg",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_peer_registry_protocol_capable_shard_peers",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{protocol}} protocol_capable_gauge",
+          "range": true,
+          "refId": "C"
         }
       ],
       "title": "Peer Selection Pool Sizes (Average)",

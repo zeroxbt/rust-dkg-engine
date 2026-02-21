@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 
 use crate::{
@@ -43,6 +44,30 @@ impl KcSyncRepository {
             .one(self.conn.as_ref())
             .await?
             .map(Self::to_progress_entry))
+    }
+
+    /// Count tracked contracts in the sync progress table for a blockchain.
+    pub async fn count_progress_contracts_for_blockchain(
+        &self,
+        blockchain_id: &str,
+    ) -> Result<u64> {
+        Ok(ProgressEntity::find()
+            .filter(ProgressColumn::BlockchainId.eq(blockchain_id))
+            .count(self.conn.as_ref())
+            .await?)
+    }
+
+    /// Get the latest progress update timestamp for a blockchain.
+    pub async fn latest_progress_updated_at_for_blockchain(
+        &self,
+        blockchain_id: &str,
+    ) -> Result<Option<i64>> {
+        Ok(ProgressEntity::find()
+            .filter(ProgressColumn::BlockchainId.eq(blockchain_id))
+            .order_by_desc(ProgressColumn::UpdatedAt)
+            .one(self.conn.as_ref())
+            .await?
+            .map(|row| row.updated_at))
     }
 
     /// Update or insert the sync progress for a contract.
@@ -144,6 +169,62 @@ impl KcSyncRepository {
             .await?;
 
         Ok(rows.into_iter().map(Self::to_queue_entry).collect())
+    }
+
+    /// Count all queued KCs for a blockchain (regardless of retry state).
+    pub async fn count_queue_total_for_blockchain(&self, blockchain_id: &str) -> Result<u64> {
+        Ok(QueueEntity::find()
+            .filter(QueueColumn::BlockchainId.eq(blockchain_id))
+            .count(self.conn.as_ref())
+            .await?)
+    }
+
+    /// Count KCs currently due for processing (retry_count < max_retries and next_retry_at <= now).
+    pub async fn count_queue_due_for_blockchain(
+        &self,
+        blockchain_id: &str,
+        now_ts: i64,
+        max_retries: u32,
+    ) -> Result<u64> {
+        Ok(QueueEntity::find()
+            .filter(QueueColumn::BlockchainId.eq(blockchain_id))
+            .filter(QueueColumn::RetryCount.lt(max_retries))
+            .filter(QueueColumn::NextRetryAt.lte(now_ts))
+            .count(self.conn.as_ref())
+            .await?)
+    }
+
+    /// Count KCs waiting in retry backoff (retry_count > 0 and next_retry_at > now).
+    pub async fn count_queue_retrying_for_blockchain(
+        &self,
+        blockchain_id: &str,
+        now_ts: i64,
+        max_retries: u32,
+    ) -> Result<u64> {
+        Ok(QueueEntity::find()
+            .filter(QueueColumn::BlockchainId.eq(blockchain_id))
+            .filter(QueueColumn::RetryCount.gt(0))
+            .filter(QueueColumn::RetryCount.lt(max_retries))
+            .filter(QueueColumn::NextRetryAt.gt(now_ts))
+            .count(self.conn.as_ref())
+            .await?)
+    }
+
+    /// Get created_at of the oldest KC currently due for processing.
+    pub async fn oldest_due_created_at_for_blockchain(
+        &self,
+        blockchain_id: &str,
+        now_ts: i64,
+        max_retries: u32,
+    ) -> Result<Option<i64>> {
+        Ok(QueueEntity::find()
+            .filter(QueueColumn::BlockchainId.eq(blockchain_id))
+            .filter(QueueColumn::RetryCount.lt(max_retries))
+            .filter(QueueColumn::NextRetryAt.lte(now_ts))
+            .order_by_asc(QueueColumn::CreatedAt)
+            .one(self.conn.as_ref())
+            .await?
+            .map(|row| row.created_at))
     }
 
     /// Remove successfully synced KCs from the queue.
