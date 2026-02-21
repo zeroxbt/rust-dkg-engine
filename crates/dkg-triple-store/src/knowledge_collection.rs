@@ -45,6 +45,7 @@ impl TripleStoreManager {
         );
 
         let mut total_triples = 0;
+        let track_paranet_graphs = paranet_ual.is_some();
         let mut all_named_graphs: Vec<String> = Vec::new();
 
         // Build KC -> KA metadata once per KA (independent of graph visibility).
@@ -65,7 +66,9 @@ impl TripleStoreManager {
 
         for ka in knowledge_assets {
             let graph_uri = format!("{}/public", ka.ual());
-            all_named_graphs.push(graph_uri.clone());
+            if track_paranet_graphs {
+                all_named_graphs.push(graph_uri.clone());
+            }
 
             // GRAPH <ual/public> { triples }
             public_graphs_insert.push_str(&format!("  GRAPH <{}> {{\n", graph_uri));
@@ -103,7 +106,9 @@ impl TripleStoreManager {
                 && !private_triples.is_empty()
             {
                 let graph_uri = format!("{}/private", ka.ual());
-                all_named_graphs.push(graph_uri.clone());
+                if track_paranet_graphs {
+                    all_named_graphs.push(graph_uri.clone());
+                }
 
                 private_graphs_insert.push_str(&format!("  GRAPH <{}> {{\n", graph_uri));
                 for triple in private_triples {

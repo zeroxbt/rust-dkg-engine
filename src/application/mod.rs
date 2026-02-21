@@ -10,7 +10,6 @@ pub(crate) mod signature;
 pub(crate) mod triple_store_assertions;
 
 pub(crate) use assertion_validation::{AssertionValidation, group_and_sort_public_triples};
-pub(crate) use get_assertion::config::GET_NETWORK_CONCURRENT_PEERS;
 pub(crate) use get_assertion::{
     AssertionSource, GetAssertionInput, GetAssertionUseCase, TokenRangeResolutionPolicy,
     fetch_assertion_from_local,

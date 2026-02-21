@@ -33,6 +33,7 @@ bind_address = "127.0.0.1:9464"
   - `observability/grafana/dashboards/network.json`
   - `observability/grafana/dashboards/sync.json`
   - `observability/grafana/dashboards/memory.json`
+  - `observability/grafana/dashboards/internals.json`
 - In Grafana:
   - Dashboards -> New -> Import
   - Upload the JSON file
@@ -82,6 +83,18 @@ bind_address = "127.0.0.1:9464"
 - Container memory usage and usage percentage vs configured limits
 - Host memory pressure (used %, available bytes, swap used)
 - Internal backlog and pressure signals (sync queue, network queue depth, pending requests, peer registry size)
+
+`internals.json`:
+- Sync-cycle internals: cycle outcomes, per-cycle KC volume, RSS start/end/delta
+- Sync pipeline pressure: filter->fetch and fetch->insert channel depths
+- Fetch payload sizing: batch-level and per-KC payload bytes
+- Network channel internals: action channel fill/depth, pending requests, response-channel waits/outcomes
+- Peer registry internals: request outcomes/latency plus population/capability/backoff signals
+
+For `memory.json` to be fully populated, Prometheus must scrape additional exporters besides the node app endpoint:
+- `node-exporter` for `node_memory_*` host metrics
+- `cAdvisor` (or kubelet cAdvisor metrics) for `container_memory_*` metrics
+- optional process exporter for process-level metrics when `process_*` is not emitted by the app
 
 ## Notes
 

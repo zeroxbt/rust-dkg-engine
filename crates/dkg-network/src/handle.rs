@@ -12,6 +12,10 @@ use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 use uuid::Uuid;
 
+use crate::{
+    PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_FINALITY, PROTOCOL_NAME_GET, PROTOCOL_NAME_STORE,
+};
+
 use super::{
     NetworkError, NetworkManagerConfig, ResponseHandle,
     actions::{NetworkControlAction, NetworkDataAction},
@@ -37,6 +41,40 @@ pub struct NetworkManager {
 }
 
 impl NetworkManager {
+    fn channel_depth<T>(tx: &mpsc::Sender<T>) -> usize {
+        tx.max_capacity().saturating_sub(tx.capacity())
+    }
+
+    fn channel_fill_ratio<T>(tx: &mpsc::Sender<T>) -> f64 {
+        let max = tx.max_capacity() as f64;
+        if max == 0.0 {
+            0.0
+        } else {
+            Self::channel_depth(tx) as f64 / max
+        }
+    }
+
+    async fn await_protocol_response<T>(
+        protocol: &str,
+        rx: oneshot::Receiver<Result<T, NetworkError>>,
+    ) -> Result<T, NetworkError> {
+        let started = Instant::now();
+        match rx.await {
+            Ok(result) => {
+                observability::record_network_response_channel(protocol, "ok", started.elapsed());
+                result
+            }
+            Err(_) => {
+                observability::record_network_response_channel(
+                    protocol,
+                    "closed",
+                    started.elapsed(),
+                );
+                Err(NetworkError::ResponseChannelClosed)
+            }
+        }
+    }
+
     /// Creates a new NetworkManager handle and NetworkEventLoop pair.
     ///
     /// # Arguments
@@ -101,6 +139,16 @@ impl NetworkManager {
             status,
             started.elapsed(),
         );
+        if result.is_ok() {
+            observability::record_network_action_queue_depth(
+                "control",
+                Self::channel_depth(&self.control_tx),
+            );
+            observability::record_network_action_channel_fill(
+                "control",
+                Self::channel_fill_ratio(&self.control_tx),
+            );
+        }
         result.map_err(|_| NetworkError::ActionChannelClosed)
     }
 
@@ -115,6 +163,16 @@ impl NetworkManager {
             status,
             started.elapsed(),
         );
+        if result.is_ok() {
+            observability::record_network_action_queue_depth(
+                "data",
+                Self::channel_depth(&self.data_tx),
+            );
+            observability::record_network_action_channel_fill(
+                "data",
+                Self::channel_fill_ratio(&self.data_tx),
+            );
+        }
         result.map_err(|_| NetworkError::ActionChannelClosed)
     }
 
@@ -174,7 +232,7 @@ impl NetworkManager {
             response_tx: tx,
         })
         .await?;
-        rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
+        Self::await_protocol_response(PROTOCOL_NAME_STORE, rx).await
     }
 
     async fn send_store_response_message(
@@ -234,7 +292,7 @@ impl NetworkManager {
             response_tx: tx,
         })
         .await?;
-        rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
+        Self::await_protocol_response(PROTOCOL_NAME_GET, rx).await
     }
 
     async fn send_get_response_message(
@@ -291,7 +349,7 @@ impl NetworkManager {
             response_tx: tx,
         })
         .await?;
-        rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
+        Self::await_protocol_response(PROTOCOL_NAME_FINALITY, rx).await
     }
 
     async fn send_finality_response_message(
@@ -351,7 +409,7 @@ impl NetworkManager {
             response_tx: tx,
         })
         .await?;
-        rx.await.map_err(|_| NetworkError::ResponseChannelClosed)?
+        Self::await_protocol_response(PROTOCOL_NAME_BATCH_GET, rx).await
     }
 
     async fn send_batch_get_response_message(

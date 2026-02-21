@@ -75,6 +75,92 @@ pub fn record_sync_fetch_peer_selection(
     .set(usable as f64);
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn record_sync_cycle(
+    blockchain_id: &str,
+    status: &str,
+    duration: Duration,
+    contracts: usize,
+    enqueued: u64,
+    pending: usize,
+    synced: u64,
+    failed: u64,
+) {
+    counter!(
+        "node_sync_cycle_total",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
+    histogram!(
+        "node_sync_cycle_duration_seconds",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(duration.as_secs_f64());
+    histogram!(
+        "node_sync_cycle_contracts",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(contracts as f64);
+    histogram!(
+        "node_sync_cycle_enqueued_kcs",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(enqueued as f64);
+    histogram!(
+        "node_sync_cycle_pending_kcs",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(pending as f64);
+    histogram!(
+        "node_sync_cycle_synced_kcs",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(synced as f64);
+    histogram!(
+        "node_sync_cycle_failed_kcs",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(failed as f64);
+}
+
+pub fn record_sync_cycle_rss_bytes(blockchain_id: &str, phase: &str, bytes: u64) {
+    gauge!(
+        "node_sync_cycle_rss_bytes",
+        "blockchain_id" => blockchain_id.to_string(),
+        "phase" => phase.to_string()
+    )
+    .set(bytes as f64);
+}
+
+pub fn record_sync_cycle_rss_delta_bytes(blockchain_id: &str, delta_bytes: i64) {
+    gauge!(
+        "node_sync_cycle_rss_delta_bytes",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(delta_bytes as f64);
+    histogram!(
+        "node_sync_cycle_rss_delta_abs_bytes",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .record(delta_bytes.unsigned_abs() as f64);
+}
+
+pub fn record_sync_pipeline_channel_depth(blockchain_id: &str, channel: &str, depth: usize) {
+    gauge!(
+        "node_sync_pipeline_channel_depth",
+        "blockchain_id" => blockchain_id.to_string(),
+        "channel" => channel.to_string()
+    )
+    .set(depth as f64);
+}
+
 pub fn record_sync_fetch_peer_request(status: &str, duration: Duration, valid_kcs: usize) {
     counter!(
         "node_sync_fetch_peer_request_total",
@@ -91,6 +177,21 @@ pub fn record_sync_fetch_peer_request(status: &str, duration: Duration, valid_kc
         "status" => status.to_string()
     )
     .record(valid_kcs as f64);
+}
+
+pub fn record_sync_fetch_batch_payload_bytes(status: &str, payload_bytes: u64, fetched_kcs: usize) {
+    histogram!(
+        "node_sync_fetch_batch_payload_bytes",
+        "status" => status.to_string()
+    )
+    .record(payload_bytes as f64);
+    if fetched_kcs > 0 {
+        histogram!(
+            "node_sync_fetch_kc_payload_bytes",
+            "status" => status.to_string()
+        )
+        .record(payload_bytes as f64 / fetched_kcs as f64);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

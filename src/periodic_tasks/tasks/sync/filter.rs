@@ -45,6 +45,7 @@ pub(crate) async fn filter_task(
     tx: mpsc::Sender<Vec<KcToSync>>,
 ) -> FilterStats {
     let task_start = Instant::now();
+    let blockchain_label = blockchain_id.as_str();
     let mut already_synced = Vec::new();
     let mut expired = Vec::new();
     let total_kcs = pending_kc_ids.len();
@@ -96,6 +97,11 @@ pub(crate) async fn filter_task(
                 tracing::trace!("Filter: fetch stage receiver dropped, stopping");
                 break;
             }
+            observability::record_sync_pipeline_channel_depth(
+                blockchain_label,
+                "filter_to_fetch",
+                tx.max_capacity().saturating_sub(tx.capacity()),
+            );
         }
     }
 

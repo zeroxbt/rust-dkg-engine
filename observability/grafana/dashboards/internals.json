@@ -42,7 +42,7 @@
       },
       "id": 100,
       "panels": [],
-      "title": "Overview",
+      "title": "Sync Cycle Overview",
       "type": "row"
     },
     {
@@ -55,13 +55,13 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "bytes"
+          "unit": "ops"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 6,
         "x": 0,
         "y": 1
       },
@@ -84,26 +84,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "process_resident_memory_bytes{job=\"rust-dkg-engine\"} or namedprocess_namegroup_memory_bytes{job=\"process-exporter\",groupname=\"rust-dkg-engine\"}",
+          "expr": "sum by (blockchain_id, status) (rate(node_sync_cycle_total[5m]))",
           "instant": false,
-          "legendFormat": "rss",
+          "legendFormat": "{{blockchain_id}} {{status}}",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "process_virtual_memory_bytes{job=\"rust-dkg-engine\"} or namedprocess_namegroup_virtual_memory_bytes{job=\"process-exporter\",groupname=\"rust-dkg-engine\"}",
-          "instant": false,
-          "legendFormat": "virtual",
-          "range": true,
-          "refId": "B"
         }
       ],
-      "title": "Process Memory (RSS vs Virtual)",
+      "title": "Sync Cycle Rate",
       "type": "timeseries"
     },
     {
@@ -116,14 +104,14 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "short"
+          "unit": "s"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 6,
+        "x": 6,
         "y": 1
       },
       "id": 2,
@@ -145,9 +133,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "process_open_fds{job=\"rust-dkg-engine\"} or namedprocess_namegroup_open_filedesc{job=\"process-exporter\",groupname=\"rust-dkg-engine\"}",
+          "expr": "node_sync_cycle_duration_seconds{quantile=\"0.95\"}",
           "instant": false,
-          "legendFormat": "open_fds",
+          "legendFormat": "{{blockchain_id}} {{status}} p95",
           "range": true,
           "refId": "A"
         },
@@ -157,14 +145,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "process_max_fds{job=\"rust-dkg-engine\"} or (namedprocess_namegroup_open_filedesc{job=\"process-exporter\",groupname=\"rust-dkg-engine\"} / clamp_min(namedprocess_namegroup_worst_fd_ratio{job=\"process-exporter\",groupname=\"rust-dkg-engine\"}, 1e-9))",
+          "expr": "node_sync_cycle_duration_seconds{quantile=\"0.99\"}",
           "instant": false,
-          "legendFormat": "max_fds",
+          "legendFormat": "{{blockchain_id}} {{status}} p99",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "Process File Descriptors",
+      "title": "Sync Cycle Duration p95/p99",
       "type": "timeseries"
     },
     {
@@ -177,15 +165,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "bytes"
+          "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 9
+        "w": 6,
+        "x": 12,
+        "y": 1
       },
       "id": 3,
       "options": {
@@ -206,9 +194,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (workload) (label_replace(container_memory_working_set_bytes{job=~\".*cadvisor.*|kubelet\",pod!=\"\"}, \"workload\", \"$1\", \"pod\", \"(.*)\")) or sum by (workload) (label_replace(container_memory_working_set_bytes{job=~\".*cadvisor.*|kubelet\",container_label_com_docker_compose_service!=\"\"}, \"workload\", \"$1\", \"container_label_com_docker_compose_service\", \"(.*)\")) or sum by (workload) (label_replace(container_memory_working_set_bytes{job=~\".*cadvisor.*|kubelet\",name!=\"\"}, \"workload\", \"$1\", \"name\", \"/?(.*)\"))",
+          "expr": "sum by (blockchain_id, status) (rate(node_sync_cycle_pending_kcs_sum[5m])) / clamp_min(sum by (blockchain_id, status) (rate(node_sync_cycle_pending_kcs_count[5m])), 1e-9)",
           "instant": false,
-          "legendFormat": "{{workload}} working_set",
+          "legendFormat": "{{blockchain_id}} {{status}} avg_pending",
           "range": true,
           "refId": "A"
         },
@@ -218,14 +206,26 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (workload) (label_replace(container_spec_memory_limit_bytes{job=~\".*cadvisor.*|kubelet\",pod!=\"\"}, \"workload\", \"$1\", \"pod\", \"(.*)\")) or sum by (workload) (label_replace(container_spec_memory_limit_bytes{job=~\".*cadvisor.*|kubelet\",container_label_com_docker_compose_service!=\"\"}, \"workload\", \"$1\", \"container_label_com_docker_compose_service\", \"(.*)\")) or sum by (workload) (label_replace(container_spec_memory_limit_bytes{job=~\".*cadvisor.*|kubelet\",name!=\"\"}, \"workload\", \"$1\", \"name\", \"/?(.*)\"))",
+          "expr": "sum by (blockchain_id, status) (rate(node_sync_cycle_synced_kcs_sum[5m])) / clamp_min(sum by (blockchain_id, status) (rate(node_sync_cycle_synced_kcs_count[5m])), 1e-9)",
           "instant": false,
-          "legendFormat": "{{workload}} limit",
+          "legendFormat": "{{blockchain_id}} {{status}} avg_synced",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (blockchain_id, status) (rate(node_sync_cycle_failed_kcs_sum[5m])) / clamp_min(sum by (blockchain_id, status) (rate(node_sync_cycle_failed_kcs_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{status}} avg_failed",
+          "range": true,
+          "refId": "C"
         }
       ],
-      "title": "Container Memory by Workload (Working Set vs Limit)",
+      "title": "Per-Cycle KC Volume (Averages)",
       "type": "timeseries"
     },
     {
@@ -238,15 +238,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "percent"
+          "unit": "bytes"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 9
+        "w": 6,
+        "x": 18,
+        "y": 1
       },
       "id": 4,
       "options": {
@@ -267,14 +267,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * ((sum by (workload) (label_replace(container_memory_working_set_bytes{job=~\".*cadvisor.*|kubelet\",pod!=\"\"}, \"workload\", \"$1\", \"pod\", \"(.*)\")) or sum by (workload) (label_replace(container_memory_working_set_bytes{job=~\".*cadvisor.*|kubelet\",container_label_com_docker_compose_service!=\"\"}, \"workload\", \"$1\", \"container_label_com_docker_compose_service\", \"(.*)\")) or sum by (workload) (label_replace(container_memory_working_set_bytes{job=~\".*cadvisor.*|kubelet\",name!=\"\"}, \"workload\", \"$1\", \"name\", \"/?(.*)\"))) / clamp_min((sum by (workload) (label_replace(container_spec_memory_limit_bytes{job=~\".*cadvisor.*|kubelet\",pod!=\"\"}, \"workload\", \"$1\", \"pod\", \"(.*)\")) or sum by (workload) (label_replace(container_spec_memory_limit_bytes{job=~\".*cadvisor.*|kubelet\",container_label_com_docker_compose_service!=\"\"}, \"workload\", \"$1\", \"container_label_com_docker_compose_service\", \"(.*)\")) or sum by (workload) (label_replace(container_spec_memory_limit_bytes{job=~\".*cadvisor.*|kubelet\",name!=\"\"}, \"workload\", \"$1\", \"name\", \"/?(.*)\"))), 1))",
+          "expr": "node_sync_cycle_rss_delta_bytes",
           "instant": false,
-          "legendFormat": "{{workload}} usage_pct_of_limit",
+          "legendFormat": "{{blockchain_id}} delta",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Container Memory Usage % by Workload",
+      "title": "Sync Cycle RSS Delta",
       "type": "timeseries"
     },
     {
@@ -283,11 +283,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 9
       },
       "id": 101,
       "panels": [],
-      "title": "Host",
+      "title": "Sync Pipeline",
       "type": "row"
     },
     {
@@ -300,15 +300,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "percent"
+          "unit": "bytes"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 8,
         "x": 0,
-        "y": 18
+        "y": 10
       },
       "id": 5,
       "options": {
@@ -329,14 +329,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))",
+          "expr": "node_sync_cycle_rss_bytes{phase=~\"start|end\"}",
           "instant": false,
-          "legendFormat": "{{instance}} used_pct",
+          "legendFormat": "{{blockchain_id}} {{phase}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Host Memory Used %",
+      "title": "Sync Cycle RSS (Start/End)",
       "type": "timeseries"
     },
     {
@@ -355,9 +355,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 18
+        "w": 8,
+        "x": 8,
+        "y": 10
       },
       "id": 6,
       "options": {
@@ -378,9 +378,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_memory_MemAvailable_bytes",
+          "expr": "node_sync_fetch_batch_payload_bytes{quantile=\"0.95\"}",
           "instant": false,
-          "legendFormat": "{{instance}} mem_available",
+          "legendFormat": "{{status}} p95",
           "range": true,
           "refId": "A"
         },
@@ -390,28 +390,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes",
+          "expr": "node_sync_fetch_batch_payload_bytes{quantile=\"0.99\"}",
           "instant": false,
-          "legendFormat": "{{instance}} swap_used",
+          "legendFormat": "{{status}} p99",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "Host Available and Swap Used",
+      "title": "Fetch Payload per Batch p95/p99",
       "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 26
-      },
-      "id": 102,
-      "panels": [],
-      "title": "Internal Pressure",
-      "type": "row"
     },
     {
       "datasource": {
@@ -423,15 +410,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "short"
+          "unit": "bytes"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 27
+        "w": 8,
+        "x": 16,
+        "y": 10
       },
       "id": 7,
       "options": {
@@ -452,38 +439,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_queue_total",
+          "expr": "sum by (status) (rate(node_sync_fetch_kc_payload_bytes_sum[5m])) / clamp_min(sum by (status) (rate(node_sync_fetch_kc_payload_bytes_count[5m])), 1e-9)",
           "instant": false,
-          "legendFormat": "{{blockchain_id}} queue_total",
+          "legendFormat": "{{status}} avg_per_kc",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "node_sync_queue_due",
-          "instant": false,
-          "legendFormat": "{{blockchain_id}} queue_due",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "node_sync_queue_retrying",
-          "instant": false,
-          "legendFormat": "{{blockchain_id}} queue_retrying",
-          "range": true,
-          "refId": "C"
         }
       ],
-      "title": "Sync Queue Snapshot",
+      "title": "Fetch Payload per KC (Average)",
       "type": "timeseries"
     },
     {
@@ -496,15 +459,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "s"
+          "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 27
+        "w": 24,
+        "x": 0,
+        "y": 18
       },
       "id": 8,
       "options": {
@@ -525,27 +488,28 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_queue_oldest_due_age_seconds",
+          "expr": "node_sync_pipeline_channel_depth",
           "instant": false,
-          "legendFormat": "{{blockchain_id}} oldest_due_age",
+          "legendFormat": "{{blockchain_id}} {{channel}}",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "node_sync_progress_last_update_age_seconds",
-          "instant": false,
-          "legendFormat": "{{blockchain_id}} progress_last_update_age",
-          "range": true,
-          "refId": "B"
         }
       ],
-      "title": "Sync Backlog and Progress Age",
+      "title": "Sync Pipeline Channel Depth",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "id": 102,
+      "panels": [],
+      "title": "Network Internal Channels",
+      "type": "row"
     },
     {
       "datasource": {
@@ -563,9 +527,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 8,
         "x": 0,
-        "y": 35
+        "y": 27
       },
       "id": 9,
       "options": {
@@ -606,17 +570,66 @@
           "color": {
             "mode": "palette-classic"
           },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 27
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_network_action_channel_fill_ratio",
+          "instant": false,
+          "legendFormat": "{{queue}} fill_ratio",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Network Action Channel Fill Ratio",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 35
+        "w": 8,
+        "x": 16,
+        "y": 27
       },
-      "id": 10,
+      "id": 11,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -655,6 +668,239 @@
           "color": {
             "mode": "palette-classic"
           },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 35
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (protocol, status) (rate(node_network_response_channel_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{protocol}} {{status}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Response Channel Outcome Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 35
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_network_response_channel_wait_seconds{quantile=\"0.95\"}",
+          "instant": false,
+          "legendFormat": "{{protocol}} {{status}} p95",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_network_response_channel_wait_seconds{quantile=\"0.99\"}",
+          "instant": false,
+          "legendFormat": "{{protocol}} {{status}} p99",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Response Channel Wait p95/p99",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "id": 103,
+      "panels": [],
+      "title": "Peer Registry Internals",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 44
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (protocol, outcome) (rate(node_peer_registry_request_outcome_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{protocol}} {{outcome}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Peer Request Outcome Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 44
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_peer_registry_request_outcome_duration_seconds{quantile=\"0.95\"}",
+          "instant": false,
+          "legendFormat": "{{protocol}} {{outcome}} p95",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_peer_registry_request_outcome_duration_seconds{quantile=\"0.99\"}",
+          "instant": false,
+          "legendFormat": "{{protocol}} {{outcome}} p99",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Peer Request Duration p95/p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "unit": "short"
         },
         "overrides": []
@@ -663,9 +909,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 43
+        "y": 52
       },
-      "id": 11,
+      "id": 16,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -736,9 +982,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 43
+        "y": 52
       },
-      "id": 12,
+      "id": 17,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -786,7 +1032,7 @@
   "tags": [
     "rust-dkg-engine",
     "pilot",
-    "memory"
+    "internals"
   ],
   "templating": {
     "list": []
@@ -797,8 +1043,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Rust DKG Engine - Memory (Pilot)",
-  "uid": "rust-dkg-memory",
+  "title": "Rust DKG Engine - Internals (Pilot)",
+  "uid": "rust-dkg-internals",
   "version": 1,
   "weekStart": ""
 }

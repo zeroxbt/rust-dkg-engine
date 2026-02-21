@@ -69,12 +69,35 @@ pub fn record_network_action_queue_depth(queue: &str, depth: usize) {
     .set(depth as f64);
 }
 
+pub fn record_network_action_channel_fill(queue: &str, fill_ratio: f64) {
+    gauge!(
+        "node_network_action_channel_fill_ratio",
+        "queue" => queue.to_string()
+    )
+    .set(fill_ratio.clamp(0.0, 1.0));
+}
+
 pub fn record_network_pending_requests(protocol: &str, pending: usize) {
     gauge!(
         "node_network_pending_requests",
         "protocol" => protocol.to_string()
     )
     .set(pending as f64);
+}
+
+pub fn record_network_response_channel(protocol: &str, status: &str, wait: Duration) {
+    counter!(
+        "node_network_response_channel_total",
+        "protocol" => protocol.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
+    histogram!(
+        "node_network_response_channel_wait_seconds",
+        "protocol" => protocol.to_string(),
+        "status" => status.to_string()
+    )
+    .record(wait.as_secs_f64());
 }
 
 pub fn record_network_response_send(protocol: &str, mode: &str, status: &str) {

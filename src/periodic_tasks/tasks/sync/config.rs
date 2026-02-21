@@ -11,6 +11,7 @@ pub(crate) struct SyncConfig {
     pub max_new_kcs_per_contract: u64,
     pub filter_batch_size: usize,
     pub network_fetch_batch_size: usize,
+    pub batch_get_fanout_concurrency: usize,
     pub max_assets_per_fetch_batch: u64,
     pub insert_batch_concurrency: usize,
     pub pipeline_channel_buffer: usize,

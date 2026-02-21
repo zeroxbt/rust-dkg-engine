@@ -18,10 +18,7 @@ use super::{
     insert::insert_task,
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
-use crate::{
-    application::GET_NETWORK_CONCURRENT_PEERS, periodic_tasks::SyncDeps,
-    periodic_tasks::runner::run_with_shutdown,
-};
+use crate::{periodic_tasks::SyncDeps, periodic_tasks::runner::run_with_shutdown};
 
 pub(crate) struct SyncTask {
     config: SyncConfig,
@@ -195,6 +192,7 @@ impl SyncTask {
         let pipeline_channel_buffer = self.config.pipeline_channel_buffer.max(1);
         let filter_batch_size = self.config.filter_batch_size.max(1);
         let network_fetch_batch_size = self.config.network_fetch_batch_size.max(1);
+        let batch_get_fanout_concurrency = self.config.batch_get_fanout_concurrency.max(1);
         let max_assets_per_fetch_batch = self.config.max_assets_per_fetch_batch.max(1);
         let insert_batch_concurrency = self.config.insert_batch_concurrency.max(1);
 
@@ -237,6 +235,7 @@ impl SyncTask {
                     fetch_task(
                         filter_rx,
                         network_fetch_batch_size,
+                        batch_get_fanout_concurrency,
                         max_assets_per_fetch_batch,
                         blockchain_id,
                         network_manager,
@@ -441,12 +440,30 @@ impl SyncTask {
         fields(blockchain_id = %blockchain_id)
     )]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
+        let cycle_started = std::time::Instant::now();
+        let blockchain_label = blockchain_id.as_str();
+        let rss_start = process_rss_bytes();
+        if let Some(rss) = rss_start {
+            observability::record_sync_cycle_rss_bytes(blockchain_label, "start", rss);
+        }
+
         let idle_period = Duration::from_secs(self.config.period_idle_secs);
         let catching_up_period = Duration::from_secs(self.config.period_catching_up_secs);
         let no_peers_retry_delay = Duration::from_secs(self.config.no_peers_retry_delay_secs);
 
         if !self.config.enabled {
             tracing::trace!("Sync task disabled by configuration");
+            finalize_sync_cycle_metrics(
+                blockchain_label,
+                "disabled",
+                cycle_started,
+                rss_start,
+                0,
+                0,
+                0,
+                0,
+                0,
+            );
             return idle_period;
         }
 
@@ -456,7 +473,7 @@ impl SyncTask {
             .deps
             .peer_registry
             .identified_shard_peer_count(blockchain_id);
-        let min_required = (total_shard_peers / 3).max(GET_NETWORK_CONCURRENT_PEERS);
+        let min_required = (total_shard_peers / 3).max(3);
 
         if identified_peers < min_required {
             tracing::debug!(
@@ -464,6 +481,17 @@ impl SyncTask {
                 total = total_shard_peers,
                 required = min_required,
                 "Not enough shard peers identified yet, retrying later"
+            );
+            finalize_sync_cycle_metrics(
+                blockchain_label,
+                "waiting_for_peers",
+                cycle_started,
+                rss_start,
+                0,
+                0,
+                0,
+                0,
+                0,
             );
             return no_peers_retry_delay;
         }
@@ -480,6 +508,17 @@ impl SyncTask {
                     blockchain_id = %blockchain_id,
                     error = %e,
                     "Failed to get KC storage contract addresses"
+                );
+                finalize_sync_cycle_metrics(
+                    blockchain_label,
+                    "contracts_error",
+                    cycle_started,
+                    rss_start,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                 );
                 return idle_period;
             }
@@ -542,6 +581,17 @@ impl SyncTask {
         }
 
         observability::record_sync_last_success_heartbeat();
+        finalize_sync_cycle_metrics(
+            blockchain_label,
+            "ok",
+            cycle_started,
+            rss_start,
+            contract_addresses.len(),
+            total_enqueued,
+            total_pending,
+            total_synced,
+            total_failed,
+        );
 
         // Use short delay while catching up, longer delay when idle
         // - total_pending > 0: still have KCs in queue to process
@@ -563,4 +613,52 @@ impl SyncTask {
             idle_period
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finalize_sync_cycle_metrics(
+    blockchain_id: &str,
+    status: &str,
+    started: std::time::Instant,
+    rss_start: Option<u64>,
+    contracts: usize,
+    enqueued: u64,
+    pending: usize,
+    synced: u64,
+    failed: u64,
+) {
+    observability::record_sync_cycle(
+        blockchain_id,
+        status,
+        started.elapsed(),
+        contracts,
+        enqueued,
+        pending,
+        synced,
+        failed,
+    );
+
+    if let Some(rss_end) = process_rss_bytes() {
+        observability::record_sync_cycle_rss_bytes(blockchain_id, "end", rss_end);
+        if let Some(rss_start) = rss_start {
+            let delta = rss_end as i64 - rss_start as i64;
+            observability::record_sync_cycle_rss_delta_bytes(blockchain_id, delta);
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn process_rss_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let rss_kib = status
+        .lines()
+        .find(|line| line.starts_with("VmRSS:"))
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|value| value.parse::<u64>().ok())?;
+    Some(rss_kib.saturating_mul(1024))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn process_rss_bytes() -> Option<u64> {
+    None
 }

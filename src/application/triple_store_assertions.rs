@@ -442,16 +442,25 @@ impl TripleStoreAssertions {
             },
         )?);
 
-        // Generate UALs for each public knowledge asset: {kc_ual}/1, {kc_ual}/2, ...
-        let public_ka_uals: Vec<String> = (0..public_ka_triples_grouped.len())
-            .map(|i| format!("{}/{}", knowledge_collection_ual, i + 1))
+        // Build a map from public subject -> index for matching private triples later.
+        let public_subject_map: HashMap<String, usize> = public_ka_triples_grouped
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, group)| {
+                group
+                    .first()
+                    .and_then(|triple| extract_subject(triple).map(|subj| (subj.to_string(), idx)))
+            })
             .collect();
 
-        // Create knowledge assets with public triples
+        // Create knowledge assets with public triples, moving grouped vectors to avoid cloning.
         let mut knowledge_assets: Vec<KnowledgeAsset> = public_ka_triples_grouped
-            .iter()
-            .zip(public_ka_uals.iter())
-            .map(|(triples, ual)| KnowledgeAsset::new(ual.clone(), triples.to_vec()))
+            .into_iter()
+            .enumerate()
+            .map(|(i, triples)| {
+                let ual = format!("{}/{}", knowledge_collection_ual, i + 1);
+                KnowledgeAsset::new(ual, triples)
+            })
             .collect();
 
         // Match and attach private triples if present
@@ -464,19 +473,8 @@ impl TripleStoreAssertions {
                     reason: format!("Failed to group private triples by parsed subject: {error}"),
                 })?;
 
-            // Build a map from public subject -> index for matching
-            let public_subject_map: HashMap<String, usize> = public_ka_triples_grouped
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, group)| {
-                    group.first().and_then(|triple| {
-                        extract_subject(triple).map(|subj| (subj.to_string(), idx))
-                    })
-                })
-                .collect();
-
             // Match each private group to a public knowledge asset
-            for private_group in &private_ka_triples_grouped {
+            for private_group in private_ka_triples_grouped {
                 if let Some(first_triple) = private_group.first()
                     && let Some(private_subject) = extract_subject(first_triple)
                 {
@@ -498,10 +496,9 @@ impl TripleStoreAssertions {
 
                     // Attach private triples to the matched knowledge asset (append if already set)
                     if let Some(idx) = matched_idx {
-                        let private_strings: Vec<String> = private_group.to_vec();
                         match knowledge_assets[idx].private_triples.as_mut() {
-                            Some(existing) => existing.extend(private_strings),
-                            None => knowledge_assets[idx].set_private_triples(private_strings),
+                            Some(existing) => existing.extend(private_group),
+                            None => knowledge_assets[idx].set_private_triples(private_group),
                         }
                     }
                 }

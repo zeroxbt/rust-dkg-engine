@@ -106,6 +106,7 @@ fn sync() -> SyncConfig {
         max_new_kcs_per_contract: 1000,
         filter_batch_size: 100,
         network_fetch_batch_size: 100,
+        batch_get_fanout_concurrency: 3,
         max_assets_per_fetch_batch: 10_000,
         insert_batch_concurrency: 8,
         pipeline_channel_buffer: 6,

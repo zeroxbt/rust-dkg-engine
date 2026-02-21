@@ -34,11 +34,17 @@ pub(crate) async fn insert_task(
     triple_store_assertions: Arc<TripleStoreAssertions>,
 ) -> InsertStats {
     let task_start = Instant::now();
+    let blockchain_label = blockchain_id.as_str();
     let mut synced = Vec::new();
     let mut failed = Vec::new();
     let mut total_received = 0usize;
 
     while let Some(batch) = rx.recv().await {
+        observability::record_sync_pipeline_channel_depth(
+            blockchain_label,
+            "fetch_to_insert",
+            rx.len(),
+        );
         let batch_start = Instant::now();
         let batch_len = batch.len();
         total_received += batch_len;
@@ -110,7 +116,8 @@ async fn insert_kcs_to_store(
     let mut failed = Vec::new();
 
     // Bound in-flight inserts to avoid large bursts and long permit waits.
-    let insert_results = stream::iter(kcs.into_iter())
+    // Process completions as they arrive to avoid holding an extra results vec.
+    let mut insert_results = stream::iter(kcs.into_iter())
         .map(|kc| {
             let ts = Arc::clone(&triple_store_assertions);
             let ual = kc.ual;
@@ -125,10 +132,9 @@ async fn insert_kcs_to_store(
             }
         })
         .buffer_unordered(insert_batch_concurrency.max(1))
-        .collect::<Vec<_>>()
-        .await;
+        .fuse();
 
-    for (kc_id, ual, result) in insert_results {
+    while let Some((kc_id, ual, result)) = insert_results.next().await {
         match result {
             Ok(triples_inserted) => {
                 tracing::trace!(
