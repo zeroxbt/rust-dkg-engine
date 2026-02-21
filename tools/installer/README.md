@@ -10,7 +10,7 @@ This folder contains a single script that installs and configures `rust-dkg-engi
 - Writes `/etc/rust-dkg-engine/config.toml` (mode `0640`, `root:rustdkg`) including secrets.
 - Installs and starts a systemd service using `StateDirectory=rust-dkg-engine` (data under `/var/lib/rust-dkg-engine`).
 - Optionally enables an auto-updater systemd timer (downloads latest release and restarts the service).
-- Prompts for optional OpenTelemetry trace export configuration and writes it into `config.toml`.
+- Prompts for optional Prometheus metrics export configuration and writes it into `config.toml`.
 
 ## Usage
 Recommended (no repo clone): run the bootstrap from the latest GitHub Release:
@@ -29,25 +29,19 @@ Optional flags:
 - `--version latest|<tag>`: release tag to install (default `latest`)
 - `--overwrite-config`: overwrite `/etc/rust-dkg-engine/config.toml` if it already exists
 
-## Telemetry setup
+## Metrics setup
 
-During interactive install (when generating a new config), the installer asks separately about traces and metrics:
+During interactive install (when generating a new config), the installer asks about metrics:
 
-- Traces: request/operation timelines (good for drill-down in Tempo/Jaeger)
-- Metrics: numeric time series (good for Grafana dashboards/alerts via Prometheus)
-
-- If traces are enabled:
-  - prompts for OTLP endpoint (for example `http://127.0.0.1:4317` or a remote collector URL)
-  - prompts for telemetry service name
 - If metrics are enabled:
   - prompts for metrics bind address (for example `127.0.0.1:9464`)
   - writes `[telemetry.metrics]` config with `enabled = true`
-- If either is disabled:
+- If metrics are disabled:
   - keeps the section in config with `enabled = false` for clarity
 
 Note:
 - This installer step configures node export only.
-- It does **not** install local Grafana/Tempo/Prometheus services.
+- It does **not** install local Grafana/Prometheus services.
 
 ## Files and locations
 - Binary: `/opt/rust-dkg-engine/current/rust-dkg-engine`

@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::{commands::scheduler::CommandScheduler, logger};
+use crate::commands::scheduler::CommandScheduler;
 
 const PERIODIC_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
 const COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
@@ -37,7 +37,7 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     // 7. Wait for network loop to exit
     // 8. Wait for peer registry updater to drain
     // 9. Wait for HTTP to finish in-flight requests
-    // 10. Flush telemetry
+    // 10. Shutdown complete
     let ShutdownContext {
         command_scheduler,
         network_manager,
@@ -111,8 +111,7 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     )
     .await;
 
-    // Step 10: Flush OpenTelemetry traces
-    logger::shutdown_telemetry();
+    // Step 10: Shutdown complete
     tracing::info!("Shutdown complete");
 }
 

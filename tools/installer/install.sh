@@ -525,11 +525,8 @@ write_config_toml() {
   local operator_fee="${12}"
   local chain_blocks="${13}"
   local bootstrap_lines="${14}"
-  local telemetry_enabled="${15}"
-  local telemetry_endpoint="${16}"
-  local telemetry_service_name="${17}"
-  local telemetry_metrics_enabled="${18}"
-  local telemetry_metrics_bind_address="${19}"
+  local telemetry_metrics_enabled="${15}"
+  local telemetry_metrics_bind_address="${16}"
 
   umask 077
   mkdir -p "$ETC_DIR"
@@ -543,7 +540,7 @@ write_config_toml() {
 
   local tmp
   tmp="$(mktemp)"
-  local environment_esc db_host_esc db_name_esc db_user_esc db_pass_esc external_ip_esc triple_url_esc telemetry_endpoint_esc telemetry_service_name_esc telemetry_metrics_bind_address_esc
+  local environment_esc db_host_esc db_name_esc db_user_esc db_pass_esc external_ip_esc triple_url_esc telemetry_metrics_bind_address_esc
   environment_esc="$(toml_escape_basic_string "$environment")"
   db_host_esc="$(toml_escape_basic_string "$db_host")"
   db_name_esc="$(toml_escape_basic_string "$db_name")"
@@ -551,8 +548,6 @@ write_config_toml() {
   db_pass_esc="$(toml_escape_basic_string "$db_pass")"
   external_ip_esc="$(toml_escape_basic_string "$external_ip")"
   triple_url_esc="$(toml_escape_basic_string "$triple_url")"
-  telemetry_endpoint_esc="$(toml_escape_basic_string "$telemetry_endpoint")"
-  telemetry_service_name_esc="$(toml_escape_basic_string "$telemetry_service_name")"
   telemetry_metrics_bind_address_esc="$(toml_escape_basic_string "$telemetry_metrics_bind_address")"
 
   cat >"$tmp" <<EOF
@@ -619,14 +614,7 @@ enabled = true
 ip_whitelist = ["127.0.0.1", "::1"]
 
 [telemetry]
-# Telemetry has two independent signal types:
-# - traces: per-request/per-operation timelines
-# - metrics: counters/gauges/histograms for dashboards and alerts
-
-[telemetry.traces]
-enabled = ${telemetry_enabled}
-otlp_endpoint = "${telemetry_endpoint_esc}"
-service_name = "${telemetry_service_name_esc}"
+# Metrics are counters/gauges/histograms for dashboards and alerts.
 
 [telemetry.metrics]
 enabled = ${telemetry_metrics_enabled}
@@ -716,22 +704,7 @@ prompt_nonempty() {
 }
 
 prompt_telemetry_config() {
-  local choice telemetry_enabled telemetry_endpoint telemetry_service_name
   local metrics_choice telemetry_metrics_enabled telemetry_metrics_bind_address
-
-  choice="$(prompt "Enable telemetry traces (request/operation timelines)? (y/N)" "n")"
-  case "$choice" in
-    y|Y|yes|YES)
-      telemetry_enabled="true"
-      telemetry_endpoint="$(prompt_nonempty "OTLP endpoint (traces)" "http://127.0.0.1:4317")"
-      telemetry_service_name="$(prompt_nonempty "Telemetry service name" "rust-dkg-engine")"
-      ;;
-    *)
-      telemetry_enabled="false"
-      telemetry_endpoint="http://127.0.0.1:4317"
-      telemetry_service_name="rust-dkg-engine"
-      ;;
-  esac
 
   metrics_choice="$(prompt "Enable telemetry metrics (/metrics endpoint for dashboards/alerts)? (y/N)" "n")"
   case "$metrics_choice" in
@@ -745,10 +718,7 @@ prompt_telemetry_config() {
       ;;
   esac
 
-  printf '%s|%s|%s|%s|%s\n' \
-    "$telemetry_enabled" \
-    "$telemetry_endpoint" \
-    "$telemetry_service_name" \
+  printf '%s|%s\n' \
     "$telemetry_metrics_enabled" \
     "$telemetry_metrics_bind_address"
 }
@@ -1117,9 +1087,9 @@ main() {
   chain_blocks="$(build_chain_blocks "$environment" "$node_name" "$operator_fee")"
 
   # 5b) Telemetry setup (node export only; does not install local observability services)
-  local telemetry_enabled telemetry_endpoint telemetry_service_name telemetry_metrics_enabled telemetry_metrics_bind_address telemetry_tuple
+  local telemetry_metrics_enabled telemetry_metrics_bind_address telemetry_tuple
   telemetry_tuple="$(prompt_telemetry_config)"
-  IFS='|' read -r telemetry_enabled telemetry_endpoint telemetry_service_name telemetry_metrics_enabled telemetry_metrics_bind_address <<<"$telemetry_tuple"
+  IFS='|' read -r telemetry_metrics_enabled telemetry_metrics_bind_address <<<"$telemetry_tuple"
 
   write_config_toml \
     "$environment" \
@@ -1136,9 +1106,6 @@ main() {
     "$operator_fee" \
     "$chain_blocks" \
     "$bootstrap_lines" \
-    "$telemetry_enabled" \
-    "$telemetry_endpoint" \
-    "$telemetry_service_name" \
     "$telemetry_metrics_enabled" \
     "$telemetry_metrics_bind_address"
 

@@ -2,9 +2,8 @@
 
 ## 1. Problem Statement
 
-The node already has partial tracing support (OTLP export + targeted sync pipeline spans), but it is not yet a complete operator-facing observability system:
+The node has metrics support and structured logging, but it is not yet a complete operator-facing observability system:
 
-- Traces exist, but coverage is uneven across commands/tasks/lifecycle paths.
 - Metrics are not first-class yet (limited dashboard-ready SLO visibility).
 - Logs are rich but not uniformly structured for cross-component correlation.
 - There is no packaged, reusable dashboard/provisioning bundle for operators.
@@ -30,7 +29,7 @@ Goal: make observability opt-in, production-safe, and easy for fresh VPS operato
 
 Before broad observability coverage, deliver one complete thin slice:
 
-1. Minimal telemetry plumbing for metrics (in addition to existing traces)
+1. Minimal telemetry plumbing for metrics
 2. Minimal instrumentation set (command/task + sync heartbeat)
 3. One dashboard (`Node Overview`)
 4. End-to-end validation in Grafana
@@ -43,22 +42,20 @@ Why:
 ## 3. Non-Goals (for initial rollout)
 
 - Full multi-tenant observability control plane.
-- Automatic internet-exposed Grafana/Tempo without operator confirmation.
+- Automatic internet-exposed Grafana without operator confirmation.
 - One-step "magic" install that hides all infra/security choices.
 
 ## 4. Current Baseline
 
 - `src/logger/mod.rs`:
   - supports structured telemetry config:
-    - `[telemetry.traces]` (OTLP traces)
     - `[telemetry.metrics]` (Prometheus `/metrics`)
-  - traces and metrics can be enabled independently
-  - gracefully falls back to local logging if exporter init fails
+  - gracefully handles invalid metrics exporter configuration
 - `src/config/defaults.rs`:
-  - telemetry defaults currently environment-based (`traces` enabled in development)
+  - telemetry defaults currently environment-based (`metrics` enabled in development)
 - `tools/installer/install.sh`:
   - installs node + db + optional blazegraph + systemd units
-  - prompts for trace and metrics export config
+  - prompts for metrics export config
   - does not configure observability stack/services/dashboards
 
 ## 5. Target Architecture
@@ -66,11 +63,9 @@ Why:
 Recommended reference architecture:
 
 1. Node emits:
-   - traces via OTLP
    - metrics via OTLP or `/metrics` scrape endpoint
    - logs as JSON (optionally shipped externally)
 2. OpenTelemetry Collector receives telemetry and routes to:
-   - Tempo (traces)
    - Prometheus/Mimir (metrics)
    - Loki (logs, optional)
 3. Grafana provides dashboards + alerting.
@@ -106,8 +101,7 @@ Behavior:
 - `none`:
   - keep current behavior; telemetry disabled unless user configures manually
 - `remote`:
-  - prompt for OTLP endpoint + service labels
-  - write telemetry config only
+  - write metrics config only
   - do not install Grafana/Tempo/Prometheus locally
 - `local`:
   - install and run observability stack (collector + grafana + tempo + prometheus [+ loki optional])
@@ -125,11 +119,6 @@ Current TOML shape:
 ```toml
 [telemetry]
 
-[telemetry.traces]
-enabled = true
-otlp_endpoint = "http://127.0.0.1:4317"
-service_name = "rust-dkg-engine"
-
 [telemetry.metrics]
 enabled = true
 bind_address = "127.0.0.1:9464"
@@ -138,10 +127,7 @@ bind_address = "127.0.0.1:9464"
 Breaking change:
 - legacy flat keys under `[telemetry]` are no longer supported:
   - `enabled`
-  - `otlp_endpoint`
-  - `service_name`
-- supported shape is nested only:
-  - `[telemetry.traces]`
+- supported shape is nested:
   - `[telemetry.metrics]`
 
 ## 8. Instrumentation Standards

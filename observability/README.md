@@ -4,25 +4,17 @@ This directory contains pilot dashboards for validating node telemetry end-to-en
 
 Telemetry signals used here:
 
-- Traces: timeline of one request/operation across components (for drill-down)
 - Metrics: aggregated numeric time series (for dashboards/alerts)
 
 Quick intuition:
 
-- A trace answers: "why was this specific publish/get slow or failing?"
 - A metric answers: "how many publishes failed in the last 10 minutes?"
-- You can enable one without the other.
 
 ## Prerequisites
 
 1. Node config enables telemetry signals you need:
 
 ```toml
-[telemetry.traces]
-enabled = false
-otlp_endpoint = "http://127.0.0.1:4317"
-service_name = "rust-dkg-engine"
-
 [telemetry.metrics]
 enabled = true
 bind_address = "127.0.0.1:9464"
@@ -40,6 +32,7 @@ bind_address = "127.0.0.1:9464"
   - `observability/grafana/dashboards/triple-store.json`
   - `observability/grafana/dashboards/network.json`
   - `observability/grafana/dashboards/sync.json`
+  - `observability/grafana/dashboards/memory.json`
 - In Grafana:
   - Dashboards -> New -> Import
   - Upload the JSON file
@@ -83,6 +76,12 @@ bind_address = "127.0.0.1:9464"
 - Peer request rates/latency/yield (valid KCs per request)
 - Fetched vs failed KC rates and failure ratio
 - Shard peer availability (shard members / identified / usable)
+
+`memory.json`:
+- Process-level memory (RSS/virtual) and file descriptor usage
+- Container memory usage and usage percentage vs configured limits
+- Host memory pressure (used %, available bytes, swap used)
+- Internal backlog and pressure signals (sync queue, network queue depth, pending requests, peer registry size)
 
 ## Notes
 
