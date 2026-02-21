@@ -24,8 +24,7 @@ pub(crate) fn build_controllers(
     command_scheduler: &CommandScheduler,
 ) -> controllers::Controllers {
     controllers::initialize(
-        &config.http_api,
-        &config.rpc,
+        &config.controllers,
         RpcRouterDeps {
             publish_store: PublishStoreRpcControllerDeps {
                 store_response_channels: Arc::clone(&node_state.store_response_channels),

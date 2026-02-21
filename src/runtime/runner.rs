@@ -11,24 +11,16 @@ use crate::{
         http_api_controller::router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
     },
     node_state::PeerRegistry,
-    periodic_tasks,
-    periodic_tasks::tasks::{
-        cleanup::CleanupConfig, paranet_sync::ParanetSyncConfig, proving::ProvingConfig,
-        sync::SyncConfig,
-    },
+    periodic_tasks::{self, PeriodicTasksConfig},
 };
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
     deps: RuntimeDeps,
     command_executor: CommandExecutor,
     network_event_loop: NetworkEventLoop,
     rpc_router: RpcRouter,
     http_router: Option<HttpApiRouter>,
-    cleanup_config: CleanupConfig,
-    sync_config: SyncConfig,
-    paranet_sync_config: ParanetSyncConfig,
-    proving_config: ProvingConfig,
+    periodic_tasks_config: PeriodicTasksConfig,
     metrics_enabled: bool,
 ) {
     let command_scheduler = deps.command_scheduler.clone();
@@ -50,11 +42,8 @@ pub(crate) async fn run(
     let periodic_handle = tokio::task::spawn(periodic_tasks::run(
         Arc::clone(&deps.periodic_tasks_deps),
         deps.blockchain_ids.clone(),
+        periodic_tasks_config,
         metrics_enabled,
-        cleanup_config,
-        sync_config,
-        paranet_sync_config,
-        proving_config,
         periodic_shutdown.clone(),
     ));
 

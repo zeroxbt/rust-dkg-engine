@@ -10,6 +10,7 @@ pub(crate) use deps::{
     StateSnapshotDeps, SyncDeps,
 };
 use dkg_blockchain::BlockchainId;
+use serde::{Deserialize, Serialize};
 pub(crate) use tasks::sharding_table_check::seed_sharding_tables;
 use tasks::{
     blockchain_event_listener::BlockchainEventListenerTask,
@@ -28,6 +29,15 @@ use tokio_util::sync::CancellationToken;
 use self::registry::{
     BlockchainPeriodicTask, GlobalPeriodicTask, spawn_blockchain_task, spawn_global_task,
 };
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PeriodicTasksConfig {
+    pub cleanup: CleanupConfig,
+    pub sync: SyncConfig,
+    pub paranet_sync: ParanetSyncConfig,
+    pub proving: ProvingConfig,
+}
 
 impl GlobalPeriodicTask for DialPeersTask {
     type Config = ();
@@ -145,13 +155,17 @@ macro_rules! spawn_registered_blockchain_tasks {
 pub(crate) async fn run(
     deps: Arc<PeriodicTasksDeps>,
     blockchain_ids: Vec<BlockchainId>,
+    periodic_tasks_config: PeriodicTasksConfig,
     metrics_enabled: bool,
-    cleanup_config: CleanupConfig,
-    sync_config: SyncConfig,
-    paranet_sync_config: ParanetSyncConfig,
-    proving_config: ProvingConfig,
     shutdown: CancellationToken,
 ) {
+    let PeriodicTasksConfig {
+        cleanup: cleanup_config,
+        sync: sync_config,
+        paranet_sync: paranet_sync_config,
+        proving: proving_config,
+    } = periodic_tasks_config;
+
     let mut set = tokio::task::JoinSet::new();
     let cleanup_enabled = cleanup_config.enabled;
     let sync_enabled = sync_config.enabled;

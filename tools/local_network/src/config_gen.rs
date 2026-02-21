@@ -19,13 +19,18 @@ pub(crate) struct RustConfigContext {
 struct RustConfig {
     environment: String,
     app_data_path: String,
-    http_api: HttpApiConfig,
+    controllers: ControllersConfig,
     managers: ManagersConfig,
 }
 
 #[derive(Serialize)]
 struct HttpApiConfig {
     port: usize,
+}
+
+#[derive(Serialize)]
+struct ControllersConfig {
+    http_api: HttpApiConfig,
 }
 
 #[derive(Serialize)]
@@ -89,8 +94,10 @@ pub(crate) fn render_rust_config(ctx: &RustConfigContext) -> String {
     let config = RustConfig {
         environment: ctx.environment.clone(),
         app_data_path: ctx.app_data_path.clone(),
-        http_api: HttpApiConfig {
-            port: ctx.http_port,
+        controllers: ControllersConfig {
+            http_api: HttpApiConfig {
+                port: ctx.http_port,
+            },
         },
         managers: ManagersConfig {
             network: NetworkConfig {
@@ -134,4 +141,39 @@ pub(crate) fn render_rust_config(ctx: &RustConfigContext) -> String {
     };
 
     toml::to_string_pretty(&config).expect("Failed to serialize Rust config")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn emits_nested_controller_config() {
+        let toml = render_rust_config(&RustConfigContext {
+            environment: "development".to_string(),
+            http_port: 8901,
+            network_port: 9101,
+            app_data_path: "data1".to_string(),
+            bootstrap_node: "/ip4/127.0.0.1/tcp/9100/p2p/peer".to_string(),
+            database_name: "operationaldb1".to_string(),
+            blockchain_id: "hardhat1:31337".to_string(),
+            node_name: "LocalNode1".to_string(),
+            operational_wallet_public: "0x1".to_string(),
+            operational_wallet_private: "0x2".to_string(),
+            management_wallet_public: "0x3".to_string(),
+            management_wallet_private: "0x4".to_string(),
+        });
+
+        let parsed: toml::Value = toml.parse().expect("Generated TOML should parse");
+        assert!(parsed.get("controllers").is_some());
+        assert!(parsed.get("http_api").is_none());
+
+        let http_port = parsed
+            .get("controllers")
+            .and_then(|v| v.get("http_api"))
+            .and_then(|v| v.get("port"))
+            .and_then(|v| v.as_integer())
+            .expect("controllers.http_api.port should be present");
+        assert_eq!(http_port, 8901);
+    }
 }

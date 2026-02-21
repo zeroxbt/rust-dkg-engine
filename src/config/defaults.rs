@@ -18,6 +18,7 @@ use dkg_triple_store::{TimeoutConfig, TripleStoreBackendType, TripleStoreManager
 use super::{ConfigError, ConfigRaw};
 use crate::{
     controllers::{
+        ControllersConfig,
         http_api_controller::{
             middleware::{AuthConfig, RateLimiterConfig},
             router::HttpApiConfig,
@@ -26,14 +27,17 @@ use crate::{
     },
     logger::{LogFormat, LoggerConfig, TelemetryConfig, TelemetryMetricsConfig},
     managers::ManagersConfigRaw,
-    periodic_tasks::tasks::{
-        cleanup::{
-            CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
-            ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
+    periodic_tasks::{
+        PeriodicTasksConfig,
+        tasks::{
+            cleanup::{
+                CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
+                ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
+            },
+            paranet_sync::ParanetSyncConfig,
+            proving::ProvingConfig,
+            sync::SyncConfig,
         },
-        paranet_sync::ParanetSyncConfig,
-        proving::ProvingConfig,
-        sync::SyncConfig,
     },
 };
 
@@ -138,6 +142,22 @@ fn rpc() -> RpcConfig {
     }
 }
 
+fn controllers() -> ControllersConfig {
+    ControllersConfig {
+        http_api: http_api(),
+        rpc: rpc(),
+    }
+}
+
+fn periodic_tasks() -> PeriodicTasksConfig {
+    PeriodicTasksConfig {
+        cleanup: cleanup(),
+        sync: sync(),
+        paranet_sync: paranet_sync(),
+        proving: proving(),
+    }
+}
+
 fn key_value_store() -> KeyValueStoreManagerConfig {
     KeyValueStoreManagerConfig {
         max_concurrent_operations: 16,
@@ -204,12 +224,8 @@ fn development() -> ConfigRaw {
             format: LogFormat::Pretty,
         },
         telemetry: telemetry(true),
-        cleanup: cleanup(),
-        sync: sync(),
-        paranet_sync: paranet_sync(),
-        proving: proving(),
-        http_api: http_api(),
-        rpc: rpc(),
+        controllers: controllers(),
+        periodic_tasks: periodic_tasks(),
         managers: ManagersConfigRaw {
             network: network(vec![
                 "/ip4/127.0.0.1/tcp/9102/p2p/12D3KooWF1nhFmNp4F1ni6aL3EHcayULrrEBAuutsgPLVr2poadQ"
@@ -265,12 +281,8 @@ fn testnet() -> ConfigRaw {
             format: LogFormat::Pretty,
         },
         telemetry: telemetry(false),
-        cleanup: cleanup(),
-        sync: sync(),
-        paranet_sync: paranet_sync(),
-        proving: proving(),
-        http_api: http_api(),
-        rpc: rpc(),
+        controllers: controllers(),
+        periodic_tasks: periodic_tasks(),
         managers: ManagersConfigRaw {
             network: network(vec![]),
             repository: repository("root", 120),
@@ -342,12 +354,8 @@ fn mainnet() -> ConfigRaw {
             format: LogFormat::Pretty,
         },
         telemetry: telemetry(false),
-        cleanup: cleanup(),
-        sync: sync(),
-        paranet_sync: paranet_sync(),
-        proving: proving(),
-        http_api: http_api(),
-        rpc: rpc(),
+        controllers: controllers(),
+        periodic_tasks: periodic_tasks(),
         managers: ManagersConfigRaw {
             network: network(vec![
                 "/ip4/157.230.96.194/tcp/9000/p2p/QmZFcns6eGUosD96beHyevKu1jGJ1bA56Reg2f1J4q59Jt"
@@ -478,7 +486,7 @@ mod tests {
         let config: ConfigRaw = figment.extract().expect("merge failed");
         assert_eq!(config.managers.repository.max_connections, 50);
         // Other defaults should be preserved
-        assert_eq!(config.http_api.port, 8900);
+        assert_eq!(config.controllers.http_api.port, 8900);
         assert_eq!(config.managers.repository.user, "root");
     }
 

@@ -88,10 +88,7 @@ pub async fn run() {
         network_event_loop,
         controllers.rpc_router,
         controllers.http_router,
-        config.cleanup.clone(),
-        config.sync.clone(),
-        config.paranet_sync.clone(),
-        config.proving.clone(),
+        config.periodic_tasks.clone(),
         config.telemetry.metrics.enabled,
     )
     .await;
