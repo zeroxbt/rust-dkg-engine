@@ -2355,7 +2355,7 @@ dependencies = [
 
 [[package]]
 name = "dkg-blockchain"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "alloy",
  "dkg-domain",
@@ -2375,7 +2375,7 @@ dependencies = [
 
 [[package]]
 name = "dkg-domain"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "alloy",
  "serde",
@@ -2386,7 +2386,7 @@ dependencies = [
 
 [[package]]
 name = "dkg-key-value-store"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "chrono",
  "dkg-domain",
@@ -2402,7 +2402,7 @@ dependencies = [
 
 [[package]]
 name = "dkg-network"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "async-trait",
  "dkg-domain",
@@ -2423,14 +2423,14 @@ dependencies = [
 
 [[package]]
 name = "dkg-observability"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "metrics",
 ]
 
 [[package]]
 name = "dkg-repository"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "chrono",
  "sea-orm",
@@ -2443,7 +2443,7 @@ dependencies = [
 
 [[package]]
 name = "dkg-triple-store"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4421,7 +4421,7 @@ checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 
 [[package]]
 name = "local_network"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "alloy",
  "clap",
@@ -6067,7 +6067,7 @@ checksum = "48fd7bd8a6377e15ad9d42a8ec25371b94ddc67abe7c8b9127bec79bebaaae18"
 
 [[package]]
 name = "rust-dkg-engine"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "axum",
  "chrono",
