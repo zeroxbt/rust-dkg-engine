@@ -2,7 +2,9 @@ use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use dkg_blockchain::BlockchainId;
-use dkg_network::{PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_GET};
+use dkg_network::{
+    PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_GET, STREAM_PROTOCOL_BATCH_GET, STREAM_PROTOCOL_GET,
+};
 use dkg_observability as observability;
 use dkg_repository::KcSyncRepository;
 use tokio_util::sync::CancellationToken;
@@ -187,7 +189,7 @@ impl StateSnapshotTask {
 
         let batch_get_capable = self
             .peer_registry
-            .protocol_capable_shard_peer_count(blockchain_id, PROTOCOL_NAME_BATCH_GET);
+            .protocol_capable_shard_peer_count(blockchain_id, STREAM_PROTOCOL_BATCH_GET);
         observability::record_peer_registry_protocol_capable_shard_peers(
             blockchain_label,
             PROTOCOL_NAME_BATCH_GET,
@@ -196,7 +198,7 @@ impl StateSnapshotTask {
 
         let get_capable = self
             .peer_registry
-            .protocol_capable_shard_peer_count(blockchain_id, PROTOCOL_NAME_GET);
+            .protocol_capable_shard_peer_count(blockchain_id, STREAM_PROTOCOL_GET);
         observability::record_peer_registry_protocol_capable_shard_peers(
             blockchain_label,
             PROTOCOL_NAME_GET,

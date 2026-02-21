@@ -167,6 +167,11 @@ async fn insert_and_query_knowledge_collection() {
     assert!(metadata_triples.contains(predicates::PUBLISH_TX));
     assert!(metadata_triples.contains(predicates::PUBLISH_TIME));
     assert!(metadata_triples.contains(predicates::BLOCK_TIME));
+    let has_ka_count = metadata_triples
+        .lines()
+        .filter(|line| line.contains(predicates::HAS_KNOWLEDGE_ASSET))
+        .count();
+    assert_eq!(has_ka_count, 2);
 }
 
 #[tokio::test]

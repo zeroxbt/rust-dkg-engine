@@ -47,6 +47,17 @@ impl TripleStoreManager {
         let mut total_triples = 0;
         let mut all_named_graphs: Vec<String> = Vec::new();
 
+        // Build KC -> KA metadata once per KA (independent of graph visibility).
+        let mut kc_to_ka_metadata = String::new();
+        for ka in knowledge_assets {
+            kc_to_ka_metadata.push_str(&format!(
+                "    <{}> <{}> <{}> .\n",
+                kc_ual,
+                predicates::HAS_KNOWLEDGE_ASSET,
+                ka.ual()
+            ));
+        }
+
         // Build public named graphs
         let mut public_graphs_insert = String::new();
         let mut current_public_metadata = String::new();
@@ -73,13 +84,6 @@ impl TripleStoreManager {
             ));
             total_triples += 1; // current metadata triple
 
-            // KC hasKnowledgeAsset KA
-            connection_public_metadata.push_str(&format!(
-                "    <{}> <{}> <{}> .\n",
-                kc_ual,
-                predicates::HAS_KNOWLEDGE_ASSET,
-                ka.ual()
-            ));
             // KC hasNamedGraph <ual/public>
             connection_public_metadata.push_str(&format!(
                 "    <{}> <{}> <{}> .\n",
@@ -116,13 +120,6 @@ impl TripleStoreManager {
                 ));
                 total_triples += 1; // current metadata triple
 
-                // KC hasKnowledgeAsset KA (for private)
-                connection_private_metadata.push_str(&format!(
-                    "    <{}> <{}> <{}> .\n",
-                    kc_ual,
-                    predicates::HAS_KNOWLEDGE_ASSET,
-                    ka.ual()
-                ));
                 // KC hasNamedGraph <ual/private>
                 connection_private_metadata.push_str(&format!(
                     "    <{}> <{}> <{}> .\n",
@@ -220,7 +217,7 @@ impl TripleStoreManager {
                 {public_graphs}{private_graphs}  GRAPH <{current_graph}> {{
                 {current_public}{current_private}  }}
                 GRAPH <{metadata_graph}> {{
-                {conn_public}{conn_private}{meta_triples}  }}
+                {kc_to_ka}{conn_public}{conn_private}{meta_triples}  }}
                 {paranet_graph}
                 }}
                 WHERE {{
@@ -238,6 +235,7 @@ impl TripleStoreManager {
                 current_public = current_public_metadata,
                 current_private = current_private_metadata,
                 metadata_graph = named_graphs::METADATA,
+                kc_to_ka = kc_to_ka_metadata,
                 conn_public = connection_public_metadata,
                 conn_private = connection_private_metadata,
                 meta_triples = metadata_triples,
@@ -251,7 +249,7 @@ impl TripleStoreManager {
                 {}{}  GRAPH <{}> {{
                 {}{}  }}
                 GRAPH <{}> {{
-                {}{}{}  }}
+                {}{}{}{}  }}
                 {}
                 }}"#,
                 public_graphs_insert,
@@ -260,6 +258,7 @@ impl TripleStoreManager {
                 current_public_metadata,
                 current_private_metadata,
                 named_graphs::METADATA,
+                kc_to_ka_metadata,
                 connection_public_metadata,
                 connection_private_metadata,
                 metadata_triples,

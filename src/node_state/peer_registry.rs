@@ -119,7 +119,9 @@ impl PeerRegistry {
     }
 
     pub(crate) fn peer_supports_protocol(&self, peer_id: &PeerId, protocol: &'static str) -> bool {
-        let protocol = StreamProtocol::new(protocol);
+        let Some(protocol) = Self::parse_stream_protocol(protocol) else {
+            return false;
+        };
         self.peers
             .get(peer_id)
             .and_then(|entry| entry.identify.as_ref().cloned())
@@ -185,7 +187,9 @@ impl PeerRegistry {
         blockchain_id: &BlockchainId,
         protocol: &'static str,
     ) -> usize {
-        let protocol = StreamProtocol::new(protocol);
+        let Some(protocol) = Self::parse_stream_protocol(protocol) else {
+            return 0;
+        };
         self.peers
             .iter()
             .filter(|entry| {
@@ -208,7 +212,9 @@ impl PeerRegistry {
         exclude_peer: Option<&PeerId>,
     ) -> Vec<PeerId> {
         let protocol_label = protocol;
-        let protocol = StreamProtocol::new(protocol);
+        let Some(protocol) = Self::parse_stream_protocol(protocol) else {
+            return Vec::new();
+        };
         let shard_peers = self.shard_peer_count(blockchain_id);
 
         let mut peers: Vec<PeerId> = self
@@ -244,6 +250,17 @@ impl PeerRegistry {
             peers.len(),
         );
         peers
+    }
+
+    fn parse_stream_protocol(protocol: &'static str) -> Option<StreamProtocol> {
+        if !protocol.starts_with('/') {
+            tracing::warn!(
+                protocol,
+                "Invalid stream protocol identifier; expected leading '/'"
+            );
+            return None;
+        }
+        Some(StreamProtocol::new(protocol))
     }
 
     /// Check if a peer is in a specific shard.
@@ -692,5 +709,24 @@ mod tests {
         registry.apply_peer_event(PeerEvent::ConnectionEstablished { peer_id: peer });
         assert!(registry.should_attempt_discovery(&peer));
         assert!(registry.discovery_backoff(&peer).is_none());
+    }
+
+    #[test]
+    fn invalid_protocol_string_does_not_panic() {
+        let registry = PeerRegistry::new();
+        let blockchain = BlockchainId::from(TEST_BLOCKCHAIN.to_string());
+        let peer = PeerId::random();
+        register_peer(&registry, peer);
+
+        assert!(!registry.peer_supports_protocol(&peer, "BatchGet"));
+        assert_eq!(
+            registry.protocol_capable_shard_peer_count(&blockchain, "BatchGet"),
+            0
+        );
+        assert!(
+            registry
+                .select_shard_peers(&blockchain, "BatchGet", None)
+                .is_empty()
+        );
     }
 }
