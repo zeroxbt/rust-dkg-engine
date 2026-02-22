@@ -54,7 +54,8 @@ tempfile = { workspace = true }
 [patch.crates-io]
 # Patch libp2p-identity to support 1024-bit RSA keys for legacy js-libp2p node compatibility
 # See: https://github.com/libp2p/rust-libp2p/issues/5304
-libp2p-identity = { path = "patches/libp2p-identity" }
+libp2p-identity = { git = "https://github.com/zeroxbt/rust-libp2p.git", rev = "052053aeb029ab9781dcbb88f357b686333b7c15" }
+
 
 [lints]
 workspace = true
