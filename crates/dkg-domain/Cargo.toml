@@ -1,6 +1,6 @@
 [package]
 name = "dkg-domain"
-version = "0.1.10"
+version = "0.1.11"
 rust-version = "1.92.0"
 edition = "2024"
 
