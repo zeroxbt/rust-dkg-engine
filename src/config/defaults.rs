@@ -13,7 +13,9 @@ use dkg_blockchain::{BlockchainConfigRaw, BlockchainManagerConfigRaw, Blockchain
 use dkg_key_value_store::KeyValueStoreManagerConfig;
 use dkg_network::NetworkManagerConfig;
 use dkg_repository::RepositoryManagerConfigRaw;
-use dkg_triple_store::{TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig};
+use dkg_triple_store::{
+    OxigraphStoreConfig, TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig,
+};
 
 use super::{ConfigError, ConfigRaw};
 use crate::{
@@ -181,6 +183,11 @@ fn triple_store(url: &str) -> TripleStoreManagerConfig {
             ask_ms: 10000,
         },
         max_concurrent_operations: 16,
+        oxigraph: OxigraphStoreConfig {
+            // Keep RocksDB file handles bounded instead of scaling with high RLIMIT_NOFILE.
+            max_open_files: Some(4096),
+            fd_reserve: None,
+        },
     }
 }
 

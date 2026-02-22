@@ -15,7 +15,10 @@ use std::{
 };
 
 use backend::{BlazegraphBackend, OxigraphBackend, TripleStoreBackend};
-pub use config::{DKG_REPOSITORY, TimeoutConfig, TripleStoreBackendType, TripleStoreManagerConfig};
+pub use config::{
+    DKG_REPOSITORY, OxigraphStoreConfig, TimeoutConfig, TripleStoreBackendType,
+    TripleStoreManagerConfig,
+};
 use error::{Result, TripleStoreError};
 pub use rdf::{
     compare_js_default_string_order, extract_quoted_string, extract_subject,
@@ -64,7 +67,7 @@ impl TripleStoreManager {
                     std::fs::create_dir_all(parent)?;
                 }
 
-                Box::new(OxigraphBackend::open(store_path)?)
+                Box::new(OxigraphBackend::open(store_path, &config.oxigraph)?)
             }
         };
 

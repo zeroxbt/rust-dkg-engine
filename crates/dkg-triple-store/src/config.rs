@@ -45,6 +45,28 @@ pub struct TripleStoreManagerConfig {
     /// Limits how many triple store operations can run simultaneously.
     /// Useful to prevent overwhelming Blazegraph or causing resource contention.
     pub max_concurrent_operations: usize,
+
+    /// Oxigraph-specific storage options.
+    ///
+    /// Ignored for Blazegraph backend.
+    #[serde(default)]
+    pub oxigraph: OxigraphStoreConfig,
+}
+
+/// Oxigraph storage open options.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(deny_unknown_fields)]
+pub struct OxigraphStoreConfig {
+    /// Cap for RocksDB open files used by Oxigraph.
+    ///
+    /// If `None`, Oxigraph derives the value from process file descriptor limits.
+    pub max_open_files: Option<u32>,
+
+    /// File descriptors reserved for non-RocksDB usage when deriving
+    /// `max_open_files` from process limits.
+    ///
+    /// Ignored when `max_open_files` is explicitly set.
+    pub fd_reserve: Option<u32>,
 }
 
 /// Timeout configuration for different SPARQL operations

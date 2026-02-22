@@ -16,7 +16,7 @@ use tempfile::TempDir;
 use crate::{
     GraphVisibility, TripleStoreBackend, TripleStoreBackendType, TripleStoreManager,
     TripleStoreManagerConfig,
-    config::TimeoutConfig,
+    config::{OxigraphStoreConfig, TimeoutConfig},
     query::{named_graphs, predicates},
 };
 
@@ -69,6 +69,7 @@ fn test_config_for_backend(
             ask_ms: 10_000,
         },
         max_concurrent_operations,
+        oxigraph: OxigraphStoreConfig::default(),
     }
 }
 

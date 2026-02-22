@@ -9,7 +9,8 @@ use dkg_domain::KnowledgeAsset;
 use tempfile::TempDir;
 
 use crate::{
-    TripleStoreBackendType, TripleStoreManager, TripleStoreManagerConfig, config::TimeoutConfig,
+    TripleStoreBackendType, TripleStoreManager, TripleStoreManagerConfig,
+    config::{OxigraphStoreConfig, TimeoutConfig},
 };
 
 fn blazegraph_config() -> TripleStoreManagerConfig {
@@ -27,6 +28,7 @@ fn blazegraph_config() -> TripleStoreManagerConfig {
             ask_ms: 10000,
         },
         max_concurrent_operations: 16,
+        oxigraph: OxigraphStoreConfig::default(),
     }
 }
 

@@ -61,14 +61,14 @@ journalctl -u rust-dkg-engine -f
 
 ## File descriptor limit (Oxigraph)
 If you see `Too many open files` errors, increase the systemd limit for the service.
-The installer template sets `LimitNOFILE=1048576`. For an already-installed node you can apply it with:
+The installer template sets `LimitNOFILE=16384`. For an already-installed node you can apply it with:
 ```bash
 sudo systemctl edit rust-dkg-engine
 ```
 Then add:
 ```ini
 [Service]
-LimitNOFILE=1048576
+LimitNOFILE=16384
 ```
 And reload + restart:
 ```bash

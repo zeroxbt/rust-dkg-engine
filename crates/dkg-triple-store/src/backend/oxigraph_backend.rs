@@ -3,12 +3,15 @@ use std::{path::Path, time::Duration};
 use async_trait::async_trait;
 use oxigraph::{
     sparql::{QueryResults, SparqlEvaluator},
-    store::Store,
+    store::{Store, StoreOptions},
 };
 use serde_json::json;
 
 use super::TripleStoreBackend;
-use crate::error::{Result, TripleStoreError};
+use crate::{
+    config::OxigraphStoreConfig,
+    error::{Result, TripleStoreError},
+};
 
 /// Oxigraph embedded triple store backend
 ///
@@ -20,13 +23,31 @@ pub struct OxigraphBackend {
 
 impl OxigraphBackend {
     /// Create a new Oxigraph backend with persistent storage
-    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let store = Store::open(&path).map_err(|e| {
+    pub fn open(path: impl AsRef<Path>, config: &OxigraphStoreConfig) -> Result<Self> {
+        let max_open_files = config
+            .max_open_files
+            .map(i32::try_from)
+            .transpose()
+            .map_err(|_| {
+                TripleStoreError::Other(format!(
+                    "Invalid oxigraph.max_open_files value {}; max supported is {}",
+                    config.max_open_files.unwrap_or_default(),
+                    i32::MAX
+                ))
+            })?;
+        let options = StoreOptions {
+            max_open_files,
+            fd_reserve: config.fd_reserve,
+        };
+
+        let store = Store::open_with_options(&path, options).map_err(|e| {
             TripleStoreError::Other(format!("Failed to open Oxigraph store: {}", e))
         })?;
 
         tracing::info!(
             path = %path.as_ref().display(),
+            max_open_files = ?options.max_open_files,
+            fd_reserve = ?options.fd_reserve,
             "Opened Oxigraph persistent store"
         );
 
