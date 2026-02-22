@@ -28,6 +28,8 @@ use super::{
     },
 };
 
+pub(super) const ACTION_CHANNEL_CAPACITY: usize = 128;
+
 /// NetworkManager handle for network operations.
 ///
 /// This is a lightweight handle that sends actions to the NetworkEventLoop.
@@ -41,19 +43,6 @@ pub struct NetworkManager {
 }
 
 impl NetworkManager {
-    fn channel_depth<T>(tx: &mpsc::Sender<T>) -> usize {
-        tx.max_capacity().saturating_sub(tx.capacity())
-    }
-
-    fn channel_fill_ratio<T>(tx: &mpsc::Sender<T>) -> f64 {
-        let max = tx.max_capacity() as f64;
-        if max == 0.0 {
-            0.0
-        } else {
-            Self::channel_depth(tx) as f64 / max
-        }
-    }
-
     async fn await_protocol_response<T>(
         protocol: &str,
         rx: oneshot::Receiver<Result<T, NetworkError>>,
@@ -91,8 +80,8 @@ impl NetworkManager {
         key: identity::Keypair,
     ) -> Result<(Self, super::event_loop::NetworkEventLoop), NetworkError> {
         let (swarm, local_peer_id) = build_swarm(config, key)?;
-        let (control_tx, control_rx) = mpsc::channel(128);
-        let (data_tx, data_rx) = mpsc::channel(128);
+        let (control_tx, control_rx) = mpsc::channel(ACTION_CHANNEL_CAPACITY);
+        let (data_tx, data_rx) = mpsc::channel(ACTION_CHANNEL_CAPACITY);
         let (peer_event_tx, _) = broadcast::channel(1024);
         let shutdown = CancellationToken::new();
 
@@ -139,16 +128,6 @@ impl NetworkManager {
             status,
             started.elapsed(),
         );
-        if result.is_ok() {
-            observability::record_network_action_queue_depth(
-                "control",
-                Self::channel_depth(&self.control_tx),
-            );
-            observability::record_network_action_channel_fill(
-                "control",
-                Self::channel_fill_ratio(&self.control_tx),
-            );
-        }
         result.map_err(|_| NetworkError::ActionChannelClosed)
     }
 
@@ -163,16 +142,6 @@ impl NetworkManager {
             status,
             started.elapsed(),
         );
-        if result.is_ok() {
-            observability::record_network_action_queue_depth(
-                "data",
-                Self::channel_depth(&self.data_tx),
-            );
-            observability::record_network_action_channel_fill(
-                "data",
-                Self::channel_fill_ratio(&self.data_tx),
-            );
-        }
         result.map_err(|_| NetworkError::ActionChannelClosed)
     }
 

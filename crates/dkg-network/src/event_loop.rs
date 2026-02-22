@@ -21,6 +21,7 @@ use super::{
     NetworkManagerConfig, PeerEvent, RequestOutcome, RequestOutcomeKind, ResponseHandle,
     actions::{NetworkControlAction, NetworkDataAction},
     behaviour::{NodeBehaviour, NodeBehaviourEvent},
+    handle::ACTION_CHANNEL_CAPACITY,
     message::{ProtocolResponse as ResponsePayload, RequestMessage, ResponseMessage},
     pending_requests::{PendingRequests, RequestContext},
     protocols::{
@@ -274,6 +275,10 @@ pub struct NetworkEventLoop {
 }
 
 impl NetworkEventLoop {
+    fn action_channel_fill_ratio(depth: usize) -> f64 {
+        (depth as f64 / ACTION_CHANNEL_CAPACITY as f64).clamp(0.0, 1.0)
+    }
+
     /// Create a new NetworkEventLoop.
     pub(super) fn new(
         swarm: Swarm<NodeBehaviour>,
@@ -285,6 +290,9 @@ impl NetworkEventLoop {
     ) -> Self {
         observability::record_network_action_queue_depth("control", 0);
         observability::record_network_action_queue_depth("data", 0);
+        observability::record_network_action_channel_fill("control", 0.0);
+        observability::record_network_action_channel_fill("data", 0.0);
+        observability::record_network_connected_peers(0);
         observability::record_network_pending_requests(StoreProtocol::NAME, 0);
         observability::record_network_pending_requests(GetProtocol::NAME, 0);
         observability::record_network_pending_requests(FinalityProtocol::NAME, 0);
@@ -406,9 +414,11 @@ impl NetworkEventLoop {
                     Ok(action) => {
                         observability::record_network_action_dequeue("control", action.kind());
                         self.handle_control_action(action);
-                        observability::record_network_action_queue_depth(
+                        let depth = self.control_rx.len();
+                        observability::record_network_action_queue_depth("control", depth);
+                        observability::record_network_action_channel_fill(
                             "control",
-                            self.control_rx.len(),
+                            Self::action_channel_fill_ratio(depth),
                         );
                     }
                     Err(mpsc::error::TryRecvError::Empty) => break,
@@ -416,6 +426,7 @@ impl NetworkEventLoop {
                         tracing::info!("Control channel closed");
                         control_closed = true;
                         observability::record_network_action_queue_depth("control", 0);
+                        observability::record_network_action_channel_fill("control", 0.0);
                         break;
                     }
                 }
@@ -434,15 +445,18 @@ impl NetworkEventLoop {
                         Some(action) => {
                             observability::record_network_action_dequeue("control", action.kind());
                             self.handle_control_action(action);
-                            observability::record_network_action_queue_depth(
+                            let depth = self.control_rx.len();
+                            observability::record_network_action_queue_depth("control", depth);
+                            observability::record_network_action_channel_fill(
                                 "control",
-                                self.control_rx.len(),
+                                Self::action_channel_fill_ratio(depth),
                             );
                         }
                         None => {
                             tracing::info!("Control channel closed");
                             control_closed = true;
                             observability::record_network_action_queue_depth("control", 0);
+                            observability::record_network_action_channel_fill("control", 0.0);
                         }
                     }
                 }
@@ -451,15 +465,18 @@ impl NetworkEventLoop {
                         Some(action) => {
                             observability::record_network_action_dequeue("data", action.kind());
                             self.handle_data_action(action);
-                            observability::record_network_action_queue_depth(
+                            let depth = self.data_rx.len();
+                            observability::record_network_action_queue_depth("data", depth);
+                            observability::record_network_action_channel_fill(
                                 "data",
-                                self.data_rx.len(),
+                                Self::action_channel_fill_ratio(depth),
                             );
                         }
                         None => {
                             tracing::info!("Data channel closed");
                             data_closed = true;
                             observability::record_network_action_queue_depth("data", 0);
+                            observability::record_network_action_channel_fill("data", 0.0);
                         }
                     }
                 }
@@ -601,9 +618,14 @@ impl NetworkEventLoop {
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 observability::record_network_peer_event("connection_established", "established");
+                observability::record_network_connected_peers(self.swarm.connected_peers().count());
                 let _ = self
                     .peer_event_tx
                     .send(PeerEvent::ConnectionEstablished { peer_id });
+            }
+            SwarmEvent::ConnectionClosed { .. } => {
+                observability::record_network_peer_event("connection_closed", "closed");
+                observability::record_network_connected_peers(self.swarm.connected_peers().count());
             }
             _ => {}
         }

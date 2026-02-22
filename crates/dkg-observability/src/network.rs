@@ -85,6 +85,10 @@ pub fn record_network_pending_requests(protocol: &str, pending: usize) {
     .set(pending as f64);
 }
 
+pub fn record_network_connected_peers(connected_peers: usize) {
+    gauge!("node_network_connected_peers").set(connected_peers as f64);
+}
+
 pub fn record_network_response_channel(protocol: &str, status: &str, wait: Duration) {
     counter!(
         "node_network_response_channel_total",
@@ -98,6 +102,46 @@ pub fn record_network_response_channel(protocol: &str, status: &str, wait: Durat
         "status" => status.to_string()
     )
     .record(wait.as_secs_f64());
+}
+
+pub fn record_network_payload_bytes(
+    protocol: &str,
+    direction: &str,
+    kind: &str,
+    total_bytes: usize,
+    data_bytes: usize,
+) {
+    histogram!(
+        "node_network_payload_total_bytes",
+        "protocol" => protocol.to_string(),
+        "direction" => direction.to_string(),
+        "kind" => kind.to_string()
+    )
+    .record(total_bytes as f64);
+    histogram!(
+        "node_network_payload_data_bytes",
+        "protocol" => protocol.to_string(),
+        "direction" => direction.to_string(),
+        "kind" => kind.to_string()
+    )
+    .record(data_bytes as f64);
+}
+
+pub fn record_network_response_channel_cache_depth(protocol: &str, depth: usize) {
+    gauge!(
+        "node_network_response_channel_cache_depth",
+        "protocol" => protocol.to_string()
+    )
+    .set(depth as f64);
+}
+
+pub fn record_network_response_channel_cache_event(protocol: &str, event: &str, count: usize) {
+    counter!(
+        "node_network_response_channel_cache_total",
+        "protocol" => protocol.to_string(),
+        "event" => event.to_string()
+    )
+    .increment(count as u64);
 }
 
 pub fn record_network_response_send(protocol: &str, mode: &str, status: &str) {

@@ -2,6 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use dashmap::DashMap;
 use dkg_network::{PeerId, ResponseHandle};
+use dkg_observability as observability;
 use tokio::time::Instant;
 use uuid::Uuid;
 
@@ -26,14 +27,18 @@ struct ChannelEntry<T> {
 pub(crate) struct ResponseChannels<T> {
     channels: Arc<DashMap<ChannelKey, ChannelEntry<T>>>,
     timeout: Duration,
+    protocol: &'static str,
 }
 
 impl<T> ResponseChannels<T> {
-    pub(crate) fn new() -> Self {
-        Self {
+    pub(crate) fn new(protocol: &'static str) -> Self {
+        let channels = Self {
             channels: Arc::new(DashMap::new()),
             timeout: DEFAULT_TIMEOUT,
-        }
+            protocol,
+        };
+        observability::record_network_response_channel_cache_depth(protocol, 0);
+        channels
     }
 
     pub(crate) fn store(&self, peer_id: &PeerId, operation_id: Uuid, channel: ResponseHandle<T>) {
@@ -49,7 +54,16 @@ impl<T> ResponseChannels<T> {
             operation_id
         );
 
-        self.channels.insert(key, entry);
+        let replaced = self.channels.insert(key, entry).is_some();
+        observability::record_network_response_channel_cache_event(
+            self.protocol,
+            if replaced { "store_replaced" } else { "store" },
+            1,
+        );
+        observability::record_network_response_channel_cache_depth(
+            self.protocol,
+            self.channels.len(),
+        );
     }
 
     pub(crate) fn retrieve(
@@ -65,7 +79,21 @@ impl<T> ResponseChannels<T> {
             operation_id
         );
 
-        self.channels.remove(&key).map(|(_, entry)| entry.channel)
+        let response_channel = self.channels.remove(&key).map(|(_, entry)| entry.channel);
+        observability::record_network_response_channel_cache_event(
+            self.protocol,
+            if response_channel.is_some() {
+                "retrieve_hit"
+            } else {
+                "retrieve_miss"
+            },
+            1,
+        );
+        observability::record_network_response_channel_cache_depth(
+            self.protocol,
+            self.channels.len(),
+        );
+        response_channel
     }
 
     pub(crate) fn cleanup_expired(&self) -> usize {
@@ -85,7 +113,16 @@ impl<T> ResponseChannels<T> {
             for key in expired_keys {
                 self.channels.remove(&key);
             }
+            observability::record_network_response_channel_cache_event(
+                self.protocol,
+                "cleanup_expired",
+                removed,
+            );
         }
+        observability::record_network_response_channel_cache_depth(
+            self.protocol,
+            self.channels.len(),
+        );
 
         removed
     }
@@ -93,6 +130,6 @@ impl<T> ResponseChannels<T> {
 
 impl<T> Default for ResponseChannels<T> {
     fn default() -> Self {
-        Self::new()
+        Self::new("unknown")
     }
 }

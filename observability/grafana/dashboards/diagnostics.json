@@ -33,6 +33,644 @@
   "liveNow": false,
   "panels": [
     {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "panels": [],
+      "title": "Memory and FD",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "process_resident_memory_bytes{job=\"rust-dkg-engine\"} or namedprocess_namegroup_memory_bytes{job=\"process-exporter\",groupname=\"rust-dkg-engine\"}",
+          "instant": false,
+          "legendFormat": "rss",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "process_virtual_memory_bytes{job=\"rust-dkg-engine\"} or namedprocess_namegroup_virtual_memory_bytes{job=\"process-exporter\",groupname=\"rust-dkg-engine\"}",
+          "instant": false,
+          "legendFormat": "virtual",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Process Memory (RSS vs Virtual)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "process_open_fds{job=\"rust-dkg-engine\"} or namedprocess_namegroup_open_filedesc{job=\"process-exporter\",groupname=\"rust-dkg-engine\"}",
+          "instant": false,
+          "legendFormat": "open_fds",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "process_max_fds{job=\"rust-dkg-engine\"} or (namedprocess_namegroup_open_filedesc{job=\"process-exporter\",groupname=\"rust-dkg-engine\"} / clamp_min(namedprocess_namegroup_worst_fd_ratio{job=\"process-exporter\",groupname=\"rust-dkg-engine\"}, 1e-9))",
+          "instant": false,
+          "legendFormat": "max_fds",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Process File Descriptors",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_process_fd_total_snapshot",
+          "instant": false,
+          "legendFormat": "fd_total_snapshot",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "process_open_fds{job=\"rust-dkg-engine\"} or namedprocess_namegroup_open_filedesc{job=\"process-exporter\",groupname=\"rust-dkg-engine\"}",
+          "instant": false,
+          "legendFormat": "open_fds_exporter",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Process FD Total (Snapshot vs Exporter)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_process_fd_by_type",
+          "instant": false,
+          "legendFormat": "{{fd_type}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Process FD by Type",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))",
+          "instant": false,
+          "legendFormat": "{{instance}} used_pct",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Host Memory Used %",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_memory_MemAvailable_bytes",
+          "instant": false,
+          "legendFormat": "{{instance}} mem_available",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes",
+          "instant": false,
+          "legendFormat": "{{instance}} swap_used",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Host Available and Swap Used",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "id": 101,
+      "panels": [],
+      "title": "Network In-Flight",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 26
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_network_pending_requests",
+          "instant": false,
+          "legendFormat": "{{protocol}} pending",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_network_connected_peers",
+          "instant": false,
+          "legendFormat": "connected_peers",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Network Pending Requests",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 26
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_network_action_queue_depth",
+          "instant": false,
+          "legendFormat": "{{queue}} depth",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Network Action Queue Depth",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 26
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_network_action_channel_fill_ratio",
+          "instant": false,
+          "legendFormat": "{{queue}} fill_ratio",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Network Action Channel Fill Ratio",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_network_response_channel_cache_depth",
+          "instant": false,
+          "legendFormat": "{{protocol}} depth",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Response Channel Cache Depth",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 34
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (protocol, event) (rate(node_network_response_channel_cache_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{protocol}} {{event}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Response Channel Cache Churn",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
+      "id": 102,
+      "panels": [],
+      "title": "Network Throughput and Latency",
+      "type": "row"
+    },
+    {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -50,9 +688,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 0
+        "y": 43
       },
-      "id": 1,
+      "id": 12,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -91,55 +729,6 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
-      "id": 2,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "100 * (sum by (protocol) (rate(node_network_outbound_request_total{outcome=~\"response_error|failure\"}[5m])) / clamp_min(sum by (protocol) (rate(node_network_outbound_request_total[5m])), 1e-9))",
-          "instant": false,
-          "legendFormat": "{{protocol}} error_ratio",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Outbound Error Ratio by Protocol",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
           "unit": "s"
         },
         "overrides": []
@@ -147,10 +736,10 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 8
+        "x": 12,
+        "y": 43
       },
-      "id": 3,
+      "id": 13,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -201,55 +790,6 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 8
-      },
-      "id": 4,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (protocol, outcome) (rate(node_network_outbound_request_duration_seconds_sum[5m])) / clamp_min(sum by (protocol, outcome) (rate(node_network_outbound_request_duration_seconds_count[5m])), 1e-9)",
-          "instant": false,
-          "legendFormat": "{{protocol}} {{outcome}} avg",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Outbound Request Average Duration",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
           "unit": "ops"
         },
         "overrides": []
@@ -258,9 +798,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 51
       },
-      "id": 5,
+      "id": 14,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -279,210 +819,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (protocol, decision) (rate(node_network_inbound_request_total[5m]))",
+          "expr": "sum by (protocol, status) (rate(node_network_response_channel_total[5m]))",
           "instant": false,
-          "legendFormat": "{{protocol}} {{decision}}",
+          "legendFormat": "{{protocol}} {{status}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Inbound Decision Rate by Protocol",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 16
-      },
-      "id": 6,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "100 * (sum by (protocol) (rate(node_network_inbound_request_total{decision=~\"rate_limited|controller_busy\"}[5m])) / clamp_min(sum by (protocol) (rate(node_network_inbound_request_total[5m])), 1e-9))",
-          "instant": false,
-          "legendFormat": "{{protocol}} busy_ratio",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Inbound Busy Ratio by Protocol",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 24
-      },
-      "id": 7,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (event, status) (rate(node_network_peer_event_total[5m]))",
-          "instant": false,
-          "legendFormat": "{{event}} {{status}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Peer Event Rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 24
-      },
-      "id": 8,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (protocol, outcome) (increase(node_network_outbound_request_total[1h]))",
-          "instant": false,
-          "legendFormat": "{{protocol}} {{outcome}} volume_1h",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Outbound Request Volume (1h)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 32
-      },
-      "id": 9,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "node_network_action_queue_depth",
-          "instant": false,
-          "legendFormat": "{{queue}} depth",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Action Queue Depth",
+      "title": "Response Channel Outcome Rate",
       "type": "timeseries"
     },
     {
@@ -503,9 +847,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 32
+        "y": 51
       },
-      "id": 10,
+      "id": 15,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -524,15 +868,40 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (queue, action, status) (rate(node_network_action_enqueue_wait_seconds_sum[5m])) / clamp_min(sum by (queue, action, status) (rate(node_network_action_enqueue_wait_seconds_count[5m])), 1e-9)",
+          "expr": "node_network_response_channel_wait_seconds{quantile=\"0.95\"}",
           "instant": false,
-          "legendFormat": "{{queue}} {{action}} {{status}} avg_wait",
+          "legendFormat": "{{protocol}} {{status}} p95",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_network_response_channel_wait_seconds{quantile=\"0.99\"}",
+          "instant": false,
+          "legendFormat": "{{protocol}} {{status}} p99",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "Action Enqueue Wait (Average)",
+      "title": "Response Channel Wait p95/p99",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      },
+      "id": 103,
+      "panels": [],
+      "title": "Task and Backend Pressure",
+      "type": "row"
     },
     {
       "datasource": {
@@ -552,9 +921,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 40
+        "y": 60
       },
-      "id": 11,
+      "id": 16,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -573,26 +942,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (queue, action, status) (rate(node_network_action_enqueue_total[5m]))",
+          "expr": "sum by (task, status) (rate(node_task_runs_total[5m]))",
           "instant": false,
-          "legendFormat": "enq {{queue}} {{action}} {{status}}",
+          "legendFormat": "{{task}} {{status}}",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (queue, action) (rate(node_network_action_dequeue_total[5m]))",
-          "instant": false,
-          "legendFormat": "deq {{queue}} {{action}}",
-          "range": true,
-          "refId": "B"
         }
       ],
-      "title": "Action Enqueue/Dequeue Rate",
+      "title": "Task Run Rate",
       "type": "timeseries"
     },
     {
@@ -605,7 +962,7 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "ops"
+          "unit": "s"
         },
         "overrides": []
       },
@@ -613,9 +970,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 40
+        "y": 60
       },
-      "id": 12,
+      "id": 17,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -634,9 +991,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (protocol, mode, status) (rate(node_network_response_send_total[5m]))",
+          "expr": "node_task_duration_seconds{quantile=\"0.95\",status=\"completed\"}",
           "instant": false,
-          "legendFormat": "{{protocol}} {{mode}} {{status}}",
+          "legendFormat": "{{task}} p95",
           "range": true,
           "refId": "A"
         },
@@ -646,14 +1003,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_network_pending_requests",
+          "expr": "node_task_duration_seconds{quantile=\"0.99\",status=\"completed\"}",
           "instant": false,
-          "legendFormat": "{{protocol}} pending",
+          "legendFormat": "{{task}} p99",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "Response Send Rate and Pending Requests",
+      "title": "Task Duration p95/p99",
       "type": "timeseries"
     },
     {
@@ -674,9 +1031,144 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 48
+        "y": 68
       },
-      "id": 13,
+      "id": 18,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_triple_store_backend_available_permits",
+          "instant": false,
+          "legendFormat": "{{backend}} available",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_triple_store_backend_in_use_permits",
+          "instant": false,
+          "legendFormat": "{{backend}} in_use",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Triple Store Concurrency Permits",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 68
+      },
+      "id": 19,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (backend, op) (rate(node_triple_store_backend_operation_duration_seconds_sum{status=\"ok\"}[5m])) / clamp_min(sum by (backend, op) (rate(node_triple_store_backend_operation_duration_seconds_count{status=\"ok\"}[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{backend}} {{op}} avg",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_triple_store_backend_operation_duration_seconds{status=\"ok\",quantile=\"0.95\"}",
+          "instant": false,
+          "legendFormat": "{{backend}} {{op}} p95",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Triple Store Operation Duration",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 76
+      },
+      "id": 104,
+      "panels": [],
+      "title": "Peer Registry",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 77
+      },
+      "id": 20,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -747,9 +1239,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 48
+        "y": 77
       },
-      "id": 14,
+      "id": 21,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -762,30 +1254,6 @@
         }
       },
       "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (blockchain_id, protocol) (rate(node_peer_registry_select_shard_peers_sum[5m])) / clamp_min(sum by (blockchain_id, protocol) (rate(node_peer_registry_select_shard_peers_count[5m])), 1e-9)",
-          "instant": false,
-          "legendFormat": "{{blockchain_id}} {{protocol}} shard_avg",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (blockchain_id, protocol) (rate(node_peer_registry_select_protocol_capable_peers_sum[5m])) / clamp_min(sum by (blockchain_id, protocol) (rate(node_peer_registry_select_protocol_capable_peers_count[5m])), 1e-9)",
-          "instant": false,
-          "legendFormat": "{{blockchain_id}} {{protocol}} protocol_capable_avg",
-          "range": true,
-          "refId": "B"
-        },
         {
           "datasource": {
             "type": "prometheus",
@@ -794,96 +1262,10 @@
           "editorMode": "code",
           "expr": "node_peer_registry_protocol_capable_shard_peers",
           "instant": false,
-          "legendFormat": "{{blockchain_id}} {{protocol}} protocol_capable_gauge",
-          "range": true,
-          "refId": "C"
-        }
-      ],
-      "title": "Peer Selection Pool Sizes (Average)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 56
-      },
-      "id": 15,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (protocol, outcome) (rate(node_peer_registry_request_outcome_total[5m]))",
-          "instant": false,
-          "legendFormat": "{{protocol}} {{outcome}}",
+          "legendFormat": "{{blockchain_id}} {{protocol}} capable",
           "range": true,
           "refId": "A"
-        }
-      ],
-      "title": "Peer Request Outcome Rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "short"
         },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 56
-      },
-      "id": 16,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
         {
           "datasource": {
             "type": "prometheus",
@@ -892,172 +1274,26 @@
           "editorMode": "code",
           "expr": "node_peer_registry_discovery_backoff_active",
           "instant": false,
-          "legendFormat": "active_backoff_peers",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Discovery Backoff Active Peers",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 64
-      },
-      "id": 17,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "node_network_response_channel_cache_depth",
-          "instant": false,
-          "legendFormat": "{{protocol}} depth",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Response Channel Cache Depth",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 64
-      },
-      "id": 18,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (protocol, event) (rate(node_network_response_channel_cache_total[5m]))",
-          "instant": false,
-          "legendFormat": "{{protocol}} {{event}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Response Channel Cache Churn",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 72
-      },
-      "id": 19,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "node_network_connected_peers",
-          "instant": false,
-          "legendFormat": "connected_peers",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "node_network_pending_requests",
-          "instant": false,
-          "legendFormat": "{{protocol}} pending",
+          "legendFormat": "discovery_backoff_active",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "Connected Peers and Pending Requests",
+      "title": "Peer Capability and Discovery Backoff",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 85
+      },
+      "id": 105,
+      "panels": [],
+      "title": "Network Payload Sizes",
+      "type": "row"
     },
     {
       "datasource": {
@@ -1076,10 +1312,10 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 72
+        "x": 0,
+        "y": 86
       },
-      "id": 20,
+      "id": 22,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -1107,6 +1343,55 @@
       ],
       "title": "Network Payload Data Bytes (Average)",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 86
+      },
+      "id": 23,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (protocol, direction, kind) (rate(node_network_payload_total_bytes_sum[5m])) / clamp_min(sum by (protocol, direction, kind) (rate(node_network_payload_total_bytes_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{protocol}} {{direction}} {{kind}} avg_total_bytes",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Network Payload Total Bytes (Average)",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
@@ -1115,19 +1400,19 @@
   "tags": [
     "rust-dkg-engine",
     "pilot",
-    "network"
+    "diagnostics"
   ],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now-6h",
+    "from": "now-2h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Rust DKG Engine - Network (Pilot)",
-  "uid": "rust-dkg-network",
-  "version": 5,
+  "title": "Rust DKG Engine - Diagnostics (Pilot)",
+  "uid": "rust-dkg-diagnostics",
+  "version": 2,
   "weekStart": ""
 }

@@ -3,7 +3,10 @@ pub(crate) mod response_channels;
 
 use std::sync::Arc;
 
-use dkg_network::{BatchGetAck, FinalityAck, GetAck, StoreAck};
+use dkg_network::{
+    BatchGetAck, FinalityAck, GetAck, PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_FINALITY,
+    PROTOCOL_NAME_GET, PROTOCOL_NAME_STORE, StoreAck,
+};
 
 pub(crate) use peer_registry::PeerRegistry;
 pub(crate) use response_channels::ResponseChannels;
@@ -19,10 +22,10 @@ pub(crate) struct NodeState {
 pub(crate) fn initialize() -> NodeState {
     NodeState {
         peer_registry: Arc::new(PeerRegistry::new()),
-        store_response_channels: Arc::new(ResponseChannels::new()),
-        get_response_channels: Arc::new(ResponseChannels::new()),
-        finality_response_channels: Arc::new(ResponseChannels::new()),
-        batch_get_response_channels: Arc::new(ResponseChannels::new()),
+        store_response_channels: Arc::new(ResponseChannels::new(PROTOCOL_NAME_STORE)),
+        get_response_channels: Arc::new(ResponseChannels::new(PROTOCOL_NAME_GET)),
+        finality_response_channels: Arc::new(ResponseChannels::new(PROTOCOL_NAME_FINALITY)),
+        batch_get_response_channels: Arc::new(ResponseChannels::new(PROTOCOL_NAME_BATCH_GET)),
     }
 }
 

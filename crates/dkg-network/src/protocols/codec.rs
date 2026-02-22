@@ -9,6 +9,7 @@
 use std::{io, marker::PhantomData};
 
 use async_trait::async_trait;
+use dkg_observability as observability;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use libp2p::{StreamProtocol, request_response::Codec};
 use serde::{Serialize, de::DeserializeOwned};
@@ -87,7 +88,12 @@ async fn write_length_prefixed<W: AsyncWrite + Unpin>(
 /// Format:
 /// - First chunk: JSON header
 /// - Remaining chunks: JSON data (concatenated if split into 1MB chunks)
-async fn read_js_message<T, R>(io: &mut R) -> io::Result<T>
+async fn read_js_message<T, R>(
+    io: &mut R,
+    protocol: &str,
+    direction: &str,
+    kind: &str,
+) -> io::Result<T>
 where
     T: DeserializeOwned,
     R: AsyncRead + Unpin + Send,
@@ -135,6 +141,13 @@ where
         data_len = data_bytes.len(),
         "Received JS-format message"
     );
+    observability::record_network_payload_bytes(
+        protocol,
+        direction,
+        kind,
+        header_bytes.len() + data_bytes.len(),
+        data_bytes.len(),
+    );
 
     serde_json::from_value(combined).map_err(|e| {
         io::Error::new(
@@ -149,7 +162,13 @@ where
 /// Format:
 /// - First chunk: JSON header
 /// - Remaining chunks: JSON data split into 1MB chunks
-async fn write_js_message<T, W>(io: &mut W, msg: T) -> io::Result<()>
+async fn write_js_message<T, W>(
+    io: &mut W,
+    msg: T,
+    protocol: &str,
+    direction: &str,
+    kind: &str,
+) -> io::Result<()>
 where
     T: Serialize,
     W: AsyncWrite + Unpin + Send,
@@ -183,6 +202,13 @@ where
             format!("Failed to serialize data: {}", e),
         )
     })?;
+    observability::record_network_payload_bytes(
+        protocol,
+        direction,
+        kind,
+        header_bytes.len() + data_bytes.len(),
+        data_bytes.len(),
+    );
 
     // Write header as single chunk
     write_length_prefixed(io, &header_bytes).await?;
@@ -211,14 +237,14 @@ where
     where
         T: AsyncRead + Unpin + Send,
     {
-        read_js_message(io).await
+        read_js_message(io, _protocol.as_ref(), "inbound", "request").await
     }
 
     async fn read_response<T>(&mut self, _protocol: &Self::Protocol, io: &mut T) -> io::Result<Resp>
     where
         T: AsyncRead + Unpin + Send,
     {
-        read_js_message(io).await
+        read_js_message(io, _protocol.as_ref(), "inbound", "response").await
     }
 
     async fn write_request<T>(
@@ -230,7 +256,7 @@ where
     where
         T: AsyncWrite + Unpin + Send,
     {
-        write_js_message(io, req).await
+        write_js_message(io, req, _protocol.as_ref(), "outbound", "request").await
     }
 
     async fn write_response<T>(
@@ -242,6 +268,6 @@ where
     where
         T: AsyncWrite + Unpin + Send,
     {
-        write_js_message(io, resp).await
+        write_js_message(io, resp, _protocol.as_ref(), "outbound", "response").await
     }
 }
