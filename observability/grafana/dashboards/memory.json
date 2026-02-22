@@ -778,6 +778,116 @@
       ],
       "title": "Peer Capability and Discovery Backoff",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 51
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_process_fd_by_type",
+          "instant": false,
+          "legendFormat": "{{fd_type}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Process FD by Type (Snapshot)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 51
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "100 * node_process_fd_by_type{fd_type=\"socket\"} / clamp_min(node_process_fd_total_snapshot, 1)",
+          "instant": false,
+          "legendFormat": "socket_fd_ratio",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "100 * node_process_fd_by_type{fd_type=\"anon_inode\"} / clamp_min(node_process_fd_total_snapshot, 1)",
+          "instant": false,
+          "legendFormat": "anon_inode_fd_ratio",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "FD Type Ratio (Socket vs Anon Inode)",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",

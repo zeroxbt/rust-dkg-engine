@@ -80,6 +80,7 @@ bind_address = "127.0.0.1:9464"
 
 `memory.json`:
 - Process-level memory (RSS/virtual) and file descriptor usage
+- Process file-descriptor composition snapshots by type (socket/pipe/anon_inode/file/other)
 - Container memory usage and usage percentage vs configured limits
 - Host memory pressure (used %, available bytes, swap used)
 - Internal backlog and pressure signals (sync queue, network queue depth, pending requests, peer registry size)
@@ -90,6 +91,7 @@ bind_address = "127.0.0.1:9464"
 - Fetch payload sizing: batch-level and per-KC payload bytes
 - Network channel internals: action channel fill/depth, pending requests, response-channel waits/outcomes
 - Peer registry internals: request outcomes/latency plus population/capability/backoff signals
+- Process FD internals: total snapshots and type breakdown for FD leak detection
 
 For `memory.json` to be fully populated, Prometheus must scrape additional exporters besides the node app endpoint:
 - `node-exporter` for `node_memory_*` host metrics

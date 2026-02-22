@@ -73,6 +73,22 @@ pub fn record_dial_peers_discovery(status: &str, requested_peers: usize, duratio
     .record(requested_peers as f64);
 }
 
+pub fn record_process_fd_snapshot(
+    total: usize,
+    sockets: usize,
+    pipes: usize,
+    anon_inodes: usize,
+    files: usize,
+    other: usize,
+) {
+    gauge!("node_process_fd_total_snapshot").set(total as f64);
+    gauge!("node_process_fd_by_type", "fd_type" => "socket").set(sockets as f64);
+    gauge!("node_process_fd_by_type", "fd_type" => "pipe").set(pipes as f64);
+    gauge!("node_process_fd_by_type", "fd_type" => "anon_inode").set(anon_inodes as f64);
+    gauge!("node_process_fd_by_type", "fd_type" => "file").set(files as f64);
+    gauge!("node_process_fd_by_type", "fd_type" => "other").set(other as f64);
+}
+
 pub fn record_sharding_table_check(
     blockchain_id: &str,
     status: &str,

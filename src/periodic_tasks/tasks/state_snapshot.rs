@@ -48,6 +48,16 @@ impl StateSnapshotTask {
         observability::record_peer_registry_discovery_backoff(
             self.peer_registry.discovery_backoff_active_count(),
         );
+        if let Some(snapshot) = collect_process_fd_snapshot() {
+            observability::record_process_fd_snapshot(
+                snapshot.total,
+                snapshot.sockets,
+                snapshot.pipes,
+                snapshot.anon_inodes,
+                snapshot.files,
+                snapshot.other,
+            );
+        }
 
         for blockchain_id in &self.config.blockchain_ids {
             let blockchain_label = blockchain_id.as_str();
@@ -205,4 +215,51 @@ impl StateSnapshotTask {
             get_capable,
         );
     }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct ProcessFdSnapshot {
+    total: usize,
+    sockets: usize,
+    pipes: usize,
+    anon_inodes: usize,
+    files: usize,
+    other: usize,
+}
+
+#[cfg(target_os = "linux")]
+fn collect_process_fd_snapshot() -> Option<ProcessFdSnapshot> {
+    let mut snapshot = ProcessFdSnapshot::default();
+    let fd_entries = std::fs::read_dir("/proc/self/fd").ok()?;
+
+    for entry in fd_entries.flatten() {
+        snapshot.total = snapshot.total.saturating_add(1);
+        match std::fs::read_link(entry.path()) {
+            Ok(target) => classify_fd_target(&target, &mut snapshot),
+            Err(_) => snapshot.other = snapshot.other.saturating_add(1),
+        }
+    }
+
+    Some(snapshot)
+}
+
+#[cfg(target_os = "linux")]
+fn classify_fd_target(target: &std::path::Path, snapshot: &mut ProcessFdSnapshot) {
+    let target = target.to_string_lossy();
+    if target.starts_with("socket:") {
+        snapshot.sockets = snapshot.sockets.saturating_add(1);
+    } else if target.starts_with("pipe:") {
+        snapshot.pipes = snapshot.pipes.saturating_add(1);
+    } else if target.starts_with("anon_inode:") {
+        snapshot.anon_inodes = snapshot.anon_inodes.saturating_add(1);
+    } else if target.starts_with('/') {
+        snapshot.files = snapshot.files.saturating_add(1);
+    } else {
+        snapshot.other = snapshot.other.saturating_add(1);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn collect_process_fd_snapshot() -> Option<ProcessFdSnapshot> {
+    None
 }
