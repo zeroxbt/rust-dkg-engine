@@ -1,6 +1,6 @@
 [package]
 name = "dkg-blockchain"
-version = "0.1.11"
+version = "0.1.12"
 rust-version = "1.92.0"
 edition = "2024"
 
