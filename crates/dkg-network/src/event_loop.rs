@@ -258,7 +258,9 @@ fn parse_peer_id_from_multiaddr(addr: &Multiaddr) -> Option<PeerId> {
 }
 
 fn dial_peer_if_needed(swarm: &mut Swarm<NodeBehaviour>, peer: PeerId) {
-    if swarm.is_connected(&peer) {
+    if *swarm.local_peer_id() == peer {
+        tracing::trace!(%peer, "skipping self dial");
+    } else if swarm.is_connected(&peer) {
         tracing::trace!(%peer, "already connected to peer, skipping dial");
     } else if let Err(e) = swarm.dial(peer) {
         tracing::debug!(%peer, error = %e, "failed to dial peer");
@@ -310,12 +312,13 @@ impl NetworkEventLoop {
         observability::record_network_pending_requests(FinalityProtocol::NAME, 0);
         observability::record_network_pending_requests(BatchGetProtocol::NAME, 0);
 
-        let bootstrap_peers: HashSet<PeerId> = config
+        let mut bootstrap_peers: HashSet<PeerId> = config
             .bootstrap
             .iter()
             .filter_map(|addr| addr.parse::<Multiaddr>().ok())
             .filter_map(|addr| parse_peer_id_from_multiaddr(&addr))
             .collect();
+        bootstrap_peers.remove(swarm.local_peer_id());
         let kad_allowed_peers = bootstrap_peers.clone();
 
         Self {
@@ -609,7 +612,14 @@ impl NetworkEventLoop {
                                     target,
                                     found: true,
                                 });
-                                dial_peer_if_needed(&mut self.swarm, target);
+                                if self.kad_allowed_peers.contains(&target) {
+                                    dial_peer_if_needed(&mut self.swarm, target);
+                                } else {
+                                    observability::record_network_peer_event(
+                                        "kad_lookup",
+                                        "found_ignored_non_allowed",
+                                    );
+                                }
                             } else {
                                 observability::record_network_peer_event("kad_lookup", "not_found");
                                 let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
@@ -627,7 +637,14 @@ impl NetworkEventLoop {
                                     target,
                                     found: true,
                                 });
-                                dial_peer_if_needed(&mut self.swarm, target);
+                                if self.kad_allowed_peers.contains(&target) {
+                                    dial_peer_if_needed(&mut self.swarm, target);
+                                } else {
+                                    observability::record_network_peer_event(
+                                        "kad_lookup",
+                                        "found_ignored_non_allowed",
+                                    );
+                                }
                             } else {
                                 observability::record_network_peer_event("kad_lookup", "not_found");
                                 let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
@@ -664,7 +681,11 @@ impl NetworkEventLoop {
     fn handle_control_action(&mut self, action: NetworkControlAction) {
         match action {
             NetworkControlAction::FindPeers(peers) => {
+                let local_peer = *self.swarm.local_peer_id();
                 for peer in peers {
+                    if peer == local_peer {
+                        continue;
+                    }
                     self.kad_allowed_peers.insert(peer);
                     self.swarm.behaviour_mut().kad.get_closest_peers(peer);
                 }
@@ -674,8 +695,12 @@ impl NetworkEventLoop {
                 let _ = response_tx.send(peers);
             }
             NetworkControlAction::AddAddresses { addresses } => {
+                let local_peer = *self.swarm.local_peer_id();
                 let mut total_addrs = 0usize;
                 for (peer_id, addrs) in &addresses {
+                    if *peer_id == local_peer {
+                        continue;
+                    }
                     self.kad_allowed_peers.insert(*peer_id);
                     for addr in addrs {
                         let addr = strip_p2p_protocol(addr);
@@ -690,8 +715,10 @@ impl NetworkEventLoop {
                 );
             }
             NetworkControlAction::SyncKadAllowedPeers { peers } => {
+                let local_peer = *self.swarm.local_peer_id();
                 let mut target_allowed = self.bootstrap_peers.clone();
                 target_allowed.extend(peers);
+                target_allowed.remove(&local_peer);
 
                 let to_remove: Vec<PeerId> = self
                     .kad_allowed_peers
