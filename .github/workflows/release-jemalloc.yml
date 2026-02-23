@@ -1,10 +1,9 @@
-name: release
+name: release-jemalloc
 
 on:
   push:
     tags:
-      - "v*"
-      - "!v*-jemalloc"
+      - "v*-jemalloc"
 
 permissions:
   contents: write
@@ -22,8 +21,8 @@ jobs:
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Build (release)
-        run: cargo build --release --locked
+      - name: Build (release jemalloc)
+        run: cargo build --release --features jemalloc --locked
 
       - name: Package
         shell: bash
@@ -42,7 +41,6 @@ jobs:
           TAR="rust-dkg-engine_${TAG}_linux_${ARCH}.tar.gz"
           (cd "$OUT" && tar -czf "../$TAR" rust-dkg-engine VERSION)
 
-          # Package installer bundle (script + templates) as a small release asset.
           rm -rf installer
           mkdir -p installer/templates
           cp tools/installer/install.sh installer/install.sh
@@ -53,7 +51,6 @@ jobs:
           INSTALLER_TAR="installer.tar.gz"
           tar -czf "$INSTALLER_TAR" installer
 
-          # Bootstrap entrypoint (optional, tiny).
           cp tools/installer/bootstrap.sh bootstrap.sh
           chmod 0755 bootstrap.sh
 
