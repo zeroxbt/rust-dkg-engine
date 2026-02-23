@@ -168,6 +168,13 @@ impl NetworkManager {
             .await
     }
 
+    /// Reconcile allowed peers in Kademlia with current shard peers.
+    /// Bootstrap peers remain allowed by the network loop.
+    pub async fn sync_kad_allowed_peers(&self, peers: Vec<PeerId>) -> Result<(), NetworkError> {
+        self.enqueue_control_action(NetworkControlAction::SyncKadAllowedPeers { peers })
+            .await
+    }
+
     /// Get the list of currently connected peers.
     pub async fn connected_peers(&self) -> Result<Vec<PeerId>, NetworkError> {
         let (tx, rx) = oneshot::channel();

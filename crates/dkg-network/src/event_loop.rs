@@ -3,7 +3,7 @@
 //! This is the internal implementation that handles all network events.
 //! It receives actions from NetworkManager handles and processes swarm events.
 
-use std::time::Instant;
+use std::{collections::HashSet, time::Instant};
 
 use dkg_observability as observability;
 use libp2p::{
@@ -247,6 +247,16 @@ fn strip_p2p_protocol(addr: &Multiaddr) -> Multiaddr {
         .collect()
 }
 
+fn parse_peer_id_from_multiaddr(addr: &Multiaddr) -> Option<PeerId> {
+    addr.iter().find_map(|proto| {
+        if let Protocol::P2p(peer_id) = proto {
+            Some(peer_id)
+        } else {
+            None
+        }
+    })
+}
+
 fn dial_peer_if_needed(swarm: &mut Swarm<NodeBehaviour>, peer: PeerId) {
     if swarm.is_connected(&peer) {
         tracing::trace!(%peer, "already connected to peer, skipping dial");
@@ -272,6 +282,8 @@ pub struct NetworkEventLoop {
     pending_get: PendingRequests<GetResponseData>,
     pending_finality: PendingRequests<FinalityResponseData>,
     pending_batch_get: PendingRequests<BatchGetResponseData>,
+    bootstrap_peers: HashSet<PeerId>,
+    kad_allowed_peers: HashSet<PeerId>,
 }
 
 impl NetworkEventLoop {
@@ -298,6 +310,14 @@ impl NetworkEventLoop {
         observability::record_network_pending_requests(FinalityProtocol::NAME, 0);
         observability::record_network_pending_requests(BatchGetProtocol::NAME, 0);
 
+        let bootstrap_peers: HashSet<PeerId> = config
+            .bootstrap
+            .iter()
+            .filter_map(|addr| addr.parse::<Multiaddr>().ok())
+            .filter_map(|addr| parse_peer_id_from_multiaddr(&addr))
+            .collect();
+        let kad_allowed_peers = bootstrap_peers.clone();
+
         Self {
             swarm,
             control_rx,
@@ -309,6 +329,8 @@ impl NetworkEventLoop {
             pending_get: PendingRequests::new(),
             pending_finality: PendingRequests::new(),
             pending_batch_get: PendingRequests::new(),
+            bootstrap_peers,
+            kad_allowed_peers,
         }
     }
 
@@ -557,9 +579,16 @@ impl NetworkEventLoop {
                         protocols: info.protocols,
                         listen_addrs: info.listen_addrs,
                     };
-                    for addr in identify_info.listen_addrs.iter() {
-                        let addr = strip_p2p_protocol(addr);
-                        self.swarm.behaviour_mut().kad.add_address(&peer_id, addr);
+                    if self.kad_allowed_peers.contains(&peer_id) {
+                        for addr in identify_info.listen_addrs.iter() {
+                            let addr = strip_p2p_protocol(addr);
+                            self.swarm.behaviour_mut().kad.add_address(&peer_id, addr);
+                        }
+                    } else {
+                        observability::record_network_peer_event(
+                            "identify_received",
+                            "ignored_non_allowed",
+                        );
                     }
                     let _ = self.peer_event_tx.send(PeerEvent::IdentifyReceived {
                         peer_id,
@@ -636,6 +665,7 @@ impl NetworkEventLoop {
         match action {
             NetworkControlAction::FindPeers(peers) => {
                 for peer in peers {
+                    self.kad_allowed_peers.insert(peer);
                     self.swarm.behaviour_mut().kad.get_closest_peers(peer);
                 }
             }
@@ -646,6 +676,7 @@ impl NetworkEventLoop {
             NetworkControlAction::AddAddresses { addresses } => {
                 let mut total_addrs = 0usize;
                 for (peer_id, addrs) in &addresses {
+                    self.kad_allowed_peers.insert(*peer_id);
                     for addr in addrs {
                         let addr = strip_p2p_protocol(addr);
                         self.swarm.behaviour_mut().kad.add_address(peer_id, addr);
@@ -656,6 +687,35 @@ impl NetworkEventLoop {
                     peers = addresses.len(),
                     addresses = total_addrs,
                     "Added persisted peer addresses to Kademlia"
+                );
+            }
+            NetworkControlAction::SyncKadAllowedPeers { peers } => {
+                let mut target_allowed = self.bootstrap_peers.clone();
+                target_allowed.extend(peers);
+
+                let to_remove: Vec<PeerId> = self
+                    .kad_allowed_peers
+                    .difference(&target_allowed)
+                    .copied()
+                    .collect();
+
+                for peer_id in &to_remove {
+                    self.kad_allowed_peers.remove(peer_id);
+                    self.swarm.behaviour_mut().kad.remove_peer(peer_id);
+                }
+
+                let mut added = 0usize;
+                for peer_id in target_allowed {
+                    if self.kad_allowed_peers.insert(peer_id) {
+                        added += 1;
+                    }
+                }
+
+                tracing::debug!(
+                    allowed = self.kad_allowed_peers.len(),
+                    removed = to_remove.len(),
+                    added,
+                    "Reconciled Kademlia allowed peers"
                 );
             }
         }

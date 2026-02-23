@@ -9,7 +9,7 @@ use crate::{
     commands::{executor::CommandExecutionRequest, scheduler::CommandScheduler},
     config::{self, AppPaths, Config},
     managers::{self, Managers},
-    node_state::{self, NodeState},
+    node_state::{self, NodeState, PeerRegistry},
 };
 
 pub(crate) struct CoreBootstrap {
@@ -57,17 +57,26 @@ pub(crate) async fn build_core() -> CoreBootstrap {
     }
 }
 
-pub(crate) async fn hydrate_persisted_peer_addresses(managers: &Managers) {
+pub(crate) async fn hydrate_persisted_peer_addresses(
+    managers: &Managers,
+    peer_registry: &PeerRegistry,
+) {
     let peer_address_store = managers.key_value_store.peer_address_store();
     let persisted_addresses = peer_address_store.load_all().await;
     if persisted_addresses.is_empty() {
         return;
     }
 
+    let shard_peers: std::collections::HashSet<PeerId> =
+        peer_registry.get_all_shard_peer_ids().into_iter().collect();
+
     let addresses: Vec<_> = persisted_addresses
         .into_iter()
         .filter_map(|(peer_id_string, addr_strings)| {
             let peer_id: PeerId = peer_id_string.parse().ok()?;
+            if !shard_peers.contains(&peer_id) {
+                return None;
+            }
             let addrs: Vec<Multiaddr> = addr_strings
                 .into_iter()
                 .filter_map(|addr| addr.parse().ok())

@@ -50,6 +50,7 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         sharding_table_check: ShardingTableCheckDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
+            network_manager: Arc::clone(&managers.network),
             peer_registry: Arc::clone(&node_state.peer_registry),
         },
         blockchain_event_listener: BlockchainEventListenerDeps {

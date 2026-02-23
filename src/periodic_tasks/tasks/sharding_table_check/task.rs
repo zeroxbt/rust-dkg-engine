@@ -4,7 +4,7 @@ use std::{
 };
 
 use dkg_blockchain::{BlockchainId, BlockchainManager, NodeInfo};
-use dkg_network::PeerId;
+use dkg_network::{NetworkManager, PeerId};
 use dkg_observability as observability;
 use tokio_util::sync::CancellationToken;
 
@@ -275,6 +275,7 @@ fn collect_peer_ids(
 
 pub(crate) struct ShardingTableCheckTask {
     blockchain_manager: Arc<BlockchainManager>,
+    network_manager: Arc<NetworkManager>,
     peer_registry: Arc<PeerRegistry>,
 }
 
@@ -288,7 +289,22 @@ impl ShardingTableCheckTask {
     pub(crate) fn new(deps: ShardingTableCheckDeps) -> Self {
         Self {
             blockchain_manager: deps.blockchain_manager,
+            network_manager: deps.network_manager,
             peer_registry: deps.peer_registry,
+        }
+    }
+
+    async fn reconcile_kad_allowed_peers(&self) {
+        let shard_peers = self.peer_registry.get_all_shard_peer_ids();
+        if let Err(error) = self
+            .network_manager
+            .sync_kad_allowed_peers(shard_peers)
+            .await
+        {
+            tracing::warn!(
+                error = %error,
+                "Failed to reconcile Kademlia allowed peers"
+            );
         }
     }
 
@@ -366,6 +382,7 @@ impl ShardingTableCheckTask {
                 );
             }
         }
+        self.reconcile_kad_allowed_peers().await;
 
         SHARDING_TABLE_CHECK_PERIOD
     }

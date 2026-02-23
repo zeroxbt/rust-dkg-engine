@@ -26,6 +26,10 @@ pub enum NetworkControlAction {
     AddAddresses {
         addresses: Vec<(PeerId, Vec<Multiaddr>)>,
     },
+    /// Reconcile the Kademlia allowlist with the currently permitted peers.
+    /// Peers not in this set (except bootstrap peers tracked internally by the
+    /// network loop) will be removed from Kad and disconnected.
+    SyncKadAllowedPeers { peers: Vec<PeerId> },
 }
 
 impl NetworkControlAction {
@@ -34,6 +38,7 @@ impl NetworkControlAction {
             Self::FindPeers(_) => "find_peers",
             Self::GetConnectedPeers(_) => "get_connected_peers",
             Self::AddAddresses { .. } => "add_addresses",
+            Self::SyncKadAllowedPeers { .. } => "sync_kad_allowed_peers",
         }
     }
 }

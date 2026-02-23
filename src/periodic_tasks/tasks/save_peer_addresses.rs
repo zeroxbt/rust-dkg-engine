@@ -35,7 +35,7 @@ impl SavePeerAddressesTask {
         )
     )]
     async fn execute(&self) -> Duration {
-        let addresses = self.peer_registry.get_all_addresses();
+        let addresses = self.peer_registry.get_all_shard_addresses();
 
         tracing::Span::current().record("peers", addresses.len());
 

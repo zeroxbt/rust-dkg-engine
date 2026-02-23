@@ -269,11 +269,12 @@ impl PeerRegistry {
             .collect()
     }
 
-    /// Get all known peer addresses from identify info.
-    /// Returns peers that have identify info with non-empty listen addresses.
-    pub(crate) fn get_all_addresses(&self) -> HashMap<PeerId, Vec<Multiaddr>> {
+    /// Get shard peer addresses from identify info.
+    /// Returns only peers that are in at least one shard and have non-empty listen addresses.
+    pub(crate) fn get_all_shard_addresses(&self) -> HashMap<PeerId, Vec<Multiaddr>> {
         self.peers
             .iter()
+            .filter(|entry| !entry.shard_membership.is_empty())
             .filter_map(|entry| {
                 entry.identify.as_ref().and_then(|id| {
                     if id.listen_addrs.is_empty() {
