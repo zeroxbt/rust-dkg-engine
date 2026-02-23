@@ -2359,6 +2359,7 @@ version = "0.1.13"
 dependencies = [
  "alloy",
  "dkg-domain",
+ "dkg-observability",
  "futures",
  "governor",
  "jsonrpsee",

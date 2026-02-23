@@ -1392,6 +1392,239 @@
       ],
       "title": "Network Payload Total Bytes (Average)",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 94
+      },
+      "id": 106,
+      "panels": [],
+      "title": "Blockchain RPC and Logs",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 95
+      },
+      "id": 24,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (blockchain_id, operation, status) (rate(node_blockchain_rpc_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{operation}} {{status}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Blockchain RPC Rate by Operation/Status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 95
+      },
+      "id": 25,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, blockchain_id, operation, status) (rate(node_blockchain_rpc_duration_seconds_bucket[5m])))",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{operation}} {{status}} p95",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le, blockchain_id, operation, status) (rate(node_blockchain_rpc_duration_seconds_bucket[5m])))",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{operation}} {{status}} p99",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Blockchain RPC Duration p95/p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 103
+      },
+      "id": 26,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (blockchain_id, operation, stage, status) (rate(node_blockchain_tx_stage_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{operation}} {{stage}} {{status}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Blockchain TX Stage Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 103
+      },
+      "id": 27,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (blockchain_id, contract, status) (rate(node_blockchain_event_logs_batch_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{contract}} {{status}} batches",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (blockchain_id, contract, status) (rate(node_blockchain_event_logs_batch_events_sum[5m])) / clamp_min(sum by (blockchain_id, contract, status) (rate(node_blockchain_event_logs_batch_events_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{contract}} {{status}} avg_events",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Blockchain Event Logs Fetch (Rate and Avg Events)",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
@@ -1413,6 +1646,6 @@
   "timezone": "",
   "title": "Rust DKG Engine - Diagnostics (Pilot)",
   "uid": "rust-dkg-diagnostics",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }

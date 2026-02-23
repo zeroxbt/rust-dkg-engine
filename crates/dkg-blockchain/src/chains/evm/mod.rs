@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, time::Instant};
 
 use alloy::{
     contract::{CallBuilder, CallDecoder, Error as ContractError},
@@ -251,18 +251,36 @@ impl EvmChain {
         F: FnMut() -> O,
         O: std::future::IntoFuture<Output = Result<T, E>>,
     {
+        let started = Instant::now();
+        let blockchain_id = self.blockchain_id().as_str().to_string();
+        let operation_label = "rpc_call";
         let mut attempt = 1;
         loop {
             self.rpc_rate_limiter.acquire().await;
             let result = operation().into_future().await;
             match result {
-                Ok(value) => return Ok(value),
+                Ok(value) => {
+                    dkg_observability::record_blockchain_rpc_call(
+                        &blockchain_id,
+                        operation_label,
+                        "ok",
+                        started.elapsed(),
+                    );
+                    return Ok(value);
+                }
                 Err(err) => {
                     let retryable = err.is_retryable();
                     if attempt >= self.rpc_retry_policy.max_attempts || !retryable {
+                        dkg_observability::record_blockchain_rpc_call(
+                            &blockchain_id,
+                            operation_label,
+                            "error",
+                            started.elapsed(),
+                        );
                         return Err(err);
                     }
 
+                    dkg_observability::record_blockchain_rpc_retry(&blockchain_id, operation_label);
                     if err.should_refresh_provider()
                         && let Err(refresh_err) = self.refresh_provider_and_contracts().await
                     {
@@ -298,6 +316,9 @@ impl EvmChain {
         for<'a> F: FnMut(&'a Contracts) -> CallBuilder<&'a BlockchainProvider, D, Ethereum>,
     {
         let _guard = self.tx_mutex.lock().await;
+        let started = Instant::now();
+        let blockchain_id = self.blockchain_id().as_str().to_string();
+        let operation_label = "tx_call";
 
         let mut attempt = 1;
         let mut fee_quote = self.get_fee_quote().await;
@@ -321,18 +342,45 @@ impl EvmChain {
 
             if cached_gas_limit.is_none() {
                 self.rpc_rate_limiter.acquire().await;
+                let stage_started = Instant::now();
                 match call.estimate_gas().await {
                     Ok(estimate) => {
+                        dkg_observability::record_blockchain_tx_stage(
+                            &blockchain_id,
+                            operation_label,
+                            "estimate_gas",
+                            "ok",
+                            stage_started.elapsed(),
+                        );
                         let estimated = apply_gas_estimate_multiplier(estimate);
                         cached_gas_limit = Some(estimated);
                     }
                     Err(err) => {
+                        dkg_observability::record_blockchain_tx_stage(
+                            &blockchain_id,
+                            operation_label,
+                            "estimate_gas",
+                            "error",
+                            stage_started.elapsed(),
+                        );
                         drop(call);
                         let retryable = is_retryable_contract_error(&err);
                         if attempt >= self.tx_retry_policy.max_attempts || !retryable {
+                            dkg_observability::record_blockchain_tx_stage(
+                                &blockchain_id,
+                                operation_label,
+                                "total",
+                                "error",
+                                started.elapsed(),
+                            );
                             return Err(err);
                         }
 
+                        dkg_observability::record_blockchain_tx_retry(
+                            &blockchain_id,
+                            operation_label,
+                            "estimate_gas",
+                        );
                         let delay = backoff_delay(
                             &self.tx_retry_policy,
                             attempt,
@@ -359,17 +407,53 @@ impl EvmChain {
             }
 
             self.rpc_rate_limiter.acquire().await;
+            let stage_started = Instant::now();
             match call.send().await {
-                Ok(pending_tx) => return Ok(pending_tx),
+                Ok(pending_tx) => {
+                    dkg_observability::record_blockchain_tx_stage(
+                        &blockchain_id,
+                        operation_label,
+                        "send",
+                        "ok",
+                        stage_started.elapsed(),
+                    );
+                    dkg_observability::record_blockchain_tx_stage(
+                        &blockchain_id,
+                        operation_label,
+                        "total",
+                        "ok",
+                        started.elapsed(),
+                    );
+                    return Ok(pending_tx);
+                }
                 Err(err) => {
+                    dkg_observability::record_blockchain_tx_stage(
+                        &blockchain_id,
+                        operation_label,
+                        "send",
+                        "error",
+                        stage_started.elapsed(),
+                    );
                     drop(call);
                     let bump_needed = should_bump_gas_price(&err);
                     let retryable = is_retryable_contract_error(&err) || bump_needed;
 
                     if attempt >= self.tx_retry_policy.max_attempts || !retryable {
+                        dkg_observability::record_blockchain_tx_stage(
+                            &blockchain_id,
+                            operation_label,
+                            "total",
+                            "error",
+                            started.elapsed(),
+                        );
                         return Err(err);
                     }
 
+                    dkg_observability::record_blockchain_tx_retry(
+                        &blockchain_id,
+                        operation_label,
+                        "send",
+                    );
                     if err.should_refresh_provider()
                         && let Err(refresh_err) = self.refresh_provider_and_contracts().await
                     {
@@ -417,6 +501,9 @@ impl EvmChain {
         F: FnMut() -> CallBuilder<BlockchainProvider, D, Ethereum>,
     {
         let _guard = self.tx_mutex.lock().await;
+        let started = Instant::now();
+        let blockchain_id = self.blockchain_id().as_str().to_string();
+        let operation_label = "tx_call_with";
 
         let mut attempt = 1;
         let mut fee_quote = self.get_fee_quote().await;
@@ -438,17 +525,44 @@ impl EvmChain {
 
             if cached_gas_limit.is_none() {
                 self.rpc_rate_limiter.acquire().await;
+                let stage_started = Instant::now();
                 match call.estimate_gas().await {
                     Ok(estimate) => {
+                        dkg_observability::record_blockchain_tx_stage(
+                            &blockchain_id,
+                            operation_label,
+                            "estimate_gas",
+                            "ok",
+                            stage_started.elapsed(),
+                        );
                         let estimated = apply_gas_estimate_multiplier(estimate);
                         cached_gas_limit = Some(estimated);
                     }
                     Err(err) => {
+                        dkg_observability::record_blockchain_tx_stage(
+                            &blockchain_id,
+                            operation_label,
+                            "estimate_gas",
+                            "error",
+                            stage_started.elapsed(),
+                        );
                         let retryable = is_retryable_contract_error(&err);
                         if attempt >= self.tx_retry_policy.max_attempts || !retryable {
+                            dkg_observability::record_blockchain_tx_stage(
+                                &blockchain_id,
+                                operation_label,
+                                "total",
+                                "error",
+                                started.elapsed(),
+                            );
                             return Err(err);
                         }
 
+                        dkg_observability::record_blockchain_tx_retry(
+                            &blockchain_id,
+                            operation_label,
+                            "estimate_gas",
+                        );
                         let delay = backoff_delay(
                             &self.tx_retry_policy,
                             attempt,
@@ -475,16 +589,52 @@ impl EvmChain {
             }
 
             self.rpc_rate_limiter.acquire().await;
+            let stage_started = Instant::now();
             match call.send().await {
-                Ok(pending_tx) => return Ok(pending_tx),
+                Ok(pending_tx) => {
+                    dkg_observability::record_blockchain_tx_stage(
+                        &blockchain_id,
+                        operation_label,
+                        "send",
+                        "ok",
+                        stage_started.elapsed(),
+                    );
+                    dkg_observability::record_blockchain_tx_stage(
+                        &blockchain_id,
+                        operation_label,
+                        "total",
+                        "ok",
+                        started.elapsed(),
+                    );
+                    return Ok(pending_tx);
+                }
                 Err(err) => {
+                    dkg_observability::record_blockchain_tx_stage(
+                        &blockchain_id,
+                        operation_label,
+                        "send",
+                        "error",
+                        stage_started.elapsed(),
+                    );
                     let bump_needed = should_bump_gas_price(&err);
                     let retryable = is_retryable_contract_error(&err) || bump_needed;
 
                     if attempt >= self.tx_retry_policy.max_attempts || !retryable {
+                        dkg_observability::record_blockchain_tx_stage(
+                            &blockchain_id,
+                            operation_label,
+                            "total",
+                            "error",
+                            started.elapsed(),
+                        );
                         return Err(err);
                     }
 
+                    dkg_observability::record_blockchain_tx_retry(
+                        &blockchain_id,
+                        operation_label,
+                        "send",
+                    );
                     if err.should_refresh_provider()
                         && let Err(refresh_err) = self.refresh_provider_and_contracts().await
                     {
@@ -557,15 +707,49 @@ impl EvmChain {
         &self,
         result: Result<PendingTransactionBuilder<alloy::network::Ethereum>, ContractError>,
     ) -> Result<TransactionReceipt, BlockchainError> {
+        let started = Instant::now();
+        let blockchain_id = self.blockchain_id().as_str().to_string();
+        let operation_label = "handle_contract_call";
         match result {
             Ok(pending_tx) => {
                 let pending_tx = pending_tx
                     .with_required_confirmations(self.config.tx_confirmations())
                     .with_timeout(self.config.tx_receipt_timeout());
 
+                let stage_started = Instant::now();
                 match pending_tx.get_receipt().await {
-                    Ok(receipt) => Ok(receipt),
+                    Ok(receipt) => {
+                        dkg_observability::record_blockchain_tx_stage(
+                            &blockchain_id,
+                            operation_label,
+                            "receipt",
+                            "ok",
+                            stage_started.elapsed(),
+                        );
+                        dkg_observability::record_blockchain_tx_stage(
+                            &blockchain_id,
+                            operation_label,
+                            "total",
+                            "ok",
+                            started.elapsed(),
+                        );
+                        Ok(receipt)
+                    }
                     Err(err) => {
+                        dkg_observability::record_blockchain_tx_stage(
+                            &blockchain_id,
+                            operation_label,
+                            "receipt",
+                            "error",
+                            stage_started.elapsed(),
+                        );
+                        dkg_observability::record_blockchain_tx_stage(
+                            &blockchain_id,
+                            operation_label,
+                            "total",
+                            "error",
+                            started.elapsed(),
+                        );
                         tracing::error!("Failed to retrieve transaction receipt: {:?}", err);
                         Err(BlockchainError::ReceiptFailed {
                             reason: err.to_string(),
@@ -574,6 +758,13 @@ impl EvmChain {
                 }
             }
             Err(err) => {
+                dkg_observability::record_blockchain_tx_stage(
+                    &blockchain_id,
+                    operation_label,
+                    "submission",
+                    "error",
+                    started.elapsed(),
+                );
                 let decoded_error = decode_contract_error(&err);
                 tracing::error!(
                     decoded_error = ?decoded_error,

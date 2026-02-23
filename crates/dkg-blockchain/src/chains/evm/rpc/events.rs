@@ -3,6 +3,7 @@ use alloy::{
     providers::Provider,
     rpc::types::Filter,
 };
+use std::time::Instant;
 
 use crate::{
     ContractLog, ContractName,
@@ -69,6 +70,7 @@ impl EvmChain {
     ) -> Result<Vec<ContractLog>, BlockchainError> {
         let topic_signatures: Vec<B256> = event_signatures.to_vec();
         let mut all_events = Vec::new();
+        let blockchain_id = self.blockchain_id().as_str().to_string();
 
         let mut block = from_block;
         while block <= current_block {
@@ -76,6 +78,7 @@ impl EvmChain {
                 block + MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH - 1,
                 current_block,
             );
+            let block_span = (to_block - block + 1) as usize;
 
             let mut filter = Filter::new()
                 .address(contract_address)
@@ -85,13 +88,37 @@ impl EvmChain {
                 filter = filter.event_signature(topic_signatures.clone());
             }
 
-            let logs = self
+            let batch_started = Instant::now();
+            let logs = match self
                 .rpc_call(|| async {
                     let provider = self.provider().await;
                     provider.get_logs(&filter).await
                 })
                 .await
-                .map_err(BlockchainError::get_logs)?;
+            {
+                Ok(logs) => {
+                    dkg_observability::record_blockchain_event_logs_batch(
+                        &blockchain_id,
+                        contract_name.as_str(),
+                        "ok",
+                        batch_started.elapsed(),
+                        block_span,
+                        logs.len(),
+                    );
+                    logs
+                }
+                Err(err) => {
+                    dkg_observability::record_blockchain_event_logs_batch(
+                        &blockchain_id,
+                        contract_name.as_str(),
+                        "error",
+                        batch_started.elapsed(),
+                        block_span,
+                        0,
+                    );
+                    return Err(BlockchainError::get_logs(err));
+                }
+            };
 
             for log in logs {
                 if log.topic0().is_some() {
