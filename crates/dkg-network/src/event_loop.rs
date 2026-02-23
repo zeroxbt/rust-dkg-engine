@@ -289,6 +289,13 @@ pub struct NetworkEventLoop {
 }
 
 impl NetworkEventLoop {
+    fn refresh_kad_query_allowlist(&mut self) {
+        self.swarm
+            .behaviour_mut()
+            .kad
+            .set_query_peer_allowlist(self.kad_allowed_peers.iter().copied());
+    }
+
     fn action_channel_fill_ratio(depth: usize) -> f64 {
         (depth as f64 / ACTION_CHANNEL_CAPACITY as f64).clamp(0.0, 1.0)
     }
@@ -321,7 +328,7 @@ impl NetworkEventLoop {
         bootstrap_peers.remove(swarm.local_peer_id());
         let kad_allowed_peers = bootstrap_peers.clone();
 
-        Self {
+        let mut this = Self {
             swarm,
             control_rx,
             data_rx,
@@ -334,7 +341,10 @@ impl NetworkEventLoop {
             pending_batch_get: PendingRequests::new(),
             bootstrap_peers,
             kad_allowed_peers,
-        }
+        };
+
+        this.refresh_kad_query_allowlist();
+        this
     }
 
     /// Starts listening on the configured port.
@@ -682,11 +692,16 @@ impl NetworkEventLoop {
         match action {
             NetworkControlAction::FindPeers(peers) => {
                 let local_peer = *self.swarm.local_peer_id();
+                let mut find_targets = Vec::new();
                 for peer in peers {
                     if peer == local_peer {
                         continue;
                     }
                     self.kad_allowed_peers.insert(peer);
+                    find_targets.push(peer);
+                }
+                self.refresh_kad_query_allowlist();
+                for peer in find_targets {
                     self.swarm.behaviour_mut().kad.get_closest_peers(peer);
                 }
             }
@@ -708,6 +723,7 @@ impl NetworkEventLoop {
                         total_addrs += 1;
                     }
                 }
+                self.refresh_kad_query_allowlist();
                 tracing::info!(
                     peers = addresses.len(),
                     addresses = total_addrs,
@@ -737,6 +753,7 @@ impl NetworkEventLoop {
                         added += 1;
                     }
                 }
+                self.refresh_kad_query_allowlist();
 
                 tracing::debug!(
                     allowed = self.kad_allowed_peers.len(),

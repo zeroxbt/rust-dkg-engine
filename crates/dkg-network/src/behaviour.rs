@@ -73,13 +73,43 @@ pub fn build_swarm(
     // 1. Kademlia DHT
     let mut kad_config = KademliaConfig::default();
     kad_config.set_kbucket_inserts(BucketInserts::OnConnected);
+    let mut seen_bootstrap = HashSet::new();
+    for bootstrap in &config.bootstrap {
+        // Parse as a full multiaddr first to extract and validate bootstrap peer ids.
+        let full_addr: Multiaddr =
+            bootstrap
+                .parse()
+                .map_err(|e| NetworkError::InvalidMultiaddr {
+                    parsed: bootstrap.clone(),
+                    source: e,
+                })?;
+
+        // Extract the peer ID from the /p2p/ component.
+        let peer_id = full_addr
+            .iter()
+            .find_map(|proto| {
+                if let Protocol::P2p(peer_id) = proto {
+                    Some(peer_id)
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| NetworkError::InvalidBootstrapNode {
+                expected: "multiaddr with /p2p/<peer_id> component".to_string(),
+                received: bootstrap.clone(),
+            })?;
+
+        seen_bootstrap.insert(peer_id);
+    }
+    seen_bootstrap.remove(&local_peer_id);
+    kad_config.set_query_peer_allowlist(seen_bootstrap.iter().copied());
+
     let memory_store = MemoryStore::new(local_peer_id);
     let mut kad = kad::Behaviour::with_config(local_peer_id, memory_store, kad_config);
 
     kad.set_mode(Some(Mode::Server));
 
     // Add bootstrap nodes to kad
-    let mut seen_bootstrap = HashSet::new();
     for bootstrap in &config.bootstrap {
         // Parse as a full multiaddr first
         let full_addr: Multiaddr =
