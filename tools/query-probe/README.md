@@ -46,8 +46,13 @@ tools/query-probe/target/release/query-probe \
   --batch-size 50 \
   --fetch-data \
   --fetch-concurrency 4 \
-  --metadata-mode batch
+  --metadata-mode batch \
+  --metadata-scope all
 ```
+
+`--metadata-scope` options:
+- `all`: current full metadata query
+- `core`: only publish-related predicates (`publishedBy`, `publishedAtBlock`, `publishTx`, `publishTime`, `blockTime`)
 
 ## Generate Workload From Store
 

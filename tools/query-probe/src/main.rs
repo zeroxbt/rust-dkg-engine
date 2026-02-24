@@ -31,6 +31,12 @@ enum MetadataMode {
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
+enum MetadataScope {
+    All,
+    Core,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
 enum VisibilityArg {
     Public,
     Private,
@@ -76,6 +82,10 @@ struct Args {
     /// Metadata mode after existence check
     #[arg(long, value_enum, default_value_t = MetadataMode::Batch)]
     metadata_mode: MetadataMode,
+
+    /// Metadata query scope: `all` (current behavior) or `core` (publish-related predicates only)
+    #[arg(long, value_enum, default_value_t = MetadataScope::All)]
+    metadata_scope: MetadataScope,
 
     /// Triple-store manager max concurrent operations
     #[arg(long, default_value_t = 16)]
@@ -221,11 +231,13 @@ async fn main() -> Result<(), String> {
     };
 
     eprintln!(
-        "connecting store_path={} workload_items={} iterations={} batch_size={}",
+        "connecting store_path={} workload_items={} iterations={} batch_size={} metadata_mode={:?} metadata_scope={:?}",
         args.store_path.display(),
         workload.len(),
         args.iterations,
-        args.batch_size
+        args.batch_size,
+        args.metadata_mode,
+        args.metadata_scope
     );
 
     let manager = Arc::new(
@@ -421,9 +433,11 @@ async fn main() -> Result<(), String> {
                     let fds_before = read_fd_count();
                     let started = Instant::now();
 
-                    let metadata = manager.get_metadata_batch(&kc_uals).await.map_err(|e| {
-                        format!("metadata batch failed at iteration={iteration}: {e}")
-                    })?;
+                    let metadata = match args.metadata_scope {
+                        MetadataScope::All => manager.get_metadata_batch(&kc_uals).await,
+                        MetadataScope::Core => manager.get_metadata_core_batch(&kc_uals).await,
+                    }
+                    .map_err(|e| format!("metadata batch failed at iteration={iteration}: {e}"))?;
 
                     let elapsed_ms = started.elapsed().as_millis();
                     let rss_after = read_rss_bytes();
@@ -459,7 +473,11 @@ async fn main() -> Result<(), String> {
                     let mut total_bytes = 0usize;
 
                     for item in &existing_items {
-                        let metadata = manager.get_metadata(&item.kc_ual).await.map_err(|e| {
+                        let metadata = match args.metadata_scope {
+                            MetadataScope::All => manager.get_metadata(&item.kc_ual).await,
+                            MetadataScope::Core => manager.get_metadata_core(&item.kc_ual).await,
+                        }
+                        .map_err(|e| {
                             format!("metadata per-item failed at iteration={iteration}: {e}")
                         })?;
                         let lines: Vec<String> = metadata

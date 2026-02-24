@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -36,6 +37,10 @@ struct Args {
     /// Print progress every N processed candidates (0 disables periodic progress).
     #[arg(long, default_value_t = 100)]
     progress_every: usize,
+
+    /// Number of KC UALs per boundary query batch.
+    #[arg(long, default_value_t = 100)]
+    boundary_batch_size: usize,
 
     /// Generate candidates from a numeric KC id range instead of scanning metadata.
     /// Example with other required flags:
@@ -261,44 +266,72 @@ fn query_candidate_kcs_from_range(args: &Args) -> Result<Vec<String>, String> {
     Ok(candidates)
 }
 
-fn query_kc_boundaries(store: &Store, kc_ual: &str) -> Result<Option<(u64, u64)>, String> {
+fn query_kc_boundaries_batch(
+    store: &Store,
+    kc_uals: &[String],
+) -> Result<HashMap<String, (u64, u64)>, String> {
+    if kc_uals.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let values = kc_uals
+        .iter()
+        .map(|kc| format!("<{kc}>"))
+        .collect::<Vec<_>>()
+        .join(" ");
+
     let query = format!(
-        r#"SELECT ?ka WHERE {{
+        r#"SELECT ?kc ?ka WHERE {{
             GRAPH <{metadata_graph}> {{
-                <{kc_ual}> <{has_knowledge_asset}> ?ka .
+                VALUES ?kc {{ {values} }}
+                ?kc <{has_knowledge_asset}> ?ka .
             }}
         }}"#,
         metadata_graph = METADATA_GRAPH,
-        kc_ual = kc_ual,
+        values = values,
         has_knowledge_asset = HAS_KNOWLEDGE_ASSET,
     );
 
-    let mut min_token: Option<u64> = None;
-    let mut max_token: Option<u64> = None;
     let prepared = SparqlEvaluator::new()
         .parse_query(&query)
-        .map_err(|e| format!("failed to parse graph query for {kc_ual}: {e}"))?;
+        .map_err(|e| format!("failed to parse batch boundary query: {e}"))?;
     let results = prepared
         .on_store(store)
         .execute()
-        .map_err(|e| format!("failed to execute graph query for {kc_ual}: {e}"))?;
+        .map_err(|e| format!("failed to execute batch boundary query: {e}"))?;
+
+    let mut boundaries: HashMap<String, (u64, u64)> = HashMap::new();
     match results {
         QueryResults::Solutions(solutions) => {
             let vars: Vec<oxigraph::model::Variable> = solutions.variables().to_vec();
+            let kc_var = vars
+                .iter()
+                .find(|v| v.as_str() == "kc")
+                .cloned()
+                .ok_or_else(|| "batch boundary query results missing variable ?kc".to_string())?;
             let ka_var = vars
                 .iter()
                 .find(|v| v.as_str() == "ka")
                 .cloned()
-                .ok_or_else(|| "graph query results missing variable ?ka".to_string())?;
+                .ok_or_else(|| "batch boundary query results missing variable ?ka".to_string())?;
 
             for solution in solutions {
-                let solution = solution.map_err(|e| format!("failed to read graph row: {e}"))?;
-                let Some(term) = solution.get(&ka_var) else {
+                let solution =
+                    solution.map_err(|e| format!("failed to read batch boundary row: {e}"))?;
+                let Some(kc_term) = solution.get(&kc_var) else {
                     continue;
                 };
-                let Some(ka_ual) = extract_iri(term) else {
+                let Some(ka_term) = solution.get(&ka_var) else {
                     continue;
                 };
+
+                let Some(kc_ual) = extract_iri(kc_term) else {
+                    continue;
+                };
+                let Some(ka_ual) = extract_iri(ka_term) else {
+                    continue;
+                };
+
                 let Some((prefix, token_str)) = ka_ual.rsplit_once('/') else {
                     continue;
                 };
@@ -309,17 +342,19 @@ fn query_kc_boundaries(store: &Store, kc_ual: &str) -> Result<Option<(u64, u64)>
                     continue;
                 };
 
-                min_token = Some(min_token.map_or(token_id, |value| value.min(token_id)));
-                max_token = Some(max_token.map_or(token_id, |value| value.max(token_id)));
+                boundaries
+                    .entry(kc_ual)
+                    .and_modify(|(start, end)| {
+                        *start = (*start).min(token_id);
+                        *end = (*end).max(token_id);
+                    })
+                    .or_insert((token_id, token_id));
             }
         }
-        _ => return Err("graph query expected SELECT solutions".to_string()),
+        _ => return Err("batch boundary query expected SELECT solutions".to_string()),
     }
 
-    match (min_token, max_token) {
-        (Some(start), Some(end)) => Ok(Some((start, end))),
-        _ => Ok(None),
-    }
+    Ok(boundaries)
 }
 
 fn main() -> Result<(), String> {
@@ -360,17 +395,22 @@ fn main() -> Result<(), String> {
         );
     }
 
-    for (idx, kc_ual) in candidates.into_iter().enumerate() {
-        if let Some((start_token_id, end_token_id)) = query_kc_boundaries(&store, &kc_ual)? {
-            items.push(WorkItem {
-                kc_ual,
-                start_token_id,
-                end_token_id,
-                burned: Vec::new(),
-            });
+    let batch_size = args.boundary_batch_size.max(1);
+    let mut processed = 0usize;
+    for chunk in candidates.chunks(batch_size) {
+        let boundaries = query_kc_boundaries_batch(&store, chunk)?;
+        for kc_ual in chunk {
+            if let Some((start_token_id, end_token_id)) = boundaries.get(kc_ual) {
+                items.push(WorkItem {
+                    kc_ual: kc_ual.clone(),
+                    start_token_id: *start_token_id,
+                    end_token_id: *end_token_id,
+                    burned: Vec::new(),
+                });
+            }
         }
 
-        let processed = idx + 1;
+        processed = processed.saturating_add(chunk.len());
         if args.progress_every > 0
             && (processed % args.progress_every == 0 || processed == candidate_count)
         {

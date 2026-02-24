@@ -4,7 +4,11 @@ use std::{
 };
 
 use crate::{
-    TripleStoreManager, error::Result, metrics, query::named_graphs, types::GraphVisibility,
+    TripleStoreManager,
+    error::Result,
+    metrics,
+    query::{named_graphs, predicates},
+    types::GraphVisibility,
 };
 
 impl TripleStoreManager {
@@ -268,27 +272,7 @@ impl TripleStoreManager {
         let result = self
             .backend_construct(&query, self.config.timeouts.query_timeout())
             .await
-            .map(|rdf_lines| {
-                let subject_to_kc: HashMap<String, String> = kc_uals
-                    .iter()
-                    .map(|kc_ual| (format!("<{kc_ual}>"), kc_ual.clone()))
-                    .collect();
-
-                let mut grouped = HashMap::new();
-                for line in rdf_lines.lines().filter(|line| !line.trim().is_empty()) {
-                    let Some(subject) = crate::extract_subject(line) else {
-                        continue;
-                    };
-                    let Some(kc_ual) = subject_to_kc.get(subject) else {
-                        continue;
-                    };
-                    grouped
-                        .entry(kc_ual.clone())
-                        .or_insert_with(Vec::new)
-                        .push(line.to_string());
-                }
-                grouped
-            });
+            .map(|rdf_lines| group_constructed_metadata_by_kc(rdf_lines, kc_uals));
 
         let result_bytes = result
             .as_ref()
@@ -311,6 +295,150 @@ impl TripleStoreManager {
 
         result
     }
+
+    /// Get only core KC metadata predicates for one collection.
+    ///
+    /// Includes:
+    /// - publishedBy
+    /// - publishedAtBlock
+    /// - publishTx
+    /// - publishTime
+    /// - blockTime
+    pub async fn get_metadata_core(&self, kc_ual: &str) -> Result<String> {
+        let started = Instant::now();
+        let backend = self.backend.name();
+        let predicate_values = core_metadata_predicate_values();
+        let query = format!(
+            r#"CONSTRUCT {{ <{kc_ual}> ?p ?o . }}
+                WHERE {{
+                    GRAPH <{metadata}> {{
+                        VALUES ?p {{ {predicate_values} }}
+                        <{kc_ual}> ?p ?o .
+                    }}
+                }}"#,
+            metadata = named_graphs::METADATA,
+            predicate_values = predicate_values,
+        );
+
+        let result = self
+            .backend_construct(&query, self.config.timeouts.query_timeout())
+            .await;
+
+        let result_bytes = result.as_ref().map_or(0, |rdf| rdf.len());
+        let result_triples = result.as_ref().map_or(0, |rdf| non_empty_lines_count(rdf));
+        metrics::record_query_operation(
+            backend,
+            "get_metadata_core",
+            "metadata",
+            result.as_ref().err(),
+            started.elapsed(),
+            result_bytes,
+            result_triples,
+            Some(1),
+            Some(1),
+        );
+
+        result
+    }
+
+    /// Get only core KC metadata predicates for multiple collections in one query.
+    pub async fn get_metadata_core_batch(
+        &self,
+        kc_uals: &[String],
+    ) -> Result<HashMap<String, Vec<String>>> {
+        let started = Instant::now();
+        let backend = self.backend.name();
+
+        if kc_uals.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let values = kc_uals
+            .iter()
+            .map(|kc_ual| format!("<{kc_ual}>"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let predicate_values = core_metadata_predicate_values();
+
+        let query = format!(
+            r#"CONSTRUCT {{ ?kc ?p ?o . }}
+                WHERE {{
+                    GRAPH <{metadata}> {{
+                        VALUES ?kc {{ {values} }}
+                        VALUES ?p {{ {predicate_values} }}
+                        ?kc ?p ?o .
+                    }}
+                }}"#,
+            metadata = named_graphs::METADATA,
+            values = values,
+            predicate_values = predicate_values,
+        );
+
+        let result = self
+            .backend_construct(&query, self.config.timeouts.query_timeout())
+            .await
+            .map(|rdf_lines| group_constructed_metadata_by_kc(rdf_lines, kc_uals));
+
+        let result_bytes = result
+            .as_ref()
+            .map_or(0, |lines| joined_lines_bytes_map(lines));
+        let result_triples = result
+            .as_ref()
+            .map_or(0, |lines| lines.values().map(Vec::len).sum());
+        let requested = kc_uals.len();
+        metrics::record_query_operation(
+            backend,
+            "get_metadata_core_batch",
+            "metadata",
+            result.as_ref().err(),
+            started.elapsed(),
+            result_bytes,
+            result_triples,
+            Some(requested as u64),
+            Some(requested),
+        );
+
+        result
+    }
+}
+
+fn group_constructed_metadata_by_kc(
+    rdf_lines: String,
+    kc_uals: &[String],
+) -> HashMap<String, Vec<String>> {
+    let subject_to_kc: HashMap<String, String> = kc_uals
+        .iter()
+        .map(|kc_ual| (format!("<{kc_ual}>"), kc_ual.clone()))
+        .collect();
+
+    let mut grouped = HashMap::new();
+    for line in rdf_lines.lines().filter(|line| !line.trim().is_empty()) {
+        let Some(subject) = crate::extract_subject(line) else {
+            continue;
+        };
+        let Some(kc_ual) = subject_to_kc.get(subject) else {
+            continue;
+        };
+        grouped
+            .entry(kc_ual.clone())
+            .or_insert_with(Vec::new)
+            .push(line.to_string());
+    }
+    grouped
+}
+
+fn core_metadata_predicate_values() -> String {
+    [
+        predicates::PUBLISHED_BY,
+        predicates::PUBLISHED_AT_BLOCK,
+        predicates::PUBLISH_TX,
+        predicates::PUBLISH_TIME,
+        predicates::BLOCK_TIME,
+    ]
+    .iter()
+    .map(|p| format!("<{p}>"))
+    .collect::<Vec<_>>()
+    .join(" ")
 }
 
 fn joined_lines_bytes(lines: &[String]) -> usize {
