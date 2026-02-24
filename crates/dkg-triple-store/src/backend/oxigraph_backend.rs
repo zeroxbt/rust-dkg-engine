@@ -24,21 +24,13 @@ pub struct OxigraphBackend {
 impl OxigraphBackend {
     /// Create a new Oxigraph backend with persistent storage
     pub fn open(path: impl AsRef<Path>, config: &OxigraphStoreConfig) -> Result<Self> {
-        let max_open_files = config
-            .max_open_files
-            .map(i32::try_from)
-            .transpose()
-            .map_err(|_| {
-                TripleStoreError::Other(format!(
-                    "Invalid oxigraph.max_open_files value {}; max supported is {}",
-                    config.max_open_files.unwrap_or_default(),
-                    i32::MAX
-                ))
-            })?;
-        let options = StoreOptions {
-            max_open_files,
-            fd_reserve: config.fd_reserve,
-        };
+        let mut options = StoreOptions::default();
+        if let Some(max_open_files) = config.max_open_files {
+            options = options.with_max_open_files(max_open_files);
+        }
+        if let Some(fd_reserve) = config.fd_reserve {
+            options = options.with_fd_reserve(fd_reserve);
+        }
 
         let store = Store::open_with_options(&path, options).map_err(|e| {
             TripleStoreError::Other(format!("Failed to open Oxigraph store: {}", e))
@@ -46,8 +38,8 @@ impl OxigraphBackend {
 
         tracing::info!(
             path = %path.as_ref().display(),
-            max_open_files = ?options.max_open_files,
-            fd_reserve = ?options.fd_reserve,
+            max_open_files = ?config.max_open_files,
+            fd_reserve = ?config.fd_reserve,
             "Opened Oxigraph persistent store"
         );
 
