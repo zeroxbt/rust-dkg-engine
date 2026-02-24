@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 use clap::Parser;
@@ -12,8 +13,8 @@ use rand::{SeedableRng, rngs::StdRng, seq::index::sample};
 use serde::{Deserialize, Serialize};
 
 const METADATA_GRAPH: &str = "metadata:graph";
-const HAS_NAMED_GRAPH: &str = "https://ontology.origintrail.io/dkg/1.0#hasNamedGraph";
 const PUBLISHED_AT_BLOCK: &str = "https://ontology.origintrail.io/dkg/1.0#publishedAtBlock";
+const HAS_KNOWLEDGE_ASSET: &str = "https://ontology.origintrail.io/dkg/1.0#hasKnowledgeAsset";
 const DKG_REPOSITORY: &str = "DKG";
 
 #[derive(Debug, Parser)]
@@ -31,6 +32,10 @@ struct Args {
     /// Optional maximum number of KCs to export
     #[arg(long)]
     limit: Option<usize>,
+
+    /// Print progress every N processed candidates (0 disables periodic progress).
+    #[arg(long, default_value_t = 100)]
+    progress_every: usize,
 
     /// Generate candidates from a numeric KC id range instead of scanning metadata.
     /// Example with other required flags:
@@ -116,7 +121,6 @@ fn query_candidate_kcs(store: &Store, limit: Option<usize>) -> Result<Vec<String
         r#"SELECT ?kc WHERE {{
             GRAPH <{metadata_graph}> {{
                 ?kc <{published_at_block}> ?block .
-                FILTER(STRSTARTS(STR(?kc), "did:dkg:"))
             }}
         }}
         ORDER BY ?kc
@@ -171,14 +175,13 @@ fn query_candidate_kcs(store: &Store, limit: Option<usize>) -> Result<Vec<String
     let fallback_query = format!(
         r#"SELECT DISTINCT ?kc WHERE {{
             GRAPH <{metadata_graph}> {{
-                ?kc <{has_named_graph}> ?g .
-                FILTER(STRSTARTS(STR(?kc), "did:dkg:"))
+                ?kc <{has_knowledge_asset}> ?ka .
             }}
         }}
         ORDER BY ?kc
         {limit_clause}"#,
         metadata_graph = METADATA_GRAPH,
-        has_named_graph = HAS_NAMED_GRAPH,
+        has_knowledge_asset = HAS_KNOWLEDGE_ASSET,
         limit_clause = limit_clause,
     );
 
@@ -260,15 +263,14 @@ fn query_candidate_kcs_from_range(args: &Args) -> Result<Vec<String>, String> {
 
 fn query_kc_boundaries(store: &Store, kc_ual: &str) -> Result<Option<(u64, u64)>, String> {
     let query = format!(
-        r#"SELECT ?g WHERE {{
+        r#"SELECT ?ka WHERE {{
             GRAPH <{metadata_graph}> {{
-                <{kc_ual}> <{has_named_graph}> ?g .
-                FILTER(STRENDS(STR(?g), "/public"))
+                <{kc_ual}> <{has_knowledge_asset}> ?ka .
             }}
         }}"#,
         metadata_graph = METADATA_GRAPH,
         kc_ual = kc_ual,
-        has_named_graph = HAS_NAMED_GRAPH,
+        has_knowledge_asset = HAS_KNOWLEDGE_ASSET,
     );
 
     let mut min_token: Option<u64> = None;
@@ -283,24 +285,21 @@ fn query_kc_boundaries(store: &Store, kc_ual: &str) -> Result<Option<(u64, u64)>
     match results {
         QueryResults::Solutions(solutions) => {
             let vars: Vec<oxigraph::model::Variable> = solutions.variables().to_vec();
-            let g_var = vars
+            let ka_var = vars
                 .iter()
-                .find(|v| v.as_str() == "g")
+                .find(|v| v.as_str() == "ka")
                 .cloned()
-                .ok_or_else(|| "graph query results missing variable ?g".to_string())?;
+                .ok_or_else(|| "graph query results missing variable ?ka".to_string())?;
 
             for solution in solutions {
                 let solution = solution.map_err(|e| format!("failed to read graph row: {e}"))?;
-                let Some(term) = solution.get(&g_var) else {
+                let Some(term) = solution.get(&ka_var) else {
                     continue;
                 };
-                let Some(graph_iri) = extract_iri(term) else {
+                let Some(ka_ual) = extract_iri(term) else {
                     continue;
                 };
-                let Some(without_public) = graph_iri.strip_suffix("/public") else {
-                    continue;
-                };
-                let Some((prefix, token_str)) = without_public.rsplit_once('/') else {
+                let Some((prefix, token_str)) = ka_ual.rsplit_once('/') else {
                     continue;
                 };
                 if prefix != kc_ual {
@@ -343,8 +342,25 @@ fn main() -> Result<(), String> {
     };
     let candidate_count = candidates.len();
     let mut items = Vec::<WorkItem>::with_capacity(candidate_count);
+    let started = Instant::now();
 
-    for kc_ual in candidates {
+    if candidate_count == 0 {
+        eprintln!(
+            "store={} mode={} candidates=0 (nothing to process)",
+            resolved_store_path.display(),
+            if range_mode { "range" } else { "scan" },
+        );
+    } else {
+        eprintln!(
+            "store={} mode={} candidates={} progress_every={}",
+            resolved_store_path.display(),
+            if range_mode { "range" } else { "scan" },
+            candidate_count,
+            args.progress_every
+        );
+    }
+
+    for (idx, kc_ual) in candidates.into_iter().enumerate() {
         if let Some((start_token_id, end_token_id)) = query_kc_boundaries(&store, &kc_ual)? {
             items.push(WorkItem {
                 kc_ual,
@@ -352,6 +368,37 @@ fn main() -> Result<(), String> {
                 end_token_id,
                 burned: Vec::new(),
             });
+        }
+
+        let processed = idx + 1;
+        if args.progress_every > 0
+            && (processed % args.progress_every == 0 || processed == candidate_count)
+        {
+            let elapsed = started.elapsed();
+            let found = items.len();
+            let misses = processed.saturating_sub(found);
+            let rate = if elapsed.as_secs_f64() > 0.0 {
+                processed as f64 / elapsed.as_secs_f64()
+            } else {
+                0.0
+            };
+            let remaining = candidate_count.saturating_sub(processed);
+            let eta = if rate > 0.0 {
+                Duration::from_secs_f64(remaining as f64 / rate)
+            } else {
+                Duration::from_secs(0)
+            };
+            eprintln!(
+                "progress processed={}/{} found={} misses={} hit_rate={:.2}% elapsed={} eta={} rate={:.2}/s",
+                processed,
+                candidate_count,
+                found,
+                misses,
+                (found as f64 / processed as f64) * 100.0,
+                format_duration(elapsed),
+                format_duration(eta),
+                rate
+            );
         }
     }
 
@@ -372,4 +419,12 @@ fn main() -> Result<(), String> {
     );
 
     Ok(())
+}
+
+fn format_duration(duration: Duration) -> String {
+    let total = duration.as_secs();
+    let h = total / 3600;
+    let m = (total % 3600) / 60;
+    let s = total % 60;
+    format!("{h:02}:{m:02}:{s:02}")
 }
