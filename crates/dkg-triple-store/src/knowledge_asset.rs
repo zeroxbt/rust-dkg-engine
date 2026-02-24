@@ -1,4 +1,7 @@
-use std::{collections::HashSet, time::Instant};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Instant,
+};
 
 use crate::{
     TripleStoreManager, error::Result, metrics, query::named_graphs, types::GraphVisibility,
@@ -229,6 +232,85 @@ impl TripleStoreManager {
 
         result
     }
+
+    /// Get metadata for multiple knowledge collections in a single query.
+    ///
+    /// Returns a map keyed by KC UAL containing RDF triple lines for that KC.
+    pub async fn get_metadata_batch(
+        &self,
+        kc_uals: &[String],
+    ) -> Result<HashMap<String, Vec<String>>> {
+        let started = Instant::now();
+        let backend = self.backend.name();
+
+        if kc_uals.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let values = kc_uals
+            .iter()
+            .map(|kc_ual| format!("<{kc_ual}>"))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let query = format!(
+            r#"CONSTRUCT {{ ?kc ?p ?o . }}
+                WHERE {{
+                    GRAPH <{metadata}> {{
+                        VALUES ?kc {{ {values} }}
+                        ?kc ?p ?o .
+                    }}
+                }}"#,
+            metadata = named_graphs::METADATA,
+            values = values
+        );
+
+        let result = self
+            .backend_construct(&query, self.config.timeouts.query_timeout())
+            .await
+            .map(|rdf_lines| {
+                let subject_to_kc: HashMap<String, String> = kc_uals
+                    .iter()
+                    .map(|kc_ual| (format!("<{kc_ual}>"), kc_ual.clone()))
+                    .collect();
+
+                let mut grouped = HashMap::new();
+                for line in rdf_lines.lines().filter(|line| !line.trim().is_empty()) {
+                    let Some(subject) = crate::extract_subject(line) else {
+                        continue;
+                    };
+                    let Some(kc_ual) = subject_to_kc.get(subject) else {
+                        continue;
+                    };
+                    grouped
+                        .entry(kc_ual.clone())
+                        .or_insert_with(Vec::new)
+                        .push(line.to_string());
+                }
+                grouped
+            });
+
+        let result_bytes = result
+            .as_ref()
+            .map_or(0, |lines| joined_lines_bytes_map(lines));
+        let result_triples = result
+            .as_ref()
+            .map_or(0, |lines| lines.values().map(Vec::len).sum());
+        let requested = kc_uals.len();
+        metrics::record_query_operation(
+            backend,
+            "get_metadata_batch",
+            "metadata",
+            result.as_ref().err(),
+            started.elapsed(),
+            result_bytes,
+            result_triples,
+            Some(requested as u64),
+            Some(requested),
+        );
+
+        result
+    }
 }
 
 fn joined_lines_bytes(lines: &[String]) -> usize {
@@ -240,6 +322,13 @@ fn joined_lines_bytes(lines: &[String]) -> usize {
 
 fn non_empty_lines_count(text: &str) -> usize {
     text.lines().filter(|line| !line.trim().is_empty()).count()
+}
+
+fn joined_lines_bytes_map(lines_by_kc: &HashMap<String, Vec<String>>) -> usize {
+    lines_by_kc
+        .values()
+        .map(|lines| joined_lines_bytes(lines))
+        .sum()
 }
 
 fn visibility_from_graph_ual(ual: &str) -> &'static str {

@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use dkg_domain::{
     Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility,
@@ -50,25 +53,53 @@ impl TripleStoreAssertions {
     ) -> Result<Option<AssertionQueryResult>, TripleStoreError> {
         let kc_ual = parsed_ual.knowledge_collection_ual();
 
-        // Query assertion and metadata in parallel when metadata is requested
-        let (assertion, metadata) = if include_metadata {
-            let assertion_future = async {
-                self.query_assertion_data(parsed_ual, token_ids, visibility)
-                    .await
+        // For KC UALs, pre-check collection boundaries and then (optionally)
+        // fetch assertion + metadata in parallel.
+        if parsed_ual.knowledge_asset_id.is_none() {
+            if self
+                .collection_request_missing(parsed_ual, token_ids)
+                .await?
+            {
+                tracing::debug!(
+                    kc_ual = %kc_ual,
+                    "Knowledge collection does not exist locally"
+                );
+                return Ok(None);
+            }
+
+            let (assertion, metadata) = if include_metadata {
+                tokio::join!(
+                    self.query_collection_data_unchecked(&kc_ual, token_ids, visibility),
+                    self.query_metadata(&kc_ual)
+                )
+            } else {
+                (
+                    self.query_collection_data_unchecked(&kc_ual, token_ids, visibility)
+                        .await,
+                    Ok(None),
+                )
             };
 
-            let metadata_future = self.query_metadata(&kc_ual);
+            let assertion = assertion?;
+            let metadata = metadata?;
+            let Some(assertion) = assertion else {
+                return Ok(None);
+            };
+            if !assertion.has_data() {
+                return Ok(None);
+            }
 
-            tokio::join!(assertion_future, metadata_future)
-        } else {
-            let assertion = self
-                .query_assertion_data(parsed_ual, token_ids, visibility)
-                .await;
-            (assertion, Ok(None))
-        };
+            return Ok(Some(AssertionQueryResult {
+                assertion,
+                metadata,
+            }));
+        }
 
-        let assertion = assertion?;
-        let metadata = metadata?;
+        // Query assertion first; only fetch metadata if assertion is present.
+        // This avoids unnecessary metadata queries for misses.
+        let assertion = self
+            .query_assertion_data(parsed_ual, token_ids, visibility)
+            .await?;
 
         // Check if we found any data
         let Some(assertion) = assertion else {
@@ -77,6 +108,12 @@ impl TripleStoreAssertions {
         if !assertion.has_data() {
             return Ok(None);
         }
+
+        let metadata = if include_metadata {
+            self.query_metadata(&kc_ual).await?
+        } else {
+            None
+        };
 
         Ok(Some(AssertionQueryResult {
             assertion,
@@ -170,6 +207,16 @@ impl TripleStoreAssertions {
             return Ok(None);
         }
 
+        self.query_collection_data_unchecked(kc_ual, token_ids, visibility)
+            .await
+    }
+
+    async fn query_collection_data_unchecked(
+        &self,
+        kc_ual: &str,
+        token_ids: &TokenIds,
+        visibility: Visibility,
+    ) -> Result<Option<Assertion>, TripleStoreError> {
         let need_public = visibility == Visibility::Public || visibility == Visibility::All;
         let need_private = visibility == Visibility::Private || visibility == Visibility::All;
 
@@ -251,6 +298,24 @@ impl TripleStoreAssertions {
         include_metadata: bool,
     ) -> Result<HashMap<String, AssertionQueryResult>, TripleStoreError> {
         let max_in_flight = self.triple_store_manager.max_concurrent_operations();
+        let existing_kc_uals = self
+            .existing_collection_uals_for_requests(uals_with_token_ids)
+            .await?;
+        let existing_kc_uals = Arc::new(existing_kc_uals);
+
+        let metadata_candidate_kcs: HashSet<String> = if include_metadata {
+            uals_with_token_ids
+                .iter()
+                .filter_map(|(parsed_ual, _)| {
+                    let kc_ual = parsed_ual.knowledge_collection_ual();
+                    (!self.should_skip_collection_request(parsed_ual, &existing_kc_uals))
+                        .then_some(kc_ual)
+                })
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
         let queries: Vec<_> = uals_with_token_ids
             .iter()
             .map(|(parsed_ual, token_ids)| {
@@ -262,26 +327,47 @@ impl TripleStoreAssertions {
             })
             .collect();
 
-        // Execute queries with bounded fan-out to avoid unbounded permit queuing.
-        let query_results = stream::iter(queries.into_iter())
-            .map(|(ual_string, parsed_ual, token_ids)| async move {
-                let result = self
-                    .query_assertion(&parsed_ual, &token_ids, visibility, include_metadata)
-                    .await;
-                (ual_string, result)
-            })
-            .buffer_unordered(max_in_flight.max(1))
-            .collect::<Vec<_>>()
-            .await;
+        let assertion_queries = async {
+            // Execute queries with bounded fan-out to avoid unbounded permit queuing.
+            stream::iter(queries.into_iter())
+                .map(|(ual_string, parsed_ual, token_ids)| {
+                    let existing_kc_uals = Arc::clone(&existing_kc_uals);
+                    async move {
+                        if self.should_skip_collection_request(&parsed_ual, &existing_kc_uals) {
+                            return (ual_string, parsed_ual, Ok(None));
+                        }
 
-        // Collect successful results with data
-        let mut results_map = HashMap::new();
+                        let result = self
+                            .query_assertion_data(&parsed_ual, &token_ids, visibility)
+                            .await;
+                        (ual_string, parsed_ual, result)
+                    }
+                })
+                .buffer_unordered(max_in_flight.max(1))
+                .collect::<Vec<_>>()
+                .await
+        };
+
+        let metadata_query = async {
+            if !include_metadata {
+                return Ok(HashMap::new());
+            }
+
+            let kc_uals = metadata_candidate_kcs.into_iter().collect::<Vec<_>>();
+            self.triple_store_manager.get_metadata_batch(&kc_uals).await
+        };
+
+        let (query_results, metadata_by_kc_result) =
+            tokio::join!(assertion_queries, metadata_query);
+
+        // Collect successful assertion results with data.
+        let mut assertions = Vec::new();
         let mut first_error: Option<TripleStoreError> = None;
 
-        for (ual_string, result) in query_results {
+        for (ual_string, parsed_ual, result) in query_results {
             match result {
-                Ok(Some(r)) if r.assertion.has_data() => {
-                    results_map.insert(ual_string, r);
+                Ok(Some(assertion)) if assertion.has_data() => {
+                    assertions.push((ual_string, parsed_ual, assertion));
                 }
                 Ok(_) => {}
                 Err(e) => {
@@ -294,6 +380,39 @@ impl TripleStoreAssertions {
 
         if let Some(err) = first_error {
             return Err(err);
+        }
+
+        let metadata_by_kc = match metadata_by_kc_result {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                if first_error.is_none() {
+                    first_error = Some(e);
+                }
+                HashMap::new()
+            }
+        };
+
+        if let Some(err) = first_error {
+            return Err(err);
+        }
+
+        let mut results_map = HashMap::new();
+        for (ual_string, parsed_ual, assertion) in assertions {
+            let metadata = include_metadata
+                .then(|| {
+                    metadata_by_kc
+                        .get(&parsed_ual.knowledge_collection_ual())
+                        .cloned()
+                })
+                .flatten();
+
+            results_map.insert(
+                ual_string,
+                AssertionQueryResult {
+                    assertion,
+                    metadata,
+                },
+            );
         }
 
         Ok(results_map)
@@ -345,14 +464,31 @@ impl TripleStoreAssertions {
         end_token_id: u64,
         burned: &[u64],
     ) -> Result<bool, TripleStoreError> {
-        let burned_set: std::collections::HashSet<u64> = burned.iter().copied().collect();
+        let Some((first, last)) = Self::collection_boundaries(start_token_id, end_token_id, burned)
+        else {
+            return Ok(false);
+        };
+
+        let existing = self
+            .triple_store_manager
+            .knowledge_collections_exist_by_boundary_graphs(&[(kc_ual.to_string(), first, last)])
+            .await?;
+        Ok(existing.contains(kc_ual))
+    }
+
+    fn collection_boundaries(
+        start_token_id: u64,
+        end_token_id: u64,
+        burned: &[u64],
+    ) -> Option<(u64, u64)> {
+        let burned_set: HashSet<u64> = burned.iter().copied().collect();
 
         let mut first = start_token_id;
         while first <= end_token_id && burned_set.contains(&first) {
             first += 1;
         }
         if first > end_token_id {
-            return Ok(false);
+            return None;
         }
 
         let mut last = end_token_id;
@@ -361,22 +497,61 @@ impl TripleStoreAssertions {
                 break;
             }
             if last == 0 || last <= first {
-                return Ok(false);
+                return None;
             }
             last -= 1;
         }
 
-        let first_ka_ual = format!("{}/{}/public", kc_ual, first);
-        let last_ka_ual = format!("{}/{}/public", kc_ual, last);
+        Some((first, last))
+    }
 
-        let (first_exists, last_exists) = tokio::join!(
-            self.triple_store_manager
-                .knowledge_asset_exists(&first_ka_ual),
-            self.triple_store_manager
-                .knowledge_asset_exists(&last_ka_ual)
-        );
+    fn should_skip_collection_request(
+        &self,
+        parsed_ual: &ParsedUal,
+        existing_kc_uals: &HashSet<String>,
+    ) -> bool {
+        parsed_ual.knowledge_asset_id.is_none()
+            && !existing_kc_uals.contains(&parsed_ual.knowledge_collection_ual())
+    }
 
-        Ok(first_exists? && last_exists?)
+    async fn collection_request_missing(
+        &self,
+        parsed_ual: &ParsedUal,
+        token_ids: &TokenIds,
+    ) -> Result<bool, TripleStoreError> {
+        if parsed_ual.knowledge_asset_id.is_some() {
+            return Ok(false);
+        }
+
+        let existing = self
+            .existing_collection_uals_for_requests(&[(parsed_ual.clone(), token_ids.clone())])
+            .await?;
+        Ok(!existing.contains(&parsed_ual.knowledge_collection_ual()))
+    }
+
+    async fn existing_collection_uals_for_requests(
+        &self,
+        uals_with_token_ids: &[(ParsedUal, TokenIds)],
+    ) -> Result<HashSet<String>, TripleStoreError> {
+        let boundaries: Vec<(String, u64, u64)> = uals_with_token_ids
+            .iter()
+            .filter_map(|(parsed_ual, token_ids)| {
+                if parsed_ual.knowledge_asset_id.is_some() {
+                    return None;
+                }
+
+                Self::collection_boundaries(
+                    token_ids.start_token_id(),
+                    token_ids.end_token_id(),
+                    token_ids.burned(),
+                )
+                .map(|(first, last)| (parsed_ual.knowledge_collection_ual(), first, last))
+            })
+            .collect();
+
+        self.triple_store_manager
+            .knowledge_collections_exist_by_boundary_graphs(&boundaries)
+            .await
     }
 
     /// Check which knowledge collections exist by UAL (batched).

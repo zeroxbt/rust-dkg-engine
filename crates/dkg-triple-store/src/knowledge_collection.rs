@@ -343,6 +343,54 @@ impl TripleStoreManager {
         Ok(existing)
     }
 
+    /// Check which knowledge collections exist by validating first/last public KA graphs.
+    ///
+    /// Each tuple contains `(kc_ual, first_token_id, last_token_id)`.
+    /// Returns the subset of KC UALs for which both boundary graphs exist.
+    pub async fn knowledge_collections_exist_by_boundary_graphs(
+        &self,
+        boundaries: &[(String, u64, u64)],
+    ) -> Result<std::collections::HashSet<String>> {
+        let mut existing = std::collections::HashSet::new();
+        if boundaries.is_empty() {
+            return Ok(existing);
+        }
+
+        let values: String = boundaries
+            .iter()
+            .flat_map(|(kc_ual, first, last)| {
+                let first_graph = format!("{}/{}/public", kc_ual, first);
+                if first == last {
+                    vec![format!("(<{kc_ual}> <{first_graph}> 1)")]
+                } else {
+                    let last_graph = format!("{}/{}/public", kc_ual, last);
+                    vec![
+                        format!("(<{kc_ual}> <{first_graph}> 2)"),
+                        format!("(<{kc_ual}> <{last_graph}> 2)"),
+                    ]
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let query = format!(
+            r#"SELECT ?kc WHERE {{
+                VALUES (?kc ?g ?expected) {{ {values} }}
+                GRAPH ?g {{ ?s ?p ?o }}
+            }}
+            GROUP BY ?kc ?expected
+            HAVING (COUNT(DISTINCT ?g) = ?expected)"#,
+            values = values
+        );
+
+        let response = self
+            .backend_select(&query, self.config.timeouts.query_timeout())
+            .await?;
+        existing = crate::sparql::parse_select_values(&response, "kc")?;
+
+        Ok(existing)
+    }
+
     /// Format a unix timestamp as ISO 8601 datetime string
     fn format_unix_timestamp(timestamp: u64) -> String {
         DateTime::from_timestamp(timestamp as i64, 0)

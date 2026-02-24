@@ -186,6 +186,76 @@ async fn knowledge_collections_exist_empty_input() {
 }
 
 #[tokio::test]
+async fn knowledge_collections_exist_by_boundary_graphs_filters_correctly() {
+    let (manager, _temp_dir) = setup_manager().await;
+
+    let kc_full = "did:dkg:kc/full";
+    let ka1_full = KnowledgeAsset::new(
+        format!("{}/1", kc_full),
+        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
+    );
+    let ka2_full = KnowledgeAsset::new(
+        format!("{}/2", kc_full),
+        vec!["<http://example.org/s2> <http://example.org/p1> \"o2\" .".to_string()],
+    );
+    manager
+        .insert_knowledge_collection(kc_full, &[ka1_full, ka2_full], &None, None)
+        .await
+        .unwrap();
+
+    let kc_partial = "did:dkg:kc/partial";
+    let ka1_partial = KnowledgeAsset::new(
+        format!("{}/1", kc_partial),
+        vec!["<http://example.org/s3> <http://example.org/p1> \"o3\" .".to_string()],
+    );
+    manager
+        .insert_knowledge_collection(kc_partial, &[ka1_partial], &None, None)
+        .await
+        .unwrap();
+
+    let existing = manager
+        .knowledge_collections_exist_by_boundary_graphs(&[
+            (kc_full.to_string(), 1, 2),
+            (kc_full.to_string(), 2, 2),
+            (kc_partial.to_string(), 1, 2),
+            ("did:dkg:kc/missing".to_string(), 1, 1),
+        ])
+        .await
+        .unwrap();
+
+    let expected: HashSet<String> = [kc_full.to_string()].into_iter().collect();
+    assert_eq!(existing, expected);
+}
+
+#[tokio::test]
+async fn get_metadata_batch_groups_by_kc() {
+    let (manager, _temp_dir) = setup_manager().await;
+
+    let kc_ual = "did:dkg:kc/metadata-batch";
+    let ka = KnowledgeAsset::new(
+        format!("{}/1", kc_ual),
+        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
+    );
+    manager
+        .insert_knowledge_collection(kc_ual, &[ka], &None, None)
+        .await
+        .unwrap();
+
+    let metadata = manager
+        .get_metadata_batch(&[kc_ual.to_string(), "did:dkg:kc/missing".to_string()])
+        .await
+        .unwrap();
+
+    assert!(metadata.contains_key(kc_ual));
+    assert!(
+        metadata[kc_ual]
+            .iter()
+            .any(|line| line.contains(predicates::HAS_KNOWLEDGE_ASSET))
+    );
+    assert!(!metadata.contains_key("did:dkg:kc/missing"));
+}
+
+#[tokio::test]
 async fn knowledge_asset_missing_returns_false() {
     let (manager, _temp_dir) = setup_manager().await;
     let exists = manager
