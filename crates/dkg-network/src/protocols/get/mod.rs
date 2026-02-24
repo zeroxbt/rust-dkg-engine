@@ -15,7 +15,7 @@ pub struct GetProtocol;
 impl ProtocolSpec for GetProtocol {
     const NAME: &'static str = "Get";
     const STREAM_PROTOCOL: &'static str = "/get/1.0.0";
-    const TIMEOUT: Duration = Duration::from_secs(5);
+    const TIMEOUT: Duration = Duration::from_secs(15);
 
     type RequestData = GetRequestData;
     type Ack = GetAck;

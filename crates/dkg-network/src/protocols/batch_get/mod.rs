@@ -17,7 +17,7 @@ pub struct BatchGetProtocol;
 impl ProtocolSpec for BatchGetProtocol {
     const NAME: &'static str = "BatchGet";
     const STREAM_PROTOCOL: &'static str = "/batch-get/1.0.0";
-    const TIMEOUT: Duration = Duration::from_secs(10);
+    const TIMEOUT: Duration = Duration::from_secs(30);
 
     type RequestData = BatchGetRequestData;
     type Ack = BatchGetAck;
