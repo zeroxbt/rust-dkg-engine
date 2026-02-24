@@ -1,6 +1,6 @@
 [package]
 name = "dkg-key-value-store"
-version = "0.1.16"
+version = "0.1.17"
 rust-version = "1.92.0"
 edition = "2024"
 
