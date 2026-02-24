@@ -75,18 +75,22 @@ pub enum NetworkDataAction {
     StoreResponse {
         channel: request_response::ResponseChannel<ResponseMessage<StoreAck>>,
         message: ResponseMessage<StoreAck>,
+        result_tx: oneshot::Sender<Result<(), NetworkError>>,
     },
     GetResponse {
         channel: request_response::ResponseChannel<ResponseMessage<GetAck>>,
         message: ResponseMessage<GetAck>,
+        result_tx: oneshot::Sender<Result<(), NetworkError>>,
     },
     FinalityResponse {
         channel: request_response::ResponseChannel<ResponseMessage<FinalityAck>>,
         message: ResponseMessage<FinalityAck>,
+        result_tx: oneshot::Sender<Result<(), NetworkError>>,
     },
     BatchGetResponse {
         channel: request_response::ResponseChannel<ResponseMessage<BatchGetAck>>,
         message: ResponseMessage<BatchGetAck>,
+        result_tx: oneshot::Sender<Result<(), NetworkError>>,
     },
 }
 

@@ -782,19 +782,25 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.store,
             ),
-            NetworkDataAction::StoreResponse { channel, message } => {
-                let status = if self
+            NetworkDataAction::StoreResponse {
+                channel,
+                message,
+                result_tx,
+            } => {
+                let result = if self
                     .swarm
                     .behaviour_mut()
                     .store
                     .send_response(channel, message)
                     .is_ok()
                 {
-                    "ok"
+                    Ok(())
                 } else {
-                    "failed"
+                    Err(NetworkError::ResponseSendFailed)
                 };
+                let status = if result.is_ok() { "ok" } else { "failed" };
                 observability::record_network_response_send(StoreProtocol::NAME, "queued", status);
+                let _ = result_tx.send(result);
             }
             NetworkDataAction::GetRequest {
                 peer,
@@ -810,19 +816,25 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.get,
             ),
-            NetworkDataAction::GetResponse { channel, message } => {
-                let status = if self
+            NetworkDataAction::GetResponse {
+                channel,
+                message,
+                result_tx,
+            } => {
+                let result = if self
                     .swarm
                     .behaviour_mut()
                     .get
                     .send_response(channel, message)
                     .is_ok()
                 {
-                    "ok"
+                    Ok(())
                 } else {
-                    "failed"
+                    Err(NetworkError::ResponseSendFailed)
                 };
+                let status = if result.is_ok() { "ok" } else { "failed" };
                 observability::record_network_response_send(GetProtocol::NAME, "queued", status);
+                let _ = result_tx.send(result);
             }
             NetworkDataAction::FinalityRequest {
                 peer,
@@ -838,23 +850,29 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.finality,
             ),
-            NetworkDataAction::FinalityResponse { channel, message } => {
-                let status = if self
+            NetworkDataAction::FinalityResponse {
+                channel,
+                message,
+                result_tx,
+            } => {
+                let result = if self
                     .swarm
                     .behaviour_mut()
                     .finality
                     .send_response(channel, message)
                     .is_ok()
                 {
-                    "ok"
+                    Ok(())
                 } else {
-                    "failed"
+                    Err(NetworkError::ResponseSendFailed)
                 };
+                let status = if result.is_ok() { "ok" } else { "failed" };
                 observability::record_network_response_send(
                     FinalityProtocol::NAME,
                     "queued",
                     status,
                 );
+                let _ = result_tx.send(result);
             }
             NetworkDataAction::BatchGetRequest {
                 peer,
@@ -870,23 +888,29 @@ impl NetworkEventLoop {
                 response_tx,
                 |b| &mut b.batch_get,
             ),
-            NetworkDataAction::BatchGetResponse { channel, message } => {
-                let status = if self
+            NetworkDataAction::BatchGetResponse {
+                channel,
+                message,
+                result_tx,
+            } => {
+                let result = if self
                     .swarm
                     .behaviour_mut()
                     .batch_get
                     .send_response(channel, message)
                     .is_ok()
                 {
-                    "ok"
+                    Ok(())
                 } else {
-                    "failed"
+                    Err(NetworkError::ResponseSendFailed)
                 };
+                let status = if result.is_ok() { "ok" } else { "failed" };
                 observability::record_network_response_send(
                     BatchGetProtocol::NAME,
                     "queued",
                     status,
                 );
+                let _ = result_tx.send(result);
             }
         }
     }

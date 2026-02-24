@@ -64,6 +64,27 @@ impl NetworkManager {
         }
     }
 
+    async fn await_response_send_result(
+        protocol: &str,
+        rx: oneshot::Receiver<Result<(), NetworkError>>,
+    ) -> Result<(), NetworkError> {
+        let started = Instant::now();
+        match rx.await {
+            Ok(result) => {
+                observability::record_network_response_channel(protocol, "ok", started.elapsed());
+                result
+            }
+            Err(_) => {
+                observability::record_network_response_channel(
+                    protocol,
+                    "closed",
+                    started.elapsed(),
+                );
+                Err(NetworkError::ResponseChannelClosed)
+            }
+        }
+    }
+
     /// Creates a new NetworkManager handle and NetworkEventLoop pair.
     ///
     /// # Arguments
@@ -216,11 +237,14 @@ impl NetworkManager {
         response: ResponseHandle<StoreAck>,
         message: ResponseMessage<StoreAck>,
     ) -> Result<(), NetworkError> {
+        let (result_tx, result_rx) = oneshot::channel();
         self.enqueue_data_action(NetworkDataAction::StoreResponse {
             channel: response.into_inner(),
             message,
+            result_tx,
         })
-        .await
+        .await?;
+        Self::await_response_send_result(PROTOCOL_NAME_STORE, result_rx).await
     }
 
     /// Send a store ACK response for an inbound request.
@@ -276,11 +300,14 @@ impl NetworkManager {
         response: ResponseHandle<GetAck>,
         message: ResponseMessage<GetAck>,
     ) -> Result<(), NetworkError> {
+        let (result_tx, result_rx) = oneshot::channel();
         self.enqueue_data_action(NetworkDataAction::GetResponse {
             channel: response.into_inner(),
             message,
+            result_tx,
         })
-        .await
+        .await?;
+        Self::await_response_send_result(PROTOCOL_NAME_GET, result_rx).await
     }
 
     /// Send a get ACK response for an inbound request.
@@ -333,11 +360,14 @@ impl NetworkManager {
         response: ResponseHandle<FinalityAck>,
         message: ResponseMessage<FinalityAck>,
     ) -> Result<(), NetworkError> {
+        let (result_tx, result_rx) = oneshot::channel();
         self.enqueue_data_action(NetworkDataAction::FinalityResponse {
             channel: response.into_inner(),
             message,
+            result_tx,
         })
-        .await
+        .await?;
+        Self::await_response_send_result(PROTOCOL_NAME_FINALITY, result_rx).await
     }
 
     /// Send a finality ACK response for an inbound request.
@@ -393,11 +423,14 @@ impl NetworkManager {
         response: ResponseHandle<BatchGetAck>,
         message: ResponseMessage<BatchGetAck>,
     ) -> Result<(), NetworkError> {
+        let (result_tx, result_rx) = oneshot::channel();
         self.enqueue_data_action(NetworkDataAction::BatchGetResponse {
             channel: response.into_inner(),
             message,
+            result_tx,
         })
-        .await
+        .await?;
+        Self::await_response_send_result(PROTOCOL_NAME_BATCH_GET, result_rx).await
     }
 
     /// Send a batch-get ACK response for an inbound request.

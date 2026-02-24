@@ -44,6 +44,10 @@ pub enum NetworkError {
     #[error("Response channel closed before receiving response")]
     ResponseChannelClosed,
 
+    /// Failed to send response on an inbound protocol stream.
+    #[error("Failed to send protocol response")]
+    ResponseSendFailed,
+
     /// Key management error
     #[error("Key conversion failed: {0}")]
     KeyConversion(#[from] libp2p::identity::OtherVariantError),
