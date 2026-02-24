@@ -153,3 +153,14 @@ pub fn record_network_response_send(protocol: &str, mode: &str, status: &str) {
     )
     .increment(1);
 }
+
+pub fn record_network_codec_error(protocol: &str, direction: &str, kind: &str, stage: &str) {
+    counter!(
+        "node_network_codec_error_total",
+        "protocol" => protocol.to_string(),
+        "direction" => direction.to_string(),
+        "kind" => kind.to_string(),
+        "stage" => stage.to_string()
+    )
+    .increment(1);
+}

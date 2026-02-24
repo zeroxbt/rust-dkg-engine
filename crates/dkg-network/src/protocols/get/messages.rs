@@ -15,6 +15,7 @@ pub struct GetRequestData {
     knowledge_asset_id: Option<u128>,
     ual: String,
     token_ids: TokenIds,
+    #[serde(default)]
     include_metadata: bool,
     #[serde(rename = "paranetUAL")]
     paranet_ual: Option<String>,

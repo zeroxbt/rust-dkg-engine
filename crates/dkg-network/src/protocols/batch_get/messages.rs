@@ -21,6 +21,7 @@ pub struct BatchGetRequestData {
     /// Token IDs for each UAL (keyed by UAL string).
     token_ids: HashMap<String, TokenIds>,
     /// Whether to include metadata in the response.
+    #[serde(default)]
     include_metadata: bool,
 }
 

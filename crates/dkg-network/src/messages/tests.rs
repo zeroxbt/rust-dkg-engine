@@ -101,6 +101,34 @@ fn get_request_accepts_js_payload() {
 }
 
 #[test]
+fn get_request_defaults_include_metadata_to_false_when_missing() {
+    let raw = r#"{
+            "header": {
+                "operationId": "11111111-1111-1111-1111-111111111111",
+                "messageType": "PROTOCOL_REQUEST"
+            },
+            "data": {
+                "blockchain": "otp:2043",
+                "contract": "0xabc",
+                "knowledgeCollectionId": 42,
+                "knowledgeAssetId": 7,
+                "tokenIds": {
+                    "startTokenId": 1,
+                    "endTokenId": 1,
+                    "burned": []
+                },
+                "ual": "did:dkg:otp:2043/0xabc/42/7",
+                "paranetUAL": "did:dkg:otp:2043/0xdef/1/1"
+            }
+        }"#;
+
+    let request: RequestMessage<GetRequestData> =
+        serde_json::from_str(raw).expect("failed to parse GET request without includeMetadata");
+
+    assert!(!request.data.include_metadata());
+}
+
+#[test]
 fn get_request_serializes_required_fields() {
     let request = RequestMessage::protocol_request(
         sample_operation_id(),
@@ -229,6 +257,32 @@ fn batch_get_request_accepts_js_payload() {
     assert_eq!(request.data.token_ids()[&sample_ual()].start_token_id(), 1);
     assert_eq!(request.data.token_ids()[&sample_ual()].end_token_id(), 1);
     assert!(request.data.token_ids()[&sample_ual()].burned().is_empty());
+}
+
+#[test]
+fn batch_get_request_defaults_include_metadata_to_false_when_missing() {
+    let raw = r#"{
+            "header": {
+                "operationId": "11111111-1111-1111-1111-111111111111",
+                "messageType": "PROTOCOL_REQUEST"
+            },
+            "data": {
+                "blockchain": "otp:2043",
+                "tokenIds": {
+                    "did:dkg:otp:2043/0xabc/42/7": {
+                        "startTokenId": 1,
+                        "endTokenId": 1,
+                        "burned": []
+                    }
+                },
+                "uals": ["did:dkg:otp:2043/0xabc/42/7"]
+            }
+        }"#;
+
+    let request: RequestMessage<BatchGetRequestData> = serde_json::from_str(raw)
+        .expect("failed to parse batch get request without includeMetadata");
+
+    assert!(!request.data.include_metadata());
 }
 
 #[test]

@@ -19,6 +19,24 @@ const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100 MB max total message s
 const CHUNK_SIZE: usize = 1024 * 1024; // 1 MB chunks (matching JS implementation)
 const INITIAL_BUFFER_CAPACITY: usize = 64 * 1024; // 64 KB initial allocation
 
+fn record_codec_error(
+    protocol: &str,
+    direction: &str,
+    kind: &str,
+    stage: &str,
+    error: impl std::fmt::Display,
+) {
+    observability::record_network_codec_error(protocol, direction, kind, stage);
+    tracing::warn!(
+        protocol,
+        direction,
+        kind,
+        stage,
+        error = %error,
+        "Network codec error"
+    );
+}
+
 /// A codec that handles JS node's chunked message format.
 ///
 /// JS sends:
@@ -107,6 +125,13 @@ where
     let mut data_bytes = Vec::with_capacity(INITIAL_BUFFER_CAPACITY);
     while let Some(chunk) = read_length_prefixed(io).await? {
         if data_bytes.len() + chunk.len() > MAX_MESSAGE_SIZE {
+            record_codec_error(
+                protocol,
+                direction,
+                kind,
+                "message_too_large",
+                "total message size exceeds maximum",
+            );
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Total message size exceeds maximum",
@@ -117,6 +142,7 @@ where
 
     // Parse header and data as JSON Values (avoids string concatenation)
     let header: serde_json::Value = serde_json::from_slice(&header_bytes).map_err(|e| {
+        record_codec_error(protocol, direction, kind, "header_json_decode", &e);
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Invalid header JSON: {}", e),
@@ -124,6 +150,7 @@ where
     })?;
 
     let data: serde_json::Value = serde_json::from_slice(&data_bytes).map_err(|e| {
+        record_codec_error(protocol, direction, kind, "data_json_decode", &e);
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Invalid data JSON: {}", e),
@@ -150,6 +177,7 @@ where
     );
 
     serde_json::from_value(combined).map_err(|e| {
+        record_codec_error(protocol, direction, kind, "message_deserialize", &e);
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Failed to deserialize message: {}", e),
@@ -175,21 +203,37 @@ where
 {
     // Serialize to JSON Value to extract header and data
     let value = serde_json::to_value(&msg).map_err(|e| {
+        record_codec_error(protocol, direction, kind, "message_serialize", &e);
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Failed to serialize message: {}", e),
         )
     })?;
 
-    let header = value
-        .get("header")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Message missing header"))?;
-    let data = value
-        .get("data")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Message missing data"))?;
+    let header = value.get("header").ok_or_else(|| {
+        record_codec_error(
+            protocol,
+            direction,
+            kind,
+            "message_missing_header",
+            "message missing header",
+        );
+        io::Error::new(io::ErrorKind::InvalidData, "Message missing header")
+    })?;
+    let data = value.get("data").ok_or_else(|| {
+        record_codec_error(
+            protocol,
+            direction,
+            kind,
+            "message_missing_data",
+            "message missing data",
+        );
+        io::Error::new(io::ErrorKind::InvalidData, "Message missing data")
+    })?;
 
     // Serialize header and data directly to bytes (avoids intermediate String)
     let header_bytes = serde_json::to_vec(header).map_err(|e| {
+        record_codec_error(protocol, direction, kind, "header_json_serialize", &e);
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Failed to serialize header: {}", e),
@@ -197,6 +241,7 @@ where
     })?;
 
     let data_bytes = serde_json::to_vec(data).map_err(|e| {
+        record_codec_error(protocol, direction, kind, "data_json_serialize", &e);
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Failed to serialize data: {}", e),
