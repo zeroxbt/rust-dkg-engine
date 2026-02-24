@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -13,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 const METADATA_GRAPH: &str = "metadata:graph";
 const HAS_NAMED_GRAPH: &str = "https://ontology.origintrail.io/dkg/1.0#hasNamedGraph";
+const DKG_REPOSITORY: &str = "DKG";
 
 #[derive(Debug, Parser)]
 #[command(name = "generate-workload")]
@@ -64,6 +64,13 @@ fn open_store(
         .map_err(|e| format!("failed to open Oxigraph store at {}: {e}", path.display()))
 }
 
+fn resolve_store_path(path: &Path) -> PathBuf {
+    if path.file_name().is_some_and(|name| name == DKG_REPOSITORY) {
+        return path.to_path_buf();
+    }
+    path.join(DKG_REPOSITORY)
+}
+
 fn extract_iri(term: &oxigraph::model::Term) -> Option<String> {
     if !term.is_named_node() {
         return None;
@@ -76,30 +83,45 @@ fn extract_iri(term: &oxigraph::model::Term) -> Option<String> {
     )
 }
 
-fn parse_graph_into_kc_and_token(graph_iri: &str) -> Option<(String, u64)> {
-    let without_public = graph_iri.strip_suffix("/public")?;
-    let (kc_ual, token_str) = without_public.rsplit_once('/')?;
-    let token_id = token_str.parse::<u64>().ok()?;
-    Some((kc_ual.to_string(), token_id))
+fn parse_literal_u64(term: &oxigraph::model::Term) -> Option<u64> {
+    match term {
+        oxigraph::model::Term::Literal(lit) => lit.value().parse::<u64>().ok(),
+        _ => None,
+    }
 }
 
 fn main() -> Result<(), String> {
     let args = Args::parse();
+    let resolved_store_path = resolve_store_path(&args.store_path);
     let store = open_store(
-        &args.store_path,
+        &resolved_store_path,
         args.oxigraph_max_open_files,
         args.oxigraph_fd_reserve,
     )?;
 
+    let limit_clause = args
+        .limit
+        .map(|limit| format!("LIMIT {limit}"))
+        .unwrap_or_default();
+
     let query = format!(
-        r#"SELECT ?g WHERE {{
+        r#"PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        SELECT ?kc (MIN(?token) AS ?start_token_id) (MAX(?token) AS ?end_token_id) WHERE {{
             GRAPH <{metadata_graph}> {{
                 ?kc <{has_named_graph}> ?g .
+                FILTER(STRENDS(STR(?g), "/public"))
+                BIND(REPLACE(STR(?g), CONCAT("^", STR(?kc), "/"), "") AS ?tail)
+                BIND(REPLACE(?tail, "/public$", "") AS ?token_str)
+                FILTER(REGEX(?token_str, "^[0-9]+$"))
+                BIND(xsd:integer(?token_str) AS ?token)
             }}
-            FILTER(STRENDS(STR(?g), "/public"))
-        }}"#,
+        }}
+        GROUP BY ?kc
+        ORDER BY ?kc
+        {limit_clause}"#,
         metadata_graph = METADATA_GRAPH,
         has_named_graph = HAS_NAMED_GRAPH,
+        limit_clause = limit_clause,
     );
 
     let prepared = SparqlEvaluator::new()
@@ -111,60 +133,67 @@ fn main() -> Result<(), String> {
         .execute()
         .map_err(|e| format!("failed to execute SPARQL query: {e}"))?;
 
-    let mut boundaries: HashMap<String, (u64, u64)> = HashMap::new();
+    let mut items = Vec::<WorkItem>::new();
 
     match results {
         QueryResults::Solutions(solutions) => {
             let vars: Vec<oxigraph::model::Variable> = solutions.variables().to_vec();
             let g_var = vars
                 .iter()
-                .find(|v| v.as_str() == "g")
+                .find(|v| v.as_str() == "kc")
                 .cloned()
-                .ok_or_else(|| "query results missing variable ?g".to_string())?;
+                .ok_or_else(|| "query results missing variable ?kc".to_string())?;
+            let start_var = vars
+                .iter()
+                .find(|v| v.as_str() == "start_token_id")
+                .cloned()
+                .ok_or_else(|| "query results missing variable ?start_token_id".to_string())?;
+            let end_var = vars
+                .iter()
+                .find(|v| v.as_str() == "end_token_id")
+                .cloned()
+                .ok_or_else(|| "query results missing variable ?end_token_id".to_string())?;
 
             for solution in solutions {
                 let solution = solution.map_err(|e| format!("failed to read solution row: {e}"))?;
-                let term = match solution.get(&g_var) {
+                let kc_term = match solution.get(&g_var) {
+                    Some(term) => term,
+                    None => continue,
+                };
+                let start_term = match solution.get(&start_var) {
+                    Some(term) => term,
+                    None => continue,
+                };
+                let end_term = match solution.get(&end_var) {
                     Some(term) => term,
                     None => continue,
                 };
 
-                let graph_iri = match extract_iri(term) {
+                let kc_ual = match extract_iri(kc_term) {
+                    Some(value) => value,
+                    None => continue,
+                };
+                let start_token_id = match parse_literal_u64(start_term) {
+                    Some(value) => value,
+                    None => continue,
+                };
+                let end_token_id = match parse_literal_u64(end_term) {
                     Some(value) => value,
                     None => continue,
                 };
 
-                let (kc_ual, token_id) = match parse_graph_into_kc_and_token(&graph_iri) {
-                    Some(value) => value,
-                    None => continue,
-                };
-
-                boundaries
-                    .entry(kc_ual)
-                    .and_modify(|(start, end)| {
-                        *start = (*start).min(token_id);
-                        *end = (*end).max(token_id);
-                    })
-                    .or_insert((token_id, token_id));
+                items.push(WorkItem {
+                    kc_ual,
+                    start_token_id,
+                    end_token_id,
+                    burned: Vec::new(),
+                });
             }
         }
         _ => return Err("expected SELECT solutions, got non-solution result".to_string()),
     }
 
-    let mut items: Vec<WorkItem> = boundaries
-        .into_iter()
-        .map(|(kc_ual, (start_token_id, end_token_id))| WorkItem {
-            kc_ual,
-            start_token_id,
-            end_token_id,
-            burned: Vec::new(),
-        })
-        .collect();
-
     items.sort_by(|a, b| a.kc_ual.cmp(&b.kc_ual));
-    if let Some(limit) = args.limit {
-        items.truncate(limit);
-    }
 
     let payload = serde_json::to_string_pretty(&items)
         .map_err(|e| format!("failed to serialize workload JSON: {e}"))?;
@@ -172,7 +201,8 @@ fn main() -> Result<(), String> {
         .map_err(|e| format!("failed to write {}: {e}", args.output.display()))?;
 
     eprintln!(
-        "wrote {} workload entries to {}",
+        "store={} wrote {} workload entries to {}",
+        resolved_store_path.display(),
         items.len(),
         args.output.display()
     );
