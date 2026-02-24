@@ -64,6 +64,24 @@ derives:
 - `end_token_id` (max token)
 - `burned` as `[]` (unknown from triple store alone)
 
+## Generate Workload From KC Id Range (Fast Path)
+
+If you already know a safe KC id upper bound from sync progress, generate random candidate KCs
+without global metadata scans:
+
+```bash
+cargo run --manifest-path tools/query-probe/Cargo.toml --bin generate_workload -- \
+  --store-path /var/lib/rust-dkg-engine/triple-store \
+  --output /tmp/workload.json \
+  --blockchain-id otp:2043 \
+  --contract-address 0x8f678eb0e57ee8a109b295710e23076fa3a443fe \
+  --max-kc-id 4333366 \
+  --sample-size 20000 \
+  --seed 42
+```
+
+The generator then resolves each sampled KC boundaries (`start/end`) by querying only that KC.
+
 ## Important
 
 Do not run against the same Oxigraph store while the node is running.

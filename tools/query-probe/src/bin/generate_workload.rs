@@ -8,10 +8,12 @@ use oxigraph::{
     sparql::{QueryResults, SparqlEvaluator},
     store::{Store, StoreOptions},
 };
+use rand::{SeedableRng, rngs::StdRng, seq::index::sample};
 use serde::{Deserialize, Serialize};
 
 const METADATA_GRAPH: &str = "metadata:graph";
 const HAS_NAMED_GRAPH: &str = "https://ontology.origintrail.io/dkg/1.0#hasNamedGraph";
+const PUBLISHED_AT_BLOCK: &str = "https://ontology.origintrail.io/dkg/1.0#publishedAtBlock";
 const DKG_REPOSITORY: &str = "DKG";
 
 #[derive(Debug, Parser)]
@@ -29,6 +31,28 @@ struct Args {
     /// Optional maximum number of KCs to export
     #[arg(long)]
     limit: Option<usize>,
+
+    /// Generate candidates from a numeric KC id range instead of scanning metadata.
+    /// Example with other required flags:
+    /// --blockchain-id otp:2043 --contract-address 0x... --max-kc-id 4333366 --sample-size 20000
+    #[arg(long)]
+    blockchain_id: Option<String>,
+
+    /// Contract address used for KC UAL synthesis in range mode.
+    #[arg(long)]
+    contract_address: Option<String>,
+
+    /// Maximum KC id (inclusive) for range mode.
+    #[arg(long)]
+    max_kc_id: Option<u64>,
+
+    /// Number of random KC ids to sample in range mode.
+    #[arg(long)]
+    sample_size: Option<usize>,
+
+    /// RNG seed for reproducible range sampling.
+    #[arg(long)]
+    seed: Option<u64>,
 
     /// Optional max_open_files for Oxigraph open options
     #[arg(long)]
@@ -83,10 +107,219 @@ fn extract_iri(term: &oxigraph::model::Term) -> Option<String> {
     )
 }
 
-fn parse_literal_u64(term: &oxigraph::model::Term) -> Option<u64> {
-    match term {
-        oxigraph::model::Term::Literal(lit) => lit.value().parse::<u64>().ok(),
-        _ => None,
+fn query_candidate_kcs(store: &Store, limit: Option<usize>) -> Result<Vec<String>, String> {
+    let limit_clause = limit
+        .map(|value| format!("LIMIT {value}"))
+        .unwrap_or_default();
+
+    let primary_query = format!(
+        r#"SELECT ?kc WHERE {{
+            GRAPH <{metadata_graph}> {{
+                ?kc <{published_at_block}> ?block .
+                FILTER(STRSTARTS(STR(?kc), "did:dkg:"))
+            }}
+        }}
+        ORDER BY ?kc
+        {limit_clause}"#,
+        metadata_graph = METADATA_GRAPH,
+        published_at_block = PUBLISHED_AT_BLOCK,
+        limit_clause = limit_clause,
+    );
+
+    let mut candidates = Vec::new();
+    {
+        let prepared = SparqlEvaluator::new()
+            .parse_query(&primary_query)
+            .map_err(|e| format!("failed to parse primary SPARQL query: {e}"))?;
+        let results = prepared
+            .on_store(store)
+            .execute()
+            .map_err(|e| format!("failed to execute primary SPARQL query: {e}"))?;
+
+        match results {
+            QueryResults::Solutions(solutions) => {
+                let vars: Vec<oxigraph::model::Variable> = solutions.variables().to_vec();
+                let kc_var = vars
+                    .iter()
+                    .find(|v| v.as_str() == "kc")
+                    .cloned()
+                    .ok_or_else(|| "primary query results missing variable ?kc".to_string())?;
+
+                for solution in solutions {
+                    let solution =
+                        solution.map_err(|e| format!("failed to read primary row: {e}"))?;
+                    let Some(term) = solution.get(&kc_var) else {
+                        continue;
+                    };
+                    if let Some(kc_ual) = extract_iri(term) {
+                        candidates.push(kc_ual);
+                    }
+                }
+            }
+            _ => {
+                return Err(
+                    "primary query expected SELECT solutions, got non-solution result".to_string(),
+                );
+            }
+        }
+    }
+
+    if !candidates.is_empty() {
+        return Ok(candidates);
+    }
+
+    let fallback_query = format!(
+        r#"SELECT DISTINCT ?kc WHERE {{
+            GRAPH <{metadata_graph}> {{
+                ?kc <{has_named_graph}> ?g .
+                FILTER(STRSTARTS(STR(?kc), "did:dkg:"))
+            }}
+        }}
+        ORDER BY ?kc
+        {limit_clause}"#,
+        metadata_graph = METADATA_GRAPH,
+        has_named_graph = HAS_NAMED_GRAPH,
+        limit_clause = limit_clause,
+    );
+
+    let prepared = SparqlEvaluator::new()
+        .parse_query(&fallback_query)
+        .map_err(|e| format!("failed to parse fallback SPARQL query: {e}"))?;
+    let results = prepared
+        .on_store(store)
+        .execute()
+        .map_err(|e| format!("failed to execute fallback SPARQL query: {e}"))?;
+    match results {
+        QueryResults::Solutions(solutions) => {
+            let vars: Vec<oxigraph::model::Variable> = solutions.variables().to_vec();
+            let kc_var = vars
+                .iter()
+                .find(|v| v.as_str() == "kc")
+                .cloned()
+                .ok_or_else(|| "fallback query results missing variable ?kc".to_string())?;
+            for solution in solutions {
+                let solution = solution.map_err(|e| format!("failed to read fallback row: {e}"))?;
+                let Some(term) = solution.get(&kc_var) else {
+                    continue;
+                };
+                if let Some(kc_ual) = extract_iri(term) {
+                    candidates.push(kc_ual);
+                }
+            }
+        }
+        _ => {
+            return Err(
+                "fallback query expected SELECT solutions, got non-solution result".to_string(),
+            );
+        }
+    }
+
+    Ok(candidates)
+}
+
+fn query_candidate_kcs_from_range(args: &Args) -> Result<Vec<String>, String> {
+    let blockchain_id = args
+        .blockchain_id
+        .as_deref()
+        .ok_or_else(|| "range mode requires --blockchain-id".to_string())?;
+    let contract_address = args
+        .contract_address
+        .as_deref()
+        .ok_or_else(|| "range mode requires --contract-address".to_string())?;
+    let max_kc_id = args
+        .max_kc_id
+        .ok_or_else(|| "range mode requires --max-kc-id".to_string())?;
+    let sample_size = args
+        .sample_size
+        .ok_or_else(|| "range mode requires --sample-size".to_string())?;
+
+    if max_kc_id == 0 {
+        return Err("--max-kc-id must be > 0".to_string());
+    }
+    if sample_size == 0 {
+        return Ok(Vec::new());
+    }
+
+    let population = max_kc_id as usize;
+    let effective_sample = sample_size.min(population);
+    let seed = args.seed.unwrap_or(0xD1CE_BA5E_u64);
+    let mut rng = StdRng::seed_from_u64(seed);
+    let indices = sample(&mut rng, population, effective_sample);
+
+    let mut candidates = Vec::with_capacity(effective_sample);
+    for idx in indices.into_iter() {
+        let id = (idx as u64) + 1;
+        candidates.push(format!(
+            "did:dkg:{}/{}/{}",
+            blockchain_id, contract_address, id
+        ));
+    }
+
+    Ok(candidates)
+}
+
+fn query_kc_boundaries(store: &Store, kc_ual: &str) -> Result<Option<(u64, u64)>, String> {
+    let query = format!(
+        r#"SELECT ?g WHERE {{
+            GRAPH <{metadata_graph}> {{
+                <{kc_ual}> <{has_named_graph}> ?g .
+                FILTER(STRENDS(STR(?g), "/public"))
+            }}
+        }}"#,
+        metadata_graph = METADATA_GRAPH,
+        kc_ual = kc_ual,
+        has_named_graph = HAS_NAMED_GRAPH,
+    );
+
+    let mut min_token: Option<u64> = None;
+    let mut max_token: Option<u64> = None;
+    let prepared = SparqlEvaluator::new()
+        .parse_query(&query)
+        .map_err(|e| format!("failed to parse graph query for {kc_ual}: {e}"))?;
+    let results = prepared
+        .on_store(store)
+        .execute()
+        .map_err(|e| format!("failed to execute graph query for {kc_ual}: {e}"))?;
+    match results {
+        QueryResults::Solutions(solutions) => {
+            let vars: Vec<oxigraph::model::Variable> = solutions.variables().to_vec();
+            let g_var = vars
+                .iter()
+                .find(|v| v.as_str() == "g")
+                .cloned()
+                .ok_or_else(|| "graph query results missing variable ?g".to_string())?;
+
+            for solution in solutions {
+                let solution = solution.map_err(|e| format!("failed to read graph row: {e}"))?;
+                let Some(term) = solution.get(&g_var) else {
+                    continue;
+                };
+                let Some(graph_iri) = extract_iri(term) else {
+                    continue;
+                };
+                let Some(without_public) = graph_iri.strip_suffix("/public") else {
+                    continue;
+                };
+                let Some((prefix, token_str)) = without_public.rsplit_once('/') else {
+                    continue;
+                };
+                if prefix != kc_ual {
+                    continue;
+                }
+                let Ok(token_id) = token_str.parse::<u64>() else {
+                    continue;
+                };
+
+                min_token = Some(min_token.map_or(token_id, |value| value.min(token_id)));
+                max_token = Some(max_token.map_or(token_id, |value| value.max(token_id)));
+            }
+        }
+        _ => return Err("graph query expected SELECT solutions".to_string()),
+    }
+
+    match (min_token, max_token) {
+        (Some(start), Some(end)) => Ok(Some((start, end))),
+        _ => Ok(None),
     }
 }
 
@@ -99,98 +332,27 @@ fn main() -> Result<(), String> {
         args.oxigraph_fd_reserve,
     )?;
 
-    let limit_clause = args
-        .limit
-        .map(|limit| format!("LIMIT {limit}"))
-        .unwrap_or_default();
+    let range_mode = args.blockchain_id.is_some()
+        || args.contract_address.is_some()
+        || args.max_kc_id.is_some()
+        || args.sample_size.is_some();
+    let candidates = if range_mode {
+        query_candidate_kcs_from_range(&args)?
+    } else {
+        query_candidate_kcs(&store, args.limit)?
+    };
+    let candidate_count = candidates.len();
+    let mut items = Vec::<WorkItem>::with_capacity(candidate_count);
 
-    let query = format!(
-        r#"PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-        SELECT ?kc (MIN(?token) AS ?start_token_id) (MAX(?token) AS ?end_token_id) WHERE {{
-            GRAPH <{metadata_graph}> {{
-                ?kc <{has_named_graph}> ?g .
-                FILTER(STRENDS(STR(?g), "/public"))
-                BIND(REPLACE(STR(?g), CONCAT("^", STR(?kc), "/"), "") AS ?tail)
-                BIND(REPLACE(?tail, "/public$", "") AS ?token_str)
-                FILTER(REGEX(?token_str, "^[0-9]+$"))
-                BIND(xsd:integer(?token_str) AS ?token)
-            }}
-        }}
-        GROUP BY ?kc
-        ORDER BY ?kc
-        {limit_clause}"#,
-        metadata_graph = METADATA_GRAPH,
-        has_named_graph = HAS_NAMED_GRAPH,
-        limit_clause = limit_clause,
-    );
-
-    let prepared = SparqlEvaluator::new()
-        .parse_query(&query)
-        .map_err(|e| format!("failed to parse SPARQL query: {e}"))?;
-
-    let results = prepared
-        .on_store(&store)
-        .execute()
-        .map_err(|e| format!("failed to execute SPARQL query: {e}"))?;
-
-    let mut items = Vec::<WorkItem>::new();
-
-    match results {
-        QueryResults::Solutions(solutions) => {
-            let vars: Vec<oxigraph::model::Variable> = solutions.variables().to_vec();
-            let g_var = vars
-                .iter()
-                .find(|v| v.as_str() == "kc")
-                .cloned()
-                .ok_or_else(|| "query results missing variable ?kc".to_string())?;
-            let start_var = vars
-                .iter()
-                .find(|v| v.as_str() == "start_token_id")
-                .cloned()
-                .ok_or_else(|| "query results missing variable ?start_token_id".to_string())?;
-            let end_var = vars
-                .iter()
-                .find(|v| v.as_str() == "end_token_id")
-                .cloned()
-                .ok_or_else(|| "query results missing variable ?end_token_id".to_string())?;
-
-            for solution in solutions {
-                let solution = solution.map_err(|e| format!("failed to read solution row: {e}"))?;
-                let kc_term = match solution.get(&g_var) {
-                    Some(term) => term,
-                    None => continue,
-                };
-                let start_term = match solution.get(&start_var) {
-                    Some(term) => term,
-                    None => continue,
-                };
-                let end_term = match solution.get(&end_var) {
-                    Some(term) => term,
-                    None => continue,
-                };
-
-                let kc_ual = match extract_iri(kc_term) {
-                    Some(value) => value,
-                    None => continue,
-                };
-                let start_token_id = match parse_literal_u64(start_term) {
-                    Some(value) => value,
-                    None => continue,
-                };
-                let end_token_id = match parse_literal_u64(end_term) {
-                    Some(value) => value,
-                    None => continue,
-                };
-
-                items.push(WorkItem {
-                    kc_ual,
-                    start_token_id,
-                    end_token_id,
-                    burned: Vec::new(),
-                });
-            }
+    for kc_ual in candidates {
+        if let Some((start_token_id, end_token_id)) = query_kc_boundaries(&store, &kc_ual)? {
+            items.push(WorkItem {
+                kc_ual,
+                start_token_id,
+                end_token_id,
+                burned: Vec::new(),
+            });
         }
-        _ => return Err("expected SELECT solutions, got non-solution result".to_string()),
     }
 
     items.sort_by(|a, b| a.kc_ual.cmp(&b.kc_ual));
@@ -201,8 +363,10 @@ fn main() -> Result<(), String> {
         .map_err(|e| format!("failed to write {}: {e}", args.output.display()))?;
 
     eprintln!(
-        "store={} wrote {} workload entries to {}",
+        "store={} mode={} candidates={} wrote {} workload entries to {}",
         resolved_store_path.display(),
+        if range_mode { "range" } else { "scan" },
+        candidate_count,
         items.len(),
         args.output.display()
     );
