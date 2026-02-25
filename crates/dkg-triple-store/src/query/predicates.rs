@@ -18,9 +18,6 @@ pub const PUBLISHED_AT_BLOCK: &str = "https://ontology.origintrail.io/dkg/1.0#pu
 /// Metadata: transaction hash of publish operation
 pub const PUBLISH_TX: &str = "https://ontology.origintrail.io/dkg/1.0#publishTx";
 
-/// Metadata: timestamp when published
-pub const PUBLISH_TIME: &str = "https://ontology.origintrail.io/dkg/1.0#publishTime";
-
 /// Metadata: block timestamp
 pub const BLOCK_TIME: &str = "https://ontology.origintrail.io/dkg/1.0#blockTime";
 

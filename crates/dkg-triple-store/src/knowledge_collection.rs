@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::DateTime;
 use dkg_domain::{KnowledgeAsset, KnowledgeCollectionMetadata};
 
 use crate::{
@@ -168,15 +168,6 @@ impl TripleStoreManager {
                 meta.transaction_hash()
             ));
 
-            // Publish time (current time)
-            let publish_time_iso = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
-            metadata_triples.push_str(&format!(
-                "    <{}> <{}> \"{}\"^^<http://www.w3.org/2001/XMLSchema#dateTime> .\n",
-                kc_ual,
-                predicates::PUBLISH_TIME,
-                publish_time_iso
-            ));
-
             // Block time
             let block_time_iso = Self::format_unix_timestamp(meta.block_timestamp());
             metadata_triples.push_str(&format!(
@@ -205,51 +196,8 @@ impl TripleStoreManager {
             total_triples += all_named_graphs.len();
         }
 
-        // Build final SPARQL update query.
-        //
-        // If metadata is present, ensure publishTime is unique by deleting any prior values before
-        // inserting the new publishTime. Without this, repeated inserts can accumulate multiple
-        // publishTime values (since it uses Utc::now()).
-        let insert_query = if metadata.is_some() {
-            format!(
-                r#"PREFIX schema: <http://schema.org/>
-                DELETE {{
-                  GRAPH <{metadata_graph}> {{
-                    <{kc_ual}> <{publish_time}> ?old_publish_time .
-                  }}
-                }}
-                INSERT {{
-                {public_graphs}{private_graphs}  GRAPH <{current_graph}> {{
-                {current_public}{current_private}  }}
-                GRAPH <{metadata_graph}> {{
-                {kc_to_ka}{conn_public}{conn_private}{meta_triples}  }}
-                {paranet_graph}
-                }}
-                WHERE {{
-                  OPTIONAL {{
-                    GRAPH <{metadata_graph}> {{
-                      <{kc_ual}> <{publish_time}> ?old_publish_time .
-                    }}
-                  }}
-                }}"#,
-                kc_ual = kc_ual,
-                publish_time = predicates::PUBLISH_TIME,
-                public_graphs = public_graphs_insert,
-                private_graphs = private_graphs_insert,
-                current_graph = named_graphs::CURRENT,
-                current_public = current_public_metadata,
-                current_private = current_private_metadata,
-                metadata_graph = named_graphs::METADATA,
-                kc_to_ka = kc_to_ka_metadata,
-                conn_public = connection_public_metadata,
-                conn_private = connection_private_metadata,
-                meta_triples = metadata_triples,
-                paranet_graph = paranet_graph_insert,
-            )
-        } else {
-            // No publishTime is inserted when metadata is absent; keep a simpler INSERT DATA.
-            format!(
-                r#"PREFIX schema: <http://schema.org/>
+        let insert_query = format!(
+            r#"PREFIX schema: <http://schema.org/>
                 INSERT DATA {{
                 {}{}  GRAPH <{}> {{
                 {}{}  }}
@@ -257,19 +205,18 @@ impl TripleStoreManager {
                 {}{}{}{}  }}
                 {}
                 }}"#,
-                public_graphs_insert,
-                private_graphs_insert,
-                named_graphs::CURRENT,
-                current_public_metadata,
-                current_private_metadata,
-                named_graphs::METADATA,
-                kc_to_ka_metadata,
-                connection_public_metadata,
-                connection_private_metadata,
-                metadata_triples,
-                paranet_graph_insert,
-            )
-        };
+            public_graphs_insert,
+            private_graphs_insert,
+            named_graphs::CURRENT,
+            current_public_metadata,
+            current_private_metadata,
+            named_graphs::METADATA,
+            kc_to_ka_metadata,
+            connection_public_metadata,
+            connection_private_metadata,
+            metadata_triples,
+            paranet_graph_insert,
+        );
 
         tracing::trace!(
             kc_ual = %kc_ual,
@@ -339,54 +286,6 @@ impl TripleStoreManager {
             let selected = crate::sparql::parse_select_values(&response, "kc")?;
             existing.extend(selected);
         }
-
-        Ok(existing)
-    }
-
-    /// Check which knowledge collections exist by validating first/last public KA graphs.
-    ///
-    /// Each tuple contains `(kc_ual, first_token_id, last_token_id)`.
-    /// Returns the subset of KC UALs for which both boundary graphs exist.
-    pub async fn knowledge_collections_exist_by_boundary_graphs(
-        &self,
-        boundaries: &[(String, u64, u64)],
-    ) -> Result<std::collections::HashSet<String>> {
-        let mut existing = std::collections::HashSet::new();
-        if boundaries.is_empty() {
-            return Ok(existing);
-        }
-
-        let values: String = boundaries
-            .iter()
-            .flat_map(|(kc_ual, first, last)| {
-                let first_graph = format!("{}/{}/public", kc_ual, first);
-                if first == last {
-                    vec![format!("(<{kc_ual}> <{first_graph}> 1)")]
-                } else {
-                    let last_graph = format!("{}/{}/public", kc_ual, last);
-                    vec![
-                        format!("(<{kc_ual}> <{first_graph}> 2)"),
-                        format!("(<{kc_ual}> <{last_graph}> 2)"),
-                    ]
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        let query = format!(
-            r#"SELECT ?kc WHERE {{
-                VALUES (?kc ?g ?expected) {{ {values} }}
-                GRAPH ?g {{ ?s ?p ?o }}
-            }}
-            GROUP BY ?kc ?expected
-            HAVING (COUNT(DISTINCT ?g) = ?expected)"#,
-            values = values
-        );
-
-        let response = self
-            .backend_select(&query, self.config.timeouts.query_timeout())
-            .await?;
-        existing = crate::sparql::parse_select_values(&response, "kc")?;
 
         Ok(existing)
     }
