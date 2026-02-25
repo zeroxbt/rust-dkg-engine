@@ -270,7 +270,9 @@ impl TripleStoreAssertions {
 
     /// Query metadata for a knowledge collection.
     async fn query_metadata(&self, kc_ual: &str) -> Result<Option<Vec<String>>, TripleStoreError> {
-        let metadata_lines = self.triple_store_manager.get_metadata(kc_ual).await?;
+        // Request/response paths only need the core KC metadata predicates.
+        // This keeps memory and query cost predictable under load.
+        let metadata_lines = self.triple_store_manager.get_metadata_core(kc_ual).await?;
         let metadata: Vec<String> = metadata_lines
             .lines()
             .filter(|line| !line.trim().is_empty())
@@ -354,7 +356,9 @@ impl TripleStoreAssertions {
             }
 
             let kc_uals = metadata_candidate_kcs.into_iter().collect::<Vec<_>>();
-            self.triple_store_manager.get_metadata_batch(&kc_uals).await
+            self.triple_store_manager
+                .get_metadata_core_batch(&kc_uals)
+                .await
         };
 
         let (query_results, metadata_by_kc_result) =

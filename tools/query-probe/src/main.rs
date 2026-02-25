@@ -128,6 +128,8 @@ struct PhaseLog {
     fds_delta: Option<i128>,
     requested_kc_count: usize,
     existing_kc_count: usize,
+    metadata_kc_hit_count: Option<usize>,
+    metadata_kc_miss_count: Option<usize>,
     triples_count: Option<usize>,
     payload_bytes: Option<usize>,
 }
@@ -311,6 +313,8 @@ async fn main() -> Result<(), String> {
                 fds_delta: signed_delta(fds_after, fds_before),
                 requested_kc_count,
                 existing_kc_count: existing_kcs.len(),
+                metadata_kc_hit_count: None,
+                metadata_kc_miss_count: None,
                 triples_count: None,
                 payload_bytes: None,
             });
@@ -416,6 +420,8 @@ async fn main() -> Result<(), String> {
                     fds_delta: signed_delta(fds_after, fds_before),
                     requested_kc_count,
                     existing_kc_count: existing_items.len(),
+                    metadata_kc_hit_count: None,
+                    metadata_kc_miss_count: None,
                     triples_count: Some(triples_count),
                     payload_bytes: Some(total_bytes),
                 });
@@ -444,6 +450,9 @@ async fn main() -> Result<(), String> {
                     let fds_after = read_fd_count();
                     let triples_count = metadata.values().map(Vec::len).sum::<usize>();
                     let total_bytes = payload_bytes_map(&metadata);
+                    let metadata_kc_hit_count = metadata.len();
+                    let metadata_kc_miss_count =
+                        existing_items.len().saturating_sub(metadata_kc_hit_count);
 
                     emit_log(PhaseLog {
                         ts_unix_ms: 0,
@@ -460,6 +469,8 @@ async fn main() -> Result<(), String> {
                         fds_delta: signed_delta(fds_after, fds_before),
                         requested_kc_count,
                         existing_kc_count: existing_items.len(),
+                        metadata_kc_hit_count: Some(metadata_kc_hit_count),
+                        metadata_kc_miss_count: Some(metadata_kc_miss_count),
                         triples_count: Some(triples_count),
                         payload_bytes: Some(total_bytes),
                     });
@@ -471,6 +482,7 @@ async fn main() -> Result<(), String> {
 
                     let mut triples_count = 0usize;
                     let mut total_bytes = 0usize;
+                    let mut metadata_kc_hit_count = 0usize;
 
                     for item in &existing_items {
                         let metadata = match args.metadata_scope {
@@ -485,6 +497,9 @@ async fn main() -> Result<(), String> {
                             .filter(|line| !line.trim().is_empty())
                             .map(str::to_string)
                             .collect();
+                        if !lines.is_empty() {
+                            metadata_kc_hit_count += 1;
+                        }
                         triples_count = triples_count.saturating_add(lines.len());
                         total_bytes = total_bytes.saturating_add(payload_bytes(&lines));
                     }
@@ -508,6 +523,10 @@ async fn main() -> Result<(), String> {
                         fds_delta: signed_delta(fds_after, fds_before),
                         requested_kc_count,
                         existing_kc_count: existing_items.len(),
+                        metadata_kc_hit_count: Some(metadata_kc_hit_count),
+                        metadata_kc_miss_count: Some(
+                            existing_items.len().saturating_sub(metadata_kc_hit_count),
+                        ),
                         triples_count: Some(triples_count),
                         payload_bytes: Some(total_bytes),
                     });
