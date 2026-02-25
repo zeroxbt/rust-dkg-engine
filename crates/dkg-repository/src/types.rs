@@ -61,6 +61,22 @@ pub struct KcSyncQueueEntry {
     pub last_retry_at: Option<i64>,
 }
 
+/// Public DTO for canonical KC chain metadata rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KcChainMetadataEntry {
+    pub blockchain_id: String,
+    pub contract_address: String,
+    pub kc_id: u64,
+    pub publisher_address: String,
+    pub block_number: u64,
+    pub transaction_hash: String,
+    pub block_timestamp: u64,
+    pub publish_operation_id: Option<String>,
+    pub source: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 /// Public DTO for proof challenge rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProofChallengeEntry {

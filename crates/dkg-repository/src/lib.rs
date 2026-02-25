@@ -13,12 +13,13 @@ pub use manager::RepositoryManager;
 pub use repositories::proof_challenge_repository::ChallengeState;
 pub use repositories::{
     blockchain_repository::BlockchainRepository,
-    finality_status_repository::FinalityStatusRepository, kc_sync_repository::KcSyncRepository,
+    finality_status_repository::FinalityStatusRepository,
+    kc_chain_metadata_repository::KcChainMetadataRepository, kc_sync_repository::KcSyncRepository,
     operation_repository::OperationRepository, paranet_kc_sync_repository::ParanetKcSyncRepository,
     proof_challenge_repository::ProofChallengeRepository,
     triples_insert_count_repository::TriplesInsertCountRepository,
 };
 pub use types::{
-    KcSyncProgressEntry, KcSyncQueueEntry, OperationRecord, OperationStatus, ParanetKcSyncEntry,
-    ProofChallengeEntry,
+    KcChainMetadataEntry, KcSyncProgressEntry, KcSyncQueueEntry, OperationRecord, OperationStatus,
+    ParanetKcSyncEntry, ProofChallengeEntry,
 };
