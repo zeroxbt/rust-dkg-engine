@@ -10,7 +10,7 @@ use dkg_blockchain::{
     ContractName, decode_contract_event, monitored_contract_events, to_hex_string,
 };
 use dkg_observability as observability;
-use dkg_repository::BlockchainRepository;
+use dkg_repository::{BlockchainRepository, KcChainMetadataRepository};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -41,6 +41,7 @@ const MAX_BLOCKS_TO_SYNC_DEV: u64 = u64::MAX; // unlimited for dev
 pub(crate) struct BlockchainEventListenerTask {
     blockchain_manager: Arc<BlockchainManager>,
     blockchain_repository: BlockchainRepository,
+    kc_chain_metadata_repository: KcChainMetadataRepository,
     command_scheduler: CommandScheduler,
     /// Polling interval
     poll_interval: Duration,
@@ -75,6 +76,7 @@ impl BlockchainEventListenerTask {
         Self {
             blockchain_manager: deps.blockchain_manager,
             blockchain_repository: deps.blockchain_repository,
+            kc_chain_metadata_repository: deps.kc_chain_metadata_repository,
             command_scheduler: deps.command_scheduler,
             poll_interval,
             max_blocks_to_sync,
@@ -465,6 +467,20 @@ impl BlockchainEventListenerTask {
         block_number: u64,
         block_timestamp: u64,
     ) {
+        let kc_id_u128: u128 = knowledge_collection_id.to();
+        let kc_id_u64 = match u64::try_from(kc_id_u128) {
+            Ok(value) => value,
+            Err(_) => {
+                tracing::error!(
+                    blockchain = %blockchain_id,
+                    kc_id = %knowledge_collection_id,
+                    "Knowledge collection id exceeds u64::MAX; skipping metadata upsert"
+                );
+                return;
+            }
+        };
+        let contract_address_str = format!("{:?}", contract_address);
+
         tracing::info!(
             blockchain = %blockchain_id,
             kc_id = %knowledge_collection_id,
@@ -481,6 +497,58 @@ impl BlockchainEventListenerTask {
             );
             return;
         };
+        let transaction_hash_str = format!("{:#x}", transaction_hash);
+
+        let publisher_address = match self
+            .blockchain_manager
+            .get_knowledge_collection_publisher(blockchain_id, contract_address, kc_id_u128)
+            .await
+        {
+            Ok(Some(address)) => Some(format!("{:?}", address)),
+            Ok(None) => {
+                tracing::warn!(
+                    blockchain = %blockchain_id,
+                    contract = %contract_address_str,
+                    kc_id = kc_id_u64,
+                    "Unable to resolve KC publisher from chain"
+                );
+                None
+            }
+            Err(error) => {
+                tracing::warn!(
+                    blockchain = %blockchain_id,
+                    contract = %contract_address_str,
+                    kc_id = kc_id_u64,
+                    error = %error,
+                    "Failed to fetch KC publisher from chain"
+                );
+                None
+            }
+        };
+
+        if let Err(error) = self
+            .kc_chain_metadata_repository
+            .upsert(
+                blockchain_id.as_str(),
+                &contract_address_str,
+                kc_id_u64,
+                publisher_address.as_deref(),
+                Some(block_number),
+                Some(&transaction_hash_str),
+                Some(block_timestamp),
+                Some(&publish_operation_id),
+                Some("event_listener"),
+            )
+            .await
+        {
+            tracing::error!(
+                blockchain = %blockchain_id,
+                contract = %contract_address_str,
+                kc_id = kc_id_u64,
+                error = %error,
+                "Failed to upsert canonical KC chain metadata"
+            );
+        }
 
         let command =
             Command::SendPublishFinalityRequest(SendPublishFinalityRequestCommandData::new(

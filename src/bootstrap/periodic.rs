@@ -24,6 +24,7 @@ pub(crate) fn build_periodic_tasks_deps(
     let finality_status_repository = managers.repository.finality_status_repository();
     let proof_challenge_repository = managers.repository.proof_challenge_repository();
     let blockchain_repository = managers.repository.blockchain_repository();
+    let kc_chain_metadata_repository = managers.repository.kc_chain_metadata_repository();
     let kc_sync_repository = managers.repository.kc_sync_repository();
     let paranet_kc_sync_repository = managers.repository.paranet_kc_sync_repository();
 
@@ -56,6 +57,7 @@ pub(crate) fn build_periodic_tasks_deps(
         blockchain_event_listener: BlockchainEventListenerDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
             blockchain_repository,
+            kc_chain_metadata_repository,
             command_scheduler: command_scheduler.clone(),
         },
         claim_rewards: ClaimRewardsDeps {

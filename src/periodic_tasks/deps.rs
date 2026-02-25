@@ -4,8 +4,8 @@ use dkg_blockchain::BlockchainManager;
 use dkg_key_value_store::{PeerAddressStore, PublishTmpDatasetStore};
 use dkg_network::{BatchGetAck, FinalityAck, GetAck, NetworkManager, StoreAck};
 use dkg_repository::{
-    BlockchainRepository, FinalityStatusRepository, KcSyncRepository, OperationRepository,
-    ParanetKcSyncRepository, ProofChallengeRepository,
+    BlockchainRepository, FinalityStatusRepository, KcChainMetadataRepository, KcSyncRepository,
+    OperationRepository, ParanetKcSyncRepository, ProofChallengeRepository,
 };
 
 use crate::{
@@ -60,6 +60,7 @@ pub(crate) struct ShardingTableCheckDeps {
 pub(crate) struct BlockchainEventListenerDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) blockchain_repository: BlockchainRepository,
+    pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
     pub(crate) command_scheduler: CommandScheduler,
 }
 
