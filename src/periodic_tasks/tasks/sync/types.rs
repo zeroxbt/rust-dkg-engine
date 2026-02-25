@@ -8,6 +8,7 @@ pub(crate) struct KcToSync {
     pub ual: String,
     pub token_ids: TokenIds,
     pub merkle_root: Option<String>,
+    pub metadata: KnowledgeCollectionMetadata,
 }
 
 /// KC fetched from network (output of fetch stage, input to insert stage)

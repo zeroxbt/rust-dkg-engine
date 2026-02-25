@@ -17,7 +17,6 @@ use dkg_network::{
     STREAM_PROTOCOL_BATCH_GET,
 };
 use dkg_observability as observability;
-use dkg_triple_store::parse_metadata_from_triples;
 use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
@@ -451,7 +450,7 @@ async fn fetch_kc_batch_from_network(
             blockchain_id.to_string(),
             uals.iter().cloned().collect(),
             filtered_token_ids,
-            true, // include_metadata
+            false, // include_metadata
         )
     };
 
@@ -517,17 +516,12 @@ async fn fetch_kc_batch_from_network(
                         );
 
                         if is_valid {
-                            let metadata = ack
-                                .metadata
-                                .remove(&ual)
-                                .and_then(|triples| parse_metadata_from_triples(&triples));
-
                             uals_still_needed.remove(&ual);
                             fetched.push(FetchedKc {
                                 kc_id: kc.kc_id,
                                 ual,
                                 assertion,
-                                metadata,
+                                metadata: Some(kc.metadata.clone()),
                             });
                             valid_count += 1;
                         }

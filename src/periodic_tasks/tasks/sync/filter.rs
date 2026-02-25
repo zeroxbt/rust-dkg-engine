@@ -13,7 +13,7 @@ use std::{sync::Arc, time::Instant};
 use dkg_blockchain::{
     Address, BlockchainId, BlockchainManager, MulticallBatch, MulticallRequest, encoders,
 };
-use dkg_domain::{TokenIds, derive_ual};
+use dkg_domain::{KnowledgeCollectionMetadata, TokenIds, derive_ual};
 use dkg_observability as observability;
 use dkg_repository::KcChainMetadataRepository;
 use tokio::sync::mpsc;
@@ -235,17 +235,17 @@ async fn gate_on_chain_metadata(
     blockchain_id: &BlockchainId,
     contract_addr_str: &str,
     kc_chain_metadata_repository: &KcChainMetadataRepository,
-) -> (Vec<(u64, String)>, Vec<u64>) {
+) -> (Vec<(u64, String, KnowledgeCollectionMetadata)>, Vec<u64>) {
     if kcs_needing_sync.is_empty() {
         return (Vec::new(), Vec::new());
     }
 
     let kc_ids: Vec<u64> = kcs_needing_sync.iter().map(|(kc_id, _)| *kc_id).collect();
-    let complete_ids = match kc_chain_metadata_repository
-        .get_kc_ids_with_complete_metadata(blockchain_id.as_str(), contract_addr_str, &kc_ids)
+    let metadata_by_id = match kc_chain_metadata_repository
+        .get_many_complete(blockchain_id.as_str(), contract_addr_str, &kc_ids)
         .await
     {
-        Ok(ids) => ids,
+        Ok(entries) => entries,
         Err(error) => {
             tracing::warn!(
                 blockchain_id = %blockchain_id,
@@ -253,15 +253,15 @@ async fn gate_on_chain_metadata(
                 error = %error,
                 "Failed to query canonical KC chain metadata; deferring KCs"
             );
-            std::collections::HashSet::new()
+            std::collections::HashMap::new()
         }
     };
 
     let mut ready = Vec::with_capacity(kcs_needing_sync.len());
     let mut waiting = Vec::new();
     for (kc_id, ual) in kcs_needing_sync {
-        if complete_ids.contains(kc_id) {
-            ready.push((*kc_id, ual.clone()));
+        if let Some(metadata) = metadata_by_id.get(kc_id) {
+            ready.push((*kc_id, ual.clone(), to_domain_metadata(metadata)));
         } else {
             waiting.push(*kc_id);
         }
@@ -278,6 +278,17 @@ async fn gate_on_chain_metadata(
     }
 
     (ready, waiting)
+}
+
+fn to_domain_metadata(
+    metadata: &dkg_repository::KcChainMetadataEntry,
+) -> KnowledgeCollectionMetadata {
+    KnowledgeCollectionMetadata::new(
+        metadata.publisher_address.clone(),
+        metadata.block_number,
+        metadata.transaction_hash.clone(),
+        metadata.block_timestamp,
+    )
 }
 
 /// Check which KCs already exist locally in the triple store.
@@ -333,7 +344,7 @@ async fn check_local_existence(
     fields(kc_count = kcs_needing_sync.len())
 )]
 async fn fetch_rpc_data_and_filter(
-    kcs_needing_sync: &[(u64, String)],
+    kcs_needing_sync: &[(u64, String, KnowledgeCollectionMetadata)],
     current_epoch: Option<u64>,
     blockchain_id: &BlockchainId,
     contract_address: &Address,
@@ -347,7 +358,7 @@ async fn fetch_rpc_data_and_filter(
 
     let kc_ids: Vec<u128> = kcs_needing_sync
         .iter()
-        .map(|(kc_id, _)| *kc_id as u128)
+        .map(|(kc_id, _, _)| *kc_id as u128)
         .collect();
 
     // Batch all calls in a single Multicall3
@@ -392,7 +403,7 @@ async fn fetch_rpc_data_and_filter(
 
     // Process results (3 results per KC: end_epoch, range, merkle_root)
     let mut batch_to_sync = Vec::new();
-    for ((kc_id, ual), chunk) in kcs_needing_sync.iter().zip(results.chunks(3)) {
+    for ((kc_id, ual, metadata), chunk) in kcs_needing_sync.iter().zip(results.chunks(3)) {
         let [epoch_result, range_result, merkle_result] = chunk else {
             continue;
         };
@@ -434,6 +445,7 @@ async fn fetch_rpc_data_and_filter(
             ual: ual.clone(),
             token_ids,
             merkle_root,
+            metadata: metadata.clone(),
         });
     }
 
