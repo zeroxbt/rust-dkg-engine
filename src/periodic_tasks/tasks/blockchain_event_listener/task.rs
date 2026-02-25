@@ -194,7 +194,51 @@ impl BlockchainEventListenerTask {
                     )
                     .await?;
 
-                let from_block = last_checked_block + 1;
+                let from_block = if *contract_name == ContractName::KnowledgeCollectionStorage
+                    && last_checked_block == 0
+                    && !contract_address_str.is_empty()
+                {
+                    let contract_address: Address = contract_address_str.parse().map_err(|_| {
+                        BlockchainError::Custom(format!(
+                            "Invalid contract address: {}",
+                            contract_address_str
+                        ))
+                    })?;
+                    match self
+                        .blockchain_manager
+                        .find_contract_deployment_block(
+                            blockchain_id,
+                            contract_address,
+                            current_block,
+                        )
+                        .await?
+                    {
+                        Some(start_block) => {
+                            let resolved = (last_checked_block + 1).max(start_block);
+                            tracing::debug!(
+                                blockchain = %blockchain_id,
+                                contract = %contract_name.as_str(),
+                                address = %contract_address_str,
+                                last_checked_block,
+                                start_block,
+                                from_block = resolved,
+                                "Resolved initial KC storage listener start block"
+                            );
+                            resolved
+                        }
+                        None => {
+                            tracing::warn!(
+                                blockchain = %blockchain_id,
+                                contract = %contract_name.as_str(),
+                                address = %contract_address_str,
+                                "KC storage has no code at current block; using default cursor"
+                            );
+                            last_checked_block + 1
+                        }
+                    }
+                } else {
+                    last_checked_block + 1
+                };
 
                 // Skip if we're already up to date
                 if from_block > current_block {
