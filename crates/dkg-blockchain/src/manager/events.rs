@@ -57,4 +57,17 @@ impl BlockchainManager {
             )
             .await
     }
+
+    /// Find the first block where an address has deployed code.
+    pub async fn find_contract_deployment_block(
+        &self,
+        blockchain: &BlockchainId,
+        contract_address: Address,
+        current_block: u64,
+    ) -> Result<Option<u64>, BlockchainError> {
+        let blockchain_impl = self.chain(blockchain)?;
+        blockchain_impl
+            .find_contract_deployment_block(contract_address, current_block)
+            .await
+    }
 }

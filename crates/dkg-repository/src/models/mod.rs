@@ -1,5 +1,6 @@
 pub mod blockchain;
 pub mod finality_status;
+pub mod kc_chain_metadata;
 pub mod kc_sync_progress;
 pub mod kc_sync_queue;
 pub mod operations;

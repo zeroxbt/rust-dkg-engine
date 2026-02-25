@@ -131,4 +131,48 @@ impl EvmChain {
 
         Ok(all_events)
     }
+
+    /// Find the first block where the contract has non-empty bytecode.
+    ///
+    /// Returns `None` if the address has no code at `current_block` (not deployed yet).
+    pub async fn find_contract_deployment_block(
+        &self,
+        contract_address: Address,
+        current_block: u64,
+    ) -> Result<Option<u64>, BlockchainError> {
+        let has_code_at = |block_number: u64| async move {
+            self.rpc_call(|| async {
+                let provider = self.provider().await;
+                provider
+                    .get_code_at(contract_address)
+                    .block_id(block_number.into())
+                    .await
+            })
+            .await
+            .map(|bytes| !bytes.is_empty())
+            .map_err(|err| {
+                BlockchainError::Custom(format!(
+                    "Failed to resolve code at block {}: {}",
+                    block_number, err
+                ))
+            })
+        };
+
+        if !has_code_at(current_block).await? {
+            return Ok(None);
+        }
+
+        let mut low = 0u64;
+        let mut high = current_block;
+        while low < high {
+            let mid = low + (high - low) / 2;
+            if has_code_at(mid).await? {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
+        }
+
+        Ok(Some(low))
+    }
 }

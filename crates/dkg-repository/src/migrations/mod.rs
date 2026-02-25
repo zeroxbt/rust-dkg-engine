@@ -10,6 +10,7 @@ mod m010_create_kc_sync_queue;
 mod m011_create_proof_challenge;
 mod m012_create_paranet_kc_sync;
 mod m013_add_next_retry_at_to_kc_sync_queue;
+mod m014_create_kc_chain_metadata;
 
 pub struct Migrator;
 
@@ -27,6 +28,7 @@ impl MigratorTrait for Migrator {
             Box::new(m011_create_proof_challenge::Migration),
             Box::new(m012_create_paranet_kc_sync::Migration),
             Box::new(m013_add_next_retry_at_to_kc_sync_queue::Migration),
+            Box::new(m014_create_kc_chain_metadata::Migration),
         ]
     }
 }

@@ -8,6 +8,7 @@ pub(crate) struct KcToSync {
     pub ual: String,
     pub token_ids: TokenIds,
     pub merkle_root: Option<String>,
+    pub metadata: KnowledgeCollectionMetadata,
 }
 
 /// KC fetched from network (output of fetch stage, input to insert stage)
@@ -23,6 +24,7 @@ pub(crate) struct FetchedKc {
 pub(crate) struct FilterStats {
     pub already_synced: Vec<u64>,
     pub expired: Vec<u64>,
+    pub waiting_for_metadata: Vec<u64>,
 }
 
 /// Stats collected by fetch task
