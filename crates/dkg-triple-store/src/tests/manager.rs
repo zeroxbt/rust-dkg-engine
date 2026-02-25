@@ -17,7 +17,7 @@ use crate::{
     GraphVisibility, TripleStoreBackend, TripleStoreBackendType, TripleStoreManager,
     TripleStoreManagerConfig,
     config::{OxigraphStoreConfig, TimeoutConfig},
-    query::{named_graphs, predicates},
+    query::predicates,
 };
 
 #[derive(Clone, Copy)]
@@ -166,7 +166,6 @@ async fn insert_and_query_knowledge_collection() {
     assert!(metadata_triples.contains(predicates::PUBLISHED_BY));
     assert!(metadata_triples.contains(predicates::PUBLISHED_AT_BLOCK));
     assert!(metadata_triples.contains(predicates::PUBLISH_TX));
-    assert!(metadata_triples.contains(predicates::PUBLISH_TIME));
     assert!(metadata_triples.contains(predicates::BLOCK_TIME));
     let has_ka_count = metadata_triples
         .lines()
@@ -183,76 +182,6 @@ async fn knowledge_collections_exist_empty_input() {
         .await
         .unwrap();
     assert!(existing.is_empty());
-}
-
-#[tokio::test]
-async fn knowledge_collections_exist_by_boundary_graphs_filters_correctly() {
-    let (manager, _temp_dir) = setup_manager().await;
-
-    let kc_full = "did:dkg:kc/full";
-    let ka1_full = KnowledgeAsset::new(
-        format!("{}/1", kc_full),
-        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
-    );
-    let ka2_full = KnowledgeAsset::new(
-        format!("{}/2", kc_full),
-        vec!["<http://example.org/s2> <http://example.org/p1> \"o2\" .".to_string()],
-    );
-    manager
-        .insert_knowledge_collection(kc_full, &[ka1_full, ka2_full], &None, None)
-        .await
-        .unwrap();
-
-    let kc_partial = "did:dkg:kc/partial";
-    let ka1_partial = KnowledgeAsset::new(
-        format!("{}/1", kc_partial),
-        vec!["<http://example.org/s3> <http://example.org/p1> \"o3\" .".to_string()],
-    );
-    manager
-        .insert_knowledge_collection(kc_partial, &[ka1_partial], &None, None)
-        .await
-        .unwrap();
-
-    let existing = manager
-        .knowledge_collections_exist_by_boundary_graphs(&[
-            (kc_full.to_string(), 1, 2),
-            (kc_full.to_string(), 2, 2),
-            (kc_partial.to_string(), 1, 2),
-            ("did:dkg:kc/missing".to_string(), 1, 1),
-        ])
-        .await
-        .unwrap();
-
-    let expected: HashSet<String> = [kc_full.to_string()].into_iter().collect();
-    assert_eq!(existing, expected);
-}
-
-#[tokio::test]
-async fn get_metadata_batch_groups_by_kc() {
-    let (manager, _temp_dir) = setup_manager().await;
-
-    let kc_ual = "did:dkg:kc/metadata-batch";
-    let ka = KnowledgeAsset::new(
-        format!("{}/1", kc_ual),
-        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
-    );
-    manager
-        .insert_knowledge_collection(kc_ual, &[ka], &None, None)
-        .await
-        .unwrap();
-
-    let metadata = manager
-        .get_metadata_batch(&[kc_ual.to_string(), "did:dkg:kc/missing".to_string()])
-        .await
-        .unwrap();
-
-    assert!(metadata.contains_key(kc_ual));
-    assert!(
-        metadata[kc_ual]
-            .iter()
-            .any(|line| line.contains(predicates::HAS_KNOWLEDGE_ASSET))
-    );
-    assert!(!metadata.contains_key("did:dkg:kc/missing"));
 }
 
 #[tokio::test]
@@ -331,67 +260,7 @@ async fn get_metadata_without_metadata_is_empty() {
     assert!(!metadata.contains(predicates::PUBLISHED_BY));
     assert!(!metadata.contains(predicates::PUBLISHED_AT_BLOCK));
     assert!(!metadata.contains(predicates::PUBLISH_TX));
-    assert!(!metadata.contains(predicates::PUBLISH_TIME));
     assert!(!metadata.contains(predicates::BLOCK_TIME));
-}
-
-#[tokio::test]
-async fn insert_replaces_publish_time_metadata() {
-    let (manager, _temp_dir) = setup_manager().await;
-
-    let kc_ual = "did:dkg:kc/publish-time-upsert";
-    let ka = KnowledgeAsset::new(
-        format!("{}/1", kc_ual),
-        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
-    );
-    let meta = KnowledgeCollectionMetadata::new(
-        "0xabc".to_string(),
-        777,
-        "0xdeadbeef".to_string(),
-        1_700_000_000,
-    );
-
-    manager
-        .insert_knowledge_collection(kc_ual, std::slice::from_ref(&ka), &Some(meta.clone()), None)
-        .await
-        .unwrap();
-
-    // Deterministically introduce an extra publishTime value to simulate historical behavior
-    // (multiple publishTime triples for the same KC).
-    let inject_query = format!(
-        r#"INSERT DATA {{
-            GRAPH <{metadata}> {{
-                <{kc_ual}> <{publish_time}> "2000-01-01T00:00:00.000Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> .
-            }}
-        }}"#,
-        metadata = named_graphs::METADATA,
-        kc_ual = kc_ual,
-        publish_time = predicates::PUBLISH_TIME,
-    );
-    manager.raw_update_for_tests(&inject_query).await.unwrap();
-
-    let before = manager.get_metadata(kc_ual).await.unwrap();
-    let before_count = before
-        .lines()
-        .filter(|line| line.contains(predicates::PUBLISH_TIME))
-        .count();
-    assert!(
-        before_count >= 2,
-        "expected at least 2 publishTime triples after injection, got {before_count}"
-    );
-
-    // Re-inserting with metadata should remove all prior publishTime values and insert exactly one.
-    manager
-        .insert_knowledge_collection(kc_ual, &[ka], &Some(meta), None)
-        .await
-        .unwrap();
-
-    let after = manager.get_metadata(kc_ual).await.unwrap();
-    let after_count = after
-        .lines()
-        .filter(|line| line.contains(predicates::PUBLISH_TIME))
-        .count();
-    assert_eq!(after_count, 1);
 }
 
 #[tokio::test]

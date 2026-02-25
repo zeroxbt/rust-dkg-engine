@@ -133,7 +133,7 @@ impl BlockchainEventListenerTask {
         };
 
         let monitored = monitored_contract_events();
-        for (contract_name, _) in &monitored {
+        for contract_name in monitored.keys() {
             let policy = catchup_policy(contract_name);
 
             let contract_addresses = match self
@@ -611,16 +611,13 @@ impl BlockchainEventListenerTask {
         block_timestamp: u64,
     ) {
         let kc_id_u128: u128 = knowledge_collection_id.to();
-        let kc_id_u64 = match u64::try_from(kc_id_u128) {
-            Ok(value) => value,
-            Err(_) => {
-                tracing::error!(
-                    blockchain = %blockchain_id,
-                    kc_id = %knowledge_collection_id,
-                    "Knowledge collection id exceeds u64::MAX; skipping metadata upsert"
-                );
-                return;
-            }
+        let Ok(kc_id_u64) = u64::try_from(kc_id_u128) else {
+            tracing::error!(
+            blockchain = %blockchain_id,
+            kc_id = %knowledge_collection_id,
+            "Knowledge collection id exceeds u64::MAX; skipping metadata upsert"
+            );
+            return;
         };
         let contract_address_str = format!("{:?}", contract_address);
 
