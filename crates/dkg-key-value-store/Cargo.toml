@@ -1,6 +1,6 @@
 [package]
 name = "dkg-key-value-store"
-version = "0.1.17"
+version = "0.1.18"
 rust-version = "1.92.0"
 edition = "2024"
 
@@ -17,7 +17,14 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "fs", "io-util", "rt"] }
+tokio = { workspace = true, features = [
+    "macros",
+    "rt-multi-thread",
+    "sync",
+    "fs",
+    "io-util",
+    "rt",
+] }
 
 [lints]
 workspace = true

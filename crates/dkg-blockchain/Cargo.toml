@@ -1,6 +1,6 @@
 [package]
 name = "dkg-blockchain"
-version = "0.1.17"
+version = "0.1.18"
 rust-version = "1.92.0"
 edition = "2024"
 
@@ -22,11 +22,16 @@ alloy = { workspace = true, features = [
     "sol-types",
 ] }
 futures = { workspace = true }
-jsonrpsee = { version = "0.24.10", default-features = false, features = ["http-client"] }
+jsonrpsee = { version = "0.24.10", default-features = false, features = [
+    "http-client",
+] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = "0.10"
-subxt = { version = "0.44.2", default-features = false, features = ["jsonrpsee", "native"] }
+subxt = { version = "0.44.2", default-features = false, features = [
+    "jsonrpsee",
+    "native",
+] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 tracing = { workspace = true }

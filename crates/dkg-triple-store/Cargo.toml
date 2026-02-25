@@ -1,6 +1,6 @@
 [package]
 name = "dkg-triple-store"
-version = "0.1.17"
+version = "0.1.18"
 rust-version = "1.92.0"
 edition = "2024"
 
@@ -19,7 +19,13 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "rt", "time"] }
+tokio = { workspace = true, features = [
+    "macros",
+    "rt-multi-thread",
+    "sync",
+    "rt",
+    "time",
+] }
 
 [lints]
 workspace = true
