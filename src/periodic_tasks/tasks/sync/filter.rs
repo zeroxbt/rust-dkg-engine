@@ -15,6 +15,7 @@ use dkg_blockchain::{
 };
 use dkg_domain::{TokenIds, derive_ual};
 use dkg_observability as observability;
+use dkg_repository::KcChainMetadataRepository;
 use tokio::sync::mpsc;
 use tracing::instrument;
 
@@ -27,7 +28,13 @@ use crate::application::TripleStoreAssertions;
 #[allow(clippy::too_many_arguments)]
 #[instrument(
     name = "sync_filter",
-    skip(pending_kc_ids, blockchain_manager, triple_store_assertions, tx),
+    skip(
+        pending_kc_ids,
+        blockchain_manager,
+        kc_chain_metadata_repository,
+        triple_store_assertions,
+        tx
+    ),
     fields(
         blockchain_id = %blockchain_id,
         contract = %contract_addr_str,
@@ -41,6 +48,7 @@ pub(crate) async fn filter_task(
     contract_address: Address,
     contract_addr_str: String,
     blockchain_manager: Arc<BlockchainManager>,
+    kc_chain_metadata_repository: KcChainMetadataRepository,
     triple_store_assertions: Arc<TripleStoreAssertions>,
     tx: mpsc::Sender<Vec<KcToSync>>,
 ) -> FilterStats {
@@ -48,6 +56,7 @@ pub(crate) async fn filter_task(
     let blockchain_label = blockchain_id.as_str();
     let mut already_synced = Vec::new();
     let mut expired = Vec::new();
+    let mut waiting_for_metadata = Vec::new();
     let total_kcs = pending_kc_ids.len();
     let mut processed = 0usize;
 
@@ -68,6 +77,7 @@ pub(crate) async fn filter_task(
             current_epoch,
             &contract_addr_str,
             &blockchain_manager,
+            &kc_chain_metadata_repository,
         )
         .await;
 
@@ -82,6 +92,7 @@ pub(crate) async fn filter_task(
         // Track already synced
         already_synced.extend(batch_result.already_synced);
         expired.extend(batch_result.expired);
+        waiting_for_metadata.extend(batch_result.waiting_for_metadata);
         processed += chunk.len();
 
         // Send to fetch stage (blocks if channel full - backpressure)
@@ -115,6 +126,7 @@ pub(crate) async fn filter_task(
     FilterStats {
         already_synced,
         expired,
+        waiting_for_metadata,
     }
 }
 
@@ -122,13 +134,21 @@ pub(crate) async fn filter_task(
 struct FilterBatchResult {
     already_synced: Vec<u64>,
     expired: Vec<u64>,
+    waiting_for_metadata: Vec<u64>,
     to_sync: Vec<KcToSync>,
 }
 
 /// Process a single batch in the filter stage.
 #[instrument(
     name = "filter_batch",
-    skip(chunk, blockchain_id, contract_address, triple_store_assertions, blockchain_manager),
+    skip(
+        chunk,
+        blockchain_id,
+        contract_address,
+        triple_store_assertions,
+        blockchain_manager,
+        kc_chain_metadata_repository
+    ),
     fields(chunk_size = chunk.len())
 )]
 async fn process_filter_batch(
@@ -139,6 +159,7 @@ async fn process_filter_batch(
     current_epoch: Option<u64>,
     contract_addr_str: &str,
     blockchain_manager: &BlockchainManager,
+    kc_chain_metadata_repository: &KcChainMetadataRepository,
 ) -> FilterBatchResult {
     let mut already_synced = Vec::new();
     let mut expired = Vec::new();
@@ -165,13 +186,32 @@ async fn process_filter_batch(
         return FilterBatchResult {
             already_synced,
             expired,
+            waiting_for_metadata: Vec::new(),
             to_sync: Vec::new(),
         };
     }
 
-    // Step 2: Fetch all RPC data in a single Multicall and filter expired
-    let to_sync = fetch_rpc_data_and_filter(
+    // Step 2: Keep only KCs that have complete chain metadata in the repository.
+    let (kcs_ready_for_sync, waiting_for_metadata) = gate_on_chain_metadata(
         &kcs_needing_sync,
+        blockchain_id,
+        contract_addr_str,
+        kc_chain_metadata_repository,
+    )
+    .await;
+
+    if kcs_ready_for_sync.is_empty() {
+        return FilterBatchResult {
+            already_synced,
+            expired,
+            waiting_for_metadata,
+            to_sync: Vec::new(),
+        };
+    }
+
+    // Step 3: Fetch all RPC data in a single Multicall and filter expired
+    let to_sync = fetch_rpc_data_and_filter(
+        &kcs_ready_for_sync,
         current_epoch,
         blockchain_id,
         contract_address,
@@ -184,8 +224,60 @@ async fn process_filter_batch(
     FilterBatchResult {
         already_synced,
         expired,
+        waiting_for_metadata,
         to_sync,
     }
+}
+
+/// Keep only KCs that have complete canonical chain metadata available.
+async fn gate_on_chain_metadata(
+    kcs_needing_sync: &[(u64, String)],
+    blockchain_id: &BlockchainId,
+    contract_addr_str: &str,
+    kc_chain_metadata_repository: &KcChainMetadataRepository,
+) -> (Vec<(u64, String)>, Vec<u64>) {
+    if kcs_needing_sync.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+
+    let kc_ids: Vec<u64> = kcs_needing_sync.iter().map(|(kc_id, _)| *kc_id).collect();
+    let complete_ids = match kc_chain_metadata_repository
+        .get_kc_ids_with_complete_metadata(blockchain_id.as_str(), contract_addr_str, &kc_ids)
+        .await
+    {
+        Ok(ids) => ids,
+        Err(error) => {
+            tracing::warn!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %error,
+                "Failed to query canonical KC chain metadata; deferring KCs"
+            );
+            std::collections::HashSet::new()
+        }
+    };
+
+    let mut ready = Vec::with_capacity(kcs_needing_sync.len());
+    let mut waiting = Vec::new();
+    for (kc_id, ual) in kcs_needing_sync {
+        if complete_ids.contains(kc_id) {
+            ready.push((*kc_id, ual.clone()));
+        } else {
+            waiting.push(*kc_id);
+        }
+    }
+
+    if !waiting.is_empty() {
+        tracing::trace!(
+            blockchain_id = %blockchain_id,
+            contract = %contract_addr_str,
+            waiting_count = waiting.len(),
+            ready_count = ready.len(),
+            "Skipping KCs without canonical chain metadata"
+        );
+    }
+
+    (ready, waiting)
 }
 
 /// Check which KCs already exist locally in the triple store.

@@ -23,6 +23,7 @@ pub(crate) struct FetchedKc {
 pub(crate) struct FilterStats {
     pub already_synced: Vec<u64>,
     pub expired: Vec<u64>,
+    pub waiting_for_metadata: Vec<u64>,
 }
 
 /// Stats collected by fetch task

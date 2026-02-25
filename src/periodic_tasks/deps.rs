@@ -78,6 +78,7 @@ pub(crate) struct ProvingDeps {
 pub(crate) struct SyncDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) kc_sync_repository: KcSyncRepository,
+    pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
     pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) assertion_validation: Arc<AssertionValidation>,

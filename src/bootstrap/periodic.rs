@@ -57,7 +57,7 @@ pub(crate) fn build_periodic_tasks_deps(
         blockchain_event_listener: BlockchainEventListenerDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
             blockchain_repository,
-            kc_chain_metadata_repository,
+            kc_chain_metadata_repository: kc_chain_metadata_repository.clone(),
             command_scheduler: command_scheduler.clone(),
         },
         claim_rewards: ClaimRewardsDeps {
@@ -74,6 +74,7 @@ pub(crate) fn build_periodic_tasks_deps(
         sync: SyncDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
             kc_sync_repository: kc_sync_repository.clone(),
+            kc_chain_metadata_repository: kc_chain_metadata_repository.clone(),
             triple_store_assertions: Arc::clone(&application.triple_store_assertions),
             network_manager: Arc::clone(&managers.network),
             assertion_validation: Arc::clone(&application.assertion_validation),

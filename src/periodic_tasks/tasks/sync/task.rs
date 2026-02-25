@@ -167,6 +167,7 @@ impl SyncTask {
             kcs_pending = pending,
             kcs_already_synced = filter_stats.already_synced.len(),
             kcs_expired = filter_stats.expired.len(),
+            kcs_waiting_for_metadata = filter_stats.waiting_for_metadata.len(),
             kcs_fetch_failed = fetch_failures_count,
             kcs_synced = insert_stats.synced.len(),
             kcs_insert_failed = insert_failures_count,
@@ -204,6 +205,7 @@ impl SyncTask {
         let filter_handle = {
             let blockchain_id = blockchain_id.clone();
             let contract_addr_str = contract_addr_str.clone();
+            let kc_chain_metadata_repository = self.deps.kc_chain_metadata_repository.clone();
             let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
             let blockchain_manager = Arc::clone(&self.deps.blockchain_manager);
             tokio::spawn(
@@ -215,6 +217,7 @@ impl SyncTask {
                         contract_address,
                         contract_addr_str,
                         blockchain_manager,
+                        kc_chain_metadata_repository,
                         triple_store_assertions,
                         filter_tx,
                     )
