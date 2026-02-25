@@ -307,17 +307,30 @@ impl TripleStoreManager {
     pub async fn get_metadata_core(&self, kc_ual: &str) -> Result<String> {
         let started = Instant::now();
         let backend = self.backend.name();
-        let predicate_values = core_metadata_predicate_values();
         let query = format!(
-            r#"CONSTRUCT {{ <{kc_ual}> ?p ?o . }}
+            r#"CONSTRUCT {{
+                    <{kc_ual}> <{published_by}> ?published_by_o .
+                    <{kc_ual}> <{published_at_block}> ?published_at_block_o .
+                    <{kc_ual}> <{publish_tx}> ?publish_tx_o .
+                    <{kc_ual}> <{publish_time}> ?publish_time_o .
+                    <{kc_ual}> <{block_time}> ?block_time_o .
+                }}
                 WHERE {{
                     GRAPH <{metadata}> {{
-                        VALUES ?p {{ {predicate_values} }}
-                        <{kc_ual}> ?p ?o .
+                        OPTIONAL {{ <{kc_ual}> <{published_by}> ?published_by_o . }}
+                        OPTIONAL {{ <{kc_ual}> <{published_at_block}> ?published_at_block_o . }}
+                        OPTIONAL {{ <{kc_ual}> <{publish_tx}> ?publish_tx_o . }}
+                        OPTIONAL {{ <{kc_ual}> <{publish_time}> ?publish_time_o . }}
+                        OPTIONAL {{ <{kc_ual}> <{block_time}> ?block_time_o . }}
                     }}
                 }}"#,
+            kc_ual = kc_ual,
             metadata = named_graphs::METADATA,
-            predicate_values = predicate_values,
+            published_by = predicates::PUBLISHED_BY,
+            published_at_block = predicates::PUBLISHED_AT_BLOCK,
+            publish_tx = predicates::PUBLISH_TX,
+            publish_time = predicates::PUBLISH_TIME,
+            block_time = predicates::BLOCK_TIME,
         );
 
         let result = self
@@ -358,20 +371,31 @@ impl TripleStoreManager {
             .map(|kc_ual| format!("<{kc_ual}>"))
             .collect::<Vec<_>>()
             .join(" ");
-        let predicate_values = core_metadata_predicate_values();
-
         let query = format!(
-            r#"CONSTRUCT {{ ?kc ?p ?o . }}
+            r#"CONSTRUCT {{
+                    ?kc <{published_by}> ?published_by_o .
+                    ?kc <{published_at_block}> ?published_at_block_o .
+                    ?kc <{publish_tx}> ?publish_tx_o .
+                    ?kc <{publish_time}> ?publish_time_o .
+                    ?kc <{block_time}> ?block_time_o .
+                }}
                 WHERE {{
                     GRAPH <{metadata}> {{
                         VALUES ?kc {{ {values} }}
-                        VALUES ?p {{ {predicate_values} }}
-                        ?kc ?p ?o .
+                        OPTIONAL {{ ?kc <{published_by}> ?published_by_o . }}
+                        OPTIONAL {{ ?kc <{published_at_block}> ?published_at_block_o . }}
+                        OPTIONAL {{ ?kc <{publish_tx}> ?publish_tx_o . }}
+                        OPTIONAL {{ ?kc <{publish_time}> ?publish_time_o . }}
+                        OPTIONAL {{ ?kc <{block_time}> ?block_time_o . }}
                     }}
                 }}"#,
             metadata = named_graphs::METADATA,
             values = values,
-            predicate_values = predicate_values,
+            published_by = predicates::PUBLISHED_BY,
+            published_at_block = predicates::PUBLISHED_AT_BLOCK,
+            publish_tx = predicates::PUBLISH_TX,
+            publish_time = predicates::PUBLISH_TIME,
+            block_time = predicates::BLOCK_TIME,
         );
 
         let result = self
@@ -425,20 +449,6 @@ fn group_constructed_metadata_by_kc(
             .push(line.to_string());
     }
     grouped
-}
-
-fn core_metadata_predicate_values() -> String {
-    [
-        predicates::PUBLISHED_BY,
-        predicates::PUBLISHED_AT_BLOCK,
-        predicates::PUBLISH_TX,
-        predicates::PUBLISH_TIME,
-        predicates::BLOCK_TIME,
-    ]
-    .iter()
-    .map(|p| format!("<{p}>"))
-    .collect::<Vec<_>>()
-    .join(" ")
 }
 
 fn joined_lines_bytes(lines: &[String]) -> usize {
