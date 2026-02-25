@@ -31,12 +31,20 @@ const EVENT_FETCH_INTERVAL_MAINNET: Duration = Duration::from_secs(10);
 /// Event fetch interval for dev environments (4 seconds)
 const EVENT_FETCH_INTERVAL_DEV: Duration = Duration::from_secs(4);
 
-/// Maximum number of blocks we can sync historically.
-/// If the node has been offline for longer than this (in blocks), we skip missed events.
-/// This is roughly 1 hour worth of blocks assuming ~12 second block time.
-/// In dev/test environments, this is set to u64::MAX (effectively unlimited).
-const MAX_BLOCKS_TO_SYNC_MAINNET: u64 = 300; // ~1 hour at 12s blocks
-const MAX_BLOCKS_TO_SYNC_DEV: u64 = u64::MAX; // unlimited for dev
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CatchupPolicy {
+    /// For KC storage, backfill full history from contract deployment.
+    FullBackfillFromDeployment,
+    /// For control-plane contracts, start at tip on first run and continue sequentially.
+    FromTipOnFirstRun,
+}
+
+fn catchup_policy(contract_name: &ContractName) -> CatchupPolicy {
+    match contract_name {
+        ContractName::KnowledgeCollectionStorage => CatchupPolicy::FullBackfillFromDeployment,
+        _ => CatchupPolicy::FromTipOnFirstRun,
+    }
+}
 
 pub(crate) struct BlockchainEventListenerTask {
     blockchain_manager: Arc<BlockchainManager>,
@@ -45,8 +53,6 @@ pub(crate) struct BlockchainEventListenerTask {
     command_scheduler: CommandScheduler,
     /// Polling interval
     poll_interval: Duration,
-    /// Maximum number of blocks to sync historically (beyond this, events are skipped)
-    max_blocks_to_sync: u64,
 }
 
 #[derive(Default)]
@@ -67,19 +73,12 @@ impl BlockchainEventListenerTask {
             EVENT_FETCH_INTERVAL_MAINNET
         };
 
-        let max_blocks_to_sync = if is_dev_env {
-            MAX_BLOCKS_TO_SYNC_DEV
-        } else {
-            MAX_BLOCKS_TO_SYNC_MAINNET
-        };
-
         Self {
             blockchain_manager: deps.blockchain_manager,
             blockchain_repository: deps.blockchain_repository,
             kc_chain_metadata_repository: deps.kc_chain_metadata_repository,
             command_scheduler: deps.command_scheduler,
             poll_interval,
-            max_blocks_to_sync,
         }
     }
 
@@ -96,7 +95,6 @@ impl BlockchainEventListenerTask {
         fields(
             blockchain_id = %blockchain_id,
             poll_interval_ms = tracing::field::Empty,
-            max_blocks_to_sync = tracing::field::Empty,
         )
     )]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
@@ -104,10 +102,6 @@ impl BlockchainEventListenerTask {
         tracing::Span::current().record(
             "poll_interval_ms",
             tracing::field::display(self.poll_interval.as_millis()),
-        );
-        tracing::Span::current().record(
-            "max_blocks_to_sync",
-            tracing::field::display(self.max_blocks_to_sync),
         );
 
         tracing::trace!(
@@ -194,82 +188,65 @@ impl BlockchainEventListenerTask {
                     )
                     .await?;
 
-                let from_block = if *contract_name == ContractName::KnowledgeCollectionStorage
-                    && last_checked_block == 0
-                    && !contract_address_str.is_empty()
-                {
-                    let contract_address: Address = contract_address_str.parse().map_err(|_| {
-                        BlockchainError::Custom(format!(
-                            "Invalid contract address: {}",
-                            contract_address_str
-                        ))
-                    })?;
-                    match self
-                        .blockchain_manager
-                        .find_contract_deployment_block(
-                            blockchain_id,
-                            contract_address,
-                            current_block,
-                        )
-                        .await?
+                let from_block = match catchup_policy(contract_name) {
+                    CatchupPolicy::FullBackfillFromDeployment
+                        if last_checked_block == 0 && !contract_address_str.is_empty() =>
                     {
-                        Some(start_block) => {
-                            let resolved = (last_checked_block + 1).max(start_block);
-                            tracing::debug!(
-                                blockchain = %blockchain_id,
-                                contract = %contract_name.as_str(),
-                                address = %contract_address_str,
-                                last_checked_block,
-                                start_block,
-                                from_block = resolved,
-                                "Resolved initial KC storage listener start block"
-                            );
-                            resolved
-                        }
-                        None => {
-                            tracing::warn!(
-                                blockchain = %blockchain_id,
-                                contract = %contract_name.as_str(),
-                                address = %contract_address_str,
-                                "KC storage has no code at current block; using default cursor"
-                            );
-                            last_checked_block + 1
+                        let contract_address: Address =
+                            contract_address_str.parse().map_err(|_| {
+                                BlockchainError::Custom(format!(
+                                    "Invalid contract address: {}",
+                                    contract_address_str
+                                ))
+                            })?;
+                        match self
+                            .blockchain_manager
+                            .find_contract_deployment_block(
+                                blockchain_id,
+                                contract_address,
+                                current_block,
+                            )
+                            .await?
+                        {
+                            Some(start_block) => {
+                                let resolved = (last_checked_block + 1).max(start_block);
+                                tracing::debug!(
+                                    blockchain = %blockchain_id,
+                                    contract = %contract_name.as_str(),
+                                    address = %contract_address_str,
+                                    last_checked_block,
+                                    start_block,
+                                    from_block = resolved,
+                                    "Resolved initial KC storage listener start block"
+                                );
+                                resolved
+                            }
+                            None => {
+                                tracing::warn!(
+                                    blockchain = %blockchain_id,
+                                    contract = %contract_name.as_str(),
+                                    address = %contract_address_str,
+                                    "KC storage has no code at current block; using default cursor"
+                                );
+                                last_checked_block + 1
+                            }
                         }
                     }
-                } else {
-                    last_checked_block + 1
+                    CatchupPolicy::FromTipOnFirstRun if last_checked_block == 0 => {
+                        tracing::debug!(
+                            blockchain = %blockchain_id,
+                            contract = %contract_name.as_str(),
+                            address = %contract_address_str,
+                            from_block = current_block,
+                            "First run for control-plane stream; starting from tip"
+                        );
+                        current_block
+                    }
+                    _ => last_checked_block + 1,
                 };
 
                 // Skip if we're already up to date
                 if from_block > current_block {
-                    continue;
-                }
-
-                // Check for extended downtime - if we missed too many blocks, skip them.
-                // Keep full backfill enabled for KC storage events.
-                let blocks_behind = current_block.saturating_sub(from_block.saturating_sub(1));
-                let should_apply_skip_guard =
-                    !matches!(contract_name, ContractName::KnowledgeCollectionStorage);
-                if should_apply_skip_guard && blocks_behind > self.max_blocks_to_sync {
-                    stats.skipped_ranges += 1;
-                    tracing::warn!(
-                        blockchain = %blockchain_id,
-                        contract = %contract_name.as_str(),
-                        address = %contract_address_str,
-                        blocks_behind,
-                        max_blocks = self.max_blocks_to_sync,
-                        "Extended downtime detected; skipping missed events"
-                    );
-
-                    self.blockchain_repository
-                        .update_last_checked_block(
-                            blockchain_id.as_str(),
-                            contract_name.as_str(),
-                            &contract_address_str,
-                            current_block,
-                            chrono::Utc::now(),
-                        )
-                        .await?;
                     continue;
                 }
 
