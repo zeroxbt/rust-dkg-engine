@@ -167,11 +167,17 @@ async fn insert_and_query_knowledge_collection() {
     assert!(metadata_triples.contains(predicates::PUBLISHED_AT_BLOCK));
     assert!(metadata_triples.contains(predicates::PUBLISH_TX));
     assert!(metadata_triples.contains(predicates::BLOCK_TIME));
+    assert!(metadata_triples.contains("http://schema.org/states"));
     let has_ka_count = metadata_triples
         .lines()
         .filter(|line| line.contains(predicates::HAS_KNOWLEDGE_ASSET))
         .count();
     assert_eq!(has_ka_count, 2);
+    let states_count = metadata_triples
+        .lines()
+        .filter(|line| line.contains("http://schema.org/states"))
+        .count();
+    assert_eq!(states_count, 2);
 }
 
 #[tokio::test]
@@ -257,6 +263,7 @@ async fn get_metadata_without_metadata_is_empty() {
     let metadata = manager.get_metadata(kc_ual).await.unwrap();
     assert!(metadata.contains(predicates::HAS_KNOWLEDGE_ASSET));
     assert!(metadata.contains(predicates::HAS_NAMED_GRAPH));
+    assert!(metadata.contains("http://schema.org/states"));
     assert!(!metadata.contains(predicates::PUBLISHED_BY));
     assert!(!metadata.contains(predicates::PUBLISHED_AT_BLOCK));
     assert!(!metadata.contains(predicates::PUBLISH_TX));

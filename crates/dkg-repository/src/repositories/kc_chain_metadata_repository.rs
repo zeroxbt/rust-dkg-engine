@@ -59,6 +59,8 @@ impl KcChainMetadataRepository {
             block_number: ActiveValue::Set(block_number),
             transaction_hash: ActiveValue::Set(transaction_hash.map(ToString::to_string)),
             block_timestamp: ActiveValue::Set(block_timestamp),
+            private_graph_mode: ActiveValue::Set(None),
+            private_graph_payload: ActiveValue::Set(None),
             publish_operation_id: ActiveValue::Set(publish_operation_id.map(ToString::to_string)),
             source: ActiveValue::Set(source.map(ToString::to_string)),
             created_at: ActiveValue::Set(now),
@@ -78,6 +80,58 @@ impl KcChainMetadataRepository {
                     Column::TransactionHash,
                     Column::BlockTimestamp,
                     Column::PublishOperationId,
+                    Column::Source,
+                    Column::UpdatedAt,
+                ])
+                .to_owned(),
+            )
+            .exec(self.conn.as_ref())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Upsert private graph encoding for a KC without mutating canonical chain metadata fields.
+    ///
+    /// This is used by triple-store insert paths that can derive public/private graph presence
+    /// while chain metadata may be unavailable at that moment.
+    pub async fn upsert_private_graph_encoding(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        kc_id: u64,
+        private_graph_mode: Option<u32>,
+        private_graph_payload: Option<&[u8]>,
+        source: Option<&str>,
+    ) -> Result<()> {
+        let now = Utc::now().timestamp();
+
+        let model = ActiveModel {
+            blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
+            contract_address: ActiveValue::Set(contract_address.to_string()),
+            kc_id: ActiveValue::Set(kc_id),
+            publisher_address: ActiveValue::Set(None),
+            block_number: ActiveValue::Set(None),
+            transaction_hash: ActiveValue::Set(None),
+            block_timestamp: ActiveValue::Set(None),
+            private_graph_mode: ActiveValue::Set(private_graph_mode),
+            private_graph_payload: ActiveValue::Set(private_graph_payload.map(ToOwned::to_owned)),
+            publish_operation_id: ActiveValue::Set(None),
+            source: ActiveValue::Set(source.map(ToString::to_string)),
+            created_at: ActiveValue::Set(now),
+            updated_at: ActiveValue::Set(now),
+        };
+
+        Entity::insert(model)
+            .on_conflict(
+                sea_orm::sea_query::OnConflict::columns([
+                    Column::BlockchainId,
+                    Column::ContractAddress,
+                    Column::KcId,
+                ])
+                .update_columns([
+                    Column::PrivateGraphMode,
+                    Column::PrivateGraphPayload,
                     Column::Source,
                     Column::UpdatedAt,
                 ])
@@ -163,6 +217,8 @@ impl KcChainMetadataRepository {
             block_number: u64::try_from(model.block_number?).ok()?,
             transaction_hash: model.transaction_hash?,
             block_timestamp: u64::try_from(model.block_timestamp?).ok()?,
+            private_graph_mode: model.private_graph_mode,
+            private_graph_payload: model.private_graph_payload,
             publish_operation_id: model.publish_operation_id,
             source: model.source,
             created_at: model.created_at,

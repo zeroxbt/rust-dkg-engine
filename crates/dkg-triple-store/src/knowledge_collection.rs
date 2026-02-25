@@ -1,10 +1,9 @@
 use std::time::Instant;
 
-use chrono::DateTime;
 use dkg_domain::{KnowledgeAsset, KnowledgeCollectionMetadata};
 
 use crate::{
-    TripleStoreManager,
+    MetadataAsset, MetadataTriples, TripleStoreManager,
     error::Result,
     metrics::{self, KcInsertCharacteristics},
     query::{named_graphs, predicates},
@@ -48,21 +47,20 @@ impl TripleStoreManager {
         let track_paranet_graphs = paranet_ual.is_some();
         let mut all_named_graphs: Vec<String> = Vec::new();
 
-        // Build KC -> KA metadata once per KA (independent of graph visibility).
-        let mut kc_to_ka_metadata = String::new();
-        for ka in knowledge_assets {
-            kc_to_ka_metadata.push_str(&format!(
-                "    <{}> <{}> <{}> .\n",
-                kc_ual,
-                predicates::HAS_KNOWLEDGE_ASSET,
-                ka.ual()
-            ));
-        }
+        let metadata_assets: Vec<MetadataAsset> = knowledge_assets
+            .iter()
+            .map(|ka| MetadataAsset {
+                ka_ual: ka.ual().to_string(),
+                has_private_graph: ka
+                    .private_triples()
+                    .is_some_and(|triples| !triples.is_empty()),
+            })
+            .collect();
+        let built_metadata = MetadataTriples::build(kc_ual, &metadata_assets, metadata.as_ref());
 
         // Build public named graphs
         let mut public_graphs_insert = String::new();
         let mut current_public_metadata = String::new();
-        let mut connection_public_metadata = String::new();
 
         for ka in knowledge_assets {
             let graph_uri = format!("{}/public", ka.ual());
@@ -86,20 +84,11 @@ impl TripleStoreManager {
                 graph_uri
             ));
             total_triples += 1; // current metadata triple
-
-            // KC hasNamedGraph <ual/public>
-            connection_public_metadata.push_str(&format!(
-                "    <{}> <{}> <{}> .\n",
-                kc_ual,
-                predicates::HAS_NAMED_GRAPH,
-                graph_uri
-            ));
         }
 
         // Build private named graphs
         let mut private_graphs_insert = String::new();
         let mut current_private_metadata = String::new();
-        let mut connection_private_metadata = String::new();
 
         for ka in knowledge_assets {
             if let Some(private_triples) = ka.private_triples()
@@ -124,59 +113,29 @@ impl TripleStoreManager {
                     graph_uri
                 ));
                 total_triples += 1; // current metadata triple
-
-                // KC hasNamedGraph <ual/private>
-                connection_private_metadata.push_str(&format!(
-                    "    <{}> <{}> <{}> .\n",
-                    kc_ual,
-                    predicates::HAS_NAMED_GRAPH,
-                    graph_uri
-                ));
             }
         }
 
-        // Build metadata triples
-        let mut metadata_triples = String::new();
-
-        // State triples for each KA
-        for ka in knowledge_assets {
-            metadata_triples.push_str(&format!(
-                "    <{}> <http://schema.org/states> \"{}:0\" .\n",
-                ka.ual(),
-                ka.ual()
-            ));
-        }
-
-        // KC metadata (only if provided)
-        if let Some(meta) = metadata {
-            metadata_triples.push_str(&format!(
-                "    <{}> <{}> <did:dkg:publisherKey/{}> .\n",
-                kc_ual,
-                predicates::PUBLISHED_BY,
-                meta.publisher_address()
-            ));
-            metadata_triples.push_str(&format!(
-                "    <{}> <{}> \"{}\" .\n",
-                kc_ual,
-                predicates::PUBLISHED_AT_BLOCK,
-                meta.block_number()
-            ));
-            metadata_triples.push_str(&format!(
-                "    <{}> <{}> \"{}\" .\n",
-                kc_ual,
-                predicates::PUBLISH_TX,
-                meta.transaction_hash()
-            ));
-
-            // Block time
-            let block_time_iso = Self::format_unix_timestamp(meta.block_timestamp());
-            metadata_triples.push_str(&format!(
-                "    <{}> <{}> \"{}\"^^<http://www.w3.org/2001/XMLSchema#dateTime> .\n",
-                kc_ual,
-                predicates::BLOCK_TIME,
-                block_time_iso
-            ));
-        }
+        let kc_to_ka_metadata = built_metadata
+            .kc_has_knowledge_asset
+            .iter()
+            .map(|line| format!("    {line}\n"))
+            .collect::<String>();
+        let kc_named_graph_metadata = built_metadata
+            .kc_has_named_graph
+            .iter()
+            .map(|line| format!("    {line}\n"))
+            .collect::<String>();
+        let ka_state_metadata = built_metadata
+            .ka_states
+            .iter()
+            .map(|line| format!("    {line}\n"))
+            .collect::<String>();
+        let kc_core_metadata = built_metadata
+            .kc_core
+            .iter()
+            .map(|line| format!("    {line}\n"))
+            .collect::<String>();
 
         // Optional paranet graph connections
         let mut paranet_graph_insert = String::new();
@@ -212,9 +171,9 @@ impl TripleStoreManager {
             current_private_metadata,
             named_graphs::METADATA,
             kc_to_ka_metadata,
-            connection_public_metadata,
-            connection_private_metadata,
-            metadata_triples,
+            kc_named_graph_metadata,
+            ka_state_metadata,
+            kc_core_metadata,
             paranet_graph_insert,
         );
 
@@ -288,13 +247,5 @@ impl TripleStoreManager {
         }
 
         Ok(existing)
-    }
-
-    /// Format a unix timestamp as ISO 8601 datetime string
-    fn format_unix_timestamp(timestamp: u64) -> String {
-        DateTime::from_timestamp(timestamp as i64, 0)
-            .unwrap_or(DateTime::UNIX_EPOCH)
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string()
     }
 }

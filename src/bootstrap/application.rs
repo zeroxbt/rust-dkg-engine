@@ -31,9 +31,10 @@ pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> 
         &managers.key_value_store,
     ));
 
-    let triple_store_assertions = Arc::new(TripleStoreAssertions::new(Arc::clone(
-        &managers.triple_store,
-    )));
+    let triple_store_assertions = Arc::new(TripleStoreAssertions::new(
+        Arc::clone(&managers.triple_store),
+        managers.repository.kc_chain_metadata_repository(),
+    ));
 
     let assertion_validation = Arc::new(AssertionValidation::new(Arc::clone(&managers.blockchain)));
 

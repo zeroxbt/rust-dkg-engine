@@ -71,6 +71,8 @@ pub struct KcChainMetadataEntry {
     pub block_number: u64,
     pub transaction_hash: String,
     pub block_timestamp: u64,
+    pub private_graph_mode: Option<u32>,
+    pub private_graph_payload: Option<Vec<u8>>,
     pub publish_operation_id: Option<String>,
     pub source: Option<String>,
     pub created_at: i64,

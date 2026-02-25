@@ -1,11 +1,16 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use dkg_domain::{
     Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility,
+    parse_ual,
 };
+use dkg_repository::{KcChainMetadataEntry, KcChainMetadataRepository};
 use dkg_triple_store::{
-    GraphVisibility, PRIVATE_HASH_SUBJECT_PREFIX, TripleStoreManager, error::TripleStoreError,
-    extract_subject, group_triples_by_subject,
+    GraphVisibility, MetadataAsset, MetadataTriples, PRIVATE_HASH_SUBJECT_PREFIX,
+    TripleStoreManager, error::TripleStoreError, extract_subject, group_triples_by_subject,
 };
 use futures::{StreamExt, stream};
 use tracing::instrument;
@@ -24,12 +29,17 @@ pub(crate) struct AssertionQueryResult {
 /// (handling remote requests).
 pub(crate) struct TripleStoreAssertions {
     triple_store_manager: Arc<TripleStoreManager>,
+    kc_chain_metadata_repository: KcChainMetadataRepository,
 }
 
 impl TripleStoreAssertions {
-    pub(crate) fn new(triple_store_manager: Arc<TripleStoreManager>) -> Self {
+    pub(crate) fn new(
+        triple_store_manager: Arc<TripleStoreManager>,
+        kc_chain_metadata_repository: KcChainMetadataRepository,
+    ) -> Self {
         Self {
             triple_store_manager,
+            kc_chain_metadata_repository,
         }
     }
 
@@ -48,8 +58,6 @@ impl TripleStoreAssertions {
         visibility: Visibility,
         include_metadata: bool,
     ) -> Result<Option<AssertionQueryResult>, TripleStoreError> {
-        let kc_ual = parsed_ual.knowledge_collection_ual();
-
         // Query assertion and metadata in parallel when metadata is requested
         let (assertion, metadata) = if include_metadata {
             let assertion_future = async {
@@ -57,7 +65,7 @@ impl TripleStoreAssertions {
                     .await
             };
 
-            let metadata_future = self.query_metadata(&kc_ual);
+            let metadata_future = self.query_metadata(parsed_ual, token_ids);
 
             tokio::join!(assertion_future, metadata_future)
         } else {
@@ -222,18 +230,59 @@ impl TripleStoreAssertions {
     }
 
     /// Query metadata for a knowledge collection.
-    async fn query_metadata(&self, kc_ual: &str) -> Result<Option<Vec<String>>, TripleStoreError> {
-        let metadata_lines = self.triple_store_manager.get_metadata(kc_ual).await?;
-        let metadata: Vec<String> = metadata_lines
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(String::from)
-            .collect();
-        if metadata.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(metadata))
-        }
+    ///
+    /// Metadata is reconstructed from SQL metadata + private graph encoding.
+    /// SQL is treated as the source of truth for serving metadata.
+    async fn query_metadata(
+        &self,
+        parsed_ual: &ParsedUal,
+        token_ids: &TokenIds,
+    ) -> Result<Option<Vec<String>>, TripleStoreError> {
+        Ok(self.query_metadata_from_sql(parsed_ual, token_ids).await)
+    }
+
+    async fn query_metadata_from_sql(
+        &self,
+        parsed_ual: &ParsedUal,
+        token_ids: &TokenIds,
+    ) -> Option<Vec<String>> {
+        let Ok(kc_id) = u64::try_from(parsed_ual.knowledge_collection_id) else {
+            return None;
+        };
+
+        let blockchain_id = parsed_ual.blockchain.as_str();
+        let contract_address = format!("{:?}", parsed_ual.contract);
+        let entry = match self
+            .kc_chain_metadata_repository
+            .get_complete(blockchain_id, &contract_address, kc_id)
+            .await
+        {
+            Ok(Some(entry)) => entry,
+            Ok(None) => return None,
+            Err(error) => {
+                tracing::warn!(
+                    blockchain_id = blockchain_id,
+                    contract_address = %contract_address,
+                    kc_id = kc_id,
+                    error = %error,
+                    "Failed to read KC metadata from repository"
+                );
+                return None;
+            }
+        };
+
+        let mode = PrivateGraphMode::from_raw(entry.private_graph_mode?)?;
+        let private_presence = PrivateGraphPresence::from_mode_and_payload(
+            mode,
+            entry.private_graph_payload.as_deref(),
+        )?;
+
+        Some(Self::reconstruct_metadata_triples(
+            parsed_ual,
+            token_ids,
+            &entry,
+            &private_presence,
+        ))
     }
 
     /// Query assertion data for multiple UALs in batch.
@@ -322,16 +371,46 @@ impl TripleStoreAssertions {
     ) -> Result<usize, TripleStoreError> {
         // Build knowledge assets from the dataset
         let knowledge_assets = Self::build_knowledge_assets(knowledge_collection_ual, dataset)?;
+        let private_graph_encoding = Self::encode_private_graph_presence(&knowledge_assets);
 
         // Delegate to the triple store manager for RDF serialization and insertion
-        self.triple_store_manager
+        let inserted = self
+            .triple_store_manager
             .insert_knowledge_collection(
                 knowledge_collection_ual,
                 &knowledge_assets,
                 metadata,
                 paranet_ual,
             )
-            .await
+            .await?;
+
+        if let Ok(parsed_ual) = parse_ual(knowledge_collection_ual)
+            && let Ok(kc_id) = u64::try_from(parsed_ual.knowledge_collection_id)
+        {
+            let contract_address = format!("{:?}", parsed_ual.contract);
+            if let Err(error) = self
+                .kc_chain_metadata_repository
+                .upsert_private_graph_encoding(
+                    parsed_ual.blockchain.as_str(),
+                    &contract_address,
+                    kc_id,
+                    Some(private_graph_encoding.mode as u32),
+                    private_graph_encoding.payload.as_deref(),
+                    Some("triple_store_insert"),
+                )
+                .await
+            {
+                tracing::warn!(
+                    blockchain_id = %parsed_ual.blockchain,
+                    contract_address = %contract_address,
+                    kc_id = kc_id,
+                    error = %error,
+                    "Failed to persist private graph encoding"
+                );
+            }
+        }
+
+        Ok(inserted)
     }
 
     /// Check if a knowledge collection exists locally in the triple store.
@@ -507,6 +586,218 @@ impl TripleStoreAssertions {
 
         Ok(knowledge_assets)
     }
+
+    fn encode_private_graph_presence(knowledge_assets: &[KnowledgeAsset]) -> PrivateGraphEncoding {
+        if knowledge_assets.is_empty() {
+            return PrivateGraphEncoding::none();
+        }
+
+        let mut token_ids: Vec<u64> = Vec::with_capacity(knowledge_assets.len());
+        let mut private_ids: Vec<u64> = Vec::new();
+
+        for ka in knowledge_assets {
+            let Some(token_id) = parse_token_id_from_ka_ual(ka.ual()) else {
+                return PrivateGraphEncoding::none();
+            };
+            token_ids.push(token_id);
+
+            if ka
+                .private_triples()
+                .is_some_and(|triples| !triples.is_empty())
+            {
+                private_ids.push(token_id);
+            }
+        }
+
+        token_ids.sort_unstable();
+        token_ids.dedup();
+        private_ids.sort_unstable();
+        private_ids.dedup();
+
+        let total = token_ids.len();
+        let private = private_ids.len();
+
+        if private == 0 {
+            return PrivateGraphEncoding::none();
+        }
+        if private == total {
+            return PrivateGraphEncoding::all();
+        }
+        if private <= 256 {
+            return PrivateGraphEncoding {
+                mode: PrivateGraphMode::SparseIds,
+                payload: Some(encode_sparse_ids(&private_ids)),
+            };
+        }
+
+        let max_token_id = token_ids.into_iter().max().unwrap_or_default();
+        PrivateGraphEncoding {
+            mode: PrivateGraphMode::Bitmap,
+            payload: Some(encode_bitmap(&private_ids, max_token_id)),
+        }
+    }
+
+    fn reconstruct_metadata_triples(
+        parsed_ual: &ParsedUal,
+        token_ids: &TokenIds,
+        metadata: &KcChainMetadataEntry,
+        private_presence: &PrivateGraphPresence,
+    ) -> Vec<String> {
+        let kc_ual = parsed_ual.knowledge_collection_ual();
+        let burned: HashSet<u64> = token_ids.burned().iter().copied().collect();
+
+        let mut metadata_assets = Vec::new();
+        for token_id in token_ids.start_token_id()..=token_ids.end_token_id() {
+            if burned.contains(&token_id) {
+                continue;
+            }
+            metadata_assets.push(MetadataAsset {
+                ka_ual: format!("{kc_ual}/{token_id}"),
+                has_private_graph: private_presence.has_private_graph(token_id),
+            });
+        }
+
+        let kc_metadata = KnowledgeCollectionMetadata::new(
+            metadata.publisher_address.clone(),
+            metadata.block_number,
+            metadata.transaction_hash.clone(),
+            metadata.block_timestamp,
+        );
+        let built = MetadataTriples::build(&kc_ual, &metadata_assets, Some(&kc_metadata));
+        built.all_triples()
+    }
+}
+const MAX_KA_TOKENS_PER_COLLECTION: u64 = 1_000_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PrivateGraphMode {
+    None = 0,
+    All = 1,
+    SparseIds = 2,
+    Bitmap = 3,
+}
+
+impl PrivateGraphMode {
+    fn from_raw(raw: u32) -> Option<Self> {
+        match raw {
+            0 => Some(Self::None),
+            1 => Some(Self::All),
+            2 => Some(Self::SparseIds),
+            3 => Some(Self::Bitmap),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PrivateGraphEncoding {
+    mode: PrivateGraphMode,
+    payload: Option<Vec<u8>>,
+}
+
+impl PrivateGraphEncoding {
+    fn none() -> Self {
+        Self {
+            mode: PrivateGraphMode::None,
+            payload: None,
+        }
+    }
+
+    fn all() -> Self {
+        Self {
+            mode: PrivateGraphMode::All,
+            payload: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum PrivateGraphPresence {
+    None,
+    All,
+    Sparse(HashSet<u64>),
+    Bitmap(Vec<u8>),
+}
+
+impl PrivateGraphPresence {
+    fn from_mode_and_payload(mode: PrivateGraphMode, payload: Option<&[u8]>) -> Option<Self> {
+        match mode {
+            PrivateGraphMode::None => Some(Self::None),
+            PrivateGraphMode::All => Some(Self::All),
+            PrivateGraphMode::SparseIds => {
+                let payload = payload?;
+                decode_sparse_ids(payload).map(Self::Sparse)
+            }
+            PrivateGraphMode::Bitmap => payload.map(|p| Self::Bitmap(p.to_vec())),
+        }
+    }
+
+    fn has_private_graph(&self, token_id: u64) -> bool {
+        match self {
+            Self::None => false,
+            Self::All => true,
+            Self::Sparse(ids) => ids.contains(&token_id),
+            Self::Bitmap(bits) => {
+                if token_id == 0 {
+                    return false;
+                }
+                let bit_index = usize::try_from(token_id - 1).unwrap_or(usize::MAX);
+                let byte_index = bit_index / 8;
+                if byte_index >= bits.len() {
+                    return false;
+                }
+                let mask = 1u8 << (bit_index % 8);
+                bits[byte_index] & mask != 0
+            }
+        }
+    }
+}
+
+fn parse_token_id_from_ka_ual(ka_ual: &str) -> Option<u64> {
+    ka_ual.rsplit('/').next()?.parse::<u64>().ok()
+}
+
+fn encode_sparse_ids(ids: &[u64]) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(ids.len() * 8);
+    for id in ids {
+        payload.extend_from_slice(&id.to_le_bytes());
+    }
+    payload
+}
+
+fn decode_sparse_ids(payload: &[u8]) -> Option<HashSet<u64>> {
+    if !payload.len().is_multiple_of(8) {
+        return None;
+    }
+
+    let mut ids = HashSet::with_capacity(payload.len() / 8);
+    for chunk in payload.chunks_exact(8) {
+        let id = u64::from_le_bytes([
+            chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
+        ]);
+        ids.insert(id);
+    }
+    Some(ids)
+}
+
+fn encode_bitmap(ids: &[u64], max_token_id: u64) -> Vec<u8> {
+    let capped = max_token_id.min(MAX_KA_TOKENS_PER_COLLECTION);
+    let max_index = usize::try_from(capped).unwrap_or(0);
+    let mut bytes = vec![0u8; max_index.div_ceil(8)];
+
+    for id in ids {
+        if *id == 0 {
+            continue;
+        }
+        let bit_index = usize::try_from(*id - 1).unwrap_or(usize::MAX);
+        let byte_index = bit_index / 8;
+        if byte_index >= bytes.len() {
+            continue;
+        }
+        bytes[byte_index] |= 1u8 << (bit_index % 8);
+    }
+
+    bytes
 }
 
 fn normalize_triple_lines(triples: &[String]) -> Vec<String> {
@@ -702,5 +993,33 @@ mod tests {
         assert_eq!(kas[2].public_triples().len(), 1); // person/2 has 1 triple
         assert!(kas[2].private_triples().is_some());
         assert_eq!(kas[2].private_triples().unwrap().len(), 1); // person/2 has 1 private
+    }
+
+    #[test]
+    fn private_graph_sparse_roundtrip() {
+        let ids = vec![1_u64, 7_u64, 1024_u64];
+        let encoded = encode_sparse_ids(&ids);
+        let decoded = decode_sparse_ids(&encoded).expect("sparse payload should decode");
+        assert_eq!(decoded.len(), ids.len());
+        for id in ids {
+            assert!(decoded.contains(&id));
+        }
+    }
+
+    #[test]
+    fn private_graph_bitmap_detects_membership() {
+        let encoded = encode_bitmap(&[1, 3, 8, 9], 9);
+        let presence = PrivateGraphPresence::from_mode_and_payload(
+            PrivateGraphMode::Bitmap,
+            Some(encoded.as_slice()),
+        )
+        .expect("bitmap payload should decode");
+
+        assert!(presence.has_private_graph(1));
+        assert!(presence.has_private_graph(3));
+        assert!(presence.has_private_graph(8));
+        assert!(presence.has_private_graph(9));
+        assert!(!presence.has_private_graph(2));
+        assert!(!presence.has_private_graph(10));
     }
 }

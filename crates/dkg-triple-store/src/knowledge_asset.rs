@@ -1,7 +1,11 @@
 use std::{collections::HashSet, time::Instant};
 
 use crate::{
-    TripleStoreManager, error::Result, metrics, query::named_graphs, types::GraphVisibility,
+    TripleStoreManager,
+    error::Result,
+    metrics,
+    query::{named_graphs, predicates},
+    types::GraphVisibility,
 };
 
 impl TripleStoreManager {
@@ -193,20 +197,31 @@ impl TripleStoreManager {
         result
     }
 
-    /// Get metadata for a knowledge collection from the metadata graph
+    /// Get all metadata for a knowledge collection from the metadata graph.
     ///
-    /// Returns N-Triples with metadata predicates (publishedBy, publishedAtBlock, etc.)
+    /// Returns KC-subject and KA-subject metadata triples (e.g. hasKnowledgeAsset,
+    /// hasNamedGraph, states, publishedBy, publishedAtBlock, publishTx, blockTime).
     pub async fn get_metadata(&self, kc_ual: &str) -> Result<String> {
         let started = Instant::now();
         let backend = self.backend.name();
         let query = format!(
-            r#"CONSTRUCT {{ <{kc_ual}> ?p ?o . }}
+            r#"CONSTRUCT {{ ?s ?p ?o . }}
                 WHERE {{
                     GRAPH <{metadata}> {{
-                        <{kc_ual}> ?p ?o .
+                        {{
+                            BIND(<{kc_ual}> AS ?s)
+                            ?s ?p ?o .
+                        }}
+                        UNION
+                        {{
+                            <{kc_ual}> <{has_knowledge_asset}> ?ka .
+                            BIND(?ka AS ?s)
+                            ?s ?p ?o .
+                        }}
                     }}
                 }}"#,
             metadata = named_graphs::METADATA,
+            has_knowledge_asset = predicates::HAS_KNOWLEDGE_ASSET,
         );
 
         let result = self

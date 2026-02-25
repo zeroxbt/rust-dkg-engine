@@ -3,6 +3,7 @@ mod config;
 pub mod error;
 mod knowledge_asset;
 mod knowledge_collection;
+mod metadata;
 mod metrics;
 mod query;
 mod rdf;
@@ -20,6 +21,7 @@ pub use config::{
     TripleStoreManagerConfig,
 };
 use error::{Result, TripleStoreError};
+pub use metadata::{MetadataAsset, MetadataTriples};
 pub use rdf::{
     compare_js_default_string_order, extract_quoted_string, extract_subject,
     group_triples_by_subject, parse_metadata_from_triples,

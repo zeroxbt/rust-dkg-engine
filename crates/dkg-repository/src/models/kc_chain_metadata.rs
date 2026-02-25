@@ -18,6 +18,8 @@ pub struct Model {
     pub block_number: Option<i64>,
     pub transaction_hash: Option<String>,
     pub block_timestamp: Option<i64>,
+    pub private_graph_mode: Option<u32>,
+    pub private_graph_payload: Option<Vec<u8>>,
     pub publish_operation_id: Option<String>,
     pub source: Option<String>,
     pub created_at: i64,
