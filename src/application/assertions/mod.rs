@@ -1,19 +1,29 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
+
+mod build_assets;
+mod metadata;
+mod private_graph_encoding;
 
 use dkg_domain::{
-    Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility,
-    parse_ual,
+    Assertion, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility, parse_ual,
 };
-use dkg_repository::{KcChainMetadataEntry, KcChainMetadataRepository};
-use dkg_triple_store::{
-    GraphVisibility, MetadataAsset, MetadataTriples, PRIVATE_HASH_SUBJECT_PREFIX,
-    TripleStoreManager, error::TripleStoreError, extract_subject, group_triples_by_subject,
-};
+use dkg_repository::KcChainMetadataRepository;
+use dkg_triple_store::{GraphVisibility, TripleStoreManager, error::TripleStoreError};
 use futures::{StreamExt, stream};
 use tracing::instrument;
+
+use self::{
+    build_assets::build_knowledge_assets,
+    metadata::reconstruct_metadata_triples,
+    private_graph_encoding::{
+        PrivateGraphMode, PrivateGraphPresence, encode_private_graph_presence,
+    },
+};
+
+#[cfg(test)]
+use self::private_graph_encoding::{decode_sparse_ids, encode_bitmap, encode_sparse_ids};
+#[cfg(test)]
+use dkg_triple_store::PRIVATE_HASH_SUBJECT_PREFIX;
 
 /// Result of querying assertion data from the triple store.
 #[derive(Debug, Clone)]
@@ -277,7 +287,7 @@ impl TripleStoreAssertions {
             entry.private_graph_payload.as_deref(),
         )?;
 
-        Some(Self::reconstruct_metadata_triples(
+        Some(reconstruct_metadata_triples(
             parsed_ual,
             token_ids,
             &entry,
@@ -370,8 +380,8 @@ impl TripleStoreAssertions {
         paranet_ual: Option<&str>,
     ) -> Result<usize, TripleStoreError> {
         // Build knowledge assets from the dataset
-        let knowledge_assets = Self::build_knowledge_assets(knowledge_collection_ual, dataset)?;
-        let private_graph_encoding = Self::encode_private_graph_presence(&knowledge_assets);
+        let knowledge_assets = build_knowledge_assets(knowledge_collection_ual, dataset)?;
+        let private_graph_encoding = encode_private_graph_presence(&knowledge_assets);
 
         // Delegate to the triple store manager for RDF serialization and insertion
         let inserted = self
@@ -481,332 +491,6 @@ impl TripleStoreAssertions {
             }
         }
     }
-
-    /// Build knowledge assets from a dataset.
-    ///
-    /// This contains the DKG business logic:
-    /// - Separating public triples from private-hash triples
-    /// - Grouping triples by subject
-    /// - Generating UALs for each knowledge asset
-    /// - Matching private triples to public knowledge assets
-    fn build_knowledge_assets(
-        knowledge_collection_ual: &str,
-        dataset: &Assertion,
-    ) -> Result<Vec<KnowledgeAsset>, TripleStoreError> {
-        let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
-        let normalized_public = normalize_triple_lines(&dataset.public);
-
-        // Separate public triples: regular public vs private-hash triples
-        let mut filtered_public: Vec<String> = Vec::new();
-        let mut private_hash_triples: Vec<String> = Vec::new();
-
-        for triple in normalized_public {
-            if triple.starts_with(&private_hash_prefix) {
-                private_hash_triples.push(triple);
-            } else {
-                filtered_public.push(triple);
-            }
-        }
-
-        // Group public triples by subject, then append private-hash groups
-        let mut public_ka_triples_grouped =
-            group_triples_by_subject(&filtered_public).map_err(|error| {
-                TripleStoreError::ParseError {
-                    reason: format!("Failed to group public triples by parsed subject: {error}"),
-                }
-            })?;
-        public_ka_triples_grouped.extend(group_triples_by_subject(&private_hash_triples).map_err(
-            |error| TripleStoreError::ParseError {
-                reason: format!("Failed to group private-hash triples by parsed subject: {error}"),
-            },
-        )?);
-
-        // Build a map from public subject -> index for matching private triples later.
-        let public_subject_map: HashMap<String, usize> = public_ka_triples_grouped
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, group)| {
-                group
-                    .first()
-                    .and_then(|triple| extract_subject(triple).map(|subj| (subj.to_string(), idx)))
-            })
-            .collect();
-
-        // Create knowledge assets with public triples, moving grouped vectors to avoid cloning.
-        let mut knowledge_assets: Vec<KnowledgeAsset> = public_ka_triples_grouped
-            .into_iter()
-            .enumerate()
-            .map(|(i, triples)| {
-                let ual = format!("{}/{}", knowledge_collection_ual, i + 1);
-                KnowledgeAsset::new(ual, triples)
-            })
-            .collect();
-
-        // Match and attach private triples if present
-        if let Some(private_triples) = &dataset.private
-            && !private_triples.is_empty()
-        {
-            let normalized_private = normalize_triple_lines(private_triples);
-            let private_ka_triples_grouped = group_triples_by_subject(&normalized_private)
-                .map_err(|error| TripleStoreError::ParseError {
-                    reason: format!("Failed to group private triples by parsed subject: {error}"),
-                })?;
-
-            // Match each private group to a public knowledge asset
-            for private_group in private_ka_triples_grouped {
-                if let Some(first_triple) = private_group.first()
-                    && let Some(private_subject) = extract_subject(first_triple)
-                {
-                    // Try direct subject match first
-                    let matched_idx = if let Some(&idx) = public_subject_map.get(private_subject) {
-                        Some(idx)
-                    } else {
-                        // Try matching by hashed subject
-                        let subject_without_brackets = private_subject
-                            .trim_start_matches('<')
-                            .trim_end_matches('>');
-                        let hashed_subject = format!(
-                            "<{}{}>",
-                            PRIVATE_HASH_SUBJECT_PREFIX,
-                            dkg_blockchain::sha256_hex(subject_without_brackets.as_bytes())
-                        );
-                        public_subject_map.get(hashed_subject.as_str()).copied()
-                    };
-
-                    // Attach private triples to the matched knowledge asset (append if already set)
-                    if let Some(idx) = matched_idx {
-                        match knowledge_assets[idx].private_triples.as_mut() {
-                            Some(existing) => existing.extend(private_group),
-                            None => knowledge_assets[idx].set_private_triples(private_group),
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(knowledge_assets)
-    }
-
-    fn encode_private_graph_presence(knowledge_assets: &[KnowledgeAsset]) -> PrivateGraphEncoding {
-        if knowledge_assets.is_empty() {
-            return PrivateGraphEncoding::none();
-        }
-
-        let mut token_ids: Vec<u64> = Vec::with_capacity(knowledge_assets.len());
-        let mut private_ids: Vec<u64> = Vec::new();
-
-        for ka in knowledge_assets {
-            let Some(token_id) = parse_token_id_from_ka_ual(ka.ual()) else {
-                return PrivateGraphEncoding::none();
-            };
-            token_ids.push(token_id);
-
-            if ka
-                .private_triples()
-                .is_some_and(|triples| !triples.is_empty())
-            {
-                private_ids.push(token_id);
-            }
-        }
-
-        token_ids.sort_unstable();
-        token_ids.dedup();
-        private_ids.sort_unstable();
-        private_ids.dedup();
-
-        let total = token_ids.len();
-        let private = private_ids.len();
-
-        if private == 0 {
-            return PrivateGraphEncoding::none();
-        }
-        if private == total {
-            return PrivateGraphEncoding::all();
-        }
-        if private <= 256 {
-            return PrivateGraphEncoding {
-                mode: PrivateGraphMode::SparseIds,
-                payload: Some(encode_sparse_ids(&private_ids)),
-            };
-        }
-
-        let max_token_id = token_ids.into_iter().max().unwrap_or_default();
-        PrivateGraphEncoding {
-            mode: PrivateGraphMode::Bitmap,
-            payload: Some(encode_bitmap(&private_ids, max_token_id)),
-        }
-    }
-
-    fn reconstruct_metadata_triples(
-        parsed_ual: &ParsedUal,
-        token_ids: &TokenIds,
-        metadata: &KcChainMetadataEntry,
-        private_presence: &PrivateGraphPresence,
-    ) -> Vec<String> {
-        let kc_ual = parsed_ual.knowledge_collection_ual();
-        let burned: HashSet<u64> = token_ids.burned().iter().copied().collect();
-
-        let mut metadata_assets = Vec::new();
-        for token_id in token_ids.start_token_id()..=token_ids.end_token_id() {
-            if burned.contains(&token_id) {
-                continue;
-            }
-            metadata_assets.push(MetadataAsset {
-                ka_ual: format!("{kc_ual}/{token_id}"),
-                has_private_graph: private_presence.has_private_graph(token_id),
-            });
-        }
-
-        let kc_metadata = KnowledgeCollectionMetadata::new(
-            metadata.publisher_address.clone(),
-            metadata.block_number,
-            metadata.transaction_hash.clone(),
-            metadata.block_timestamp,
-        );
-        let built = MetadataTriples::build(&kc_ual, &metadata_assets, Some(&kc_metadata));
-        built.all_triples()
-    }
-}
-const MAX_KA_TOKENS_PER_COLLECTION: u64 = 1_000_000;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PrivateGraphMode {
-    None = 0,
-    All = 1,
-    SparseIds = 2,
-    Bitmap = 3,
-}
-
-impl PrivateGraphMode {
-    fn from_raw(raw: u32) -> Option<Self> {
-        match raw {
-            0 => Some(Self::None),
-            1 => Some(Self::All),
-            2 => Some(Self::SparseIds),
-            3 => Some(Self::Bitmap),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct PrivateGraphEncoding {
-    mode: PrivateGraphMode,
-    payload: Option<Vec<u8>>,
-}
-
-impl PrivateGraphEncoding {
-    fn none() -> Self {
-        Self {
-            mode: PrivateGraphMode::None,
-            payload: None,
-        }
-    }
-
-    fn all() -> Self {
-        Self {
-            mode: PrivateGraphMode::All,
-            payload: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum PrivateGraphPresence {
-    None,
-    All,
-    Sparse(HashSet<u64>),
-    Bitmap(Vec<u8>),
-}
-
-impl PrivateGraphPresence {
-    fn from_mode_and_payload(mode: PrivateGraphMode, payload: Option<&[u8]>) -> Option<Self> {
-        match mode {
-            PrivateGraphMode::None => Some(Self::None),
-            PrivateGraphMode::All => Some(Self::All),
-            PrivateGraphMode::SparseIds => {
-                let payload = payload?;
-                decode_sparse_ids(payload).map(Self::Sparse)
-            }
-            PrivateGraphMode::Bitmap => payload.map(|p| Self::Bitmap(p.to_vec())),
-        }
-    }
-
-    fn has_private_graph(&self, token_id: u64) -> bool {
-        match self {
-            Self::None => false,
-            Self::All => true,
-            Self::Sparse(ids) => ids.contains(&token_id),
-            Self::Bitmap(bits) => {
-                if token_id == 0 {
-                    return false;
-                }
-                let bit_index = usize::try_from(token_id - 1).unwrap_or(usize::MAX);
-                let byte_index = bit_index / 8;
-                if byte_index >= bits.len() {
-                    return false;
-                }
-                let mask = 1u8 << (bit_index % 8);
-                bits[byte_index] & mask != 0
-            }
-        }
-    }
-}
-
-fn parse_token_id_from_ka_ual(ka_ual: &str) -> Option<u64> {
-    ka_ual.rsplit('/').next()?.parse::<u64>().ok()
-}
-
-fn encode_sparse_ids(ids: &[u64]) -> Vec<u8> {
-    let mut payload = Vec::with_capacity(ids.len() * 8);
-    for id in ids {
-        payload.extend_from_slice(&id.to_le_bytes());
-    }
-    payload
-}
-
-fn decode_sparse_ids(payload: &[u8]) -> Option<HashSet<u64>> {
-    if !payload.len().is_multiple_of(8) {
-        return None;
-    }
-
-    let mut ids = HashSet::with_capacity(payload.len() / 8);
-    for chunk in payload.chunks_exact(8) {
-        let id = u64::from_le_bytes([
-            chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
-        ]);
-        ids.insert(id);
-    }
-    Some(ids)
-}
-
-fn encode_bitmap(ids: &[u64], max_token_id: u64) -> Vec<u8> {
-    let capped = max_token_id.min(MAX_KA_TOKENS_PER_COLLECTION);
-    let max_index = usize::try_from(capped).unwrap_or(0);
-    let mut bytes = vec![0u8; max_index.div_ceil(8)];
-
-    for id in ids {
-        if *id == 0 {
-            continue;
-        }
-        let bit_index = usize::try_from(*id - 1).unwrap_or(usize::MAX);
-        let byte_index = bit_index / 8;
-        if byte_index >= bytes.len() {
-            continue;
-        }
-        bytes[byte_index] |= 1u8 << (bit_index % 8);
-    }
-
-    bytes
-}
-
-fn normalize_triple_lines(triples: &[String]) -> Vec<String> {
-    triples
-        .iter()
-        .flat_map(|entry| entry.lines())
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect()
 }
 
 #[cfg(test)]
@@ -837,7 +521,7 @@ mod tests {
             private: None,
         };
 
-        let kas = TripleStoreAssertions::build_knowledge_assets(kc_ual, &dataset)
+        let kas = build_knowledge_assets(kc_ual, &dataset)
             .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs (grouped by subject)
@@ -867,7 +551,7 @@ mod tests {
             private: None,
         };
 
-        let kas = TripleStoreAssertions::build_knowledge_assets(kc_ual, &dataset)
+        let kas = build_knowledge_assets(kc_ual, &dataset)
             .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs (regular subject + hash subject)
@@ -896,7 +580,7 @@ mod tests {
             ]),
         };
 
-        let kas = TripleStoreAssertions::build_knowledge_assets(kc_ual, &dataset)
+        let kas = build_knowledge_assets(kc_ual, &dataset)
             .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs, each with matched private triples
@@ -937,7 +621,7 @@ mod tests {
             private: Some(vec![private_triple]),
         };
 
-        let kas = TripleStoreAssertions::build_knowledge_assets(kc_ual, &dataset)
+        let kas = build_knowledge_assets(kc_ual, &dataset)
             .expect("Expected knowledge asset build to succeed");
 
         // Expected: 2 KAs, private matches to second (hash placeholder)
@@ -968,7 +652,7 @@ mod tests {
             ]),
         };
 
-        let kas = TripleStoreAssertions::build_knowledge_assets(kc_ual, &dataset)
+        let kas = build_knowledge_assets(kc_ual, &dataset)
             .expect("Expected knowledge asset build to succeed");
 
         // Expected: 3 KAs sorted alphabetically by subject:
