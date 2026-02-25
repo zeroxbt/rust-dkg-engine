@@ -245,9 +245,12 @@ impl BlockchainEventListenerTask {
                     continue;
                 }
 
-                // Check for extended downtime - if we missed too many blocks, skip them
-                let blocks_behind = current_block.saturating_sub(last_checked_block);
-                if blocks_behind > self.max_blocks_to_sync {
+                // Check for extended downtime - if we missed too many blocks, skip them.
+                // Keep full backfill enabled for KC storage events.
+                let blocks_behind = current_block.saturating_sub(from_block.saturating_sub(1));
+                let should_apply_skip_guard =
+                    !matches!(contract_name, ContractName::KnowledgeCollectionStorage);
+                if should_apply_skip_guard && blocks_behind > self.max_blocks_to_sync {
                     stats.skipped_ranges += 1;
                     tracing::warn!(
                         blockchain = %blockchain_id,
