@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::Arc};
 
 mod build_assets;
 mod metadata;
-mod private_graph_encoding;
 
 use dkg_domain::{
     Assertion, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility, parse_ual,
@@ -15,13 +14,13 @@ use tracing::instrument;
 use self::{
     build_assets::build_knowledge_assets,
     metadata::reconstruct_metadata_triples,
-    private_graph_encoding::{
-        PrivateGraphMode, PrivateGraphPresence, encode_private_graph_presence,
-    },
 };
-
+use crate::application::state_metadata::{
+    PrivateGraphMode, PrivateGraphPresence, encode_private_graph_presence,
+};
 #[cfg(test)]
-use self::private_graph_encoding::{decode_sparse_ids, encode_bitmap, encode_sparse_ids};
+use crate::application::state_metadata::{decode_sparse_ids, encode_bitmap, encode_sparse_ids};
+
 #[cfg(test)]
 use dkg_triple_store::PRIVATE_HASH_SUBJECT_PREFIX;
 

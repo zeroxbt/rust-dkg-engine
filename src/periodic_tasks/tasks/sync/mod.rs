@@ -4,7 +4,6 @@
 //! - `MetadataSyncTask` (producer): backfills KC events, hydrates chain state, enqueues IDs
 //! - `SyncTask` (consumer): drains queue and performs filter/fetch/insert
 
-pub(crate) mod burned_encoding;
 mod config;
 mod fetch;
 mod filter;

@@ -13,13 +13,15 @@ use tracing::Instrument;
 
 use super::{
     SyncConfig,
-    burned_encoding::encode_burned_ids,
     fetch::fetch_task,
     filter::filter_task,
     insert::insert_task,
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
-use crate::{periodic_tasks::SyncDeps, periodic_tasks::runner::run_with_shutdown};
+use crate::{
+    application::state_metadata::encode_burned_ids, periodic_tasks::SyncDeps,
+    periodic_tasks::runner::run_with_shutdown,
+};
 
 pub(crate) struct SyncTask {
     config: SyncConfig,

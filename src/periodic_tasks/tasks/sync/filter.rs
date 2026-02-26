@@ -14,10 +14,10 @@ use tokio::sync::mpsc;
 use tracing::instrument;
 
 use super::{
-    burned_encoding::{BurnedMode, decode_burned_ids},
     types::{FilterStats, KcToSync},
 };
 use crate::application::TripleStoreAssertions;
+use crate::application::state_metadata::{BurnedMode, decode_burned_ids};
 
 #[allow(clippy::too_many_arguments)]
 #[instrument(

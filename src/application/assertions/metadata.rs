@@ -4,7 +4,7 @@ use dkg_domain::{KnowledgeCollectionMetadata, ParsedUal, TokenIds};
 use dkg_repository::KcChainMetadataEntry;
 use dkg_triple_store::{MetadataAsset, MetadataTriples};
 
-use super::private_graph_encoding::PrivateGraphPresence;
+use crate::application::state_metadata::PrivateGraphPresence;
 
 pub(super) fn reconstruct_metadata_triples(
     parsed_ual: &ParsedUal,

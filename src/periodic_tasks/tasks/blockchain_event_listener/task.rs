@@ -15,6 +15,7 @@ use dkg_repository::{BlockchainRepository, KcChainMetadataRepository};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    application::state_metadata::encode_burned_ids,
     commands::{
         executor::CommandExecutionRequest,
         operations::publish::finality::send_publish_finality_request::SendPublishFinalityRequestCommandData,
@@ -24,7 +25,6 @@ use crate::{
     error::NodeError,
     periodic_tasks::BlockchainEventListenerDeps,
     periodic_tasks::runner::run_with_shutdown,
-    periodic_tasks::tasks::sync::burned_encoding::encode_burned_ids,
 };
 
 /// Event fetch interval for mainnet (10 seconds)
