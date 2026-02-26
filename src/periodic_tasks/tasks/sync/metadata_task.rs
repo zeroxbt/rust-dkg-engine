@@ -188,6 +188,7 @@ impl MetadataSyncTask {
     #[tracing::instrument(name = "periodic_tasks.sync_metadata", skip(self), fields(blockchain_id = %blockchain_id))]
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
         let idle_period = Duration::from_secs(self.config.sync_idle_sleep_secs.max(1));
+        let hot_loop_period = Duration::from_millis(500);
         let recheck_secs = self.config.metadata_gap_recheck_interval_secs.max(1);
         let recheck_period = Duration::from_secs(recheck_secs);
         let now_unix_secs = SystemTime::now()
@@ -265,7 +266,7 @@ impl MetadataSyncTask {
 
         // Keep hot loop only for tail cursor progress. Gap rescans run on recheck cadence.
         if any_cursor_advanced {
-            return Duration::ZERO;
+            return hot_loop_period;
         }
 
         recheck_period

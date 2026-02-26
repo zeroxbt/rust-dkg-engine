@@ -16,9 +16,7 @@ use super::{
     insert::insert_task,
     types::{ContractSyncResult, FetchStats, FetchedKc, FilterStats, InsertStats, KcToSync},
 };
-use crate::{
-    periodic_tasks::SyncDeps, periodic_tasks::runner::run_with_shutdown,
-};
+use crate::{periodic_tasks::SyncDeps, periodic_tasks::runner::run_with_shutdown};
 
 pub(crate) struct SyncTask {
     config: SyncConfig,
@@ -321,8 +319,8 @@ impl SyncTask {
             observability::record_sync_cycle_rss_bytes(blockchain_label, "start", rss);
         }
 
-        let no_peers_retry_delay = Duration::from_secs(self.config.no_peers_retry_delay_secs);
         let idle_period = Duration::from_secs(self.config.sync_idle_sleep_secs.max(1));
+        let hot_loop_period = Duration::from_millis(500);
 
         if !self.config.enabled {
             finalize_sync_cycle_metrics(
@@ -454,15 +452,11 @@ impl SyncTask {
         );
         observability::record_sync_last_success_heartbeat();
 
-        if !enough_peers {
-            return no_peers_retry_delay;
+        if !enough_peers || total_pending == 0 {
+            return idle_period;
+        } else {
+            return hot_loop_period;
         }
-
-        if total_pending > 0 {
-            return Duration::ZERO;
-        }
-
-        idle_period
     }
 }
 
