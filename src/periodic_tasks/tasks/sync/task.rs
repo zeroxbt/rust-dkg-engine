@@ -231,7 +231,15 @@ impl SyncTask {
                 let Some(latest_merkle_root) = merkle_result.as_bytes32_hex() else {
                     continue;
                 };
-                let end_epoch = epoch_result.as_u64().filter(|v| *v != 0);
+                let Some(end_epoch) = epoch_result.as_u64().filter(|v| *v != 0) else {
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        contract = %contract_addr_str,
+                        kc_id = *kc_id,
+                        "Missing/zero end_epoch in KC state hydration"
+                    );
+                    continue;
+                };
 
                 let encoded = encode_burned_ids(start, end, &burned);
                 self.deps

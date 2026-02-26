@@ -12,7 +12,7 @@ pub(crate) struct KcHydratedStateMetadata {
     pub(crate) range_end_token_id: u64,
     pub(crate) burned_mode: u32,
     pub(crate) burned_payload: Vec<u8>,
-    pub(crate) end_epoch: Option<u64>,
+    pub(crate) end_epoch: u64,
     pub(crate) latest_merkle_root: String,
 }
 
@@ -145,7 +145,15 @@ pub(crate) async fn hydrate_kc_state_metadata(
                         continue;
                     };
 
-                    let end_epoch = epoch_result.as_u64().filter(|v| *v != 0);
+                    let Some(end_epoch) = epoch_result.as_u64().filter(|v| *v != 0) else {
+                        tracing::warn!(
+                            blockchain = %blockchain_id,
+                            contract = ?record.contract_address,
+                            kc_id = record.kc_id,
+                            "Missing/zero end_epoch during state metadata hydration"
+                        );
+                        continue;
+                    };
                     let latest_merkle_root = merkle_result
                         .as_bytes32_hex()
                         .unwrap_or_else(|| format!("0x{}", to_hex_string(record.merkle_root)));

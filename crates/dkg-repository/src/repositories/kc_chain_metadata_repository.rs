@@ -145,7 +145,7 @@ impl KcChainMetadataRepository {
         range_end_token_id: u64,
         burned_mode: u32,
         burned_payload: &[u8],
-        end_epoch: Option<u64>,
+        end_epoch: u64,
         latest_merkle_root: &str,
         state_observed_block: u64,
         source: Option<&str>,
@@ -153,7 +153,7 @@ impl KcChainMetadataRepository {
         let now = Utc::now().timestamp();
         let range_start_token_id = Self::u64_to_i64(range_start_token_id, "range_start_token_id")?;
         let range_end_token_id = Self::u64_to_i64(range_end_token_id, "range_end_token_id")?;
-        let end_epoch = Self::opt_u64_to_i64(end_epoch, "end_epoch")?;
+        let end_epoch = Self::u64_to_i64(end_epoch, "end_epoch")?;
         let state_observed_block = Self::u64_to_i64(state_observed_block, "state_observed_block")?;
 
         let model = StateActiveModel {
@@ -164,7 +164,7 @@ impl KcChainMetadataRepository {
             range_end_token_id: ActiveValue::Set(Some(range_end_token_id)),
             burned_mode: ActiveValue::Set(Some(burned_mode)),
             burned_payload: ActiveValue::Set(Some(burned_payload.to_vec())),
-            end_epoch: ActiveValue::Set(end_epoch),
+            end_epoch: ActiveValue::Set(Some(end_epoch)),
             latest_merkle_root: ActiveValue::Set(Some(latest_merkle_root.to_string())),
             state_observed_block: ActiveValue::Set(Some(state_observed_block)),
             state_updated_at: ActiveValue::Set(now),
@@ -372,6 +372,7 @@ impl KcChainMetadataRepository {
                 .filter(StateColumn::RangeEndTokenId.is_not_null())
                 .filter(StateColumn::BurnedMode.is_not_null())
                 .filter(StateColumn::BurnedPayload.is_not_null())
+                .filter(StateColumn::EndEpoch.is_not_null())
                 .filter(StateColumn::LatestMerkleRoot.is_not_null())
                 .filter(StateColumn::StateObservedBlock.is_not_null())
                 .all(self.conn.as_ref())
@@ -448,6 +449,7 @@ impl KcChainMetadataRepository {
                     || row.range_end_token_id.is_none()
                     || row.burned_mode.is_none()
                     || row.burned_payload.is_none()
+                    || row.end_epoch.is_none()
                     || row.latest_merkle_root.is_none()
                     || row.state_observed_block.is_none()
                 {
@@ -639,7 +641,7 @@ impl KcChainMetadataRepository {
             range_end_token_id: u64::try_from(state.range_end_token_id?).ok()?,
             burned_mode: state.burned_mode?,
             burned_payload: state.burned_payload.clone()?,
-            end_epoch: Self::opt_i64_to_u64(state.end_epoch),
+            end_epoch: u64::try_from(state.end_epoch?).ok()?,
             latest_merkle_root: state.latest_merkle_root.clone()?,
             state_observed_block: u64::try_from(state.state_observed_block?).ok()?,
         })
@@ -651,10 +653,6 @@ impl KcChainMetadataRepository {
                 "{field_name} exceeds i64::MAX"
             )))
         })
-    }
-
-    fn opt_u64_to_i64(value: Option<u64>, field_name: &'static str) -> Result<Option<i64>> {
-        value.map(|v| Self::u64_to_i64(v, field_name)).transpose()
     }
 
     fn opt_i64_to_u64(value: Option<i64>) -> Option<u64> {

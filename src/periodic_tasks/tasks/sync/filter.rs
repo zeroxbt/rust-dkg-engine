@@ -208,8 +208,8 @@ async fn process_filter_batch(
 
     let mut to_sync = Vec::with_capacity(ready.len());
     for (kc_id, ual, entry) in ready {
-        if let (Some(current), Some(end)) = (current_epoch, entry.end_epoch)
-            && current > end
+        if let Some(current) = current_epoch
+            && current > entry.end_epoch
         {
             expired.push(kc_id);
             continue;

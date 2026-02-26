@@ -92,7 +92,7 @@ pub struct KcChainReadyKcStateMetadataEntry {
     pub range_end_token_id: u64,
     pub burned_mode: u32,
     pub burned_payload: Vec<u8>,
-    pub end_epoch: Option<u64>,
+    pub end_epoch: u64,
     pub latest_merkle_root: String,
     pub state_observed_block: u64,
 }
