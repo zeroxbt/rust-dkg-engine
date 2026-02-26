@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use sea_orm::{
     ActiveValue, DatabaseConnection, DbErr, EntityTrait, prelude::DateTimeUtc,
@@ -8,6 +8,7 @@ use sea_orm::{
 use crate::{
     error::{RepositoryError, Result},
     models::blockchain::{ActiveModel, Column, Entity},
+    observability::record_repository_query,
 };
 
 #[derive(Clone)]
@@ -26,19 +27,39 @@ impl BlockchainRepository {
         contract: &str,
         contract_address: &str,
     ) -> Result<u64> {
-        let model = Entity::find_by_id((
+        let started = Instant::now();
+        let result = Entity::find_by_id((
             blockchain_id.to_owned(),
             contract.to_owned(),
             contract_address.to_owned(),
         ))
         .one(self.conn.as_ref())
-        .await?;
+        .await
+        .map(|model| model.map_or(0, |value| value.last_checked_block.max(0) as u64))
+        .map_err(Into::into);
 
-        let Some(model) = model else {
-            return Ok(0);
-        };
+        match &result {
+            Ok(block) => {
+                record_repository_query(
+                    "blockchain",
+                    "get_last_checked_block",
+                    "ok",
+                    started.elapsed(),
+                    Some(*block as usize),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "blockchain",
+                    "get_last_checked_block",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
 
-        Ok(model.last_checked_block.max(0) as u64)
+        result
     }
 
     pub async fn update_last_checked_block(
@@ -49,6 +70,7 @@ impl BlockchainRepository {
         last_checked_block: u64,
         last_checked_timestamp: DateTimeUtc,
     ) -> Result<()> {
+        let started = Instant::now();
         let last_checked_block = i64::try_from(last_checked_block).map_err(|_| {
             RepositoryError::Database(DbErr::Custom(
                 "last_checked_block exceeds i64::MAX".to_string(),
@@ -62,15 +84,38 @@ impl BlockchainRepository {
             last_checked_block: ActiveValue::Set(last_checked_block),
             last_checked_timestamp: ActiveValue::Set(last_checked_timestamp),
         };
-        Entity::insert(model)
+        let result = Entity::insert(model)
             .on_conflict(
                 OnConflict::columns([Column::Id, Column::Contract, Column::ContractAddress])
                     .update_columns([Column::LastCheckedBlock, Column::LastCheckedTimestamp])
                     .to_owned(),
             )
             .exec_without_returning(self.conn.as_ref())
-            .await?;
+            .await
+            .map(|_| ())
+            .map_err(Into::into);
 
-        Ok(())
+        match &result {
+            Ok(()) => {
+                record_repository_query(
+                    "blockchain",
+                    "update_last_checked_block",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "blockchain",
+                    "update_last_checked_block",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 }

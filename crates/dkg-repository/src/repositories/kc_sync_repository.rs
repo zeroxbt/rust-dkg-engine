@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use chrono::Utc;
 use sea_orm::{
@@ -8,6 +8,7 @@ use sea_orm::{
 
 use crate::{
     error::Result,
+    observability::record_repository_query,
     models::{
         kc_sync_metadata_cursor::{
             ActiveModel as CursorActiveModel, Column as CursorColumn, Entity as CursorEntity,
@@ -34,10 +35,35 @@ impl KcSyncRepository {
         &self,
         blockchain_id: &str,
     ) -> Result<u64> {
-        Ok(CursorEntity::find()
+        let started = Instant::now();
+        let result = CursorEntity::find()
             .filter(CursorColumn::BlockchainId.eq(blockchain_id))
             .count(self.conn.as_ref())
-            .await?)
+            .await
+            .map_err(Into::into);
+
+        match &result {
+            Ok(count) => {
+                record_repository_query(
+                    "kc_sync",
+                    "count_progress_contracts_for_blockchain",
+                    "ok",
+                    started.elapsed(),
+                    Some(*count as usize),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "count_progress_contracts_for_blockchain",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     /// Get the latest progress update timestamp for a blockchain.
@@ -45,12 +71,46 @@ impl KcSyncRepository {
         &self,
         blockchain_id: &str,
     ) -> Result<Option<i64>> {
-        Ok(CursorEntity::find()
+        let started = Instant::now();
+        let result = CursorEntity::find()
             .filter(CursorColumn::BlockchainId.eq(blockchain_id))
             .order_by_desc(CursorColumn::UpdatedAt)
             .one(self.conn.as_ref())
-            .await?
-            .map(|row| row.updated_at))
+            .await
+            .map(|row| row.map(|value| value.updated_at))
+            .map_err(Into::into);
+
+        match &result {
+            Ok(Some(_)) => {
+                record_repository_query(
+                    "kc_sync",
+                    "latest_progress_updated_at_for_blockchain",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
+            }
+            Ok(None) => {
+                record_repository_query(
+                    "kc_sync",
+                    "latest_progress_updated_at_for_blockchain",
+                    "ok",
+                    started.elapsed(),
+                    Some(0),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "latest_progress_updated_at_for_blockchain",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     /// Get metadata event backfill cursor for a contract.
@@ -59,12 +119,36 @@ impl KcSyncRepository {
         blockchain_id: &str,
         contract_address: &str,
     ) -> Result<u64> {
-        let row =
+        let started = Instant::now();
+        let result =
             CursorEntity::find_by_id((blockchain_id.to_string(), contract_address.to_string()))
                 .one(self.conn.as_ref())
-                .await?;
+                .await
+                .map(|row| row.map(|value| value.last_checked_block.max(0) as u64).unwrap_or(0))
+                .map_err(Into::into);
 
-        Ok(row.map(|r| r.last_checked_block.max(0) as u64).unwrap_or(0))
+        match &result {
+            Ok(progress) => {
+                record_repository_query(
+                    "kc_sync",
+                    "get_metadata_progress",
+                    "ok",
+                    started.elapsed(),
+                    Some(*progress as usize),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "get_metadata_progress",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     /// Upsert metadata event backfill cursor for a contract.
@@ -74,6 +158,7 @@ impl KcSyncRepository {
         contract_address: &str,
         metadata_last_checked_block: u64,
     ) -> Result<()> {
+        let started = Instant::now();
         let now = Utc::now().timestamp();
         let metadata_last_checked_block = metadata_last_checked_block.min(i64::MAX as u64) as i64;
         let model = CursorActiveModel {
@@ -83,7 +168,7 @@ impl KcSyncRepository {
             updated_at: ActiveValue::Set(now),
         };
 
-        CursorEntity::insert(model)
+        let result = CursorEntity::insert(model)
             .on_conflict(
                 sea_orm::sea_query::OnConflict::columns([
                     CursorColumn::BlockchainId,
@@ -93,9 +178,32 @@ impl KcSyncRepository {
                 .to_owned(),
             )
             .exec(self.conn.as_ref())
-            .await?;
+            .await
+            .map(|_| ())
+            .map_err(Into::into);
 
-        Ok(())
+        match &result {
+            Ok(()) => {
+                record_repository_query(
+                    "kc_sync",
+                    "upsert_metadata_progress",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "upsert_metadata_progress",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     // ==================== Queue Table Methods ====================
@@ -108,7 +216,9 @@ impl KcSyncRepository {
         contract_address: &str,
         kc_ids: &[u64],
     ) -> Result<()> {
+        let started = Instant::now();
         if kc_ids.is_empty() {
+            record_repository_query("kc_sync", "enqueue_kcs", "ok", started.elapsed(), Some(0));
             return Ok(());
         }
 
@@ -129,7 +239,7 @@ impl KcSyncRepository {
 
         // Insert with ON DUPLICATE KEY UPDATE to skip existing entries (MySQL compatible)
         // We update kc_id to itself, which is effectively a no-op but valid MySQL syntax
-        QueueEntity::insert_many(models)
+        let result = QueueEntity::insert_many(models)
             .on_conflict(
                 sea_orm::sea_query::OnConflict::columns([
                     QueueColumn::BlockchainId,
@@ -140,9 +250,20 @@ impl KcSyncRepository {
                 .to_owned(),
             )
             .exec(self.conn.as_ref())
-            .await?;
+            .await
+            .map(|_| ())
+            .map_err(Into::into);
 
-        Ok(())
+        match &result {
+            Ok(()) => {
+                record_repository_query("kc_sync", "enqueue_kcs", "ok", started.elapsed(), Some(kc_ids.len()));
+            }
+            Err(_) => {
+                record_repository_query("kc_sync", "enqueue_kcs", "error", started.elapsed(), None);
+            }
+        }
+
+        result
     }
 
     /// Get KCs that need syncing for a specific contract (retry_count < max_retries).
@@ -155,7 +276,8 @@ impl KcSyncRepository {
         max_retries: u32,
         limit: u64,
     ) -> Result<Vec<KcSyncQueueEntry>> {
-        let rows = QueueEntity::find()
+        let started = Instant::now();
+        let result = QueueEntity::find()
             .filter(QueueColumn::BlockchainId.eq(blockchain_id))
             .filter(QueueColumn::ContractAddress.eq(contract_address))
             .filter(QueueColumn::RetryCount.lt(max_retries))
@@ -163,9 +285,32 @@ impl KcSyncRepository {
             .order_by_asc(QueueColumn::KcId)
             .limit(limit)
             .all(self.conn.as_ref())
-            .await?;
+            .await
+            .map(|rows| rows.into_iter().map(Self::to_queue_entry).collect::<Vec<_>>())
+            .map_err(Into::into);
 
-        Ok(rows.into_iter().map(Self::to_queue_entry).collect())
+        match &result {
+            Ok(rows) => {
+                record_repository_query(
+                    "kc_sync",
+                    "get_pending_kcs_for_contract",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "get_pending_kcs_for_contract",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     /// Get only due KC IDs for a specific contract.
@@ -177,7 +322,8 @@ impl KcSyncRepository {
         max_retries: u32,
         limit: u64,
     ) -> Result<Vec<u64>> {
-        QueueEntity::find()
+        let started = Instant::now();
+        let result = QueueEntity::find()
             .filter(QueueColumn::BlockchainId.eq(blockchain_id))
             .filter(QueueColumn::ContractAddress.eq(contract_address))
             .filter(QueueColumn::RetryCount.lt(max_retries))
@@ -189,15 +335,63 @@ impl KcSyncRepository {
             .into_tuple()
             .all(self.conn.as_ref())
             .await
-            .map_err(Into::into)
+            .map_err(Into::into);
+
+        match &result {
+            Ok(rows) => {
+                record_repository_query(
+                    "kc_sync",
+                    "get_due_kc_ids_for_contract",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "get_due_kc_ids_for_contract",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     /// Count all queued KCs for a blockchain (regardless of retry state).
     pub async fn count_queue_total_for_blockchain(&self, blockchain_id: &str) -> Result<u64> {
-        Ok(QueueEntity::find()
+        let started = Instant::now();
+        let result = QueueEntity::find()
             .filter(QueueColumn::BlockchainId.eq(blockchain_id))
             .count(self.conn.as_ref())
-            .await?)
+            .await
+            .map_err(Into::into);
+
+        match &result {
+            Ok(count) => {
+                record_repository_query(
+                    "kc_sync",
+                    "count_queue_total_for_blockchain",
+                    "ok",
+                    started.elapsed(),
+                    Some(*count as usize),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "count_queue_total_for_blockchain",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     /// Count KCs currently due for processing (retry_count < max_retries and next_retry_at <= now).
@@ -207,12 +401,37 @@ impl KcSyncRepository {
         now_ts: i64,
         max_retries: u32,
     ) -> Result<u64> {
-        Ok(QueueEntity::find()
+        let started = Instant::now();
+        let result = QueueEntity::find()
             .filter(QueueColumn::BlockchainId.eq(blockchain_id))
             .filter(QueueColumn::RetryCount.lt(max_retries))
             .filter(QueueColumn::NextRetryAt.lte(now_ts))
             .count(self.conn.as_ref())
-            .await?)
+            .await
+            .map_err(Into::into);
+
+        match &result {
+            Ok(count) => {
+                record_repository_query(
+                    "kc_sync",
+                    "count_queue_due_for_blockchain",
+                    "ok",
+                    started.elapsed(),
+                    Some(*count as usize),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "count_queue_due_for_blockchain",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     /// Count KCs waiting in retry backoff (retry_count > 0 and next_retry_at > now).
@@ -222,13 +441,38 @@ impl KcSyncRepository {
         now_ts: i64,
         max_retries: u32,
     ) -> Result<u64> {
-        Ok(QueueEntity::find()
+        let started = Instant::now();
+        let result = QueueEntity::find()
             .filter(QueueColumn::BlockchainId.eq(blockchain_id))
             .filter(QueueColumn::RetryCount.gt(0))
             .filter(QueueColumn::RetryCount.lt(max_retries))
             .filter(QueueColumn::NextRetryAt.gt(now_ts))
             .count(self.conn.as_ref())
-            .await?)
+            .await
+            .map_err(Into::into);
+
+        match &result {
+            Ok(count) => {
+                record_repository_query(
+                    "kc_sync",
+                    "count_queue_retrying_for_blockchain",
+                    "ok",
+                    started.elapsed(),
+                    Some(*count as usize),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "count_queue_retrying_for_blockchain",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     /// Get created_at of the oldest KC currently due for processing.
@@ -238,14 +482,48 @@ impl KcSyncRepository {
         now_ts: i64,
         max_retries: u32,
     ) -> Result<Option<i64>> {
-        Ok(QueueEntity::find()
+        let started = Instant::now();
+        let result = QueueEntity::find()
             .filter(QueueColumn::BlockchainId.eq(blockchain_id))
             .filter(QueueColumn::RetryCount.lt(max_retries))
             .filter(QueueColumn::NextRetryAt.lte(now_ts))
             .order_by_asc(QueueColumn::CreatedAt)
             .one(self.conn.as_ref())
-            .await?
-            .map(|row| row.created_at))
+            .await
+            .map(|row| row.map(|value| value.created_at))
+            .map_err(Into::into);
+
+        match &result {
+            Ok(Some(_)) => {
+                record_repository_query(
+                    "kc_sync",
+                    "oldest_due_created_at_for_blockchain",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
+            }
+            Ok(None) => {
+                record_repository_query(
+                    "kc_sync",
+                    "oldest_due_created_at_for_blockchain",
+                    "ok",
+                    started.elapsed(),
+                    Some(0),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "oldest_due_created_at_for_blockchain",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     /// Remove successfully synced KCs from the queue.
@@ -255,18 +533,31 @@ impl KcSyncRepository {
         contract_address: &str,
         kc_ids: &[u64],
     ) -> Result<()> {
+        let started = Instant::now();
         if kc_ids.is_empty() {
+            record_repository_query("kc_sync", "remove_kcs", "ok", started.elapsed(), Some(0));
             return Ok(());
         }
 
-        QueueEntity::delete_many()
+        let result = QueueEntity::delete_many()
             .filter(QueueColumn::BlockchainId.eq(blockchain_id))
             .filter(QueueColumn::ContractAddress.eq(contract_address))
             .filter(QueueColumn::KcId.is_in(kc_ids.to_vec()))
             .exec(self.conn.as_ref())
-            .await?;
+            .await
+            .map(|_| ())
+            .map_err(Into::into);
 
-        Ok(())
+        match &result {
+            Ok(()) => {
+                record_repository_query("kc_sync", "remove_kcs", "ok", started.elapsed(), Some(kc_ids.len()));
+            }
+            Err(_) => {
+                record_repository_query("kc_sync", "remove_kcs", "error", started.elapsed(), None);
+            }
+        }
+
+        result
     }
 
     /// Increment retry count for KCs that failed to sync.
@@ -279,7 +570,15 @@ impl KcSyncRepository {
         retry_max_delay_secs: u64,
         retry_jitter_secs: u64,
     ) -> Result<()> {
+        let started = Instant::now();
         if kc_ids.is_empty() {
+            record_repository_query(
+                "kc_sync",
+                "increment_retry_count",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(());
         }
 
@@ -290,36 +589,61 @@ impl KcSyncRepository {
         // Update each KC's retry count
         // SeaORM doesn't support UPDATE with increment in bulk easily,
         // so we fetch and update individually
-        for &kc_id in kc_ids {
-            if let Some(model) = QueueEntity::find()
-                .filter(QueueColumn::BlockchainId.eq(blockchain_id))
-                .filter(QueueColumn::ContractAddress.eq(contract_address))
-                .filter(QueueColumn::KcId.eq(kc_id))
-                .one(self.conn.as_ref())
-                .await?
-            {
-                let next_retry_at = now.saturating_add(Self::compute_retry_delay_secs(
-                    model.retry_count,
-                    retry_base_delay_secs,
-                    retry_max_delay_secs,
-                    retry_jitter_secs,
-                    kc_id,
-                    now,
-                ) as i64);
-                let update = QueueActiveModel {
-                    blockchain_id: ActiveValue::Unchanged(model.blockchain_id),
-                    contract_address: ActiveValue::Unchanged(model.contract_address),
-                    kc_id: ActiveValue::Unchanged(model.kc_id),
-                    retry_count: ActiveValue::Set(model.retry_count.saturating_add(1)),
-                    next_retry_at: ActiveValue::Set(next_retry_at),
-                    created_at: ActiveValue::Unchanged(model.created_at),
-                    last_retry_at: ActiveValue::Set(Some(now)),
-                };
-                QueueEntity::update(update).exec(self.conn.as_ref()).await?;
+        let result = async {
+            for &kc_id in kc_ids {
+                if let Some(model) = QueueEntity::find()
+                    .filter(QueueColumn::BlockchainId.eq(blockchain_id))
+                    .filter(QueueColumn::ContractAddress.eq(contract_address))
+                    .filter(QueueColumn::KcId.eq(kc_id))
+                    .one(self.conn.as_ref())
+                    .await?
+                {
+                    let next_retry_at = now.saturating_add(Self::compute_retry_delay_secs(
+                        model.retry_count,
+                        retry_base_delay_secs,
+                        retry_max_delay_secs,
+                        retry_jitter_secs,
+                        kc_id,
+                        now,
+                    ) as i64);
+                    let update = QueueActiveModel {
+                        blockchain_id: ActiveValue::Unchanged(model.blockchain_id),
+                        contract_address: ActiveValue::Unchanged(model.contract_address),
+                        kc_id: ActiveValue::Unchanged(model.kc_id),
+                        retry_count: ActiveValue::Set(model.retry_count.saturating_add(1)),
+                        next_retry_at: ActiveValue::Set(next_retry_at),
+                        created_at: ActiveValue::Unchanged(model.created_at),
+                        last_retry_at: ActiveValue::Set(Some(now)),
+                    };
+                    QueueEntity::update(update).exec(self.conn.as_ref()).await?;
+                }
+            }
+            Ok(())
+        }
+        .await;
+
+        match &result {
+            Ok(()) => {
+                record_repository_query(
+                    "kc_sync",
+                    "increment_retry_count",
+                    "ok",
+                    started.elapsed(),
+                    Some(kc_ids.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "increment_retry_count",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
-        Ok(())
+        result
     }
 
     fn compute_retry_delay_secs(

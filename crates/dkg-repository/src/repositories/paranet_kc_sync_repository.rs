@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use chrono::Utc;
 use sea_orm::{
@@ -9,6 +9,7 @@ use sea_orm::{
 use crate::{
     error::Result,
     models::paranet_kc_sync::{ActiveModel, Column, Entity, Model},
+    observability::record_repository_query,
     types::ParanetKcSyncEntry,
 };
 
@@ -26,11 +27,35 @@ impl ParanetKcSyncRepository {
     }
 
     pub async fn count_discovered(&self, paranet_ual: &str) -> Result<u64> {
-        Entity::find()
+        let started = Instant::now();
+        let result = Entity::find()
             .filter(Column::ParanetUal.eq(paranet_ual))
             .count(self.conn.as_ref())
             .await
-            .map_err(Into::into)
+            .map_err(Into::into);
+
+        match &result {
+            Ok(count) => {
+                record_repository_query(
+                    "paranet_kc_sync",
+                    "count_discovered",
+                    "ok",
+                    started.elapsed(),
+                    Some(*count as usize),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "paranet_kc_sync",
+                    "count_discovered",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     pub async fn enqueue_locators(
@@ -40,7 +65,9 @@ impl ParanetKcSyncRepository {
         paranet_id: &str,
         kc_uals: &[String],
     ) -> Result<()> {
+        let started = Instant::now();
         if kc_uals.is_empty() {
+            record_repository_query("paranet_kc_sync", "enqueue_locators", "ok", started.elapsed(), Some(0));
             return Ok(());
         }
 
@@ -61,7 +88,7 @@ impl ParanetKcSyncRepository {
             })
             .collect();
 
-        Entity::insert_many(models)
+        let result = Entity::insert_many(models)
             .on_conflict(
                 sea_orm::sea_query::OnConflict::columns([Column::ParanetUal, Column::KcUal])
                     // MySQL-compatible no-op upsert to ignore duplicates.
@@ -70,9 +97,20 @@ impl ParanetKcSyncRepository {
                     .to_owned(),
             )
             .exec(self.conn.as_ref())
-            .await?;
+            .await
+            .map(|_| ())
+            .map_err(Into::into);
 
-        Ok(())
+        match &result {
+            Ok(()) => {
+                record_repository_query("paranet_kc_sync", "enqueue_locators", "ok", started.elapsed(), Some(kc_uals.len()));
+            }
+            Err(_) => {
+                record_repository_query("paranet_kc_sync", "enqueue_locators", "error", started.elapsed(), None);
+            }
+        }
+
+        result
     }
 
     pub async fn get_due_pending_batch(
@@ -83,11 +121,13 @@ impl ParanetKcSyncRepository {
         retries_limit: u32,
         limit: u64,
     ) -> Result<Vec<ParanetKcSyncEntry>> {
+        let started = Instant::now();
         if limit == 0 {
+            record_repository_query("paranet_kc_sync", "get_due_pending_batch", "ok", started.elapsed(), Some(0));
             return Ok(Vec::new());
         }
 
-        let rows = Entity::find()
+        let result = Entity::find()
             .filter(Column::BlockchainId.eq(blockchain_id))
             .filter(Column::ParanetUal.eq(paranet_ual))
             .filter(Column::Status.eq(STATUS_PENDING))
@@ -96,44 +136,71 @@ impl ParanetKcSyncRepository {
             .order_by_asc(Column::KcUal)
             .limit(limit)
             .all(self.conn.as_ref())
-            .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|row: Model| ParanetKcSyncEntry {
-                paranet_ual: row.paranet_ual,
-                kc_ual: row.kc_ual,
-                retry_count: row.retry_count,
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row: Model| ParanetKcSyncEntry {
+                        paranet_ual: row.paranet_ual,
+                        kc_ual: row.kc_ual,
+                        retry_count: row.retry_count,
+                    })
+                    .collect::<Vec<_>>()
             })
-            .collect())
+            .map_err(Into::into);
+
+        match &result {
+            Ok(rows) => {
+                record_repository_query("paranet_kc_sync", "get_due_pending_batch", "ok", started.elapsed(), Some(rows.len()));
+            }
+            Err(_) => {
+                record_repository_query("paranet_kc_sync", "get_due_pending_batch", "error", started.elapsed(), None);
+            }
+        }
+
+        result
     }
 
     pub async fn mark_synced(&self, paranet_ual: &str, kc_ual: &str) -> Result<()> {
+        let started = Instant::now();
         let now = Utc::now().timestamp();
-        let Some(existing) = Entity::find()
-            .filter(Column::ParanetUal.eq(paranet_ual))
-            .filter(Column::KcUal.eq(kc_ual))
-            .one(self.conn.as_ref())
-            .await?
-        else {
-            return Ok(());
-        };
+        let result = async {
+            let Some(existing) = Entity::find()
+                .filter(Column::ParanetUal.eq(paranet_ual))
+                .filter(Column::KcUal.eq(kc_ual))
+                .one(self.conn.as_ref())
+                .await?
+            else {
+                return Ok(());
+            };
 
-        let update = ActiveModel {
-            paranet_ual: ActiveValue::Unchanged(existing.paranet_ual),
-            kc_ual: ActiveValue::Unchanged(existing.kc_ual),
-            blockchain_id: ActiveValue::Unchanged(existing.blockchain_id),
-            paranet_id: ActiveValue::Unchanged(existing.paranet_id),
-            retry_count: ActiveValue::Unchanged(existing.retry_count),
-            next_retry_at: ActiveValue::Set(0),
-            last_error: ActiveValue::Set(None),
-            status: ActiveValue::Set(STATUS_SYNCED.to_string()),
-            created_at: ActiveValue::Unchanged(existing.created_at),
-            updated_at: ActiveValue::Set(now),
-        };
+            let update = ActiveModel {
+                paranet_ual: ActiveValue::Unchanged(existing.paranet_ual),
+                kc_ual: ActiveValue::Unchanged(existing.kc_ual),
+                blockchain_id: ActiveValue::Unchanged(existing.blockchain_id),
+                paranet_id: ActiveValue::Unchanged(existing.paranet_id),
+                retry_count: ActiveValue::Unchanged(existing.retry_count),
+                next_retry_at: ActiveValue::Set(0),
+                last_error: ActiveValue::Set(None),
+                status: ActiveValue::Set(STATUS_SYNCED.to_string()),
+                created_at: ActiveValue::Unchanged(existing.created_at),
+                updated_at: ActiveValue::Set(now),
+            };
 
-        Entity::update(update).exec(self.conn.as_ref()).await?;
-        Ok(())
+            Entity::update(update).exec(self.conn.as_ref()).await?;
+            Ok(())
+        }
+        .await;
+
+        match &result {
+            Ok(()) => {
+                record_repository_query("paranet_kc_sync", "mark_synced", "ok", started.elapsed(), Some(1));
+            }
+            Err(_) => {
+                record_repository_query("paranet_kc_sync", "mark_synced", "error", started.elapsed(), None);
+            }
+        }
+
+        result
     }
 
     pub async fn mark_failed_attempt(
@@ -144,30 +211,45 @@ impl ParanetKcSyncRepository {
         retry_delay_secs: u64,
         error: &str,
     ) -> Result<()> {
-        let Some(existing) = Entity::find()
-            .filter(Column::ParanetUal.eq(paranet_ual))
-            .filter(Column::KcUal.eq(kc_ual))
-            .one(self.conn.as_ref())
-            .await?
-        else {
-            return Ok(());
-        };
+        let started = Instant::now();
+        let result = async {
+            let Some(existing) = Entity::find()
+                .filter(Column::ParanetUal.eq(paranet_ual))
+                .filter(Column::KcUal.eq(kc_ual))
+                .one(self.conn.as_ref())
+                .await?
+            else {
+                return Ok(());
+            };
 
-        let next_retry_at = now_ts.saturating_add(retry_delay_secs as i64);
-        let update = ActiveModel {
-            paranet_ual: ActiveValue::Unchanged(existing.paranet_ual),
-            kc_ual: ActiveValue::Unchanged(existing.kc_ual),
-            blockchain_id: ActiveValue::Unchanged(existing.blockchain_id),
-            paranet_id: ActiveValue::Unchanged(existing.paranet_id),
-            retry_count: ActiveValue::Set(existing.retry_count.saturating_add(1)),
-            next_retry_at: ActiveValue::Set(next_retry_at),
-            last_error: ActiveValue::Set(Some(error.to_string())),
-            status: ActiveValue::Set(STATUS_PENDING.to_string()),
-            created_at: ActiveValue::Unchanged(existing.created_at),
-            updated_at: ActiveValue::Set(now_ts),
-        };
+            let next_retry_at = now_ts.saturating_add(retry_delay_secs as i64);
+            let update = ActiveModel {
+                paranet_ual: ActiveValue::Unchanged(existing.paranet_ual),
+                kc_ual: ActiveValue::Unchanged(existing.kc_ual),
+                blockchain_id: ActiveValue::Unchanged(existing.blockchain_id),
+                paranet_id: ActiveValue::Unchanged(existing.paranet_id),
+                retry_count: ActiveValue::Set(existing.retry_count.saturating_add(1)),
+                next_retry_at: ActiveValue::Set(next_retry_at),
+                last_error: ActiveValue::Set(Some(error.to_string())),
+                status: ActiveValue::Set(STATUS_PENDING.to_string()),
+                created_at: ActiveValue::Unchanged(existing.created_at),
+                updated_at: ActiveValue::Set(now_ts),
+            };
 
-        Entity::update(update).exec(self.conn.as_ref()).await?;
-        Ok(())
+            Entity::update(update).exec(self.conn.as_ref()).await?;
+            Ok(())
+        }
+        .await;
+
+        match &result {
+            Ok(()) => {
+                record_repository_query("paranet_kc_sync", "mark_failed_attempt", "ok", started.elapsed(), Some(1));
+            }
+            Err(_) => {
+                record_repository_query("paranet_kc_sync", "mark_failed_attempt", "error", started.elapsed(), None);
+            }
+        }
+
+        result
     }
 }

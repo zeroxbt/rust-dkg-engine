@@ -4,6 +4,7 @@ pub mod error;
 mod manager;
 mod migrations;
 mod models;
+mod observability;
 mod repositories;
 mod types;
 

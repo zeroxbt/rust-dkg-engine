@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::Instant,
 };
 
 use chrono::Utc;
@@ -12,6 +13,7 @@ use sea_orm::sea_query::Value;
 
 use crate::{
     error::{RepositoryError, Result},
+    observability::record_repository_query,
     models::{
         kc_chain_core_metadata::{
             ActiveModel as CoreActiveModel, Column as CoreColumn, Entity as CoreEntity,
@@ -272,35 +274,57 @@ impl KcChainMetadataRepository {
         contract_address: &str,
         kc_ids: &[u64],
     ) -> Result<HashMap<u64, KcChainMetadataEntry>> {
+        let started = Instant::now();
         if kc_ids.is_empty() {
+            record_repository_query("kc_chain_metadata", "get_many_complete", "ok", started.elapsed(), Some(0));
             return Ok(HashMap::new());
         }
 
-        let core_rows = CoreEntity::find()
-            .filter(CoreColumn::BlockchainId.eq(blockchain_id))
-            .filter(CoreColumn::ContractAddress.eq(contract_address))
-            .filter(CoreColumn::KcId.is_in(kc_ids.to_vec()))
-            .filter(CoreColumn::PublisherAddress.is_not_null())
-            .all(self.conn.as_ref())
-            .await?;
+        let result = async {
+            let core_rows = CoreEntity::find()
+                .filter(CoreColumn::BlockchainId.eq(blockchain_id))
+                .filter(CoreColumn::ContractAddress.eq(contract_address))
+                .filter(CoreColumn::KcId.is_in(kc_ids.to_vec()))
+                .filter(CoreColumn::PublisherAddress.is_not_null())
+                .all(self.conn.as_ref())
+                .await?;
 
-        let state_rows = StateEntity::find()
-            .filter(StateColumn::BlockchainId.eq(blockchain_id))
-            .filter(StateColumn::ContractAddress.eq(contract_address))
-            .filter(StateColumn::KcId.is_in(kc_ids.to_vec()))
-            .all(self.conn.as_ref())
-            .await?;
-        let state_by_id: HashMap<u64, StateModel> =
-            state_rows.into_iter().map(|row| (row.kc_id, row)).collect();
+            let state_rows = StateEntity::find()
+                .filter(StateColumn::BlockchainId.eq(blockchain_id))
+                .filter(StateColumn::ContractAddress.eq(contract_address))
+                .filter(StateColumn::KcId.is_in(kc_ids.to_vec()))
+                .all(self.conn.as_ref())
+                .await?;
+            let state_by_id: HashMap<u64, StateModel> =
+                state_rows.into_iter().map(|row| (row.kc_id, row)).collect();
 
-        let mut out = HashMap::with_capacity(core_rows.len());
-        for core in core_rows {
-            let kc_id = core.kc_id;
-            if let Some(entry) = Self::to_complete_entry(core, state_by_id.get(&kc_id)) {
-                out.insert(entry.kc_id, entry);
+            let mut out = HashMap::with_capacity(core_rows.len());
+            for core in core_rows {
+                let kc_id = core.kc_id;
+                if let Some(entry) = Self::to_complete_entry(core, state_by_id.get(&kc_id)) {
+                    out.insert(entry.kc_id, entry);
+                }
+            }
+            Ok(out)
+        }
+        .await;
+
+        match &result {
+            Ok(rows) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "get_many_complete",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query("kc_chain_metadata", "get_many_complete", "error", started.elapsed(), None);
             }
         }
-        Ok(out)
+
+        result
     }
 
     /// Return only KC IDs that currently have complete metadata.
@@ -323,42 +347,70 @@ impl KcChainMetadataRepository {
         contract_address: &str,
         kc_ids: &[u64],
     ) -> Result<HashMap<u64, KcChainReadyForSyncEntry>> {
+        let started = Instant::now();
         if kc_ids.is_empty() {
+            record_repository_query("kc_chain_metadata", "get_many_ready_for_sync", "ok", started.elapsed(), Some(0));
             return Ok(HashMap::new());
         }
 
-        let core_rows = CoreEntity::find()
-            .filter(CoreColumn::BlockchainId.eq(blockchain_id))
-            .filter(CoreColumn::ContractAddress.eq(contract_address))
-            .filter(CoreColumn::KcId.is_in(kc_ids.to_vec()))
-            .filter(CoreColumn::PublisherAddress.is_not_null())
-            .all(self.conn.as_ref())
-            .await?;
-        let core_by_id: HashMap<u64, CoreModel> =
-            core_rows.into_iter().map(|row| (row.kc_id, row)).collect();
+        let result = async {
+            let core_rows = CoreEntity::find()
+                .filter(CoreColumn::BlockchainId.eq(blockchain_id))
+                .filter(CoreColumn::ContractAddress.eq(contract_address))
+                .filter(CoreColumn::KcId.is_in(kc_ids.to_vec()))
+                .filter(CoreColumn::PublisherAddress.is_not_null())
+                .all(self.conn.as_ref())
+                .await?;
+            let core_by_id: HashMap<u64, CoreModel> =
+                core_rows.into_iter().map(|row| (row.kc_id, row)).collect();
 
-        let state_rows = StateEntity::find()
-            .filter(StateColumn::BlockchainId.eq(blockchain_id))
-            .filter(StateColumn::ContractAddress.eq(contract_address))
-            .filter(StateColumn::KcId.is_in(kc_ids.to_vec()))
-            .filter(StateColumn::RangeStartTokenId.is_not_null())
-            .filter(StateColumn::RangeEndTokenId.is_not_null())
-            .filter(StateColumn::BurnedMode.is_not_null())
-            .filter(StateColumn::BurnedPayload.is_not_null())
-            .filter(StateColumn::LatestMerkleRoot.is_not_null())
-            .filter(StateColumn::StateObservedBlock.is_not_null())
-            .all(self.conn.as_ref())
-            .await?;
+            let state_rows = StateEntity::find()
+                .filter(StateColumn::BlockchainId.eq(blockchain_id))
+                .filter(StateColumn::ContractAddress.eq(contract_address))
+                .filter(StateColumn::KcId.is_in(kc_ids.to_vec()))
+                .filter(StateColumn::RangeStartTokenId.is_not_null())
+                .filter(StateColumn::RangeEndTokenId.is_not_null())
+                .filter(StateColumn::BurnedMode.is_not_null())
+                .filter(StateColumn::BurnedPayload.is_not_null())
+                .filter(StateColumn::LatestMerkleRoot.is_not_null())
+                .filter(StateColumn::StateObservedBlock.is_not_null())
+                .all(self.conn.as_ref())
+                .await?;
 
-        let mut out = HashMap::with_capacity(state_rows.len());
-        for state in state_rows {
-            if let Some(core) = core_by_id.get(&state.kc_id)
-                && let Some(entry) = Self::to_ready_for_sync_entry(core, &state)
-            {
-                out.insert(entry.kc_id, entry);
+            let mut out = HashMap::with_capacity(state_rows.len());
+            for state in state_rows {
+                if let Some(core) = core_by_id.get(&state.kc_id)
+                    && let Some(entry) = Self::to_ready_for_sync_entry(core, &state)
+                {
+                    out.insert(entry.kc_id, entry);
+                }
+            }
+            Ok(out)
+        }
+        .await;
+
+        match &result {
+            Ok(rows) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "get_many_ready_for_sync",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "get_many_ready_for_sync",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
-        Ok(out)
+
+        result
     }
 
     /// Return KC IDs from the provided set that are missing sync state.
@@ -368,39 +420,72 @@ impl KcChainMetadataRepository {
         contract_address: &str,
         kc_ids: &[u64],
     ) -> Result<HashSet<u64>> {
+        let started = Instant::now();
         if kc_ids.is_empty() {
+            record_repository_query(
+                "kc_chain_metadata",
+                "get_ids_missing_sync_state",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(HashSet::new());
         }
 
-        let rows = StateEntity::find()
-            .filter(StateColumn::BlockchainId.eq(blockchain_id))
-            .filter(StateColumn::ContractAddress.eq(contract_address))
-            .filter(StateColumn::KcId.is_in(kc_ids.to_vec()))
-            .all(self.conn.as_ref())
-            .await?;
+        let result = async {
+            let rows = StateEntity::find()
+                .filter(StateColumn::BlockchainId.eq(blockchain_id))
+                .filter(StateColumn::ContractAddress.eq(contract_address))
+                .filter(StateColumn::KcId.is_in(kc_ids.to_vec()))
+                .all(self.conn.as_ref())
+                .await?;
 
-        let mut missing = HashSet::new();
-        let mut seen = HashSet::new();
-        for row in rows {
-            seen.insert(row.kc_id);
-            if row.range_start_token_id.is_none()
-                || row.range_end_token_id.is_none()
-                || row.burned_mode.is_none()
-                || row.burned_payload.is_none()
-                || row.latest_merkle_root.is_none()
-                || row.state_observed_block.is_none()
-            {
-                missing.insert(row.kc_id);
+            let mut missing = HashSet::new();
+            let mut seen = HashSet::new();
+            for row in rows {
+                seen.insert(row.kc_id);
+                if row.range_start_token_id.is_none()
+                    || row.range_end_token_id.is_none()
+                    || row.burned_mode.is_none()
+                    || row.burned_payload.is_none()
+                    || row.latest_merkle_root.is_none()
+                    || row.state_observed_block.is_none()
+                {
+                    missing.insert(row.kc_id);
+                }
+            }
+
+            for kc_id in kc_ids {
+                if !seen.contains(kc_id) {
+                    missing.insert(*kc_id);
+                }
+            }
+            Ok(missing)
+        }
+        .await;
+
+        match &result {
+            Ok(rows) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "get_ids_missing_sync_state",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "get_ids_missing_sync_state",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
-        for kc_id in kc_ids {
-            if !seen.contains(kc_id) {
-                missing.insert(*kc_id);
-            }
-        }
-
-        Ok(missing)
+        result
     }
 
     /// Find KC ID sequence gap boundaries for a contract using two NOT EXISTS queries.
@@ -418,6 +503,7 @@ impl KcChainMetadataRepository {
         blockchain_id: &str,
         contract_address: &str,
     ) -> Result<GapBoundaries> {
+        let started = Instant::now();
         let db = self.conn.as_ref();
 
         let ends_sql = Statement::from_sql_and_values(
@@ -462,24 +548,50 @@ impl KcChainMetadataRepository {
             ],
         );
 
-        let ends_rows = db.query_all(ends_sql).await.map_err(RepositoryError::Database)?;
-        let starts_rows = db.query_all(starts_sql).await.map_err(RepositoryError::Database)?;
+        let result = async {
+            let ends_rows = db.query_all(ends_sql).await.map_err(RepositoryError::Database)?;
+            let starts_rows = db.query_all(starts_sql).await.map_err(RepositoryError::Database)?;
 
-        let mut ends_of_runs = Vec::with_capacity(ends_rows.len());
-        for row in ends_rows {
-            let kc_id: u64 = row.try_get("", "kc_id").map_err(RepositoryError::Database)?;
-            let block_number: i64 = row.try_get("", "block_number").map_err(RepositoryError::Database)?;
-            ends_of_runs.push((kc_id, block_number.max(0) as u64));
+            let mut ends_of_runs = Vec::with_capacity(ends_rows.len());
+            for row in ends_rows {
+                let kc_id: u64 = row.try_get("", "kc_id").map_err(RepositoryError::Database)?;
+                let block_number: i64 = row.try_get("", "block_number").map_err(RepositoryError::Database)?;
+                ends_of_runs.push((kc_id, block_number.max(0) as u64));
+            }
+
+            let mut starts_of_runs = Vec::with_capacity(starts_rows.len());
+            for row in starts_rows {
+                let kc_id: u64 = row.try_get("", "kc_id").map_err(RepositoryError::Database)?;
+                let block_number: i64 = row.try_get("", "block_number").map_err(RepositoryError::Database)?;
+                starts_of_runs.push((kc_id, block_number.max(0) as u64));
+            }
+
+            Ok(GapBoundaries { ends_of_runs, starts_of_runs })
+        }
+        .await;
+
+        match &result {
+            Ok(boundaries) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "find_gap_boundaries",
+                    "ok",
+                    started.elapsed(),
+                    Some(boundaries.ends_of_runs.len().saturating_add(boundaries.starts_of_runs.len())),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "find_gap_boundaries",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
         }
 
-        let mut starts_of_runs = Vec::with_capacity(starts_rows.len());
-        for row in starts_rows {
-            let kc_id: u64 = row.try_get("", "kc_id").map_err(RepositoryError::Database)?;
-            let block_number: i64 = row.try_get("", "block_number").map_err(RepositoryError::Database)?;
-            starts_of_runs.push((kc_id, block_number.max(0) as u64));
-        }
-
-        Ok(GapBoundaries { ends_of_runs, starts_of_runs })
+        result
     }
 
     fn to_complete_entry(
