@@ -6,9 +6,9 @@ use std::{
 };
 
 use dkg_blockchain::{
-    Address, BlockchainError, BlockchainId, BlockchainManager, ContractEvent, ContractLog,
-    ContractName, MulticallBatch, MulticallRequest, decode_contract_event, encoders,
-    monitored_contract_events, to_hex_string,
+    Address, BlockchainError, BlockchainId, BlockchainManager, ContractEvent, ContractName,
+    MulticallBatch, MulticallRequest, decode_contract_event, encoders, monitored_contract_events,
+    to_hex_string,
 };
 use dkg_observability as observability;
 use dkg_repository::{BlockchainRepository, KcChainMetadataRepository};
@@ -32,6 +32,7 @@ const EVENT_FETCH_INTERVAL_MAINNET: Duration = Duration::from_secs(10);
 
 /// Event fetch interval for dev environments (4 seconds)
 const EVENT_FETCH_INTERVAL_DEV: Duration = Duration::from_secs(4);
+const KC_CREATED_STATE_BATCH_SIZE: usize = 20;
 
 pub(crate) struct BlockchainEventListenerTask {
     blockchain_manager: Arc<BlockchainManager>,
@@ -48,6 +49,36 @@ struct EventListenerStats {
     processed_events: usize,
     skipped_ranges: usize,
     contracts_updated: usize,
+}
+
+#[derive(Clone)]
+struct PendingKnowledgeCollectionCreatedEvent {
+    publish_operation_id: String,
+    kc_id: u64,
+    merkle_root: dkg_blockchain::B256,
+    byte_size: u128,
+    contract_address: Address,
+    transaction_hash: dkg_blockchain::B256,
+    block_number: u64,
+    block_timestamp: u64,
+    publisher_address: Option<String>,
+    sync_state: Option<HydratedKnowledgeCollectionSyncState>,
+}
+
+#[derive(Clone)]
+struct HydratedKnowledgeCollectionSyncState {
+    range_start_token_id: u64,
+    range_end_token_id: u64,
+    burned_mode: u32,
+    burned_payload: Vec<u8>,
+    end_epoch: Option<u64>,
+    latest_merkle_root: String,
+}
+
+enum OrderedDecodedEvent {
+    KnowledgeCollectionCreated(usize),
+    Decoded(ContractEvent),
+    DecodeFailed { contract_name: String },
 }
 
 impl BlockchainEventListenerTask {
@@ -355,9 +386,142 @@ impl BlockchainEventListenerTask {
                 a_log_index.cmp(&b_log_index)
             });
 
-            // Process all events sequentially
+            let mut ordered_events = Vec::with_capacity(all_events.len());
+            let mut pending_kc_created_events = Vec::new();
+
+            // Decode first to keep strict order while allowing batched RPC hydration for KC events.
             for event in all_events {
-                self.process_event(blockchain_id, event).await?;
+                let block_number = event.log().block_number.unwrap_or_default();
+                tracing::trace!(
+                    contract = %event.contract_name().as_str(),
+                    block_number,
+                    "Processing event"
+                );
+
+                let decoded_event = decode_contract_event(event.contract_name(), event.log());
+                match decoded_event {
+                    Some(ContractEvent::KnowledgeCollectionCreated {
+                        event,
+                        contract_address,
+                        transaction_hash,
+                        block_number,
+                        block_timestamp,
+                    }) => {
+                        let kc_id_u128: u128 = event.id.to();
+                        let Ok(kc_id_u64) = u64::try_from(kc_id_u128) else {
+                            tracing::error!(
+                                blockchain = %blockchain_id,
+                                kc_id = %event.id,
+                                "Knowledge collection id exceeds u64::MAX; skipping metadata upsert"
+                            );
+                            stats.processed_events += 1;
+                            continue;
+                        };
+
+                        let Some(transaction_hash) = transaction_hash else {
+                            tracing::error!(
+                                blockchain = %blockchain_id,
+                                "Missing transaction hash in KnowledgeCollectionCreated log"
+                            );
+                            stats.processed_events += 1;
+                            continue;
+                        };
+
+                        let position = pending_kc_created_events.len();
+                        pending_kc_created_events.push(PendingKnowledgeCollectionCreatedEvent {
+                            publish_operation_id: event.publishOperationId.clone(),
+                            kc_id: kc_id_u64,
+                            merkle_root: event.merkleRoot,
+                            byte_size: event.byteSize.to(),
+                            contract_address,
+                            transaction_hash,
+                            block_number,
+                            block_timestamp,
+                            publisher_address: None,
+                            sync_state: None,
+                        });
+
+                        ordered_events.push(OrderedDecodedEvent::KnowledgeCollectionCreated(position));
+                    }
+                    Some(other) => ordered_events.push(OrderedDecodedEvent::Decoded(other)),
+                    None => {
+                        ordered_events.push(OrderedDecodedEvent::DecodeFailed {
+                            contract_name: event.contract_name().as_str().to_string(),
+                        });
+                    }
+                }
+            }
+
+            self.hydrate_knowledge_collection_created_events(
+                blockchain_id,
+                &mut pending_kc_created_events,
+            )
+            .await;
+
+            for ordered_event in ordered_events {
+                match ordered_event {
+                    OrderedDecodedEvent::KnowledgeCollectionCreated(index) => {
+                        if let Some(kc_event) = pending_kc_created_events.get(index) {
+                            self.handle_hydrated_knowledge_collection_created_event(
+                                blockchain_id,
+                                kc_event,
+                            )
+                            .await;
+                        }
+                    }
+                    OrderedDecodedEvent::Decoded(event) => match event {
+                        ContractEvent::ParameterChanged(event) => {
+                            self.handle_parameter_changed_event(
+                                blockchain_id,
+                                &event.parameterName,
+                                event.parameterValue,
+                            )
+                            .await?;
+                        }
+                        ContractEvent::NewContract(event) => {
+                            self.handle_contract_address_update_event(
+                                blockchain_id,
+                                &event.contractName,
+                                event.newContractAddress,
+                                "New contract deployed",
+                            )
+                            .await?;
+                        }
+                        ContractEvent::ContractChanged(event) => {
+                            self.handle_contract_address_update_event(
+                                blockchain_id,
+                                &event.contractName,
+                                event.newContractAddress,
+                                "Contract changed",
+                            )
+                            .await?;
+                        }
+                        ContractEvent::NewAssetStorage(event) => {
+                            self.handle_contract_address_update_event(
+                                blockchain_id,
+                                &event.contractName,
+                                event.newContractAddress,
+                                "New asset storage deployed",
+                            )
+                            .await?;
+                        }
+                        ContractEvent::AssetStorageChanged(event) => {
+                            self.handle_contract_address_update_event(
+                                blockchain_id,
+                                &event.contractName,
+                                event.newContractAddress,
+                                "Asset storage changed",
+                            )
+                            .await?;
+                        }
+                        ContractEvent::KnowledgeCollectionCreated { .. } => {
+                            unreachable!("handled separately through indexed KC-created events");
+                        }
+                    },
+                    OrderedDecodedEvent::DecodeFailed { contract_name } => {
+                        tracing::warn!(contract = %contract_name, "Failed to decode contract event");
+                    }
+                }
                 stats.processed_events += 1;
             }
         }
@@ -377,97 +541,6 @@ impl BlockchainEventListenerTask {
         }
 
         Ok(stats)
-    }
-
-    /// Process a single event - dispatch to appropriate handler
-    async fn process_event(
-        &self,
-        blockchain_id: &BlockchainId,
-        event: ContractLog,
-    ) -> Result<(), BlockchainError> {
-        let block_number = event.log().block_number.unwrap_or_default();
-        tracing::trace!(
-            contract = %event.contract_name().as_str(),
-            block_number,
-            "Processing event"
-        );
-
-        let log = event.log();
-        match decode_contract_event(event.contract_name(), log) {
-            Some(ContractEvent::KnowledgeCollectionCreated {
-                event,
-                contract_address,
-                transaction_hash,
-                block_number,
-                block_timestamp,
-            }) => {
-                let byte_size: u128 = event.byteSize.to();
-                self.handle_knowledge_collection_created_event(
-                    blockchain_id,
-                    event.publishOperationId.clone(),
-                    event.id,
-                    event.merkleRoot,
-                    byte_size,
-                    contract_address,
-                    transaction_hash,
-                    block_number,
-                    block_timestamp,
-                )
-                .await;
-            }
-            Some(ContractEvent::ParameterChanged(event)) => {
-                self.handle_parameter_changed_event(
-                    blockchain_id,
-                    &event.parameterName,
-                    event.parameterValue,
-                )
-                .await?;
-            }
-            Some(ContractEvent::NewContract(event)) => {
-                self.handle_contract_address_update_event(
-                    blockchain_id,
-                    &event.contractName,
-                    event.newContractAddress,
-                    "New contract deployed",
-                )
-                .await?;
-            }
-            Some(ContractEvent::ContractChanged(event)) => {
-                self.handle_contract_address_update_event(
-                    blockchain_id,
-                    &event.contractName,
-                    event.newContractAddress,
-                    "Contract changed",
-                )
-                .await?;
-            }
-            Some(ContractEvent::NewAssetStorage(event)) => {
-                self.handle_contract_address_update_event(
-                    blockchain_id,
-                    &event.contractName,
-                    event.newContractAddress,
-                    "New asset storage deployed",
-                )
-                .await?;
-            }
-            Some(ContractEvent::AssetStorageChanged(event)) => {
-                self.handle_contract_address_update_event(
-                    blockchain_id,
-                    &event.contractName,
-                    event.newContractAddress,
-                    "Asset storage changed",
-                )
-                .await?;
-            }
-            None => {
-                tracing::warn!(
-                    contract = %event.contract_name().as_str(),
-                    "Failed to decode contract event"
-                );
-            }
-        }
-
-        Ok(())
     }
 
     // === Event Handlers ===
@@ -516,68 +589,133 @@ impl BlockchainEventListenerTask {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    async fn handle_knowledge_collection_created_event(
+    async fn hydrate_knowledge_collection_created_events(
         &self,
         blockchain_id: &BlockchainId,
-        publish_operation_id: String,
-        knowledge_collection_id: dkg_blockchain::U256,
-        merkle_root: dkg_blockchain::B256,
-        byte_size: u128,
-        contract_address: Address,
-        transaction_hash: Option<dkg_blockchain::B256>,
-        block_number: u64,
-        block_timestamp: u64,
+        events: &mut [PendingKnowledgeCollectionCreatedEvent],
     ) {
-        let kc_id_u128: u128 = knowledge_collection_id.to();
-        let Ok(kc_id_u64) = u64::try_from(kc_id_u128) else {
-            tracing::error!(
-            blockchain = %blockchain_id,
-            kc_id = %knowledge_collection_id,
-            "Knowledge collection id exceeds u64::MAX; skipping metadata upsert"
-            );
+        if events.is_empty() {
             return;
-        };
-        let contract_address_str = format!("{:?}", contract_address);
+        }
 
+        for event in events.iter_mut() {
+            event.publisher_address = self
+                .resolve_kc_publisher(
+                    blockchain_id,
+                    event.contract_address,
+                    event.kc_id as u128,
+                    event.transaction_hash,
+                )
+                .await;
+        }
+
+        for chunk in events.chunks_mut(KC_CREATED_STATE_BATCH_SIZE) {
+            let mut state_calls = MulticallBatch::with_capacity(chunk.len() * 3);
+            for event in chunk.iter() {
+                state_calls.add(MulticallRequest::new(
+                    event.contract_address,
+                    encoders::encode_get_end_epoch(event.kc_id as u128),
+                ));
+                state_calls.add(MulticallRequest::new(
+                    event.contract_address,
+                    encoders::encode_get_knowledge_assets_range(event.kc_id as u128),
+                ));
+                state_calls.add(MulticallRequest::new(
+                    event.contract_address,
+                    encoders::encode_get_merkle_root(event.kc_id as u128),
+                ));
+            }
+
+            match self
+                .blockchain_manager
+                .execute_multicall(blockchain_id, state_calls)
+                .await
+            {
+                Ok(results) => {
+                    let expected = chunk.len() * 3;
+                    if results.len() != expected {
+                        tracing::warn!(
+                            blockchain = %blockchain_id,
+                            expected_results = expected,
+                            actual_results = results.len(),
+                            batch_size = chunk.len(),
+                            "Unexpected multicall result count for KC state hydration batch"
+                        );
+                        continue;
+                    }
+
+                    for (index, event) in chunk.iter_mut().enumerate() {
+                        let base = index * 3;
+                        let epoch_result = &results[base];
+                        let range_result = &results[base + 1];
+                        let merkle_result = &results[base + 2];
+
+                        let Some((start, end, burned)) = range_result.as_knowledge_assets_range()
+                        else {
+                            tracing::warn!(
+                                blockchain = %blockchain_id,
+                                contract = ?event.contract_address,
+                                kc_id = event.kc_id,
+                                "Failed to decode KC token range during live state hydration"
+                            );
+                            continue;
+                        };
+
+                        let end_epoch = epoch_result.as_u64().filter(|v| *v != 0);
+                        let latest_merkle_root = merkle_result
+                            .as_bytes32_hex()
+                            .unwrap_or_else(|| format!("0x{}", to_hex_string(event.merkle_root)));
+                        let burned_encoding = encode_burned_ids(start, end, &burned);
+
+                        event.sync_state = Some(HydratedKnowledgeCollectionSyncState {
+                            range_start_token_id: start,
+                            range_end_token_id: end,
+                            burned_mode: burned_encoding.mode as u32,
+                            burned_payload: burned_encoding.payload,
+                            end_epoch,
+                            latest_merkle_root,
+                        });
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        blockchain = %blockchain_id,
+                        batch_size = chunk.len(),
+                        error = %error,
+                        "Failed to hydrate live KC sync state from chain"
+                    );
+                }
+            }
+        }
+    }
+
+    async fn handle_hydrated_knowledge_collection_created_event(
+        &self,
+        blockchain_id: &BlockchainId,
+        event: &PendingKnowledgeCollectionCreatedEvent,
+    ) {
         tracing::info!(
             blockchain = %blockchain_id,
-            kc_id = %knowledge_collection_id,
-            merkle_root = %to_hex_string(merkle_root),
-            byte_size = %byte_size,
+            kc_id = event.kc_id,
+            merkle_root = %to_hex_string(event.merkle_root),
+            byte_size = %event.byte_size,
             "Knowledge collection created"
         );
 
-        // Extract minimal data from the log - parsing happens in the operation command handler
-        let Some(transaction_hash) = transaction_hash else {
-            tracing::error!(
-                blockchain = %blockchain_id,
-                "Missing transaction hash in KnowledgeCollectionCreated log"
-            );
-            return;
-        };
-        let transaction_hash_str = format!("{:#x}", transaction_hash);
-
-        let publisher_address = self
-            .resolve_kc_publisher(
-                blockchain_id,
-                contract_address,
-                kc_id_u128,
-                transaction_hash,
-            )
-            .await;
+        let contract_address_str = format!("{:?}", event.contract_address);
+        let transaction_hash_str = format!("{:#x}", event.transaction_hash);
 
         if let Err(error) = self
             .kc_chain_metadata_repository
             .upsert_core_metadata(
                 blockchain_id.as_str(),
                 &contract_address_str,
-                kc_id_u64,
-                publisher_address.as_deref(),
-                block_number,
+                event.kc_id,
+                event.publisher_address.as_deref(),
+                event.block_number,
                 &transaction_hash_str,
-                block_timestamp,
-                &publish_operation_id,
+                event.block_timestamp,
+                &event.publish_operation_id,
                 Some("event_listener"),
             )
             .await
@@ -585,132 +723,50 @@ impl BlockchainEventListenerTask {
             tracing::error!(
                 blockchain = %blockchain_id,
                 contract = %contract_address_str,
-                kc_id = kc_id_u64,
+                kc_id = event.kc_id,
                 error = %error,
                 "Failed to upsert canonical KC chain metadata"
             );
         }
 
-        let mut state_calls = MulticallBatch::with_capacity(3);
-        state_calls.add(MulticallRequest::new(
-            contract_address,
-            encoders::encode_get_end_epoch(kc_id_u128),
-        ));
-        state_calls.add(MulticallRequest::new(
-            contract_address,
-            encoders::encode_get_knowledge_assets_range(kc_id_u128),
-        ));
-        state_calls.add(MulticallRequest::new(
-            contract_address,
-            encoders::encode_get_merkle_root(kc_id_u128),
-        ));
-
-        match self
-            .blockchain_manager
-            .execute_multicall(blockchain_id, state_calls)
-            .await
-        {
-            Ok(results) => {
-                let Some([epoch_result, range_result, merkle_result]) =
-                    <&[dkg_blockchain::MulticallResult; 3]>::try_from(results.as_slice()).ok()
-                else {
-                    tracing::warn!(
-                        blockchain = %blockchain_id,
-                        contract = %contract_address_str,
-                        kc_id = kc_id_u64,
-                        result_count = results.len(),
-                        "Unexpected multicall result count for KC state hydration"
-                    );
-                    self.schedule_finality_request(
-                        blockchain_id,
-                        publish_operation_id,
-                        knowledge_collection_id,
-                        contract_address,
-                        byte_size,
-                        merkle_root,
-                        transaction_hash,
-                        block_number,
-                        block_timestamp,
-                    )
-                    .await;
-                    return;
-                };
-
-                let Some((start, end, burned)) = range_result.as_knowledge_assets_range() else {
-                    tracing::warn!(
-                        blockchain = %blockchain_id,
-                        contract = %contract_address_str,
-                        kc_id = kc_id_u64,
-                        "Failed to decode KC token range during live state hydration"
-                    );
-                    self.schedule_finality_request(
-                        blockchain_id,
-                        publish_operation_id,
-                        knowledge_collection_id,
-                        contract_address,
-                        byte_size,
-                        merkle_root,
-                        transaction_hash,
-                        block_number,
-                        block_timestamp,
-                    )
-                    .await;
-                    return;
-                };
-
-                let end_epoch = epoch_result.as_u64().filter(|v| *v != 0);
-                let latest_merkle_root = merkle_result
-                    .as_bytes32_hex()
-                    .unwrap_or_else(|| format!("0x{}", to_hex_string(merkle_root)));
-                let burned_encoding = encode_burned_ids(start, end, &burned);
-
-                if let Err(error) = self
-                    .kc_chain_metadata_repository
-                    .upsert_sync_state(
-                        blockchain_id.as_str(),
-                        &contract_address_str,
-                        kc_id_u64,
-                        start,
-                        end,
-                        burned_encoding.mode as u32,
-                        burned_encoding.payload.as_slice(),
-                        end_epoch,
-                        &latest_merkle_root,
-                        block_number,
-                        Some("event_listener"),
-                    )
-                    .await
-                {
-                    tracing::warn!(
-                        blockchain = %blockchain_id,
-                        contract = %contract_address_str,
-                        kc_id = kc_id_u64,
-                        error = %error,
-                        "Failed to upsert live KC sync state metadata"
-                    );
-                }
-            }
-            Err(error) => {
+        if let Some(sync_state) = event.sync_state.as_ref() {
+            if let Err(error) = self
+                .kc_chain_metadata_repository
+                .upsert_sync_state(
+                    blockchain_id.as_str(),
+                    &contract_address_str,
+                    event.kc_id,
+                    sync_state.range_start_token_id,
+                    sync_state.range_end_token_id,
+                    sync_state.burned_mode,
+                    sync_state.burned_payload.as_slice(),
+                    sync_state.end_epoch,
+                    &sync_state.latest_merkle_root,
+                    event.block_number,
+                    Some("event_listener"),
+                )
+                .await
+            {
                 tracing::warn!(
                     blockchain = %blockchain_id,
                     contract = %contract_address_str,
-                    kc_id = kc_id_u64,
+                    kc_id = event.kc_id,
                     error = %error,
-                    "Failed to hydrate live KC sync state from chain"
+                    "Failed to upsert live KC sync state metadata"
                 );
             }
         }
 
         self.schedule_finality_request(
             blockchain_id,
-            publish_operation_id,
-            knowledge_collection_id,
-            contract_address,
-            byte_size,
-            merkle_root,
-            transaction_hash,
-            block_number,
-            block_timestamp,
+            event.publish_operation_id.clone(),
+            dkg_blockchain::U256::from(event.kc_id),
+            event.contract_address,
+            event.byte_size,
+            event.merkle_root,
+            event.transaction_hash,
+            event.block_number,
+            event.block_timestamp,
         )
         .await;
     }
