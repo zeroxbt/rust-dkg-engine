@@ -8,8 +8,17 @@ use sea_orm::{ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFi
 
 use crate::{
     error::{RepositoryError, Result},
-    models::kc_chain_metadata::{ActiveModel, Column, Entity, Model},
-    types::KcChainMetadataEntry,
+    models::{
+        kc_chain_core_metadata::{
+            ActiveModel as CoreActiveModel, Column as CoreColumn, Entity as CoreEntity,
+            Model as CoreModel,
+        },
+        kc_chain_state_metadata::{
+            ActiveModel as StateActiveModel, Column as StateColumn, Entity as StateEntity,
+            Model as StateModel,
+        },
+    },
+    types::{KcChainMetadataEntry, KcChainReadyForSyncEntry},
 };
 
 #[derive(Clone)]
@@ -22,7 +31,7 @@ impl KcChainMetadataRepository {
         Self { conn }
     }
 
-    /// Upsert canonical KC metadata sourced from chain events or backfill.
+    /// Backward-compatible alias for upserting core chain metadata.
     #[allow(clippy::too_many_arguments)]
     pub async fn upsert(
         &self,
@@ -36,22 +45,39 @@ impl KcChainMetadataRepository {
         publish_operation_id: Option<&str>,
         source: Option<&str>,
     ) -> Result<()> {
-        let now = Utc::now().timestamp();
-        let block_number = block_number.map(i64::try_from).transpose().map_err(|_| {
-            RepositoryError::Database(sea_orm::DbErr::Custom(
-                "block_number exceeds i64::MAX".to_string(),
-            ))
-        })?;
-        let block_timestamp = block_timestamp
-            .map(i64::try_from)
-            .transpose()
-            .map_err(|_| {
-                RepositoryError::Database(sea_orm::DbErr::Custom(
-                    "block_timestamp exceeds i64::MAX".to_string(),
-                ))
-            })?;
+        self.upsert_core_metadata(
+            blockchain_id,
+            contract_address,
+            kc_id,
+            publisher_address,
+            block_number,
+            transaction_hash,
+            block_timestamp,
+            publish_operation_id,
+            source,
+        )
+        .await
+    }
 
-        let model = ActiveModel {
+    /// Upsert canonical KC core metadata sourced from chain events or backfill.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_core_metadata(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        kc_id: u64,
+        publisher_address: Option<&str>,
+        block_number: Option<u64>,
+        transaction_hash: Option<&str>,
+        block_timestamp: Option<u64>,
+        publish_operation_id: Option<&str>,
+        source: Option<&str>,
+    ) -> Result<()> {
+        let now = Utc::now().timestamp();
+        let block_number = Self::opt_u64_to_i64(block_number, "block_number")?;
+        let block_timestamp = Self::opt_u64_to_i64(block_timestamp, "block_timestamp")?;
+
+        let model = CoreActiveModel {
             blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
             contract_address: ActiveValue::Set(contract_address.to_string()),
             kc_id: ActiveValue::Set(kc_id),
@@ -59,29 +85,95 @@ impl KcChainMetadataRepository {
             block_number: ActiveValue::Set(block_number),
             transaction_hash: ActiveValue::Set(transaction_hash.map(ToString::to_string)),
             block_timestamp: ActiveValue::Set(block_timestamp),
-            private_graph_mode: ActiveValue::Set(None),
-            private_graph_payload: ActiveValue::Set(None),
             publish_operation_id: ActiveValue::Set(publish_operation_id.map(ToString::to_string)),
             source: ActiveValue::Set(source.map(ToString::to_string)),
             created_at: ActiveValue::Set(now),
             updated_at: ActiveValue::Set(now),
         };
 
-        Entity::insert(model)
+        CoreEntity::insert(model)
             .on_conflict(
                 sea_orm::sea_query::OnConflict::columns([
-                    Column::BlockchainId,
-                    Column::ContractAddress,
-                    Column::KcId,
+                    CoreColumn::BlockchainId,
+                    CoreColumn::ContractAddress,
+                    CoreColumn::KcId,
                 ])
                 .update_columns([
-                    Column::PublisherAddress,
-                    Column::BlockNumber,
-                    Column::TransactionHash,
-                    Column::BlockTimestamp,
-                    Column::PublishOperationId,
-                    Column::Source,
-                    Column::UpdatedAt,
+                    CoreColumn::PublisherAddress,
+                    CoreColumn::BlockNumber,
+                    CoreColumn::TransactionHash,
+                    CoreColumn::BlockTimestamp,
+                    CoreColumn::PublishOperationId,
+                    CoreColumn::Source,
+                    CoreColumn::UpdatedAt,
+                ])
+                .to_owned(),
+            )
+            .exec(self.conn.as_ref())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Upsert mutable sync state for an existing KC row (or create placeholder row if absent).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_sync_state(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        kc_id: u64,
+        range_start_token_id: u64,
+        range_end_token_id: u64,
+        burned_mode: u32,
+        burned_payload: &[u8],
+        end_epoch: Option<u64>,
+        latest_merkle_root: &str,
+        state_observed_block: u64,
+        source: Option<&str>,
+    ) -> Result<()> {
+        let now = Utc::now().timestamp();
+        let range_start_token_id = Self::u64_to_i64(range_start_token_id, "range_start_token_id")?;
+        let range_end_token_id = Self::u64_to_i64(range_end_token_id, "range_end_token_id")?;
+        let end_epoch = Self::opt_u64_to_i64(end_epoch, "end_epoch")?;
+        let state_observed_block = Self::u64_to_i64(state_observed_block, "state_observed_block")?;
+
+        let model = StateActiveModel {
+            blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
+            contract_address: ActiveValue::Set(contract_address.to_string()),
+            kc_id: ActiveValue::Set(kc_id),
+            range_start_token_id: ActiveValue::Set(Some(range_start_token_id)),
+            range_end_token_id: ActiveValue::Set(Some(range_end_token_id)),
+            burned_mode: ActiveValue::Set(Some(burned_mode)),
+            burned_payload: ActiveValue::Set(Some(burned_payload.to_vec())),
+            end_epoch: ActiveValue::Set(end_epoch),
+            latest_merkle_root: ActiveValue::Set(Some(latest_merkle_root.to_string())),
+            state_observed_block: ActiveValue::Set(Some(state_observed_block)),
+            state_updated_at: ActiveValue::Set(now),
+            private_graph_mode: ActiveValue::Set(None),
+            private_graph_payload: ActiveValue::Set(None),
+            source: ActiveValue::Set(source.map(ToString::to_string)),
+            created_at: ActiveValue::Set(now),
+            updated_at: ActiveValue::Set(now),
+        };
+
+        StateEntity::insert(model)
+            .on_conflict(
+                sea_orm::sea_query::OnConflict::columns([
+                    StateColumn::BlockchainId,
+                    StateColumn::ContractAddress,
+                    StateColumn::KcId,
+                ])
+                .update_columns([
+                    StateColumn::RangeStartTokenId,
+                    StateColumn::RangeEndTokenId,
+                    StateColumn::BurnedMode,
+                    StateColumn::BurnedPayload,
+                    StateColumn::EndEpoch,
+                    StateColumn::LatestMerkleRoot,
+                    StateColumn::StateObservedBlock,
+                    StateColumn::StateUpdatedAt,
+                    StateColumn::Source,
+                    StateColumn::UpdatedAt,
                 ])
                 .to_owned(),
             )
@@ -92,9 +184,6 @@ impl KcChainMetadataRepository {
     }
 
     /// Upsert private graph encoding for a KC without mutating canonical chain metadata fields.
-    ///
-    /// This is used by triple-store insert paths that can derive public/private graph presence
-    /// while chain metadata may be unavailable at that moment.
     pub async fn upsert_private_graph_encoding(
         &self,
         blockchain_id: &str,
@@ -106,34 +195,37 @@ impl KcChainMetadataRepository {
     ) -> Result<()> {
         let now = Utc::now().timestamp();
 
-        let model = ActiveModel {
+        let model = StateActiveModel {
             blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
             contract_address: ActiveValue::Set(contract_address.to_string()),
             kc_id: ActiveValue::Set(kc_id),
-            publisher_address: ActiveValue::Set(None),
-            block_number: ActiveValue::Set(None),
-            transaction_hash: ActiveValue::Set(None),
-            block_timestamp: ActiveValue::Set(None),
+            range_start_token_id: ActiveValue::Set(None),
+            range_end_token_id: ActiveValue::Set(None),
+            burned_mode: ActiveValue::Set(None),
+            burned_payload: ActiveValue::Set(None),
+            end_epoch: ActiveValue::Set(None),
+            latest_merkle_root: ActiveValue::Set(None),
+            state_observed_block: ActiveValue::Set(None),
+            state_updated_at: ActiveValue::Set(0),
             private_graph_mode: ActiveValue::Set(private_graph_mode),
             private_graph_payload: ActiveValue::Set(private_graph_payload.map(ToOwned::to_owned)),
-            publish_operation_id: ActiveValue::Set(None),
             source: ActiveValue::Set(source.map(ToString::to_string)),
             created_at: ActiveValue::Set(now),
             updated_at: ActiveValue::Set(now),
         };
 
-        Entity::insert(model)
+        StateEntity::insert(model)
             .on_conflict(
                 sea_orm::sea_query::OnConflict::columns([
-                    Column::BlockchainId,
-                    Column::ContractAddress,
-                    Column::KcId,
+                    StateColumn::BlockchainId,
+                    StateColumn::ContractAddress,
+                    StateColumn::KcId,
                 ])
                 .update_columns([
-                    Column::PrivateGraphMode,
-                    Column::PrivateGraphPayload,
-                    Column::Source,
-                    Column::UpdatedAt,
+                    StateColumn::PrivateGraphMode,
+                    StateColumn::PrivateGraphPayload,
+                    StateColumn::Source,
+                    StateColumn::UpdatedAt,
                 ])
                 .to_owned(),
             )
@@ -150,18 +242,10 @@ impl KcChainMetadataRepository {
         contract_address: &str,
         kc_id: u64,
     ) -> Result<Option<KcChainMetadataEntry>> {
-        let row = Entity::find()
-            .filter(Column::BlockchainId.eq(blockchain_id))
-            .filter(Column::ContractAddress.eq(contract_address))
-            .filter(Column::KcId.eq(kc_id))
-            .filter(Column::PublisherAddress.is_not_null())
-            .filter(Column::BlockNumber.is_not_null())
-            .filter(Column::TransactionHash.is_not_null())
-            .filter(Column::BlockTimestamp.is_not_null())
-            .one(self.conn.as_ref())
+        let out = self
+            .get_many_complete(blockchain_id, contract_address, &[kc_id])
             .await?;
-
-        Ok(row.and_then(Self::to_complete_entry))
+        Ok(out.into_values().next())
     }
 
     /// Return complete metadata rows for a KC id set.
@@ -175,20 +259,30 @@ impl KcChainMetadataRepository {
             return Ok(HashMap::new());
         }
 
-        let rows = Entity::find()
-            .filter(Column::BlockchainId.eq(blockchain_id))
-            .filter(Column::ContractAddress.eq(contract_address))
-            .filter(Column::KcId.is_in(kc_ids.to_vec()))
-            .filter(Column::PublisherAddress.is_not_null())
-            .filter(Column::BlockNumber.is_not_null())
-            .filter(Column::TransactionHash.is_not_null())
-            .filter(Column::BlockTimestamp.is_not_null())
+        let core_rows = CoreEntity::find()
+            .filter(CoreColumn::BlockchainId.eq(blockchain_id))
+            .filter(CoreColumn::ContractAddress.eq(contract_address))
+            .filter(CoreColumn::KcId.is_in(kc_ids.to_vec()))
+            .filter(CoreColumn::PublisherAddress.is_not_null())
+            .filter(CoreColumn::BlockNumber.is_not_null())
+            .filter(CoreColumn::TransactionHash.is_not_null())
+            .filter(CoreColumn::BlockTimestamp.is_not_null())
             .all(self.conn.as_ref())
             .await?;
 
-        let mut out = HashMap::with_capacity(rows.len());
-        for row in rows {
-            if let Some(entry) = Self::to_complete_entry(row) {
+        let state_rows = StateEntity::find()
+            .filter(StateColumn::BlockchainId.eq(blockchain_id))
+            .filter(StateColumn::ContractAddress.eq(contract_address))
+            .filter(StateColumn::KcId.is_in(kc_ids.to_vec()))
+            .all(self.conn.as_ref())
+            .await?;
+        let state_by_id: HashMap<u64, StateModel> =
+            state_rows.into_iter().map(|row| (row.kc_id, row)).collect();
+
+        let mut out = HashMap::with_capacity(core_rows.len());
+        for core in core_rows {
+            let kc_id = core.kc_id;
+            if let Some(entry) = Self::to_complete_entry(core, state_by_id.get(&kc_id)) {
                 out.insert(entry.kc_id, entry);
             }
         }
@@ -208,21 +302,160 @@ impl KcChainMetadataRepository {
         Ok(entries.into_keys().collect())
     }
 
-    fn to_complete_entry(model: Model) -> Option<KcChainMetadataEntry> {
+    /// Return complete metadata + state rows for a KC id set.
+    pub async fn get_many_ready_for_sync(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        kc_ids: &[u64],
+    ) -> Result<HashMap<u64, KcChainReadyForSyncEntry>> {
+        if kc_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let core_rows = CoreEntity::find()
+            .filter(CoreColumn::BlockchainId.eq(blockchain_id))
+            .filter(CoreColumn::ContractAddress.eq(contract_address))
+            .filter(CoreColumn::KcId.is_in(kc_ids.to_vec()))
+            .filter(CoreColumn::PublisherAddress.is_not_null())
+            .filter(CoreColumn::BlockNumber.is_not_null())
+            .filter(CoreColumn::TransactionHash.is_not_null())
+            .filter(CoreColumn::BlockTimestamp.is_not_null())
+            .all(self.conn.as_ref())
+            .await?;
+        let core_by_id: HashMap<u64, CoreModel> =
+            core_rows.into_iter().map(|row| (row.kc_id, row)).collect();
+
+        let state_rows = StateEntity::find()
+            .filter(StateColumn::BlockchainId.eq(blockchain_id))
+            .filter(StateColumn::ContractAddress.eq(contract_address))
+            .filter(StateColumn::KcId.is_in(kc_ids.to_vec()))
+            .filter(StateColumn::RangeStartTokenId.is_not_null())
+            .filter(StateColumn::RangeEndTokenId.is_not_null())
+            .filter(StateColumn::BurnedMode.is_not_null())
+            .filter(StateColumn::BurnedPayload.is_not_null())
+            .filter(StateColumn::LatestMerkleRoot.is_not_null())
+            .filter(StateColumn::StateObservedBlock.is_not_null())
+            .all(self.conn.as_ref())
+            .await?;
+
+        let mut out = HashMap::with_capacity(state_rows.len());
+        for state in state_rows {
+            if let Some(core) = core_by_id.get(&state.kc_id)
+                && let Some(entry) = Self::to_ready_for_sync_entry(core, &state)
+            {
+                out.insert(entry.kc_id, entry);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Return KC IDs from the provided set that are missing sync state.
+    pub async fn get_ids_missing_sync_state(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        kc_ids: &[u64],
+    ) -> Result<HashSet<u64>> {
+        if kc_ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let rows = StateEntity::find()
+            .filter(StateColumn::BlockchainId.eq(blockchain_id))
+            .filter(StateColumn::ContractAddress.eq(contract_address))
+            .filter(StateColumn::KcId.is_in(kc_ids.to_vec()))
+            .all(self.conn.as_ref())
+            .await?;
+
+        let mut missing = HashSet::new();
+        let mut seen = HashSet::new();
+        for row in rows {
+            seen.insert(row.kc_id);
+            if row.range_start_token_id.is_none()
+                || row.range_end_token_id.is_none()
+                || row.burned_mode.is_none()
+                || row.burned_payload.is_none()
+                || row.latest_merkle_root.is_none()
+                || row.state_observed_block.is_none()
+            {
+                missing.insert(row.kc_id);
+            }
+        }
+
+        for kc_id in kc_ids {
+            if !seen.contains(kc_id) {
+                missing.insert(*kc_id);
+            }
+        }
+
+        Ok(missing)
+    }
+
+    fn to_complete_entry(
+        core: CoreModel,
+        state: Option<&StateModel>,
+    ) -> Option<KcChainMetadataEntry> {
         Some(KcChainMetadataEntry {
-            blockchain_id: model.blockchain_id,
-            contract_address: model.contract_address,
-            kc_id: model.kc_id,
-            publisher_address: model.publisher_address?,
-            block_number: u64::try_from(model.block_number?).ok()?,
-            transaction_hash: model.transaction_hash?,
-            block_timestamp: u64::try_from(model.block_timestamp?).ok()?,
-            private_graph_mode: model.private_graph_mode,
-            private_graph_payload: model.private_graph_payload,
-            publish_operation_id: model.publish_operation_id,
-            source: model.source,
-            created_at: model.created_at,
-            updated_at: model.updated_at,
+            blockchain_id: core.blockchain_id,
+            contract_address: core.contract_address,
+            kc_id: core.kc_id,
+            publisher_address: core.publisher_address?,
+            block_number: Self::opt_i64_to_u64(core.block_number)?,
+            transaction_hash: core.transaction_hash?,
+            block_timestamp: Self::opt_i64_to_u64(core.block_timestamp)?,
+            range_start_token_id: state.and_then(|s| Self::opt_i64_to_u64(s.range_start_token_id)),
+            range_end_token_id: state.and_then(|s| Self::opt_i64_to_u64(s.range_end_token_id)),
+            burned_mode: state.and_then(|s| s.burned_mode),
+            burned_payload: state.and_then(|s| s.burned_payload.clone()),
+            end_epoch: state.and_then(|s| Self::opt_i64_to_u64(s.end_epoch)),
+            latest_merkle_root: state.and_then(|s| s.latest_merkle_root.clone()),
+            state_observed_block: state.and_then(|s| Self::opt_i64_to_u64(s.state_observed_block)),
+            state_updated_at: state.map_or(0, |s| s.state_updated_at),
+            private_graph_mode: state.and_then(|s| s.private_graph_mode),
+            private_graph_payload: state.and_then(|s| s.private_graph_payload.clone()),
+            publish_operation_id: core.publish_operation_id,
+            source: core.source.or_else(|| state.and_then(|s| s.source.clone())),
+            created_at: core.created_at,
+            updated_at: core.updated_at,
         })
+    }
+
+    fn to_ready_for_sync_entry(
+        core: &CoreModel,
+        state: &StateModel,
+    ) -> Option<KcChainReadyForSyncEntry> {
+        Some(KcChainReadyForSyncEntry {
+            blockchain_id: core.blockchain_id.clone(),
+            contract_address: core.contract_address.clone(),
+            kc_id: core.kc_id,
+            publisher_address: core.publisher_address.clone()?,
+            block_number: u64::try_from(core.block_number?).ok()?,
+            transaction_hash: core.transaction_hash.clone()?,
+            block_timestamp: u64::try_from(core.block_timestamp?).ok()?,
+            range_start_token_id: u64::try_from(state.range_start_token_id?).ok()?,
+            range_end_token_id: u64::try_from(state.range_end_token_id?).ok()?,
+            burned_mode: state.burned_mode?,
+            burned_payload: state.burned_payload.clone()?,
+            end_epoch: Self::opt_i64_to_u64(state.end_epoch),
+            latest_merkle_root: state.latest_merkle_root.clone()?,
+            state_observed_block: u64::try_from(state.state_observed_block?).ok()?,
+        })
+    }
+
+    fn u64_to_i64(value: u64, field_name: &'static str) -> Result<i64> {
+        i64::try_from(value).map_err(|_| {
+            RepositoryError::Database(sea_orm::DbErr::Custom(format!(
+                "{field_name} exceeds i64::MAX"
+            )))
+        })
+    }
+
+    fn opt_u64_to_i64(value: Option<u64>, field_name: &'static str) -> Result<Option<i64>> {
+        value.map(|v| Self::u64_to_i64(v, field_name)).transpose()
+    }
+
+    fn opt_i64_to_u64(value: Option<i64>) -> Option<u64> {
+        value.and_then(|v| u64::try_from(v).ok())
     }
 }

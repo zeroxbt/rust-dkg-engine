@@ -1,16 +1,16 @@
 use sea_orm_migration::{
     async_trait::async_trait,
     prelude::{DbErr, DeriveMigrationName, Iden, Index, MigrationTrait, SchemaManager, Table},
-    schema::{big_integer, big_unsigned, string},
+    schema::{big_integer, string},
     sea_query,
 };
 
 #[derive(Iden)]
-enum KcSyncProgress {
+enum KcSyncMetadataCursor {
     Table,
     BlockchainId,
     ContractAddress,
-    LastCheckedId,
+    LastCheckedBlock,
     UpdatedAt,
 }
 
@@ -23,16 +23,16 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(KcSyncProgress::Table)
+                    .table(KcSyncMetadataCursor::Table)
                     .if_not_exists()
-                    .col(string(KcSyncProgress::BlockchainId))
-                    .col(string(KcSyncProgress::ContractAddress))
-                    .col(big_unsigned(KcSyncProgress::LastCheckedId).default(0))
-                    .col(big_integer(KcSyncProgress::UpdatedAt))
+                    .col(string(KcSyncMetadataCursor::BlockchainId))
+                    .col(string(KcSyncMetadataCursor::ContractAddress))
+                    .col(big_integer(KcSyncMetadataCursor::LastCheckedBlock).default(0))
+                    .col(big_integer(KcSyncMetadataCursor::UpdatedAt))
                     .primary_key(
                         Index::create()
-                            .col(KcSyncProgress::BlockchainId)
-                            .col(KcSyncProgress::ContractAddress),
+                            .col(KcSyncMetadataCursor::BlockchainId)
+                            .col(KcSyncMetadataCursor::ContractAddress),
                     )
                     .to_owned(),
             )
@@ -43,7 +43,7 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(
                 Table::drop()
-                    .table(KcSyncProgress::Table)
+                    .table(KcSyncMetadataCursor::Table)
                     .if_exists()
                     .to_owned(),
             )

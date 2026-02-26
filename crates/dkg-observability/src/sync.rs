@@ -307,3 +307,121 @@ pub fn record_sync_insert_batch(
     counter!("node_sync_insert_kcs_total", "status" => "failed".to_string())
         .increment(failed_kcs as u64);
 }
+
+pub fn record_sync_metadata_backfill_chunk(
+    blockchain_id: &str,
+    status: &str,
+    duration: Duration,
+    blocks_scanned: u64,
+    events_found: usize,
+) {
+    counter!(
+        "node_sync_metadata_backfill_chunk_total",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
+    histogram!(
+        "node_sync_metadata_backfill_chunk_duration_seconds",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(duration.as_secs_f64());
+    histogram!(
+        "node_sync_metadata_backfill_blocks_scanned",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(blocks_scanned as f64);
+    histogram!(
+        "node_sync_metadata_backfill_events_found",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(events_found as f64);
+}
+
+pub fn record_sync_metadata_events_found_total(blockchain_id: &str, events_found: u64) {
+    counter!(
+        "node_sync_metadata_events_found_total",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .increment(events_found);
+}
+
+pub fn record_sync_metadata_cursor(blockchain_id: &str, contract: &str, cursor_block: u64) {
+    gauge!(
+        "node_sync_metadata_cursor_block",
+        "blockchain_id" => blockchain_id.to_string(),
+        "contract" => contract.to_string()
+    )
+    .set(cursor_block as f64);
+}
+
+pub fn record_sync_metadata_cursor_lag(blockchain_id: &str, contract: &str, lag_blocks: u64) {
+    gauge!(
+        "node_sync_metadata_cursor_lag_blocks",
+        "blockchain_id" => blockchain_id.to_string(),
+        "contract" => contract.to_string()
+    )
+    .set(lag_blocks as f64);
+}
+
+pub fn record_sync_state_hydration_batch(
+    blockchain_id: &str,
+    status: &str,
+    duration: Duration,
+    kc_count: usize,
+) {
+    counter!(
+        "node_sync_state_hydration_batch_total",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
+    histogram!(
+        "node_sync_state_hydration_batch_duration_seconds",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(duration.as_secs_f64());
+    histogram!(
+        "node_sync_state_hydration_batch_kcs",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(kc_count as f64);
+}
+
+pub fn record_sync_state_ready_count(blockchain_id: &str, count: usize) {
+    gauge!(
+        "node_sync_state_ready_count",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(count as f64);
+}
+
+pub fn record_sync_waiting_for_core_metadata_count(blockchain_id: &str, count: usize) {
+    gauge!(
+        "node_sync_waiting_for_core_metadata_count",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(count as f64);
+}
+
+pub fn record_sync_waiting_for_state_count(blockchain_id: &str, count: usize) {
+    gauge!(
+        "node_sync_waiting_for_state_count",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(count as f64);
+}
+
+pub fn record_sync_state_observed_lag(blockchain_id: &str, contract: &str, lag_blocks: u64) {
+    gauge!(
+        "node_sync_state_observed_lag_blocks",
+        "blockchain_id" => blockchain_id.to_string(),
+        "contract" => contract.to_string()
+    )
+    .set(lag_blocks as f64);
+}

@@ -1,26 +1,19 @@
 //! DKG Sync Pipeline
 //!
-//! This module implements a three-stage pipeline for syncing Knowledge Collections:
-//!
-//! ```text
-//! Filter Stage              Fetch Stage           Insert Stage
-//! ├─ Local existence        ├─ Network requests   └─ Triple store insert
-//! ├─ Single Multicall RPC   └─ Validation
-//! │  (epochs, ranges, roots)
-//! ├─ Filter expired
-//! └─ Send to fetch ───────→ Send to insert ─────→
-//! ```
-//!
-//! The pipeline allows stages to overlap, reducing total sync time.
-//! All RPC calls are batched into a single Multicall per filter batch.
+//! This module runs split sync workers:
+//! - `MetadataSyncTask` (producer): backfills KC events, hydrates chain state, enqueues IDs
+//! - `SyncTask` (consumer): drains queue and performs filter/fetch/insert
 
+pub(crate) mod burned_encoding;
 mod config;
 mod fetch;
 mod filter;
 mod insert;
+mod metadata_task;
 mod task;
 mod types;
 
 // Re-export public types
 pub(crate) use config::SyncConfig;
+pub(crate) use metadata_task::MetadataSyncTask;
 pub(crate) use task::SyncTask;

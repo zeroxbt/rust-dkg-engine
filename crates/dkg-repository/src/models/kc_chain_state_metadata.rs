@@ -6,7 +6,7 @@ use sea_orm::{
 };
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "kc_chain_metadata")]
+#[sea_orm(table_name = "kc_chain_state_metadata")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub blockchain_id: String,
@@ -14,13 +14,16 @@ pub struct Model {
     pub contract_address: String,
     #[sea_orm(primary_key)]
     pub kc_id: u64,
-    pub publisher_address: Option<String>,
-    pub block_number: Option<i64>,
-    pub transaction_hash: Option<String>,
-    pub block_timestamp: Option<i64>,
+    pub range_start_token_id: Option<i64>,
+    pub range_end_token_id: Option<i64>,
+    pub burned_mode: Option<u32>,
+    pub burned_payload: Option<Vec<u8>>,
+    pub end_epoch: Option<i64>,
+    pub latest_merkle_root: Option<String>,
+    pub state_observed_block: Option<i64>,
+    pub state_updated_at: i64,
     pub private_graph_mode: Option<u32>,
     pub private_graph_payload: Option<Vec<u8>>,
-    pub publish_operation_id: Option<String>,
     pub source: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,

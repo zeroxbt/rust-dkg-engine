@@ -9,14 +9,14 @@ use sea_orm::{
 use crate::{
     error::Result,
     models::{
-        kc_sync_progress::{
-            ActiveModel as ProgressActiveModel, Column as ProgressColumn, Entity as ProgressEntity,
+        kc_sync_metadata_cursor::{
+            ActiveModel as CursorActiveModel, Column as CursorColumn, Entity as CursorEntity,
         },
         kc_sync_queue::{
             ActiveModel as QueueActiveModel, Column as QueueColumn, Entity as QueueEntity,
         },
     },
-    types::{KcSyncProgressEntry, KcSyncQueueEntry},
+    types::KcSyncQueueEntry,
 };
 
 #[derive(Clone)]
@@ -29,30 +29,13 @@ impl KcSyncRepository {
         Self { conn }
     }
 
-    // ==================== Progress Table Methods ====================
-
-    /// Get the sync progress for a specific contract.
-    /// Returns None if no progress record exists (first sync).
-    pub async fn get_progress(
-        &self,
-        blockchain_id: &str,
-        contract_address: &str,
-    ) -> Result<Option<KcSyncProgressEntry>> {
-        Ok(ProgressEntity::find()
-            .filter(ProgressColumn::BlockchainId.eq(blockchain_id))
-            .filter(ProgressColumn::ContractAddress.eq(contract_address))
-            .one(self.conn.as_ref())
-            .await?
-            .map(Self::to_progress_entry))
-    }
-
-    /// Count tracked contracts in the sync progress table for a blockchain.
+    /// Count tracked contracts in the metadata cursor table for a blockchain.
     pub async fn count_progress_contracts_for_blockchain(
         &self,
         blockchain_id: &str,
     ) -> Result<u64> {
-        Ok(ProgressEntity::find()
-            .filter(ProgressColumn::BlockchainId.eq(blockchain_id))
+        Ok(CursorEntity::find()
+            .filter(CursorColumn::BlockchainId.eq(blockchain_id))
             .count(self.conn.as_ref())
             .await?)
     }
@@ -62,37 +45,51 @@ impl KcSyncRepository {
         &self,
         blockchain_id: &str,
     ) -> Result<Option<i64>> {
-        Ok(ProgressEntity::find()
-            .filter(ProgressColumn::BlockchainId.eq(blockchain_id))
-            .order_by_desc(ProgressColumn::UpdatedAt)
+        Ok(CursorEntity::find()
+            .filter(CursorColumn::BlockchainId.eq(blockchain_id))
+            .order_by_desc(CursorColumn::UpdatedAt)
             .one(self.conn.as_ref())
             .await?
             .map(|row| row.updated_at))
     }
 
-    /// Update or insert the sync progress for a contract.
-    pub async fn upsert_progress(
+    /// Get metadata event backfill cursor for a contract.
+    pub async fn get_metadata_progress(
         &self,
         blockchain_id: &str,
         contract_address: &str,
-        last_checked_id: u64,
+    ) -> Result<u64> {
+        let row =
+            CursorEntity::find_by_id((blockchain_id.to_string(), contract_address.to_string()))
+                .one(self.conn.as_ref())
+                .await?;
+
+        Ok(row.map(|r| r.last_checked_block.max(0) as u64).unwrap_or(0))
+    }
+
+    /// Upsert metadata event backfill cursor for a contract.
+    pub async fn upsert_metadata_progress(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        metadata_last_checked_block: u64,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
-
-        let model = ProgressActiveModel {
+        let metadata_last_checked_block = metadata_last_checked_block.min(i64::MAX as u64) as i64;
+        let model = CursorActiveModel {
             blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
             contract_address: ActiveValue::Set(contract_address.to_string()),
-            last_checked_id: ActiveValue::Set(last_checked_id),
+            last_checked_block: ActiveValue::Set(metadata_last_checked_block),
             updated_at: ActiveValue::Set(now),
         };
 
-        ProgressEntity::insert(model)
+        CursorEntity::insert(model)
             .on_conflict(
                 sea_orm::sea_query::OnConflict::columns([
-                    ProgressColumn::BlockchainId,
-                    ProgressColumn::ContractAddress,
+                    CursorColumn::BlockchainId,
+                    CursorColumn::ContractAddress,
                 ])
-                .update_columns([ProgressColumn::LastCheckedId, ProgressColumn::UpdatedAt])
+                .update_columns([CursorColumn::LastCheckedBlock, CursorColumn::UpdatedAt])
                 .to_owned(),
             )
             .exec(self.conn.as_ref())
@@ -169,6 +166,30 @@ impl KcSyncRepository {
             .await?;
 
         Ok(rows.into_iter().map(Self::to_queue_entry).collect())
+    }
+
+    /// Get only due KC IDs for a specific contract.
+    pub async fn get_due_kc_ids_for_contract(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        now_ts: i64,
+        max_retries: u32,
+        limit: u64,
+    ) -> Result<Vec<u64>> {
+        QueueEntity::find()
+            .filter(QueueColumn::BlockchainId.eq(blockchain_id))
+            .filter(QueueColumn::ContractAddress.eq(contract_address))
+            .filter(QueueColumn::RetryCount.lt(max_retries))
+            .filter(QueueColumn::NextRetryAt.lte(now_ts))
+            .order_by_asc(QueueColumn::KcId)
+            .limit(limit)
+            .select_only()
+            .column(QueueColumn::KcId)
+            .into_tuple()
+            .all(self.conn.as_ref())
+            .await
+            .map_err(Into::into)
     }
 
     /// Count all queued KCs for a blockchain (regardless of retry state).
@@ -326,15 +347,6 @@ impl KcSyncRepository {
             .wrapping_add((now_ts as u64).wrapping_mul(12_345));
         let jitter = seed % (jitter_limit.saturating_add(1));
         backoff.saturating_add(jitter)
-    }
-
-    fn to_progress_entry(model: crate::models::kc_sync_progress::Model) -> KcSyncProgressEntry {
-        KcSyncProgressEntry {
-            blockchain_id: model.blockchain_id,
-            contract_address: model.contract_address,
-            last_checked_id: model.last_checked_id,
-            updated_at: model.updated_at,
-        }
     }
 
     fn to_queue_entry(model: crate::models::kc_sync_queue::Model) -> KcSyncQueueEntry {

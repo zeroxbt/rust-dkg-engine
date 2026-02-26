@@ -40,15 +40,6 @@ impl OperationRecord {
     }
 }
 
-/// Public DTO for KC sync progress rows.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KcSyncProgressEntry {
-    pub blockchain_id: String,
-    pub contract_address: String,
-    pub last_checked_id: u64,
-    pub updated_at: i64,
-}
-
 /// Public DTO for KC sync queue rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KcSyncQueueEntry {
@@ -71,12 +62,39 @@ pub struct KcChainMetadataEntry {
     pub block_number: u64,
     pub transaction_hash: String,
     pub block_timestamp: u64,
+    pub range_start_token_id: Option<u64>,
+    pub range_end_token_id: Option<u64>,
+    pub burned_mode: Option<u32>,
+    pub burned_payload: Option<Vec<u8>>,
+    pub end_epoch: Option<u64>,
+    pub latest_merkle_root: Option<String>,
+    pub state_observed_block: Option<u64>,
+    pub state_updated_at: i64,
     pub private_graph_mode: Option<u32>,
     pub private_graph_payload: Option<Vec<u8>>,
     pub publish_operation_id: Option<String>,
     pub source: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+/// KC metadata row with full core metadata and sync state available.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KcChainReadyForSyncEntry {
+    pub blockchain_id: String,
+    pub contract_address: String,
+    pub kc_id: u64,
+    pub publisher_address: String,
+    pub block_number: u64,
+    pub transaction_hash: String,
+    pub block_timestamp: u64,
+    pub range_start_token_id: u64,
+    pub range_end_token_id: u64,
+    pub burned_mode: u32,
+    pub burned_payload: Vec<u8>,
+    pub end_epoch: Option<u64>,
+    pub latest_merkle_root: String,
+    pub state_observed_block: u64,
 }
 
 /// Public DTO for proof challenge rows.

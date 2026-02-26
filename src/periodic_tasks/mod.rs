@@ -22,7 +22,7 @@ use tasks::{
     save_peer_addresses::SavePeerAddressesTask,
     sharding_table_check::ShardingTableCheckTask,
     state_snapshot::{StateSnapshotConfig, StateSnapshotTask},
-    sync::{SyncConfig, SyncTask},
+    sync::{MetadataSyncTask, SyncConfig, SyncTask},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -199,8 +199,20 @@ pub(crate) async fn run(
 
     // Per-blockchain periodic tasks
     for blockchain_id in blockchain_ids {
-        // Per-blockchain sync task has dedicated config and does not fit
+        // Per-blockchain sync tasks have dedicated config and do not fit
         // the generic BlockchainPeriodicTask registry helper.
+        if sync_enabled {
+            let deps = Arc::clone(&deps);
+            let shutdown = shutdown.clone();
+            let blockchain_id = blockchain_id.clone();
+            let config = sync_config.clone();
+            set.spawn(async move {
+                MetadataSyncTask::new(deps.sync.clone(), config)
+                    .run(&blockchain_id, shutdown)
+                    .await;
+            });
+        }
+
         if sync_enabled {
             let deps = Arc::clone(&deps);
             let shutdown = shutdown.clone();

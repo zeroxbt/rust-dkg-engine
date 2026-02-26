@@ -25,6 +25,7 @@ pub(crate) struct FilterStats {
     pub already_synced: Vec<u64>,
     pub expired: Vec<u64>,
     pub waiting_for_metadata: Vec<u64>,
+    pub waiting_for_state: Vec<u64>,
 }
 
 /// Stats collected by fetch task
@@ -40,7 +41,7 @@ pub(crate) struct InsertStats {
 
 /// Result of syncing a single contract
 pub(crate) struct ContractSyncResult {
-    pub enqueued: u64,
+    pub state_hydrated: u64,
     pub pending: usize,
     pub synced: u64,
     pub failed: u64,

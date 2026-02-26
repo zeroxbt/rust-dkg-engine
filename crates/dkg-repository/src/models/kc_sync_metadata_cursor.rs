@@ -6,13 +6,13 @@ use sea_orm::{
 };
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "kc_sync_progress")]
+#[sea_orm(table_name = "kc_sync_metadata_cursor")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub blockchain_id: String,
     #[sea_orm(primary_key)]
     pub contract_address: String,
-    pub last_checked_id: u64,
+    pub last_checked_block: i64,
     pub updated_at: i64,
 }
 

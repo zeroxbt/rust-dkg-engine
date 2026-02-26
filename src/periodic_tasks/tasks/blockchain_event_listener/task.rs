@@ -7,7 +7,8 @@ use std::{
 
 use dkg_blockchain::{
     Address, BlockchainError, BlockchainId, BlockchainManager, ContractEvent, ContractLog,
-    ContractName, decode_contract_event, monitored_contract_events, to_hex_string,
+    ContractName, MulticallBatch, MulticallRequest, decode_contract_event, encoders,
+    monitored_contract_events, to_hex_string,
 };
 use dkg_observability as observability;
 use dkg_repository::{BlockchainRepository, KcChainMetadataRepository};
@@ -23,6 +24,7 @@ use crate::{
     error::NodeError,
     periodic_tasks::BlockchainEventListenerDeps,
     periodic_tasks::runner::run_with_shutdown,
+    periodic_tasks::tasks::sync::burned_encoding::encode_burned_ids,
 };
 
 /// Event fetch interval for mainnet (10 seconds)
@@ -30,45 +32,6 @@ const EVENT_FETCH_INTERVAL_MAINNET: Duration = Duration::from_secs(10);
 
 /// Event fetch interval for dev environments (4 seconds)
 const EVENT_FETCH_INTERVAL_DEV: Duration = Duration::from_secs(4);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CatchupPolicy {
-    /// For KC storage, backfill full history from contract deployment.
-    FullBackfillFromDeployment,
-    /// For control-plane contracts, rely on startup snapshot and process only live deltas.
-    SnapshotStateFromTip,
-}
-
-impl CatchupPolicy {
-    fn startup_cursor(self, last_checked_block: u64, current_block: u64) -> u64 {
-        match self {
-            // Keep stored cursor for full backfill streams.
-            Self::FullBackfillFromDeployment => last_checked_block,
-            // Always rebase snapshot streams to tip on process start.
-            Self::SnapshotStateFromTip => current_block,
-        }
-    }
-
-    fn next_from_block(self, last_checked_block: u64) -> u64 {
-        // Both policies advance from the persisted cursor once the process is running.
-        match self {
-            Self::FullBackfillFromDeployment | Self::SnapshotStateFromTip => last_checked_block + 1,
-        }
-    }
-
-    fn needs_deployment_lookup(self, contract_address: &str, last_checked_block: u64) -> bool {
-        matches!(self, Self::FullBackfillFromDeployment)
-            && !contract_address.is_empty()
-            && last_checked_block == 0
-    }
-}
-
-fn catchup_policy(contract_name: &ContractName) -> CatchupPolicy {
-    match contract_name {
-        ContractName::KnowledgeCollectionStorage => CatchupPolicy::FullBackfillFromDeployment,
-        _ => CatchupPolicy::SnapshotStateFromTip,
-    }
-}
 
 pub(crate) struct BlockchainEventListenerTask {
     blockchain_manager: Arc<BlockchainManager>,
@@ -114,7 +77,7 @@ impl BlockchainEventListenerTask {
         .await;
     }
 
-    /// Initialize listener cursors at process start according to per-contract catch-up policy.
+    /// Initialize listener cursors at process start.
     async fn bootstrap_listener_cursors(&self, blockchain_id: &BlockchainId) {
         let current_block = match self
             .blockchain_manager
@@ -134,8 +97,6 @@ impl BlockchainEventListenerTask {
 
         let monitored = monitored_contract_events();
         for contract_name in monitored.keys() {
-            let policy = catchup_policy(contract_name);
-
             let contract_addresses = match self
                 .blockchain_manager
                 .get_all_contract_addresses(blockchain_id, contract_name)
@@ -185,7 +146,7 @@ impl BlockchainEventListenerTask {
                     }
                 };
 
-                let target_cursor = policy.startup_cursor(last_checked_block, current_block);
+                let target_cursor = current_block;
                 if target_cursor == last_checked_block {
                     continue;
                 }
@@ -208,7 +169,7 @@ impl BlockchainEventListenerTask {
                         error = %error,
                         "Failed to update listener cursor during bootstrap"
                     );
-                } else if matches!(policy, CatchupPolicy::SnapshotStateFromTip) {
+                } else {
                     tracing::debug!(
                         blockchain_id = %blockchain_id,
                         contract = %contract_name.as_str(),
@@ -312,7 +273,6 @@ impl BlockchainEventListenerTask {
             };
 
             for contract_address_str in addresses_to_check {
-                let policy = catchup_policy(contract_name);
                 let last_checked_block = self
                     .blockchain_repository
                     .get_last_checked_block(
@@ -321,48 +281,7 @@ impl BlockchainEventListenerTask {
                         &contract_address_str,
                     )
                     .await?;
-                let from_block = if policy
-                    .needs_deployment_lookup(&contract_address_str, last_checked_block)
-                {
-                    let contract_address: Address = contract_address_str.parse().map_err(|_| {
-                        BlockchainError::Custom(format!(
-                            "Invalid contract address: {}",
-                            contract_address_str
-                        ))
-                    })?;
-                    match self
-                        .blockchain_manager
-                        .find_contract_deployment_block(
-                            blockchain_id,
-                            contract_address,
-                            current_block,
-                        )
-                        .await?
-                    {
-                        Some(start_block) => {
-                            tracing::debug!(
-                                blockchain = %blockchain_id,
-                                contract = %contract_name.as_str(),
-                                address = %contract_address_str,
-                                start_block,
-                                from_block = start_block,
-                                "Resolved initial KC storage listener start block"
-                            );
-                            start_block
-                        }
-                        None => {
-                            tracing::warn!(
-                                blockchain = %blockchain_id,
-                                contract = %contract_name.as_str(),
-                                address = %contract_address_str,
-                                "KC storage has no code at current block; using tip cursor"
-                            );
-                            current_block
-                        }
-                    }
-                } else {
-                    policy.next_from_block(last_checked_block)
-                };
+                let from_block = last_checked_block + 1;
 
                 // Skip if we're already up to date
                 if from_block > current_block {
@@ -639,36 +558,18 @@ impl BlockchainEventListenerTask {
         };
         let transaction_hash_str = format!("{:#x}", transaction_hash);
 
-        let publisher_address = match self
-            .blockchain_manager
-            .get_knowledge_collection_publisher(blockchain_id, contract_address, kc_id_u128)
-            .await
-        {
-            Ok(Some(address)) => Some(format!("{:?}", address)),
-            Ok(None) => {
-                tracing::warn!(
-                    blockchain = %blockchain_id,
-                    contract = %contract_address_str,
-                    kc_id = kc_id_u64,
-                    "Unable to resolve KC publisher from chain"
-                );
-                None
-            }
-            Err(error) => {
-                tracing::warn!(
-                    blockchain = %blockchain_id,
-                    contract = %contract_address_str,
-                    kc_id = kc_id_u64,
-                    error = %error,
-                    "Failed to fetch KC publisher from chain"
-                );
-                None
-            }
-        };
+        let publisher_address = self
+            .resolve_kc_publisher(
+                blockchain_id,
+                contract_address,
+                kc_id_u128,
+                transaction_hash,
+            )
+            .await;
 
         if let Err(error) = self
             .kc_chain_metadata_repository
-            .upsert(
+            .upsert_core_metadata(
                 blockchain_id.as_str(),
                 &contract_address_str,
                 kc_id_u64,
@@ -690,6 +591,143 @@ impl BlockchainEventListenerTask {
             );
         }
 
+        let mut state_calls = MulticallBatch::with_capacity(3);
+        state_calls.add(MulticallRequest::new(
+            contract_address,
+            encoders::encode_get_end_epoch(kc_id_u128),
+        ));
+        state_calls.add(MulticallRequest::new(
+            contract_address,
+            encoders::encode_get_knowledge_assets_range(kc_id_u128),
+        ));
+        state_calls.add(MulticallRequest::new(
+            contract_address,
+            encoders::encode_get_merkle_root(kc_id_u128),
+        ));
+
+        match self
+            .blockchain_manager
+            .execute_multicall(blockchain_id, state_calls)
+            .await
+        {
+            Ok(results) => {
+                let Some([epoch_result, range_result, merkle_result]) =
+                    <&[dkg_blockchain::MulticallResult; 3]>::try_from(results.as_slice()).ok()
+                else {
+                    tracing::warn!(
+                        blockchain = %blockchain_id,
+                        contract = %contract_address_str,
+                        kc_id = kc_id_u64,
+                        result_count = results.len(),
+                        "Unexpected multicall result count for KC state hydration"
+                    );
+                    self.schedule_finality_request(
+                        blockchain_id,
+                        publish_operation_id,
+                        knowledge_collection_id,
+                        contract_address,
+                        byte_size,
+                        merkle_root,
+                        transaction_hash,
+                        block_number,
+                        block_timestamp,
+                    )
+                    .await;
+                    return;
+                };
+
+                let Some((start, end, burned)) = range_result.as_knowledge_assets_range() else {
+                    tracing::warn!(
+                        blockchain = %blockchain_id,
+                        contract = %contract_address_str,
+                        kc_id = kc_id_u64,
+                        "Failed to decode KC token range during live state hydration"
+                    );
+                    self.schedule_finality_request(
+                        blockchain_id,
+                        publish_operation_id,
+                        knowledge_collection_id,
+                        contract_address,
+                        byte_size,
+                        merkle_root,
+                        transaction_hash,
+                        block_number,
+                        block_timestamp,
+                    )
+                    .await;
+                    return;
+                };
+
+                let end_epoch = epoch_result.as_u64().filter(|v| *v != 0);
+                let latest_merkle_root = merkle_result
+                    .as_bytes32_hex()
+                    .unwrap_or_else(|| format!("0x{}", to_hex_string(merkle_root)));
+                let burned_encoding = encode_burned_ids(start, end, &burned);
+
+                if let Err(error) = self
+                    .kc_chain_metadata_repository
+                    .upsert_sync_state(
+                        blockchain_id.as_str(),
+                        &contract_address_str,
+                        kc_id_u64,
+                        start,
+                        end,
+                        burned_encoding.mode as u32,
+                        burned_encoding.payload.as_slice(),
+                        end_epoch,
+                        &latest_merkle_root,
+                        block_number,
+                        Some("event_listener"),
+                    )
+                    .await
+                {
+                    tracing::warn!(
+                        blockchain = %blockchain_id,
+                        contract = %contract_address_str,
+                        kc_id = kc_id_u64,
+                        error = %error,
+                        "Failed to upsert live KC sync state metadata"
+                    );
+                }
+            }
+            Err(error) => {
+                tracing::warn!(
+                    blockchain = %blockchain_id,
+                    contract = %contract_address_str,
+                    kc_id = kc_id_u64,
+                    error = %error,
+                    "Failed to hydrate live KC sync state from chain"
+                );
+            }
+        }
+
+        self.schedule_finality_request(
+            blockchain_id,
+            publish_operation_id,
+            knowledge_collection_id,
+            contract_address,
+            byte_size,
+            merkle_root,
+            transaction_hash,
+            block_number,
+            block_timestamp,
+        )
+        .await;
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn schedule_finality_request(
+        &self,
+        blockchain_id: &BlockchainId,
+        publish_operation_id: String,
+        knowledge_collection_id: dkg_blockchain::U256,
+        contract_address: Address,
+        byte_size: u128,
+        merkle_root: dkg_blockchain::B256,
+        transaction_hash: dkg_blockchain::B256,
+        block_number: u64,
+        block_timestamp: u64,
+    ) {
         let command =
             Command::SendPublishFinalityRequest(SendPublishFinalityRequestCommandData::new(
                 blockchain_id.to_owned(),
@@ -706,5 +744,29 @@ impl BlockchainEventListenerTask {
         self.command_scheduler
             .schedule(CommandExecutionRequest::new(command))
             .await;
+    }
+
+    async fn resolve_kc_publisher(
+        &self,
+        blockchain_id: &BlockchainId,
+        contract_address: Address,
+        kc_id: u128,
+        tx_hash: dkg_blockchain::B256,
+    ) -> Option<String> {
+        match self
+            .blockchain_manager
+            .get_knowledge_collection_publisher(blockchain_id, contract_address, kc_id)
+            .await
+        {
+            Ok(Some(address)) => Some(format!("{:?}", address)),
+            _ => match self
+                .blockchain_manager
+                .get_transaction_sender(blockchain_id, tx_hash)
+                .await
+            {
+                Ok(Some(address)) => Some(format!("{:?}", address)),
+                _ => None,
+            },
+        }
     }
 }

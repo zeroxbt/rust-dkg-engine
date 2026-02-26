@@ -1624,6 +1624,287 @@
       ],
       "title": "Sync Queue/Progress Age by Chain",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 101
+      },
+      "id": 105,
+      "panels": [],
+      "title": "Metadata + State Hydration",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 102
+      },
+      "id": 106,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (blockchain_id, status) (rate(node_sync_metadata_backfill_chunk_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{status}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (blockchain_id, status) (rate(node_sync_state_hydration_batch_total[5m]))",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} hydration {{status}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Backfill and Hydration Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 102
+      },
+      "id": 107,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_state_ready_count",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} ready",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_waiting_for_core_metadata_count",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} waiting_core_metadata",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_waiting_for_state_count",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} waiting_state",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "SQL Readiness and Waiting",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 110
+      },
+      "id": 108,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_metadata_cursor_block",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{contract}} cursor",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_metadata_cursor_lag_blocks",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{contract}} cursor_lag",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_state_observed_lag_blocks",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{contract}} state_lag",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Cursor and Lag",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 110
+      },
+      "id": 109,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (blockchain_id, status) (rate(node_sync_metadata_backfill_chunk_duration_seconds_sum[5m])) / clamp_min(sum by (blockchain_id, status) (rate(node_sync_metadata_backfill_chunk_duration_seconds_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{status}} backfill_avg",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (blockchain_id, status) (rate(node_sync_state_hydration_batch_duration_seconds_sum[5m])) / clamp_min(sum by (blockchain_id, status) (rate(node_sync_state_hydration_batch_duration_seconds_count[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{blockchain_id}} {{status}} hydration_avg",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Backfill and Hydration Duration",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",

@@ -1,30 +1,24 @@
-//! Filter stage: checks local existence, fetches RPC data, and filters expired KCs.
-//!
-//! Processes pending KCs in batches:
-//! 1. Filters out those already synced locally
-//! 2. Fetches all RPC data in a single Multicall (end epochs, token ranges, merkle roots)
-//! 3. Filters out expired KCs from results
-//! 4. Sends remaining KCs to fetch stage
-//!
-//! All RPC calls are consolidated into a single Multicall per batch to minimize latency.
+//! Filter stage: checks local existence and SQL readiness, then filters expired KCs.
 
-use std::{sync::Arc, time::Instant};
-
-use dkg_blockchain::{
-    Address, BlockchainId, BlockchainManager, MulticallBatch, MulticallRequest, encoders,
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Instant,
 };
+
+use dkg_blockchain::{Address, BlockchainId, BlockchainManager};
 use dkg_domain::{KnowledgeCollectionMetadata, TokenIds, derive_ual};
 use dkg_observability as observability;
-use dkg_repository::KcChainMetadataRepository;
+use dkg_repository::{KcChainMetadataRepository, KcChainReadyForSyncEntry};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::types::{FilterStats, KcToSync};
+use super::{
+    burned_encoding::{BurnedMode, decode_burned_ids},
+    types::{FilterStats, KcToSync},
+};
 use crate::application::TripleStoreAssertions;
 
-/// Filter task: processes pending KCs in batches, checking local existence first,
-/// fetching token ranges and end epochs, then filtering expired KCs.
-/// Sends non-expired KCs that need syncing to fetch stage.
 #[allow(clippy::too_many_arguments)]
 #[instrument(
     name = "sync_filter",
@@ -57,27 +51,26 @@ pub(crate) async fn filter_task(
     let mut already_synced = Vec::new();
     let mut expired = Vec::new();
     let mut waiting_for_metadata = Vec::new();
+    let mut waiting_for_state = Vec::new();
     let total_kcs = pending_kc_ids.len();
     let mut processed = 0usize;
 
-    // Get current epoch once for expiration filtering (single RPC call)
     let current_epoch = blockchain_manager
         .get_current_epoch(&blockchain_id)
         .await
         .ok();
-
     let filter_batch_size = filter_batch_size.max(1);
+
     for chunk in pending_kc_ids.chunks(filter_batch_size) {
         let batch_start = Instant::now();
         let batch_result = process_filter_batch(
             chunk,
             &blockchain_id,
             &contract_address,
-            &triple_store_assertions,
-            current_epoch,
             &contract_addr_str,
-            &blockchain_manager,
+            current_epoch,
             &kc_chain_metadata_repository,
+            &triple_store_assertions,
         )
         .await;
 
@@ -89,13 +82,12 @@ pub(crate) async fn filter_task(
             batch_result.expired.len(),
         );
 
-        // Track already synced
         already_synced.extend(batch_result.already_synced);
         expired.extend(batch_result.expired);
         waiting_for_metadata.extend(batch_result.waiting_for_metadata);
+        waiting_for_state.extend(batch_result.waiting_for_state);
         processed += chunk.len();
 
-        // Send to fetch stage (blocks if channel full - backpressure)
         if !batch_result.to_sync.is_empty() {
             tracing::trace!(
                 batch_size = batch_result.to_sync.len(),
@@ -104,6 +96,7 @@ pub(crate) async fn filter_task(
                 elapsed_ms = task_start.elapsed().as_millis() as u64,
                 "Filter: sending batch to fetch stage"
             );
+
             if tx.send(batch_result.to_sync).await.is_err() {
                 tracing::trace!("Filter: fetch stage receiver dropped, stopping");
                 break;
@@ -116,10 +109,18 @@ pub(crate) async fn filter_task(
         }
     }
 
+    observability::record_sync_waiting_for_core_metadata_count(
+        blockchain_label,
+        waiting_for_metadata.len(),
+    );
+    observability::record_sync_waiting_for_state_count(blockchain_label, waiting_for_state.len());
+
     tracing::trace!(
         total_ms = task_start.elapsed().as_millis() as u64,
         already_synced = already_synced.len(),
         expired = expired.len(),
+        waiting_for_metadata = waiting_for_metadata.len(),
+        waiting_for_state = waiting_for_state.len(),
         "Filter task completed"
     );
 
@@ -127,27 +128,26 @@ pub(crate) async fn filter_task(
         already_synced,
         expired,
         waiting_for_metadata,
+        waiting_for_state,
     }
 }
 
-/// Result of processing a single filter batch.
 struct FilterBatchResult {
     already_synced: Vec<u64>,
     expired: Vec<u64>,
     waiting_for_metadata: Vec<u64>,
+    waiting_for_state: Vec<u64>,
     to_sync: Vec<KcToSync>,
 }
 
-/// Process a single batch in the filter stage.
 #[instrument(
     name = "filter_batch",
     skip(
         chunk,
         blockchain_id,
         contract_address,
-        triple_store_assertions,
-        blockchain_manager,
-        kc_chain_metadata_repository
+        kc_chain_metadata_repository,
+        triple_store_assertions
     ),
     fields(chunk_size = chunk.len())
 )]
@@ -155,16 +155,14 @@ async fn process_filter_batch(
     chunk: &[u64],
     blockchain_id: &BlockchainId,
     contract_address: &Address,
-    triple_store_assertions: &TripleStoreAssertions,
-    current_epoch: Option<u64>,
     contract_addr_str: &str,
-    blockchain_manager: &BlockchainManager,
+    current_epoch: Option<u64>,
     kc_chain_metadata_repository: &KcChainMetadataRepository,
+    triple_store_assertions: &TripleStoreAssertions,
 ) -> FilterBatchResult {
     let mut already_synced = Vec::new();
     let mut expired = Vec::new();
 
-    // Step 1: Check local existence by UAL first (cheap, no RPC needed)
     let kcs_needing_sync = check_local_existence(
         chunk,
         blockchain_id,
@@ -173,9 +171,7 @@ async fn process_filter_batch(
     )
     .await;
 
-    // Track already synced
-    let needing_sync_ids: std::collections::HashSet<u64> =
-        kcs_needing_sync.iter().map(|(id, _)| *id).collect();
+    let needing_sync_ids: HashSet<u64> = kcs_needing_sync.iter().map(|(id, _)| *id).collect();
     for &kc_id in chunk {
         if !needing_sync_ids.contains(&kc_id) {
             already_synced.push(kc_id);
@@ -187,12 +183,12 @@ async fn process_filter_batch(
             already_synced,
             expired,
             waiting_for_metadata: Vec::new(),
+            waiting_for_state: Vec::new(),
             to_sync: Vec::new(),
         };
     }
 
-    // Step 2: Keep only KCs that have complete chain metadata in the repository.
-    let (kcs_ready_for_sync, waiting_for_metadata) = gate_on_chain_metadata(
+    let (ready, waiting_for_metadata, waiting_for_state) = gate_on_sql_readiness(
         &kcs_needing_sync,
         blockchain_id,
         contract_addr_str,
@@ -200,49 +196,94 @@ async fn process_filter_batch(
     )
     .await;
 
-    if kcs_ready_for_sync.is_empty() {
+    if ready.is_empty() {
         return FilterBatchResult {
             already_synced,
             expired,
             waiting_for_metadata,
+            waiting_for_state,
             to_sync: Vec::new(),
         };
     }
 
-    // Step 3: Fetch all RPC data in a single Multicall and filter expired
-    let to_sync = fetch_rpc_data_and_filter(
-        &kcs_ready_for_sync,
-        current_epoch,
-        blockchain_id,
-        contract_address,
-        contract_addr_str,
-        blockchain_manager,
-        &mut expired,
-    )
-    .await;
+    let mut to_sync = Vec::with_capacity(ready.len());
+    for (kc_id, ual, entry) in ready {
+        if let (Some(current), Some(end)) = (current_epoch, entry.end_epoch)
+            && current > end
+        {
+            expired.push(kc_id);
+            continue;
+        }
+
+        let Some(mode) = BurnedMode::from_raw(entry.burned_mode) else {
+            tracing::warn!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                kc_id,
+                burned_mode = entry.burned_mode,
+                "Invalid burned mode in SQL state"
+            );
+            continue;
+        };
+        let Some(burned) = decode_burned_ids(
+            mode,
+            entry.burned_payload.as_slice(),
+            entry.range_start_token_id,
+            entry.range_end_token_id,
+        ) else {
+            tracing::warn!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                kc_id,
+                "Failed to decode burned payload from SQL state"
+            );
+            continue;
+        };
+
+        let token_ids = TokenIds::new(entry.range_start_token_id, entry.range_end_token_id, burned);
+        let metadata = KnowledgeCollectionMetadata::new(
+            entry.publisher_address,
+            entry.block_number,
+            entry.transaction_hash,
+            entry.block_timestamp,
+        );
+        to_sync.push(KcToSync {
+            kc_id,
+            ual,
+            token_ids,
+            merkle_root: Some(entry.latest_merkle_root),
+            metadata,
+        });
+    }
+
+    observability::record_sync_state_ready_count(blockchain_id.as_str(), to_sync.len());
 
     FilterBatchResult {
         already_synced,
         expired,
         waiting_for_metadata,
+        waiting_for_state,
         to_sync,
     }
 }
 
-/// Keep only KCs that have complete canonical chain metadata available.
-async fn gate_on_chain_metadata(
+async fn gate_on_sql_readiness(
     kcs_needing_sync: &[(u64, String)],
     blockchain_id: &BlockchainId,
     contract_addr_str: &str,
     kc_chain_metadata_repository: &KcChainMetadataRepository,
-) -> (Vec<(u64, String, KnowledgeCollectionMetadata)>, Vec<u64>) {
+) -> (
+    Vec<(u64, String, KcChainReadyForSyncEntry)>,
+    Vec<u64>,
+    Vec<u64>,
+) {
     if kcs_needing_sync.is_empty() {
-        return (Vec::new(), Vec::new());
+        return (Vec::new(), Vec::new(), Vec::new());
     }
 
     let kc_ids: Vec<u64> = kcs_needing_sync.iter().map(|(kc_id, _)| *kc_id).collect();
-    let metadata_by_id = match kc_chain_metadata_repository
-        .get_many_complete(blockchain_id.as_str(), contract_addr_str, &kc_ids)
+    let ready_by_id = match kc_chain_metadata_repository
+        .get_many_ready_for_sync(blockchain_id.as_str(), contract_addr_str, &kc_ids)
         .await
     {
         Ok(entries) => entries,
@@ -251,48 +292,57 @@ async fn gate_on_chain_metadata(
                 blockchain_id = %blockchain_id,
                 contract = %contract_addr_str,
                 error = %error,
-                "Failed to query canonical KC chain metadata; deferring KCs"
+                "Failed to query SQL ready rows"
             );
-            std::collections::HashMap::new()
+            HashMap::new()
+        }
+    };
+
+    let ready_ids: Vec<u64> = ready_by_id.keys().copied().collect();
+    let complete_core_ids = match kc_chain_metadata_repository
+        .get_kc_ids_with_complete_metadata(blockchain_id.as_str(), contract_addr_str, &kc_ids)
+        .await
+    {
+        Ok(ids) => ids,
+        Err(error) => {
+            tracing::warn!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                error = %error,
+                "Failed to query complete core metadata rows"
+            );
+            HashSet::new()
         }
     };
 
     let mut ready = Vec::with_capacity(kcs_needing_sync.len());
-    let mut waiting = Vec::new();
+    let mut waiting_for_metadata = Vec::new();
+    let mut waiting_for_state = Vec::new();
+
     for (kc_id, ual) in kcs_needing_sync {
-        if let Some(metadata) = metadata_by_id.get(kc_id) {
-            ready.push((*kc_id, ual.clone(), to_domain_metadata(metadata)));
+        if let Some(entry) = ready_by_id.get(kc_id) {
+            ready.push((*kc_id, ual.clone(), entry.clone()));
+            continue;
+        }
+        if complete_core_ids.contains(kc_id) {
+            waiting_for_state.push(*kc_id);
         } else {
-            waiting.push(*kc_id);
+            waiting_for_metadata.push(*kc_id);
         }
     }
 
-    if !waiting.is_empty() {
-        tracing::trace!(
-            blockchain_id = %blockchain_id,
-            contract = %contract_addr_str,
-            waiting_count = waiting.len(),
-            ready_count = ready.len(),
-            "Skipping KCs without canonical chain metadata"
-        );
-    }
+    tracing::trace!(
+        blockchain_id = %blockchain_id,
+        contract = %contract_addr_str,
+        ready = ready_ids.len(),
+        waiting_for_metadata = waiting_for_metadata.len(),
+        waiting_for_state = waiting_for_state.len(),
+        "SQL readiness gate results"
+    );
 
-    (ready, waiting)
+    (ready, waiting_for_metadata, waiting_for_state)
 }
 
-fn to_domain_metadata(
-    metadata: &dkg_repository::KcChainMetadataEntry,
-) -> KnowledgeCollectionMetadata {
-    KnowledgeCollectionMetadata::new(
-        metadata.publisher_address.clone(),
-        metadata.block_number,
-        metadata.transaction_hash.clone(),
-        metadata.block_timestamp,
-    )
-}
-
-/// Check which KCs already exist locally in the triple store.
-/// Returns only those that need syncing (don't exist locally).
 #[instrument(
     name = "filter_check_local",
     skip(chunk, blockchain_id, contract_address, triple_store_assertions),
@@ -304,7 +354,6 @@ async fn check_local_existence(
     contract_address: &Address,
     triple_store_assertions: &TripleStoreAssertions,
 ) -> Vec<(u64, String)> {
-    // Build UALs for all KCs in the chunk
     let kc_uals: Vec<(u64, String)> = chunk
         .iter()
         .map(|&kc_id| {
@@ -313,13 +362,11 @@ async fn check_local_existence(
         })
         .collect();
 
-    // Batch existence check to reduce per-KC SPARQL requests
     let uals: Vec<String> = kc_uals.iter().map(|(_, ual)| ual.clone()).collect();
     let existing = triple_store_assertions
         .knowledge_collections_exist_by_uals(&uals)
         .await;
 
-    // Return only KCs that need syncing
     kc_uals
         .into_iter()
         .filter_map(|(kc_id, ual)| {
@@ -330,124 +377,4 @@ async fn check_local_existence(
             }
         })
         .collect()
-}
-
-/// Fetch all RPC data for KCs in a single Multicall and filter expired ones.
-///
-/// Batches end epochs, token ranges, and merkle roots together:
-/// Layout: [end_epoch_0, range_0, merkle_0, end_epoch_1, range_1, merkle_1, ...]
-///
-/// Returns KcToSync for non-expired KCs. Expired KCs are added to the expired list.
-#[instrument(
-    name = "filter_fetch_rpc",
-    skip(kcs_needing_sync, blockchain_manager, expired),
-    fields(kc_count = kcs_needing_sync.len())
-)]
-async fn fetch_rpc_data_and_filter(
-    kcs_needing_sync: &[(u64, String, KnowledgeCollectionMetadata)],
-    current_epoch: Option<u64>,
-    blockchain_id: &BlockchainId,
-    contract_address: &Address,
-    contract_addr_str: &str,
-    blockchain_manager: &BlockchainManager,
-    expired: &mut Vec<u64>,
-) -> Vec<KcToSync> {
-    if kcs_needing_sync.is_empty() {
-        return Vec::new();
-    }
-
-    let kc_ids: Vec<u128> = kcs_needing_sync
-        .iter()
-        .map(|(kc_id, _, _)| *kc_id as u128)
-        .collect();
-
-    // Batch all calls in a single Multicall3
-    // Layout: [end_epoch_0, range_0, merkle_0, end_epoch_1, range_1, merkle_1, ...]
-    let mut batch = MulticallBatch::with_capacity(kc_ids.len() * 3);
-    for &kc_id in &kc_ids {
-        batch.add(MulticallRequest::new(
-            *contract_address,
-            encoders::encode_get_end_epoch(kc_id),
-        ));
-        batch.add(MulticallRequest::new(
-            *contract_address,
-            encoders::encode_get_knowledge_assets_range(kc_id),
-        ));
-        batch.add(MulticallRequest::new(
-            *contract_address,
-            encoders::encode_get_merkle_root(kc_id),
-        ));
-    }
-
-    let rpc_start = Instant::now();
-    let results = match blockchain_manager
-        .execute_multicall(blockchain_id, batch)
-        .await
-    {
-        Ok(r) => {
-            observability::record_sync_filter_rpc("ok", rpc_start.elapsed(), kc_ids.len());
-            r
-        }
-        Err(e) => {
-            observability::record_sync_filter_rpc("error", rpc_start.elapsed(), kc_ids.len());
-            tracing::warn!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
-                error = %e,
-                kc_count = kc_ids.len(),
-                "Multicall failed, will retry later"
-            );
-            return Vec::new();
-        }
-    };
-
-    // Process results (3 results per KC: end_epoch, range, merkle_root)
-    let mut batch_to_sync = Vec::new();
-    for ((kc_id, ual, metadata), chunk) in kcs_needing_sync.iter().zip(results.chunks(3)) {
-        let [epoch_result, range_result, merkle_result] = chunk else {
-            continue;
-        };
-
-        // Check expiration first
-        let end_epoch = epoch_result.as_u64().filter(|&e| e != 0);
-        if let (Some(current), Some(end)) = (current_epoch, end_epoch)
-            && current > end
-        {
-            tracing::trace!(
-                kc_id = kc_id,
-                current_epoch = current,
-                end_epoch = end,
-                "Filter: KC is expired, skipping"
-            );
-            expired.push(*kc_id);
-            continue;
-        }
-
-        // Parse token range
-        let Some((global_start, global_end, global_burned)) =
-            range_result.as_knowledge_assets_range()
-        else {
-            tracing::warn!(
-                blockchain_id = %blockchain_id,
-                contract = %contract_addr_str,
-                kc_id = kc_id,
-                "KC has no token range on chain, skipping"
-            );
-            continue;
-        };
-
-        let merkle_root = merkle_result.as_bytes32_hex();
-        let token_ids =
-            TokenIds::from_global_range(*kc_id as u128, global_start, global_end, global_burned);
-
-        batch_to_sync.push(KcToSync {
-            kc_id: *kc_id,
-            ual: ual.clone(),
-            token_ids,
-            merkle_root,
-            metadata: metadata.clone(),
-        });
-    }
-
-    batch_to_sync
 }

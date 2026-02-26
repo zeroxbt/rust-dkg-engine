@@ -101,6 +101,12 @@ fn proving() -> ProvingConfig {
 fn sync() -> SyncConfig {
     SyncConfig {
         enabled: true,
+        head_safety_blocks: 2,
+        sync_idle_sleep_secs: 30,
+        metadata_backfill_block_batch_size: 400,
+        metadata_state_batch_size: 200,
+        metadata_stage_batch_size: 100,
+        metadata_backfill_enabled: true,
         period_catching_up_secs: 0,
         period_idle_secs: 30,
         no_peers_retry_delay_secs: 5,
