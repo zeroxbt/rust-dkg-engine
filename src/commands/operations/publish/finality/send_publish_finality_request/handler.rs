@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dkg_blockchain::{Address, B256, BlockchainId, BlockchainManager, U256};
+use dkg_blockchain::{Address, B256, BlockchainId, U256};
 use dkg_domain::{KnowledgeCollectionMetadata, derive_ual};
 use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{FinalityRequestData, FinalityResponseData, NetworkManager, PeerId};
@@ -30,16 +30,11 @@ pub(crate) struct SendPublishFinalityRequestCommandData {
     pub byte_size: u128,
     /// The merkle root (dataset root) of the knowledge collection
     pub dataset_root: B256,
-    /// The transaction hash (used to fetch publisher address)
-    pub transaction_hash: B256,
-    /// The block number where the event was emitted
-    pub block_number: u64,
-    /// The block timestamp (unix seconds)
-    pub block_timestamp: u64,
+    /// Core chain metadata resolved by the listener.
+    pub metadata: KnowledgeCollectionMetadata,
 }
 
 impl SendPublishFinalityRequestCommandData {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         blockchain: BlockchainId,
         publish_operation_id: String,
@@ -47,9 +42,7 @@ impl SendPublishFinalityRequestCommandData {
         knowledge_collection_storage_address: Address,
         byte_size: u128,
         dataset_root: B256,
-        transaction_hash: B256,
-        block_number: u64,
-        block_timestamp: u64,
+        metadata: KnowledgeCollectionMetadata,
     ) -> Self {
         Self {
             blockchain,
@@ -58,9 +51,7 @@ impl SendPublishFinalityRequestCommandData {
             knowledge_collection_storage_address,
             byte_size,
             dataset_root,
-            transaction_hash,
-            block_number,
-            block_timestamp,
+            metadata,
         }
     }
 }
@@ -69,7 +60,6 @@ pub(crate) struct SendPublishFinalityRequestCommandHandler {
     finality_status_repository: FinalityStatusRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
     pub(super) network_manager: Arc<NetworkManager>,
-    blockchain_manager: Arc<BlockchainManager>,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
     triple_store_assertions: Arc<TripleStoreAssertions>,
 }
@@ -80,7 +70,6 @@ impl SendPublishFinalityRequestCommandHandler {
             finality_status_repository: deps.finality_status_repository,
             triples_insert_count_repository: deps.triples_insert_count_repository,
             network_manager: deps.network_manager,
-            blockchain_manager: deps.blockchain_manager,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
             triple_store_assertions: deps.triple_store_assertions,
         }
@@ -100,7 +89,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             publish_operation_id = %data.publish_operation_id,
             blockchain = %data.blockchain,
             kc_id = %data.knowledge_collection_id,
-            block_number = data.block_number,
+            block_number = data.metadata.block_number(),
         )
     )]
     async fn execute(&self, data: &SendPublishFinalityRequestCommandData) -> CommandOutcome {
@@ -152,30 +141,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             }
         };
 
-        // Fetch the publisher address from the transaction
-        let publisher_address = match self
-            .blockchain_manager
-            .get_transaction_sender(&data.blockchain, data.transaction_hash)
-            .await
-        {
-            Ok(Some(addr)) => addr,
-            Ok(None) => {
-                tracing::error!(
-                    tx_hash = %data.transaction_hash,
-                    "Transaction not found, cannot determine publisher address"
-                );
-                return CommandOutcome::Completed;
-            }
-            Err(e) => {
-                tracing::error!(
-                    tx_hash = %data.transaction_hash,
-                    error = %e,
-                    "Failed to fetch transaction"
-                );
-                return CommandOutcome::Completed;
-            }
-        };
-
         // Validate merkle root matches
         let blockchain_merkle_root =
             format!("0x{}", dkg_blockchain::to_hex_string(data.dataset_root));
@@ -201,12 +166,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             return CommandOutcome::Completed;
         }
 
-        let metadata = KnowledgeCollectionMetadata::new(
-            publisher_address.to_string().to_lowercase(),
-            data.block_number,
-            data.transaction_hash.to_string(),
-            data.block_timestamp,
-        );
+        let metadata = data.metadata.clone();
 
         // Derive UAL for the knowledge collection
         let ual = derive_ual(

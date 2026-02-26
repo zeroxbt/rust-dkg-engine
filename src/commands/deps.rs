@@ -35,7 +35,6 @@ pub(crate) struct SendPublishFinalityRequestDeps {
     pub(crate) finality_status_repository: FinalityStatusRepository,
     pub(crate) triples_insert_count_repository: TriplesInsertCountRepository,
     pub(crate) network_manager: Arc<NetworkManager>,
-    pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
     pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
 }
