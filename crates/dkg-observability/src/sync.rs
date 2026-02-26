@@ -311,6 +311,7 @@ pub fn record_sync_insert_batch(
 pub fn record_sync_metadata_backfill_chunk(
     blockchain_id: &str,
     status: &str,
+    range_type: &str,
     duration: Duration,
     blocks_scanned: u64,
     events_found: usize,
@@ -318,25 +319,29 @@ pub fn record_sync_metadata_backfill_chunk(
     counter!(
         "node_sync_metadata_backfill_chunk_total",
         "blockchain_id" => blockchain_id.to_string(),
-        "status" => status.to_string()
+        "status" => status.to_string(),
+        "range_type" => range_type.to_string()
     )
     .increment(1);
     histogram!(
         "node_sync_metadata_backfill_chunk_duration_seconds",
         "blockchain_id" => blockchain_id.to_string(),
-        "status" => status.to_string()
+        "status" => status.to_string(),
+        "range_type" => range_type.to_string()
     )
     .record(duration.as_secs_f64());
     histogram!(
         "node_sync_metadata_backfill_blocks_scanned",
         "blockchain_id" => blockchain_id.to_string(),
-        "status" => status.to_string()
+        "status" => status.to_string(),
+        "range_type" => range_type.to_string()
     )
     .record(blocks_scanned as f64);
     histogram!(
         "node_sync_metadata_backfill_events_found",
         "blockchain_id" => blockchain_id.to_string(),
-        "status" => status.to_string()
+        "status" => status.to_string(),
+        "range_type" => range_type.to_string()
     )
     .record(events_found as f64);
 }
@@ -356,6 +361,15 @@ pub fn record_sync_metadata_cursor(blockchain_id: &str, contract: &str, cursor_b
         "contract" => contract.to_string()
     )
     .set(cursor_block as f64);
+}
+
+pub fn record_sync_metadata_gaps_detected(blockchain_id: &str, contract: &str, count: u64) {
+    gauge!(
+        "node_sync_metadata_gaps_detected",
+        "blockchain_id" => blockchain_id.to_string(),
+        "contract" => contract.to_string()
+    )
+    .set(count as f64);
 }
 
 pub fn record_sync_metadata_cursor_lag(blockchain_id: &str, contract: &str, lag_blocks: u64) {

@@ -107,6 +107,7 @@ fn sync() -> SyncConfig {
         metadata_state_batch_size: 200,
         metadata_stage_batch_size: 100,
         metadata_backfill_enabled: true,
+        metadata_gap_recheck_interval_secs: 300,
         period_catching_up_secs: 0,
         period_idle_secs: 30,
         no_peers_retry_delay_secs: 5,

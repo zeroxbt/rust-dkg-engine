@@ -574,10 +574,10 @@ impl BlockchainEventListenerTask {
                 &contract_address_str,
                 kc_id_u64,
                 publisher_address.as_deref(),
-                Some(block_number),
-                Some(&transaction_hash_str),
-                Some(block_timestamp),
-                Some(&publish_operation_id),
+                block_number,
+                &transaction_hash_str,
+                block_timestamp,
+                &publish_operation_id,
                 Some("event_listener"),
             )
             .await

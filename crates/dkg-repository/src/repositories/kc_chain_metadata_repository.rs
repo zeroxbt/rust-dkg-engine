@@ -4,7 +4,11 @@ use std::{
 };
 
 use chrono::Utc;
-use sea_orm::{ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{
+    ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    Statement,
+};
+use sea_orm::sea_query::Value;
 
 use crate::{
     error::{RepositoryError, Result},
@@ -20,6 +24,19 @@ use crate::{
     },
     types::{KcChainMetadataEntry, KcChainReadyForSyncEntry},
 };
+
+/// Result of the two NOT EXISTS gap-detection queries.
+/// `ends_of_runs[i]` paired with `starts_of_runs[i+1]` gives internal gap boundaries.
+/// `starts_of_runs[0].kc_id > 1` indicates a leading gap.
+/// `ends_of_runs.last()` gives the tail start block.
+#[derive(Debug, Clone)]
+pub struct GapBoundaries {
+    /// (kc_id, block_number) for the last KC of each consecutive run, sorted by kc_id.
+    pub ends_of_runs: Vec<(u64, u64)>,
+    /// (kc_id, block_number) for the first KC of each consecutive run (including run starting
+    /// at 1 if it exists), sorted by kc_id.
+    pub starts_of_runs: Vec<(u64, u64)>,
+}
 
 #[derive(Clone)]
 pub struct KcChainMetadataRepository {
@@ -39,10 +56,10 @@ impl KcChainMetadataRepository {
         contract_address: &str,
         kc_id: u64,
         publisher_address: Option<&str>,
-        block_number: Option<u64>,
-        transaction_hash: Option<&str>,
-        block_timestamp: Option<u64>,
-        publish_operation_id: Option<&str>,
+        block_number: u64,
+        transaction_hash: &str,
+        block_timestamp: u64,
+        publish_operation_id: &str,
         source: Option<&str>,
     ) -> Result<()> {
         self.upsert_core_metadata(
@@ -67,15 +84,15 @@ impl KcChainMetadataRepository {
         contract_address: &str,
         kc_id: u64,
         publisher_address: Option<&str>,
-        block_number: Option<u64>,
-        transaction_hash: Option<&str>,
-        block_timestamp: Option<u64>,
-        publish_operation_id: Option<&str>,
+        block_number: u64,
+        transaction_hash: &str,
+        block_timestamp: u64,
+        publish_operation_id: &str,
         source: Option<&str>,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
-        let block_number = Self::opt_u64_to_i64(block_number, "block_number")?;
-        let block_timestamp = Self::opt_u64_to_i64(block_timestamp, "block_timestamp")?;
+        let block_number = Self::u64_to_i64(block_number, "block_number")?;
+        let block_timestamp = Self::u64_to_i64(block_timestamp, "block_timestamp")?;
 
         let model = CoreActiveModel {
             blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
@@ -83,9 +100,9 @@ impl KcChainMetadataRepository {
             kc_id: ActiveValue::Set(kc_id),
             publisher_address: ActiveValue::Set(publisher_address.map(ToString::to_string)),
             block_number: ActiveValue::Set(block_number),
-            transaction_hash: ActiveValue::Set(transaction_hash.map(ToString::to_string)),
+            transaction_hash: ActiveValue::Set(transaction_hash.to_string()),
             block_timestamp: ActiveValue::Set(block_timestamp),
-            publish_operation_id: ActiveValue::Set(publish_operation_id.map(ToString::to_string)),
+            publish_operation_id: ActiveValue::Set(publish_operation_id.to_string()),
             source: ActiveValue::Set(source.map(ToString::to_string)),
             created_at: ActiveValue::Set(now),
             updated_at: ActiveValue::Set(now),
@@ -264,9 +281,6 @@ impl KcChainMetadataRepository {
             .filter(CoreColumn::ContractAddress.eq(contract_address))
             .filter(CoreColumn::KcId.is_in(kc_ids.to_vec()))
             .filter(CoreColumn::PublisherAddress.is_not_null())
-            .filter(CoreColumn::BlockNumber.is_not_null())
-            .filter(CoreColumn::TransactionHash.is_not_null())
-            .filter(CoreColumn::BlockTimestamp.is_not_null())
             .all(self.conn.as_ref())
             .await?;
 
@@ -318,9 +332,6 @@ impl KcChainMetadataRepository {
             .filter(CoreColumn::ContractAddress.eq(contract_address))
             .filter(CoreColumn::KcId.is_in(kc_ids.to_vec()))
             .filter(CoreColumn::PublisherAddress.is_not_null())
-            .filter(CoreColumn::BlockNumber.is_not_null())
-            .filter(CoreColumn::TransactionHash.is_not_null())
-            .filter(CoreColumn::BlockTimestamp.is_not_null())
             .all(self.conn.as_ref())
             .await?;
         let core_by_id: HashMap<u64, CoreModel> =
@@ -392,6 +403,85 @@ impl KcChainMetadataRepository {
         Ok(missing)
     }
 
+    /// Find KC ID sequence gap boundaries for a contract using two NOT EXISTS queries.
+    ///
+    /// Returns `GapBoundaries` containing:
+    /// - `ends_of_runs`: last KC of each consecutive run (sorted by kc_id)
+    /// - `starts_of_runs`: first KC of each consecutive run (sorted by kc_id)
+    ///
+    /// The caller uses these to compute scan ranges:
+    /// - leading gap: `starts_of_runs[0].kc_id > 1`
+    /// - internal gaps: `zip(ends[..n-1], starts[1..])`
+    /// - tail: `ends[last]`
+    pub async fn find_gap_boundaries(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+    ) -> Result<GapBoundaries> {
+        let db = self.conn.as_ref();
+
+        let ends_sql = Statement::from_sql_and_values(
+            db.get_database_backend(),
+            r#"
+            SELECT t.kc_id, t.block_number
+            FROM kc_chain_core_metadata t
+            WHERE t.blockchain_id = ?
+              AND t.contract_address = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM kc_chain_core_metadata
+                WHERE blockchain_id = t.blockchain_id
+                  AND contract_address = t.contract_address
+                  AND kc_id = t.kc_id + 1
+              )
+            ORDER BY t.kc_id ASC
+            "#,
+            [
+                Value::String(Some(Box::new(blockchain_id.to_string()))),
+                Value::String(Some(Box::new(contract_address.to_string()))),
+            ],
+        );
+
+        let starts_sql = Statement::from_sql_and_values(
+            db.get_database_backend(),
+            r#"
+            SELECT t.kc_id, t.block_number
+            FROM kc_chain_core_metadata t
+            WHERE t.blockchain_id = ?
+              AND t.contract_address = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM kc_chain_core_metadata
+                WHERE blockchain_id = t.blockchain_id
+                  AND contract_address = t.contract_address
+                  AND kc_id = t.kc_id - 1
+              )
+            ORDER BY t.kc_id ASC
+            "#,
+            [
+                Value::String(Some(Box::new(blockchain_id.to_string()))),
+                Value::String(Some(Box::new(contract_address.to_string()))),
+            ],
+        );
+
+        let ends_rows = db.query_all(ends_sql).await.map_err(RepositoryError::Database)?;
+        let starts_rows = db.query_all(starts_sql).await.map_err(RepositoryError::Database)?;
+
+        let mut ends_of_runs = Vec::with_capacity(ends_rows.len());
+        for row in ends_rows {
+            let kc_id: u64 = row.try_get("", "kc_id").map_err(RepositoryError::Database)?;
+            let block_number: i64 = row.try_get("", "block_number").map_err(RepositoryError::Database)?;
+            ends_of_runs.push((kc_id, block_number.max(0) as u64));
+        }
+
+        let mut starts_of_runs = Vec::with_capacity(starts_rows.len());
+        for row in starts_rows {
+            let kc_id: u64 = row.try_get("", "kc_id").map_err(RepositoryError::Database)?;
+            let block_number: i64 = row.try_get("", "block_number").map_err(RepositoryError::Database)?;
+            starts_of_runs.push((kc_id, block_number.max(0) as u64));
+        }
+
+        Ok(GapBoundaries { ends_of_runs, starts_of_runs })
+    }
+
     fn to_complete_entry(
         core: CoreModel,
         state: Option<&StateModel>,
@@ -401,9 +491,9 @@ impl KcChainMetadataRepository {
             contract_address: core.contract_address,
             kc_id: core.kc_id,
             publisher_address: core.publisher_address?,
-            block_number: Self::opt_i64_to_u64(core.block_number)?,
-            transaction_hash: core.transaction_hash?,
-            block_timestamp: Self::opt_i64_to_u64(core.block_timestamp)?,
+            block_number: u64::try_from(core.block_number).ok()?,
+            transaction_hash: core.transaction_hash,
+            block_timestamp: u64::try_from(core.block_timestamp).ok()?,
             range_start_token_id: state.and_then(|s| Self::opt_i64_to_u64(s.range_start_token_id)),
             range_end_token_id: state.and_then(|s| Self::opt_i64_to_u64(s.range_end_token_id)),
             burned_mode: state.and_then(|s| s.burned_mode),
@@ -414,7 +504,7 @@ impl KcChainMetadataRepository {
             state_updated_at: state.map_or(0, |s| s.state_updated_at),
             private_graph_mode: state.and_then(|s| s.private_graph_mode),
             private_graph_payload: state.and_then(|s| s.private_graph_payload.clone()),
-            publish_operation_id: core.publish_operation_id,
+            publish_operation_id: Some(core.publish_operation_id),
             source: core.source.or_else(|| state.and_then(|s| s.source.clone())),
             created_at: core.created_at,
             updated_at: core.updated_at,
@@ -430,9 +520,9 @@ impl KcChainMetadataRepository {
             contract_address: core.contract_address.clone(),
             kc_id: core.kc_id,
             publisher_address: core.publisher_address.clone()?,
-            block_number: u64::try_from(core.block_number?).ok()?,
-            transaction_hash: core.transaction_hash.clone()?,
-            block_timestamp: u64::try_from(core.block_timestamp?).ok()?,
+            block_number: u64::try_from(core.block_number).ok()?,
+            transaction_hash: core.transaction_hash.clone(),
+            block_timestamp: u64::try_from(core.block_timestamp).ok()?,
             range_start_token_id: u64::try_from(state.range_start_token_id?).ok()?,
             range_end_token_id: u64::try_from(state.range_end_token_id?).ok()?,
             burned_mode: state.burned_mode?,
