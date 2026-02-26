@@ -14,8 +14,8 @@ pub struct Model {
     pub contract_address: String,
     #[sea_orm(primary_key)]
     pub kc_id: u64,
-    pub range_start_token_id: i64,
-    pub range_end_token_id: i64,
+    pub range_start_token_id: u32,
+    pub range_end_token_id: u32,
     pub burned_mode: u32,
     pub burned_payload: Vec<u8>,
     pub end_epoch: i64,
@@ -24,7 +24,6 @@ pub struct Model {
     pub state_updated_at: i64,
     pub private_graph_mode: Option<u32>,
     pub private_graph_payload: Option<Vec<u8>>,
-    pub source: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }

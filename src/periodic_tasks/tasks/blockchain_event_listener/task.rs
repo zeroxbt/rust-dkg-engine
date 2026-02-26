@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     application::kc_chain_metadata_sync::{
         BuildKcRecordError, KcChainMetadataRecord, build_kc_chain_metadata_record,
-        hydrate_core_metadata_publishers, hydrate_kc_state_metadata,
+        hydrate_block_timestamps, hydrate_core_metadata_publishers, hydrate_kc_state_metadata,
         upsert_kc_chain_metadata_record,
     },
     commands::{
@@ -424,6 +424,12 @@ impl BlockchainEventListenerTask {
                 }
             }
 
+            hydrate_block_timestamps(
+                self.blockchain_manager.as_ref(),
+                blockchain_id,
+                &mut pending_kc_created_events,
+            )
+            .await;
             hydrate_core_metadata_publishers(
                 self.blockchain_manager.as_ref(),
                 blockchain_id,
@@ -582,11 +588,15 @@ impl BlockchainEventListenerTask {
             "Knowledge collection created"
         );
 
-        if event.publisher_address.is_none() || event.kc_state_metadata.is_none() {
+        if event.block_timestamp == 0
+            || event.publisher_address.is_none()
+            || event.kc_state_metadata.is_none()
+        {
             tracing::warn!(
                 blockchain = %blockchain_id,
                 contract = ?event.contract_address,
                 kc_id = event.kc_id,
+                block_timestamp = event.block_timestamp,
                 has_publisher = event.publisher_address.is_some(),
                 has_state = event.kc_state_metadata.is_some(),
                 "Skipping live KC metadata upsert/finality because full metadata hydration is incomplete"

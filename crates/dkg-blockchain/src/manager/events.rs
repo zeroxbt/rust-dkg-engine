@@ -26,6 +26,16 @@ impl BlockchainManager {
         blockchain_impl.get_block_number().await
     }
 
+    /// Get a block timestamp by block number.
+    pub async fn get_block_timestamp(
+        &self,
+        blockchain: &BlockchainId,
+        block_number: u64,
+    ) -> Result<Option<u64>, BlockchainError> {
+        let blockchain_impl = self.chain(blockchain)?;
+        blockchain_impl.get_block_timestamp(block_number).await
+    }
+
     /// Get the sender address of a transaction by its hash.
     pub async fn get_transaction_sender(
         &self,

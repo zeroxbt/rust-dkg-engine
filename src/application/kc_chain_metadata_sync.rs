@@ -1,10 +1,16 @@
+use std::collections::HashMap;
+
 use dkg_blockchain::{
     Address, B256, BlockchainId, BlockchainManager, MulticallBatch, MulticallRequest, U256,
     encoders, to_hex_string,
 };
+use dkg_domain::TokenIds;
 use dkg_repository::{KcChainMetadataRepository, error::RepositoryError};
+use futures::{StreamExt, stream};
 
 use crate::application::state_metadata::encode_burned_ids;
+
+const BLOCK_TIMESTAMP_FETCH_CONCURRENCY: usize = 16;
 
 #[derive(Debug, Clone)]
 pub(crate) struct KcHydratedStateMetadata {
@@ -85,6 +91,69 @@ pub(crate) async fn hydrate_core_metadata_publishers(
     }
 }
 
+pub(crate) async fn hydrate_block_timestamps(
+    blockchain_manager: &BlockchainManager,
+    blockchain_id: &BlockchainId,
+    records: &mut [KcChainMetadataRecord],
+) {
+    if records.is_empty() {
+        return;
+    }
+
+    let mut timestamps_by_block: HashMap<u64, u64> = HashMap::new();
+    let mut blocks: Vec<u64> = records
+        .iter()
+        .filter(|record| record.block_timestamp == 0)
+        .map(|record| record.block_number)
+        .collect();
+    blocks.sort_unstable();
+    blocks.dedup();
+
+    let block_results = stream::iter(blocks.into_iter())
+        .map(|block_number| async move {
+            (
+                block_number,
+                blockchain_manager
+                    .get_block_timestamp(blockchain_id, block_number)
+                    .await,
+            )
+        })
+        .buffer_unordered(BLOCK_TIMESTAMP_FETCH_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+
+    for (block_number, result) in block_results {
+        match result {
+            Ok(Some(timestamp)) => {
+                timestamps_by_block.insert(block_number, timestamp);
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    blockchain = %blockchain_id,
+                    block_number,
+                    "Missing block while hydrating KC metadata timestamp"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    blockchain = %blockchain_id,
+                    block_number,
+                    error = %error,
+                    "Failed to hydrate KC metadata timestamp"
+                );
+            }
+        }
+    }
+
+    for record in records.iter_mut() {
+        if record.block_timestamp == 0
+            && let Some(timestamp) = timestamps_by_block.get(&record.block_number).copied()
+        {
+            record.block_timestamp = timestamp;
+        }
+    }
+}
+
 pub(crate) async fn hydrate_kc_state_metadata(
     blockchain_manager: &BlockchainManager,
     blockchain_id: &BlockchainId,
@@ -135,7 +204,9 @@ pub(crate) async fn hydrate_kc_state_metadata(
                     let range_result = &results[base + 1];
                     let merkle_result = &results[base + 2];
 
-                    let Some((start, end, burned)) = range_result.as_knowledge_assets_range() else {
+                    let Some((global_start, global_end, global_burned)) =
+                        range_result.as_knowledge_assets_range()
+                    else {
                         tracing::warn!(
                             blockchain = %blockchain_id,
                             contract = ?record.contract_address,
@@ -154,10 +225,33 @@ pub(crate) async fn hydrate_kc_state_metadata(
                         );
                         continue;
                     };
+
+                    if record.kc_id == 0 {
+                        tracing::warn!(
+                            blockchain = %blockchain_id,
+                            contract = ?record.contract_address,
+                            kc_id = record.kc_id,
+                            "Invalid KC id for token range normalization"
+                        );
+                        continue;
+                    }
+
+                    // Chain returns global token ids; normalize to per-KC local token ids
+                    // expected by triple-store UALs (/.../{local_token_id}).
+                    let local_token_ids = TokenIds::from_global_range(
+                        record.kc_id as u128,
+                        global_start,
+                        global_end,
+                        global_burned,
+                    );
+                    let start = local_token_ids.start_token_id();
+                    let end = local_token_ids.end_token_id();
+                    let burned = local_token_ids.burned();
+
                     let latest_merkle_root = merkle_result
                         .as_bytes32_hex()
                         .unwrap_or_else(|| format!("0x{}", to_hex_string(record.merkle_root)));
-                    let burned_encoding = encode_burned_ids(start, end, &burned);
+                    let burned_encoding = encode_burned_ids(start, end, burned);
 
                     record.kc_state_metadata = Some(KcHydratedStateMetadata {
                         range_start_token_id: start,

@@ -148,11 +148,13 @@ impl KcChainMetadataRepository {
         end_epoch: u64,
         latest_merkle_root: &str,
         state_observed_block: u64,
-        source: Option<&str>,
+        _source: Option<&str>,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
-        let range_start_token_id = Self::u64_to_i64(range_start_token_id, "range_start_token_id")?;
-        let range_end_token_id = Self::u64_to_i64(range_end_token_id, "range_end_token_id")?;
+        let range_start_token_id =
+            Self::u64_to_u32(range_start_token_id, "range_start_token_id")?;
+        let range_end_token_id =
+            Self::u64_to_u32(range_end_token_id, "range_end_token_id")?;
         let end_epoch = Self::u64_to_i64(end_epoch, "end_epoch")?;
         let state_observed_block = Self::u64_to_i64(state_observed_block, "state_observed_block")?;
 
@@ -170,7 +172,6 @@ impl KcChainMetadataRepository {
             state_updated_at: ActiveValue::Set(now),
             private_graph_mode: ActiveValue::Set(None),
             private_graph_payload: ActiveValue::Set(None),
-            source: ActiveValue::Set(source.map(ToString::to_string)),
             created_at: ActiveValue::Set(now),
             updated_at: ActiveValue::Set(now),
         };
@@ -191,7 +192,6 @@ impl KcChainMetadataRepository {
                     StateColumn::LatestMerkleRoot,
                     StateColumn::StateObservedBlock,
                     StateColumn::StateUpdatedAt,
-                    StateColumn::Source,
                     StateColumn::UpdatedAt,
                 ])
                 .to_owned(),
@@ -210,7 +210,7 @@ impl KcChainMetadataRepository {
         kc_id: u64,
         private_graph_mode: Option<u32>,
         private_graph_payload: Option<&[u8]>,
-        source: Option<&str>,
+        _source: Option<&str>,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
         let update_result = StateEntity::update_many()
@@ -221,10 +221,6 @@ impl KcChainMetadataRepository {
             .col_expr(
                 StateColumn::PrivateGraphPayload,
                 Expr::value(private_graph_payload.map(ToOwned::to_owned)),
-            )
-            .col_expr(
-                StateColumn::Source,
-                Expr::value(source.map(ToString::to_string)),
             )
             .col_expr(StateColumn::UpdatedAt, Expr::value(now))
             .exec(self.conn.as_ref())
@@ -586,8 +582,8 @@ impl KcChainMetadataRepository {
             block_number: u64::try_from(core.block_number).ok()?,
             transaction_hash: core.transaction_hash,
             block_timestamp: u64::try_from(core.block_timestamp).ok()?,
-            range_start_token_id: state.and_then(|s| Self::i64_to_u64(s.range_start_token_id)),
-            range_end_token_id: state.and_then(|s| Self::i64_to_u64(s.range_end_token_id)),
+            range_start_token_id: state.map(|s| u64::from(s.range_start_token_id)),
+            range_end_token_id: state.map(|s| u64::from(s.range_end_token_id)),
             burned_mode: state.map(|s| s.burned_mode),
             burned_payload: state.map(|s| s.burned_payload.clone()),
             end_epoch: state.and_then(|s| Self::i64_to_u64(s.end_epoch)),
@@ -597,7 +593,7 @@ impl KcChainMetadataRepository {
             private_graph_mode: state.and_then(|s| s.private_graph_mode),
             private_graph_payload: state.and_then(|s| s.private_graph_payload.clone()),
             publish_operation_id: Some(core.publish_operation_id),
-            source: core.source.or_else(|| state.and_then(|s| s.source.clone())),
+            source: core.source,
             created_at: core.created_at,
             updated_at: core.updated_at,
         })
@@ -615,8 +611,8 @@ impl KcChainMetadataRepository {
             block_number: u64::try_from(core.block_number).ok()?,
             transaction_hash: core.transaction_hash.clone(),
             block_timestamp: u64::try_from(core.block_timestamp).ok()?,
-            range_start_token_id: u64::try_from(state.range_start_token_id).ok()?,
-            range_end_token_id: u64::try_from(state.range_end_token_id).ok()?,
+            range_start_token_id: u64::from(state.range_start_token_id),
+            range_end_token_id: u64::from(state.range_end_token_id),
             burned_mode: state.burned_mode,
             burned_payload: state.burned_payload.clone(),
             end_epoch: u64::try_from(state.end_epoch).ok()?,
@@ -629,6 +625,14 @@ impl KcChainMetadataRepository {
         i64::try_from(value).map_err(|_| {
             RepositoryError::Database(sea_orm::DbErr::Custom(format!(
                 "{field_name} exceeds i64::MAX"
+            )))
+        })
+    }
+
+    fn u64_to_u32(value: u64, field_name: &'static str) -> Result<u32> {
+        u32::try_from(value).map_err(|_| {
+            RepositoryError::Database(sea_orm::DbErr::Custom(format!(
+                "{field_name} exceeds u32::MAX"
             )))
         })
     }

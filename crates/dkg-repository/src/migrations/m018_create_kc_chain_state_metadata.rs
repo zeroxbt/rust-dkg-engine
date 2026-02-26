@@ -1,7 +1,7 @@
 use sea_orm_migration::{
     async_trait::async_trait,
     prelude::{DbErr, DeriveMigrationName, Iden, Index, MigrationTrait, SchemaManager, Table},
-    schema::{big_integer, big_unsigned, string, string_null, unsigned_null},
+    schema::{big_integer, big_unsigned, string, unsigned, unsigned_null},
     sea_query,
 };
 
@@ -21,7 +21,6 @@ enum KcChainStateMetadata {
     StateUpdatedAt,
     PrivateGraphMode,
     PrivateGraphPayload,
-    Source,
     CreatedAt,
     UpdatedAt,
 }
@@ -40,8 +39,8 @@ impl MigrationTrait for Migration {
                     .col(string(KcChainStateMetadata::BlockchainId))
                     .col(string(KcChainStateMetadata::ContractAddress))
                     .col(big_unsigned(KcChainStateMetadata::KcId))
-                    .col(big_integer(KcChainStateMetadata::RangeStartTokenId))
-                    .col(big_integer(KcChainStateMetadata::RangeEndTokenId))
+                    .col(unsigned(KcChainStateMetadata::RangeStartTokenId))
+                    .col(unsigned(KcChainStateMetadata::RangeEndTokenId))
                     .col(sea_query::ColumnDef::new(KcChainStateMetadata::BurnedMode).unsigned().not_null())
                     .col(sea_query::ColumnDef::new(KcChainStateMetadata::BurnedPayload).blob().not_null())
                     .col(big_integer(KcChainStateMetadata::EndEpoch))
@@ -50,7 +49,6 @@ impl MigrationTrait for Migration {
                     .col(big_integer(KcChainStateMetadata::StateUpdatedAt).default(0))
                     .col(unsigned_null(KcChainStateMetadata::PrivateGraphMode))
                     .col(sea_query::ColumnDef::new(KcChainStateMetadata::PrivateGraphPayload).blob())
-                    .col(string_null(KcChainStateMetadata::Source))
                     .col(big_integer(KcChainStateMetadata::CreatedAt))
                     .col(big_integer(KcChainStateMetadata::UpdatedAt))
                     .primary_key(

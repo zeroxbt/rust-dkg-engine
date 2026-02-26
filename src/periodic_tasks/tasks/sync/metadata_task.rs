@@ -17,7 +17,7 @@ use super::SyncConfig;
 use crate::{
     application::kc_chain_metadata_sync::{
         BuildKcRecordError, build_kc_chain_metadata_record, hydrate_core_metadata_publishers,
-        hydrate_kc_state_metadata,
+        hydrate_block_timestamps, hydrate_kc_state_metadata,
         upsert_kc_chain_metadata_record,
     },
     periodic_tasks::SyncDeps,
@@ -444,6 +444,12 @@ impl MetadataSyncTask {
                     chunk_events_found = chunk_events_found.saturating_add(1);
                 }
 
+                hydrate_block_timestamps(
+                    self.deps.blockchain_manager.as_ref(),
+                    blockchain_id,
+                    &mut records,
+                )
+                .await;
                 hydrate_core_metadata_publishers(
                     self.deps.blockchain_manager.as_ref(),
                     blockchain_id,
@@ -460,7 +466,9 @@ impl MetadataSyncTask {
 
                 let before_ready_filter = records.len();
                 records.retain(|record| {
-                    record.publisher_address.is_some() && record.kc_state_metadata.is_some()
+                    record.block_timestamp > 0
+                        && record.publisher_address.is_some()
+                        && record.kc_state_metadata.is_some()
                 });
                 let dropped_not_ready = before_ready_filter.saturating_sub(records.len());
                 if dropped_not_ready > 0 {

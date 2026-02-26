@@ -21,6 +21,28 @@ impl EvmChain {
         .map_err(BlockchainError::get_block_number)
     }
 
+    pub async fn get_block_timestamp(
+        &self,
+        block_number: u64,
+    ) -> Result<Option<u64>, BlockchainError> {
+        let block = self
+            .rpc_call(|| async {
+                let provider = self.provider().await;
+                provider
+                    .get_block_by_number(block_number.into())
+                    .await
+            })
+            .await
+            .map_err(|e| {
+                BlockchainError::Custom(format!(
+                    "Failed to get block {} timestamp: {}",
+                    block_number, e
+                ))
+            })?;
+
+        Ok(block.and_then(|b| u64::try_from(b.header.timestamp).ok()))
+    }
+
     /// Get the sender address of a transaction by its hash.
     pub async fn get_transaction_sender(
         &self,
