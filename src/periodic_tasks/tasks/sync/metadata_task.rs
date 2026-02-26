@@ -115,18 +115,17 @@ fn compute_scan_ranges(
 
     // Leading gap: first known KC doesn't have ID 1.
     let (first_kc_id, first_kc_block) = starts[0];
-    if first_kc_id > 1 {
-        if let Some(dep) = deployment_block {
-            if dep <= first_kc_block {
-                ranges.push(BlockRange {
-                    start: dep,
-                    end: first_kc_block,
-                    range_type: RangeType::Leading,
-                });
-            }
-        }
-        // deployment_block == None: leading-gap skipped (no known lower bound).
+    if first_kc_id > 1
+        && let Some(dep) = deployment_block
+        && dep <= first_kc_block
+    {
+        ranges.push(BlockRange {
+            start: dep,
+            end: first_kc_block,
+            range_type: RangeType::Leading,
+        });
     }
+    // deployment_block == None: leading-gap skipped (no known lower bound).
 
     // Internal gaps: pair ends[i] with starts[i+1].
     let n = ends.len();
@@ -285,7 +284,10 @@ impl MetadataSyncTask {
         // - A leading gap exists (first KC ID > 1, so we need the lower bound).
         // For internal and tail gaps the deployment block is irrelevant.
         let needs_deployment_block = boundaries.starts_of_runs.is_empty()
-            || boundaries.starts_of_runs.first().is_some_and(|pair| pair.0 > 1);
+            || boundaries
+                .starts_of_runs
+                .first()
+                .is_some_and(|pair| pair.0 > 1);
 
         let deployment_block: Option<u64> = if needs_deployment_block {
             match self
@@ -368,8 +370,9 @@ impl MetadataSyncTask {
             let mut chunk_from = scan_range.start;
 
             while chunk_from <= scan_range.end {
-                let chunk_to =
-                    scan_range.end.min(chunk_from.saturating_add(chunk_size.saturating_sub(1)));
+                let chunk_to = scan_range
+                    .end
+                    .min(chunk_from.saturating_add(chunk_size.saturating_sub(1)));
                 let chunk_started = std::time::Instant::now();
 
                 let logs = self
@@ -436,8 +439,7 @@ impl MetadataSyncTask {
                         .map_err(MetadataSyncError::UpsertCoreMetadata)?;
 
                     discovered_ids.insert(kc_id);
-                    result.metadata_events_found =
-                        result.metadata_events_found.saturating_add(1);
+                    result.metadata_events_found = result.metadata_events_found.saturating_add(1);
                     chunk_events_found = chunk_events_found.saturating_add(1);
                 }
 
@@ -530,7 +532,10 @@ mod tests {
     use dkg_repository::GapBoundaries;
 
     fn boundaries(ends: Vec<(u64, u64)>, starts: Vec<(u64, u64)>) -> GapBoundaries {
-        GapBoundaries { ends_of_runs: ends, starts_of_runs: starts }
+        GapBoundaries {
+            ends_of_runs: ends,
+            starts_of_runs: starts,
+        }
     }
 
     fn br(start: u64, end: u64, range_type: RangeType) -> BlockRange {
@@ -665,17 +670,20 @@ mod tests {
         // Internal gap 1: ends[0]=(3,150) ↔ starts[1]=(7,150) → [150, 150] single-block
         // Internal gap 2: ends[1]=(9,300) ↔ starts[2]=(12,300) → [300, 300] single-block
         // Tail: [450, 500]
-        assert!(plan
-            .ranges
-            .iter()
-            .any(|r| r.start == 150 && r.end == 150 && r.range_type == RangeType::Internal));
-        assert!(plan
-            .ranges
-            .iter()
-            .any(|r| r.start == 300 && r.end == 300 && r.range_type == RangeType::Internal));
-        assert!(plan
-            .ranges
-            .iter()
-            .any(|r| r.start == 450 && r.end == 500 && r.range_type == RangeType::Tail));
+        assert!(
+            plan.ranges
+                .iter()
+                .any(|r| r.start == 150 && r.end == 150 && r.range_type == RangeType::Internal)
+        );
+        assert!(
+            plan.ranges
+                .iter()
+                .any(|r| r.start == 300 && r.end == 300 && r.range_type == RangeType::Internal)
+        );
+        assert!(
+            plan.ranges
+                .iter()
+                .any(|r| r.start == 450 && r.end == 500 && r.range_type == RangeType::Tail)
+        );
     }
 }

@@ -441,7 +441,8 @@ impl BlockchainEventListenerTask {
                             sync_state: None,
                         });
 
-                        ordered_events.push(OrderedDecodedEvent::KnowledgeCollectionCreated(position));
+                        ordered_events
+                            .push(OrderedDecodedEvent::KnowledgeCollectionCreated(position));
                     }
                     Some(other) => ordered_events.push(OrderedDecodedEvent::Decoded(other)),
                     None => {
@@ -729,8 +730,8 @@ impl BlockchainEventListenerTask {
             );
         }
 
-        if let Some(sync_state) = event.sync_state.as_ref() {
-            if let Err(error) = self
+        if let Some(sync_state) = event.sync_state.as_ref()
+            && let Err(error) = self
                 .kc_chain_metadata_repository
                 .upsert_sync_state(
                     blockchain_id.as_str(),
@@ -746,15 +747,14 @@ impl BlockchainEventListenerTask {
                     Some("event_listener"),
                 )
                 .await
-            {
-                tracing::warn!(
-                    blockchain = %blockchain_id,
-                    contract = %contract_address_str,
-                    kc_id = event.kc_id,
-                    error = %error,
-                    "Failed to upsert live KC sync state metadata"
-                );
-            }
+        {
+            tracing::warn!(
+                blockchain = %blockchain_id,
+                contract = %contract_address_str,
+                kc_id = event.kc_id,
+                error = %error,
+                "Failed to upsert live KC sync state metadata"
+            );
         }
 
         self.schedule_finality_request(
