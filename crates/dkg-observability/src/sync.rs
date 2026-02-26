@@ -381,35 +381,35 @@ pub fn record_sync_metadata_cursor_lag(blockchain_id: &str, contract: &str, lag_
     .set(lag_blocks as f64);
 }
 
-pub fn record_sync_state_hydration_batch(
+pub fn record_kc_state_metadata_hydration_batch(
     blockchain_id: &str,
     status: &str,
     duration: Duration,
     kc_count: usize,
 ) {
     counter!(
-        "node_sync_state_hydration_batch_total",
+        "node_kc_state_metadata_hydration_batch_total",
         "blockchain_id" => blockchain_id.to_string(),
         "status" => status.to_string()
     )
     .increment(1);
     histogram!(
-        "node_sync_state_hydration_batch_duration_seconds",
+        "node_kc_state_metadata_hydration_batch_duration_seconds",
         "blockchain_id" => blockchain_id.to_string(),
         "status" => status.to_string()
     )
     .record(duration.as_secs_f64());
     histogram!(
-        "node_sync_state_hydration_batch_kcs",
+        "node_kc_state_metadata_hydration_batch_kcs",
         "blockchain_id" => blockchain_id.to_string(),
         "status" => status.to_string()
     )
     .record(kc_count as f64);
 }
 
-pub fn record_sync_state_ready_count(blockchain_id: &str, count: usize) {
+pub fn record_kc_state_metadata_ready_count(blockchain_id: &str, count: usize) {
     gauge!(
-        "node_sync_state_ready_count",
+        "node_kc_state_metadata_ready_count",
         "blockchain_id" => blockchain_id.to_string()
     )
     .set(count as f64);
@@ -423,17 +423,17 @@ pub fn record_sync_waiting_for_core_metadata_count(blockchain_id: &str, count: u
     .set(count as f64);
 }
 
-pub fn record_sync_waiting_for_state_count(blockchain_id: &str, count: usize) {
+pub fn record_sync_waiting_for_kc_state_metadata_count(blockchain_id: &str, count: usize) {
     gauge!(
-        "node_sync_waiting_for_state_count",
+        "node_sync_waiting_for_kc_state_metadata_count",
         "blockchain_id" => blockchain_id.to_string()
     )
     .set(count as f64);
 }
 
-pub fn record_sync_state_observed_lag(blockchain_id: &str, contract: &str, lag_blocks: u64) {
+pub fn record_kc_state_metadata_observed_lag(blockchain_id: &str, contract: &str, lag_blocks: u64) {
     gauge!(
-        "node_sync_state_observed_lag_blocks",
+        "node_kc_state_metadata_observed_lag_blocks",
         "blockchain_id" => blockchain_id.to_string(),
         "contract" => contract.to_string()
     )

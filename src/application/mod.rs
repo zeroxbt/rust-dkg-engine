@@ -6,6 +6,7 @@ pub(crate) mod state_metadata;
 pub(crate) const UAL_MAX_LIMIT: usize = 1000;
 pub(crate) mod assertions;
 pub(crate) mod get_assertion;
+pub(crate) mod kc_chain_metadata_sync;
 pub(crate) mod operation_tracking;
 pub(crate) mod paranet;
 pub(crate) mod signature;

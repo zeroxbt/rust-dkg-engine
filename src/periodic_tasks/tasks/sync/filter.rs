@@ -9,7 +9,7 @@ use std::{
 use dkg_blockchain::{Address, BlockchainId, BlockchainManager};
 use dkg_domain::{KnowledgeCollectionMetadata, TokenIds, derive_ual};
 use dkg_observability as observability;
-use dkg_repository::{KcChainMetadataRepository, KcChainReadyForSyncEntry};
+use dkg_repository::{KcChainMetadataRepository, KcChainReadyKcStateMetadataEntry};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
@@ -113,7 +113,7 @@ pub(crate) async fn filter_task(
         blockchain_label,
         waiting_for_metadata.len(),
     );
-    observability::record_sync_waiting_for_state_count(blockchain_label, waiting_for_state.len());
+    observability::record_sync_waiting_for_kc_state_metadata_count(blockchain_label, waiting_for_state.len());
 
     tracing::trace!(
         total_ms = task_start.elapsed().as_millis() as u64,
@@ -256,7 +256,7 @@ async fn process_filter_batch(
         });
     }
 
-    observability::record_sync_state_ready_count(blockchain_id.as_str(), to_sync.len());
+    observability::record_kc_state_metadata_ready_count(blockchain_id.as_str(), to_sync.len());
 
     FilterBatchResult {
         already_synced,
@@ -273,7 +273,7 @@ async fn gate_on_sql_readiness(
     contract_addr_str: &str,
     kc_chain_metadata_repository: &KcChainMetadataRepository,
 ) -> (
-    Vec<(u64, String, KcChainReadyForSyncEntry)>,
+    Vec<(u64, String, KcChainReadyKcStateMetadataEntry)>,
     Vec<u64>,
     Vec<u64>,
 ) {
@@ -283,7 +283,7 @@ async fn gate_on_sql_readiness(
 
     let kc_ids: Vec<u64> = kcs_needing_sync.iter().map(|(kc_id, _)| *kc_id).collect();
     let ready_by_id = match kc_chain_metadata_repository
-        .get_many_ready_for_sync(blockchain_id.as_str(), contract_addr_str, &kc_ids)
+        .get_many_ready_with_kc_state_metadata(blockchain_id.as_str(), contract_addr_str, &kc_ids)
         .await
     {
         Ok(entries) => entries,

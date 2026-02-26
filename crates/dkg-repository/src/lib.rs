@@ -23,6 +23,6 @@ pub use repositories::{
     triples_insert_count_repository::TriplesInsertCountRepository,
 };
 pub use types::{
-    KcChainMetadataEntry, KcChainReadyForSyncEntry, KcSyncQueueEntry, OperationRecord,
+    KcChainMetadataEntry, KcChainReadyKcStateMetadataEntry, KcSyncQueueEntry, OperationRecord,
     OperationStatus, ParanetKcSyncEntry, ProofChallengeEntry,
 };

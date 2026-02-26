@@ -4,9 +4,7 @@ pub(crate) mod network_fetch;
 use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
-use dkg_domain::{
-    Assertion, BlockchainId, ParsedUal, TokenIds, UalParseError, Visibility, parse_ual,
-};
+use dkg_domain::{Assertion, ParsedUal, TokenIds, UalParseError, Visibility, parse_ual};
 use dkg_network::{GetRequestData, NetworkManager, PeerId, STREAM_PROTOCOL_GET};
 use thiserror::Error;
 use uuid::Uuid;
@@ -32,13 +30,7 @@ pub(crate) enum TokenRangeResolutionPolicy {
 pub(crate) enum GetAssertionError {
     #[error("Invalid UAL: {0}")]
     InvalidUal(#[from] UalParseError),
-    #[error(
-        "Knowledge collection {knowledge_collection_id} does not exist on blockchain {blockchain}"
-    )]
-    MissingKnowledgeCollection {
-        blockchain: BlockchainId,
-        knowledge_collection_id: u128,
-    },
+
     #[error(
         "Unable to find enough nodes for operation: {operation_id}. Found 0 nodes, need at least 1"
     )]
@@ -97,33 +89,6 @@ impl GetAssertionUseCase {
         request: &GetAssertionInput,
     ) -> Result<GetAssertionOutput, GetAssertionError> {
         let parsed_ual = parse_ual(&request.ual)?;
-
-        // Validate on-chain existence when possible. If call fails, continue (old contracts may
-        // not support all paths, matching existing behavior).
-        match self
-            .blockchain_manager
-            .get_knowledge_collection_publisher(
-                &parsed_ual.blockchain,
-                parsed_ual.contract,
-                parsed_ual.knowledge_collection_id,
-            )
-            .await
-        {
-            Ok(Some(_)) => {}
-            Ok(None) => {
-                return Err(GetAssertionError::MissingKnowledgeCollection {
-                    blockchain: parsed_ual.blockchain.clone(),
-                    knowledge_collection_id: parsed_ual.knowledge_collection_id,
-                });
-            }
-            Err(e) => {
-                tracing::warn!(
-                    operation_id = %request.operation_id,
-                    error = %e,
-                    "Failed to validate UAL on-chain, continuing"
-                );
-            }
-        }
 
         let token_ids = self
             .resolve_token_ids_with_policy(

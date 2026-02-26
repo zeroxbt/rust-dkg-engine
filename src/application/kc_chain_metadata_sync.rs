@@ -1,0 +1,218 @@
+use dkg_blockchain::{
+    Address, B256, BlockchainId, BlockchainManager, MulticallBatch, MulticallRequest, U256,
+    encoders, to_hex_string,
+};
+use dkg_repository::{KcChainMetadataRepository, error::RepositoryError};
+
+use crate::application::state_metadata::encode_burned_ids;
+
+#[derive(Debug, Clone)]
+pub(crate) struct KcHydratedStateMetadata {
+    pub(crate) range_start_token_id: u64,
+    pub(crate) range_end_token_id: u64,
+    pub(crate) burned_mode: u32,
+    pub(crate) burned_payload: Vec<u8>,
+    pub(crate) end_epoch: Option<u64>,
+    pub(crate) latest_merkle_root: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct KcChainMetadataRecord {
+    pub(crate) publish_operation_id: String,
+    pub(crate) kc_id: u64,
+    pub(crate) merkle_root: B256,
+    pub(crate) byte_size: u128,
+    pub(crate) contract_address: Address,
+    pub(crate) transaction_hash: B256,
+    pub(crate) block_number: u64,
+    pub(crate) block_timestamp: u64,
+    pub(crate) publisher_address: Option<String>,
+    pub(crate) kc_state_metadata: Option<KcHydratedStateMetadata>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BuildKcRecordError {
+    KcIdOutOfRange,
+    MissingTransactionHash,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_kc_chain_metadata_record(
+    publish_operation_id: String,
+    knowledge_collection_id: U256,
+    merkle_root: B256,
+    byte_size: u128,
+    contract_address: Address,
+    transaction_hash: Option<B256>,
+    block_number: u64,
+    block_timestamp: u64,
+) -> Result<KcChainMetadataRecord, BuildKcRecordError> {
+    let kc_id_u128: u128 = knowledge_collection_id.to();
+    let kc_id = u64::try_from(kc_id_u128).map_err(|_| BuildKcRecordError::KcIdOutOfRange)?;
+    let transaction_hash = transaction_hash.ok_or(BuildKcRecordError::MissingTransactionHash)?;
+
+    Ok(KcChainMetadataRecord {
+        publish_operation_id,
+        kc_id,
+        merkle_root,
+        byte_size,
+        contract_address,
+        transaction_hash,
+        block_number,
+        block_timestamp,
+        publisher_address: None,
+        kc_state_metadata: None,
+    })
+}
+
+pub(crate) async fn hydrate_core_metadata_publishers(
+    blockchain_manager: &BlockchainManager,
+    blockchain_id: &BlockchainId,
+    records: &mut [KcChainMetadataRecord],
+) {
+    if records.is_empty() {
+        return;
+    }
+
+    for record in records.iter_mut() {
+        record.publisher_address = match blockchain_manager
+            .get_transaction_sender(blockchain_id, record.transaction_hash)
+            .await
+        {
+            Ok(Some(address)) => Some(format!("{:?}", address)),
+            _ => None,
+        };
+    }
+}
+
+pub(crate) async fn hydrate_kc_state_metadata(
+    blockchain_manager: &BlockchainManager,
+    blockchain_id: &BlockchainId,
+    records: &mut [KcChainMetadataRecord],
+    chunk_size: usize,
+) {
+    if records.is_empty() {
+        return;
+    }
+
+    for chunk in records.chunks_mut(chunk_size.max(1)) {
+        let mut state_calls = MulticallBatch::with_capacity(chunk.len() * 3);
+        for record in chunk.iter() {
+            state_calls.add(MulticallRequest::new(
+                record.contract_address,
+                encoders::encode_get_end_epoch(record.kc_id as u128),
+            ));
+            state_calls.add(MulticallRequest::new(
+                record.contract_address,
+                encoders::encode_get_knowledge_assets_range(record.kc_id as u128),
+            ));
+            state_calls.add(MulticallRequest::new(
+                record.contract_address,
+                encoders::encode_get_merkle_root(record.kc_id as u128),
+            ));
+        }
+
+        match blockchain_manager
+            .execute_multicall(blockchain_id, state_calls)
+            .await
+        {
+            Ok(results) => {
+                let expected = chunk.len() * 3;
+                if results.len() != expected {
+                    tracing::warn!(
+                        blockchain = %blockchain_id,
+                        expected_results = expected,
+                        actual_results = results.len(),
+                        batch_size = chunk.len(),
+                        "Unexpected multicall result count for KC state metadata hydration batch"
+                    );
+                    continue;
+                }
+
+                for (index, record) in chunk.iter_mut().enumerate() {
+                    let base = index * 3;
+                    let epoch_result = &results[base];
+                    let range_result = &results[base + 1];
+                    let merkle_result = &results[base + 2];
+
+                    let Some((start, end, burned)) = range_result.as_knowledge_assets_range() else {
+                        tracing::warn!(
+                            blockchain = %blockchain_id,
+                            contract = ?record.contract_address,
+                            kc_id = record.kc_id,
+                            "Failed to decode KC token range during state metadata hydration"
+                        );
+                        continue;
+                    };
+
+                    let end_epoch = epoch_result.as_u64().filter(|v| *v != 0);
+                    let latest_merkle_root = merkle_result
+                        .as_bytes32_hex()
+                        .unwrap_or_else(|| format!("0x{}", to_hex_string(record.merkle_root)));
+                    let burned_encoding = encode_burned_ids(start, end, &burned);
+
+                    record.kc_state_metadata = Some(KcHydratedStateMetadata {
+                        range_start_token_id: start,
+                        range_end_token_id: end,
+                        burned_mode: burned_encoding.mode as u32,
+                        burned_payload: burned_encoding.payload,
+                        end_epoch,
+                        latest_merkle_root,
+                    });
+                }
+            }
+            Err(error) => {
+                tracing::warn!(
+                    blockchain = %blockchain_id,
+                    batch_size = chunk.len(),
+                    error = %error,
+                    "Failed to hydrate KC state metadata from chain"
+                );
+            }
+        }
+    }
+}
+
+pub(crate) async fn upsert_kc_chain_metadata_record(
+    repository: &KcChainMetadataRepository,
+    blockchain_id: &str,
+    source: &str,
+    record: &KcChainMetadataRecord,
+) -> Result<(), RepositoryError> {
+    let contract_address_str = format!("{:?}", record.contract_address);
+    let transaction_hash_str = format!("{:#x}", record.transaction_hash);
+
+    repository
+        .upsert_core_metadata(
+            blockchain_id,
+            &contract_address_str,
+            record.kc_id,
+            record.publisher_address.as_deref(),
+            record.block_number,
+            &transaction_hash_str,
+            record.block_timestamp,
+            &record.publish_operation_id,
+            Some(source),
+        )
+        .await?;
+
+    if let Some(kc_state_metadata) = record.kc_state_metadata.as_ref() {
+        repository
+            .upsert_kc_state_metadata(
+                blockchain_id,
+                &contract_address_str,
+                record.kc_id,
+                kc_state_metadata.range_start_token_id,
+                kc_state_metadata.range_end_token_id,
+                kc_state_metadata.burned_mode,
+                kc_state_metadata.burned_payload.as_slice(),
+                kc_state_metadata.end_epoch,
+                &kc_state_metadata.latest_merkle_root,
+                record.block_number,
+                Some(source),
+            )
+            .await?;
+    }
+
+    Ok(())
+}

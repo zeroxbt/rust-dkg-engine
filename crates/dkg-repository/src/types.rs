@@ -80,7 +80,7 @@ pub struct KcChainMetadataEntry {
 
 /// KC metadata row with full core metadata and sync state available.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KcChainReadyForSyncEntry {
+pub struct KcChainReadyKcStateMetadataEntry {
     pub blockchain_id: String,
     pub contract_address: String,
     pub kc_id: u64,

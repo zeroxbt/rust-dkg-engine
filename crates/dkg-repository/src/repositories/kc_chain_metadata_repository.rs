@@ -24,7 +24,7 @@ use crate::{
             Model as StateModel,
         },
     },
-    types::{KcChainMetadataEntry, KcChainReadyForSyncEntry},
+    types::{KcChainMetadataEntry, KcChainReadyKcStateMetadataEntry},
 };
 
 /// Result of the two NOT EXISTS gap-detection queries.
@@ -136,7 +136,7 @@ impl KcChainMetadataRepository {
 
     /// Upsert mutable sync state for an existing KC row (or create placeholder row if absent).
     #[allow(clippy::too_many_arguments)]
-    pub async fn upsert_sync_state(
+    pub async fn upsert_kc_state_metadata(
         &self,
         blockchain_id: &str,
         contract_address: &str,
@@ -341,15 +341,15 @@ impl KcChainMetadataRepository {
     }
 
     /// Return complete metadata + state rows for a KC id set.
-    pub async fn get_many_ready_for_sync(
+    pub async fn get_many_ready_with_kc_state_metadata(
         &self,
         blockchain_id: &str,
         contract_address: &str,
         kc_ids: &[u64],
-    ) -> Result<HashMap<u64, KcChainReadyForSyncEntry>> {
+    ) -> Result<HashMap<u64, KcChainReadyKcStateMetadataEntry>> {
         let started = Instant::now();
         if kc_ids.is_empty() {
-            record_repository_query("kc_chain_metadata", "get_many_ready_for_sync", "ok", started.elapsed(), Some(0));
+            record_repository_query("kc_chain_metadata", "get_many_ready_with_kc_state_metadata", "ok", started.elapsed(), Some(0));
             return Ok(HashMap::new());
         }
 
@@ -380,7 +380,7 @@ impl KcChainMetadataRepository {
             let mut out = HashMap::with_capacity(state_rows.len());
             for state in state_rows {
                 if let Some(core) = core_by_id.get(&state.kc_id)
-                    && let Some(entry) = Self::to_ready_for_sync_entry(core, &state)
+                    && let Some(entry) = Self::to_ready_kc_state_metadata_entry(core, &state)
                 {
                     out.insert(entry.kc_id, entry);
                 }
@@ -393,7 +393,7 @@ impl KcChainMetadataRepository {
             Ok(rows) => {
                 record_repository_query(
                     "kc_chain_metadata",
-                    "get_many_ready_for_sync",
+                    "get_many_ready_with_kc_state_metadata",
                     "ok",
                     started.elapsed(),
                     Some(rows.len()),
@@ -402,7 +402,7 @@ impl KcChainMetadataRepository {
             Err(_) => {
                 record_repository_query(
                     "kc_chain_metadata",
-                    "get_many_ready_for_sync",
+                    "get_many_ready_with_kc_state_metadata",
                     "error",
                     started.elapsed(),
                     None,
@@ -414,7 +414,7 @@ impl KcChainMetadataRepository {
     }
 
     /// Return KC IDs from the provided set that are missing sync state.
-    pub async fn get_ids_missing_sync_state(
+    pub async fn get_ids_missing_kc_state_metadata(
         &self,
         blockchain_id: &str,
         contract_address: &str,
@@ -424,7 +424,7 @@ impl KcChainMetadataRepository {
         if kc_ids.is_empty() {
             record_repository_query(
                 "kc_chain_metadata",
-                "get_ids_missing_sync_state",
+                "get_ids_missing_kc_state_metadata",
                 "ok",
                 started.elapsed(),
                 Some(0),
@@ -468,7 +468,7 @@ impl KcChainMetadataRepository {
             Ok(rows) => {
                 record_repository_query(
                     "kc_chain_metadata",
-                    "get_ids_missing_sync_state",
+                    "get_ids_missing_kc_state_metadata",
                     "ok",
                     started.elapsed(),
                     Some(rows.len()),
@@ -477,7 +477,7 @@ impl KcChainMetadataRepository {
             Err(_) => {
                 record_repository_query(
                     "kc_chain_metadata",
-                    "get_ids_missing_sync_state",
+                    "get_ids_missing_kc_state_metadata",
                     "error",
                     started.elapsed(),
                     None,
@@ -623,11 +623,11 @@ impl KcChainMetadataRepository {
         })
     }
 
-    fn to_ready_for_sync_entry(
+    fn to_ready_kc_state_metadata_entry(
         core: &CoreModel,
         state: &StateModel,
-    ) -> Option<KcChainReadyForSyncEntry> {
-        Some(KcChainReadyForSyncEntry {
+    ) -> Option<KcChainReadyKcStateMetadataEntry> {
+        Some(KcChainReadyKcStateMetadataEntry {
             blockchain_id: core.blockchain_id.clone(),
             contract_address: core.contract_address.clone(),
             kc_id: core.kc_id,

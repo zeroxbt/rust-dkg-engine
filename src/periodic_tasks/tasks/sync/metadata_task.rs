@@ -14,7 +14,14 @@ use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 
 use super::SyncConfig;
-use crate::{periodic_tasks::SyncDeps, periodic_tasks::runner::run_with_shutdown};
+use crate::{
+    application::kc_chain_metadata_sync::{
+        BuildKcRecordError, build_kc_chain_metadata_record, hydrate_core_metadata_publishers,
+        upsert_kc_chain_metadata_record,
+    },
+    periodic_tasks::SyncDeps,
+    periodic_tasks::runner::run_with_shutdown,
+};
 
 pub(crate) struct MetadataSyncTask {
     config: SyncConfig,
@@ -389,58 +396,59 @@ impl MetadataSyncTask {
                     .await
                     .map_err(MetadataSyncError::FetchMetadataChunk)?;
 
+                let mut records = Vec::new();
                 let mut discovered_ids = HashSet::new();
                 let mut chunk_events_found = 0_usize;
 
                 for log in logs {
                     let Some(ContractEvent::KnowledgeCollectionCreated {
                         event,
-                        contract_address: event_contract_address,
                         transaction_hash,
                         block_number,
                         block_timestamp,
+                        ..
                     }) = decode_contract_event(log.contract_name(), log.log())
                     else {
                         continue;
                     };
 
-                    let kc_id_u128: u128 = event.id.to();
-                    let Ok(kc_id) = u64::try_from(kc_id_u128) else {
-                        continue;
+                    let record = match build_kc_chain_metadata_record(
+                        event.publishOperationId.clone(),
+                        event.id,
+                        event.merkleRoot,
+                        event.byteSize.to(),
+                        contract_address,
+                        transaction_hash,
+                        block_number,
+                        block_timestamp,
+                    ) {
+                        Ok(record) => record,
+                        Err(BuildKcRecordError::KcIdOutOfRange) => continue,
+                        Err(BuildKcRecordError::MissingTransactionHash) => continue,
                     };
-                    let Some(tx_hash) = transaction_hash else {
-                        continue;
-                    };
 
-                    let publisher_address = self
-                        .resolve_kc_publisher(
-                            blockchain_id,
-                            event_contract_address,
-                            kc_id_u128,
-                            tx_hash,
-                        )
-                        .await;
-
-                    let tx_hash_str = format!("{:#x}", tx_hash);
-                    self.deps
-                        .kc_chain_metadata_repository
-                        .upsert_core_metadata(
-                            blockchain_id.as_str(),
-                            &contract_addr_str,
-                            kc_id,
-                            publisher_address.as_deref(),
-                            block_number,
-                            &tx_hash_str,
-                            block_timestamp,
-                            &event.publishOperationId,
-                            Some("sync_metadata_backfill"),
-                        )
-                        .await
-                        .map_err(MetadataSyncError::UpsertCoreMetadata)?;
-
-                    discovered_ids.insert(kc_id);
+                    discovered_ids.insert(record.kc_id);
+                    records.push(record);
                     result.metadata_events_found = result.metadata_events_found.saturating_add(1);
                     chunk_events_found = chunk_events_found.saturating_add(1);
+                }
+
+                hydrate_core_metadata_publishers(
+                    self.deps.blockchain_manager.as_ref(),
+                    blockchain_id,
+                    &mut records,
+                )
+                .await;
+
+                for record in &records {
+                    upsert_kc_chain_metadata_record(
+                        &self.deps.kc_chain_metadata_repository,
+                        blockchain_id.as_str(),
+                        "sync_metadata_backfill",
+                        record,
+                    )
+                    .await
+                    .map_err(MetadataSyncError::UpsertCoreMetadata)?;
                 }
 
                 if !discovered_ids.is_empty() {
@@ -497,32 +505,6 @@ impl MetadataSyncTask {
         );
 
         Ok(result)
-    }
-
-    async fn resolve_kc_publisher(
-        &self,
-        blockchain_id: &BlockchainId,
-        contract_address: Address,
-        kc_id: u128,
-        tx_hash: dkg_blockchain::B256,
-    ) -> Option<String> {
-        match self
-            .deps
-            .blockchain_manager
-            .get_knowledge_collection_publisher(blockchain_id, contract_address, kc_id)
-            .await
-        {
-            Ok(Some(address)) => Some(format!("{:?}", address)),
-            _ => match self
-                .deps
-                .blockchain_manager
-                .get_transaction_sender(blockchain_id, tx_hash)
-                .await
-            {
-                Ok(Some(address)) => Some(format!("{:?}", address)),
-                _ => None,
-            },
-        }
     }
 }
 
