@@ -174,6 +174,7 @@ pub fn record_blockchain_event_listener_cycle(
     .record(contracts_updated as f64);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn record_claim_rewards_cycle(
     blockchain_id: &str,
     status: &str,

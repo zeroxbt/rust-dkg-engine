@@ -41,7 +41,6 @@ pub(crate) struct InsertStats {
 
 /// Result of syncing a single contract
 pub(crate) struct ContractSyncResult {
-    pub kc_state_metadata_hydrated: u64,
     pub pending: usize,
     pub synced: u64,
     pub failed: u64,

@@ -17,6 +17,7 @@ use super::SyncConfig;
 use crate::{
     application::kc_chain_metadata_sync::{
         BuildKcRecordError, build_kc_chain_metadata_record, hydrate_core_metadata_publishers,
+        hydrate_kc_state_metadata,
         upsert_kc_chain_metadata_record,
     },
     periodic_tasks::SyncDeps,
@@ -45,6 +46,15 @@ enum MetadataSyncError {
     EnqueueKcs(#[source] dkg_repository::error::RepositoryError),
     #[error("Failed to query KC ID gap boundaries")]
     FindGapBoundaries(#[source] dkg_repository::error::RepositoryError),
+    #[error(
+        "Incomplete metadata hydration for chunk [{chunk_from}..{chunk_to}] in contract {contract}; {dropped_not_ready} records missing full metadata"
+    )]
+    IncompleteChunkHydration {
+        contract: String,
+        chunk_from: u64,
+        chunk_to: u64,
+        dropped_not_ready: usize,
+    },
 }
 
 #[derive(Default)]
@@ -439,6 +449,44 @@ impl MetadataSyncTask {
                     &mut records,
                 )
                 .await;
+                hydrate_kc_state_metadata(
+                    self.deps.blockchain_manager.as_ref(),
+                    blockchain_id,
+                    &mut records,
+                    self.config.metadata_state_batch_size.max(1),
+                )
+                .await;
+
+                let before_ready_filter = records.len();
+                records.retain(|record| {
+                    record.publisher_address.is_some() && record.kc_state_metadata.is_some()
+                });
+                let dropped_not_ready = before_ready_filter.saturating_sub(records.len());
+                if dropped_not_ready > 0 {
+                    observability::record_sync_metadata_backfill_chunk(
+                        blockchain_id.as_str(),
+                        "error",
+                        scan_range.range_type.as_str(),
+                        chunk_started.elapsed(),
+                        chunk_to.saturating_sub(chunk_from).saturating_add(1),
+                        chunk_events_found,
+                    );
+                    return Err(MetadataSyncError::IncompleteChunkHydration {
+                        contract: contract_addr_str.clone(),
+                        chunk_from,
+                        chunk_to,
+                        dropped_not_ready,
+                    });
+                }
+
+                if !records.is_empty() {
+                    tracing::trace!(
+                        blockchain_id = %blockchain_id,
+                        contract = %contract_addr_str,
+                        hydrated_records = records.len(),
+                        "Chunk metadata hydration complete; persisting records"
+                    );
+                }
 
                 for record in &records {
                     upsert_kc_chain_metadata_record(

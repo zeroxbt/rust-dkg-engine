@@ -11,10 +11,7 @@ use dkg_triple_store::{GraphVisibility, TripleStoreManager, error::TripleStoreEr
 use futures::{StreamExt, stream};
 use tracing::instrument;
 
-use self::{
-    build_assets::build_knowledge_assets,
-    metadata::reconstruct_metadata_triples,
-};
+use self::{build_assets::build_knowledge_assets, metadata::reconstruct_metadata_triples};
 use crate::application::state_metadata::{
     PrivateGraphMode, PrivateGraphPresence, encode_private_graph_presence,
 };
@@ -393,30 +390,55 @@ impl TripleStoreAssertions {
             )
             .await?;
 
-        if let Ok(parsed_ual) = parse_ual(knowledge_collection_ual)
-            && let Ok(kc_id) = u64::try_from(parsed_ual.knowledge_collection_id)
-        {
-            let contract_address = format!("{:?}", parsed_ual.contract);
-            if let Err(error) = self
-                .kc_chain_metadata_repository
-                .upsert_private_graph_encoding(
-                    parsed_ual.blockchain.as_str(),
-                    &contract_address,
-                    kc_id,
-                    Some(private_graph_encoding.mode as u32),
-                    private_graph_encoding.payload.as_deref(),
-                    Some("triple_store_insert"),
-                )
-                .await
-            {
-                tracing::warn!(
-                    blockchain_id = %parsed_ual.blockchain,
-                    contract_address = %contract_address,
-                    kc_id = kc_id,
-                    error = %error,
-                    "Failed to persist private graph encoding"
-                );
+        let parsed_ual = match parse_ual(knowledge_collection_ual) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                if metadata.is_some() {
+                    return Err(TripleStoreError::Other(format!(
+                        "Failed to parse KC UAL '{knowledge_collection_ual}' for private graph metadata persistence: {error}"
+                    )));
+                }
+                return Ok(inserted);
             }
+        };
+
+        let Ok(kc_id) = u64::try_from(parsed_ual.knowledge_collection_id) else {
+            if metadata.is_some() {
+                return Err(TripleStoreError::Other(format!(
+                    "KC id out of range for private graph metadata persistence: ual={knowledge_collection_ual}, kc_id={}",
+                    parsed_ual.knowledge_collection_id
+                )));
+            }
+            return Ok(inserted);
+        };
+
+        let contract_address = format!("{:?}", parsed_ual.contract);
+        let persist_result = self
+            .kc_chain_metadata_repository
+            .upsert_private_graph_encoding(
+                parsed_ual.blockchain.as_str(),
+                &contract_address,
+                kc_id,
+                Some(private_graph_encoding.mode as u32),
+                private_graph_encoding.payload.as_deref(),
+                Some("triple_store_insert"),
+            )
+            .await;
+
+        if metadata.is_some() {
+            if let Err(error) = persist_result {
+                return Err(TripleStoreError::Other(format!(
+                    "Failed to persist private graph metadata in kc_chain_state_metadata for ual={knowledge_collection_ual}: {error}"
+                )));
+            }
+        } else if let Err(error) = persist_result {
+            tracing::warn!(
+                blockchain_id = %parsed_ual.blockchain,
+                contract_address = %contract_address,
+                kc_id = kc_id,
+                error = %error,
+                "Failed to persist private graph encoding"
+            );
         }
 
         Ok(inserted)

@@ -17,7 +17,8 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     application::kc_chain_metadata_sync::{
         BuildKcRecordError, KcChainMetadataRecord, build_kc_chain_metadata_record,
-        hydrate_core_metadata_publishers, hydrate_kc_state_metadata, upsert_kc_chain_metadata_record,
+        hydrate_core_metadata_publishers, hydrate_kc_state_metadata,
+        upsert_kc_chain_metadata_record,
     },
     commands::{
         executor::CommandExecutionRequest,
@@ -581,6 +582,18 @@ impl BlockchainEventListenerTask {
             "Knowledge collection created"
         );
 
+        if event.publisher_address.is_none() || event.kc_state_metadata.is_none() {
+            tracing::warn!(
+                blockchain = %blockchain_id,
+                contract = ?event.contract_address,
+                kc_id = event.kc_id,
+                has_publisher = event.publisher_address.is_some(),
+                has_state = event.kc_state_metadata.is_some(),
+                "Skipping live KC metadata upsert/finality because full metadata hydration is incomplete"
+            );
+            return;
+        }
+
         if let Err(error) = upsert_kc_chain_metadata_record(
             &self.kc_chain_metadata_repository,
             blockchain_id.as_str(),
@@ -599,12 +612,6 @@ impl BlockchainEventListenerTask {
         }
 
         let Some(publisher_address) = event.publisher_address.as_ref() else {
-            tracing::warn!(
-                blockchain = %blockchain_id,
-                contract = ?event.contract_address,
-                kc_id = event.kc_id,
-                "Skipping finality scheduling because publisher address is missing"
-            );
             return;
         };
 
@@ -627,6 +634,7 @@ impl BlockchainEventListenerTask {
         .await;
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn schedule_finality_request(
         &self,
         blockchain_id: &BlockchainId,

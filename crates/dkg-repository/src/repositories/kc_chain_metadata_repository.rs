@@ -9,7 +9,7 @@ use sea_orm::{
     ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     Statement,
 };
-use sea_orm::sea_query::Value;
+use sea_orm::sea_query::{Expr, Value};
 
 use crate::{
     error::{RepositoryError, Result},
@@ -160,13 +160,13 @@ impl KcChainMetadataRepository {
             blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
             contract_address: ActiveValue::Set(contract_address.to_string()),
             kc_id: ActiveValue::Set(kc_id),
-            range_start_token_id: ActiveValue::Set(Some(range_start_token_id)),
-            range_end_token_id: ActiveValue::Set(Some(range_end_token_id)),
-            burned_mode: ActiveValue::Set(Some(burned_mode)),
-            burned_payload: ActiveValue::Set(Some(burned_payload.to_vec())),
-            end_epoch: ActiveValue::Set(Some(end_epoch)),
-            latest_merkle_root: ActiveValue::Set(Some(latest_merkle_root.to_string())),
-            state_observed_block: ActiveValue::Set(Some(state_observed_block)),
+            range_start_token_id: ActiveValue::Set(range_start_token_id),
+            range_end_token_id: ActiveValue::Set(range_end_token_id),
+            burned_mode: ActiveValue::Set(burned_mode),
+            burned_payload: ActiveValue::Set(burned_payload.to_vec()),
+            end_epoch: ActiveValue::Set(end_epoch),
+            latest_merkle_root: ActiveValue::Set(latest_merkle_root.to_string()),
+            state_observed_block: ActiveValue::Set(state_observed_block),
             state_updated_at: ActiveValue::Set(now),
             private_graph_mode: ActiveValue::Set(None),
             private_graph_payload: ActiveValue::Set(None),
@@ -213,43 +213,28 @@ impl KcChainMetadataRepository {
         source: Option<&str>,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
-
-        let model = StateActiveModel {
-            blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
-            contract_address: ActiveValue::Set(contract_address.to_string()),
-            kc_id: ActiveValue::Set(kc_id),
-            range_start_token_id: ActiveValue::Set(None),
-            range_end_token_id: ActiveValue::Set(None),
-            burned_mode: ActiveValue::Set(None),
-            burned_payload: ActiveValue::Set(None),
-            end_epoch: ActiveValue::Set(None),
-            latest_merkle_root: ActiveValue::Set(None),
-            state_observed_block: ActiveValue::Set(None),
-            state_updated_at: ActiveValue::Set(0),
-            private_graph_mode: ActiveValue::Set(private_graph_mode),
-            private_graph_payload: ActiveValue::Set(private_graph_payload.map(ToOwned::to_owned)),
-            source: ActiveValue::Set(source.map(ToString::to_string)),
-            created_at: ActiveValue::Set(now),
-            updated_at: ActiveValue::Set(now),
-        };
-
-        StateEntity::insert(model)
-            .on_conflict(
-                sea_orm::sea_query::OnConflict::columns([
-                    StateColumn::BlockchainId,
-                    StateColumn::ContractAddress,
-                    StateColumn::KcId,
-                ])
-                .update_columns([
-                    StateColumn::PrivateGraphMode,
-                    StateColumn::PrivateGraphPayload,
-                    StateColumn::Source,
-                    StateColumn::UpdatedAt,
-                ])
-                .to_owned(),
+        let update_result = StateEntity::update_many()
+            .filter(StateColumn::BlockchainId.eq(blockchain_id))
+            .filter(StateColumn::ContractAddress.eq(contract_address))
+            .filter(StateColumn::KcId.eq(kc_id))
+            .col_expr(StateColumn::PrivateGraphMode, Expr::value(private_graph_mode))
+            .col_expr(
+                StateColumn::PrivateGraphPayload,
+                Expr::value(private_graph_payload.map(ToOwned::to_owned)),
             )
+            .col_expr(
+                StateColumn::Source,
+                Expr::value(source.map(ToString::to_string)),
+            )
+            .col_expr(StateColumn::UpdatedAt, Expr::value(now))
             .exec(self.conn.as_ref())
             .await?;
+
+        if update_result.rows_affected == 0 {
+            return Err(RepositoryError::NotFound(format!(
+                "missing kc_chain_state_metadata row for blockchain_id={blockchain_id}, contract_address={contract_address}, kc_id={kc_id}"
+            )));
+        }
 
         Ok(())
     }
@@ -445,14 +430,7 @@ impl KcChainMetadataRepository {
             let mut seen = HashSet::new();
             for row in rows {
                 seen.insert(row.kc_id);
-                if row.range_start_token_id.is_none()
-                    || row.range_end_token_id.is_none()
-                    || row.burned_mode.is_none()
-                    || row.burned_payload.is_none()
-                    || row.end_epoch.is_none()
-                    || row.latest_merkle_root.is_none()
-                    || row.state_observed_block.is_none()
-                {
+                if row.end_epoch <= 0 {
                     missing.insert(row.kc_id);
                 }
             }
@@ -608,13 +586,13 @@ impl KcChainMetadataRepository {
             block_number: u64::try_from(core.block_number).ok()?,
             transaction_hash: core.transaction_hash,
             block_timestamp: u64::try_from(core.block_timestamp).ok()?,
-            range_start_token_id: state.and_then(|s| Self::opt_i64_to_u64(s.range_start_token_id)),
-            range_end_token_id: state.and_then(|s| Self::opt_i64_to_u64(s.range_end_token_id)),
-            burned_mode: state.and_then(|s| s.burned_mode),
-            burned_payload: state.and_then(|s| s.burned_payload.clone()),
-            end_epoch: state.and_then(|s| Self::opt_i64_to_u64(s.end_epoch)),
-            latest_merkle_root: state.and_then(|s| s.latest_merkle_root.clone()),
-            state_observed_block: state.and_then(|s| Self::opt_i64_to_u64(s.state_observed_block)),
+            range_start_token_id: state.and_then(|s| Self::i64_to_u64(s.range_start_token_id)),
+            range_end_token_id: state.and_then(|s| Self::i64_to_u64(s.range_end_token_id)),
+            burned_mode: state.map(|s| s.burned_mode),
+            burned_payload: state.map(|s| s.burned_payload.clone()),
+            end_epoch: state.and_then(|s| Self::i64_to_u64(s.end_epoch)),
+            latest_merkle_root: state.map(|s| s.latest_merkle_root.clone()),
+            state_observed_block: state.and_then(|s| Self::i64_to_u64(s.state_observed_block)),
             state_updated_at: state.map_or(0, |s| s.state_updated_at),
             private_graph_mode: state.and_then(|s| s.private_graph_mode),
             private_graph_payload: state.and_then(|s| s.private_graph_payload.clone()),
@@ -637,13 +615,13 @@ impl KcChainMetadataRepository {
             block_number: u64::try_from(core.block_number).ok()?,
             transaction_hash: core.transaction_hash.clone(),
             block_timestamp: u64::try_from(core.block_timestamp).ok()?,
-            range_start_token_id: u64::try_from(state.range_start_token_id?).ok()?,
-            range_end_token_id: u64::try_from(state.range_end_token_id?).ok()?,
-            burned_mode: state.burned_mode?,
-            burned_payload: state.burned_payload.clone()?,
-            end_epoch: u64::try_from(state.end_epoch?).ok()?,
-            latest_merkle_root: state.latest_merkle_root.clone()?,
-            state_observed_block: u64::try_from(state.state_observed_block?).ok()?,
+            range_start_token_id: u64::try_from(state.range_start_token_id).ok()?,
+            range_end_token_id: u64::try_from(state.range_end_token_id).ok()?,
+            burned_mode: state.burned_mode,
+            burned_payload: state.burned_payload.clone(),
+            end_epoch: u64::try_from(state.end_epoch).ok()?,
+            latest_merkle_root: state.latest_merkle_root.clone(),
+            state_observed_block: u64::try_from(state.state_observed_block).ok()?,
         })
     }
 
@@ -655,7 +633,7 @@ impl KcChainMetadataRepository {
         })
     }
 
-    fn opt_i64_to_u64(value: Option<i64>) -> Option<u64> {
-        value.and_then(|v| u64::try_from(v).ok())
+    fn i64_to_u64(value: i64) -> Option<u64> {
+        u64::try_from(value).ok()
     }
 }
