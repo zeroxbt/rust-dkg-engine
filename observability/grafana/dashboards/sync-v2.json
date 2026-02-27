@@ -522,7 +522,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_fetch_batch_duration_seconds{status=\"success\",quantile=\"0.5\"}",
+          "expr": "node_sync_metadata_backfill_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.5\"}",
           "instant": false,
           "legendFormat": "fetch p50",
           "range": true,
@@ -534,7 +534,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_fetch_batch_duration_seconds{status=\"success\",quantile=\"0.95\"}",
+          "expr": "node_sync_metadata_backfill_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.95\"}",
           "instant": false,
           "legendFormat": "fetch p95",
           "range": true,
@@ -546,7 +546,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_fetch_batch_duration_seconds{status=\"success\",quantile=\"0.99\"}",
+          "expr": "node_sync_metadata_backfill_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.99\"}",
           "instant": false,
           "legendFormat": "fetch p99",
           "range": true,
@@ -558,7 +558,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_insert_batch_duration_seconds{status=\"success\",quantile=\"0.5\"}",
+          "expr": "node_sync_metadata_backfill_batch_processing_duration_seconds{status=\"success\",quantile=\"0.5\"}",
           "instant": false,
           "legendFormat": "processing p50",
           "range": true,
@@ -570,7 +570,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_insert_batch_duration_seconds{status=\"success\",quantile=\"0.95\"}",
+          "expr": "node_sync_metadata_backfill_batch_processing_duration_seconds{status=\"success\",quantile=\"0.95\"}",
           "instant": false,
           "legendFormat": "processing p95",
           "range": true,
@@ -582,14 +582,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_insert_batch_duration_seconds{status=\"success\",quantile=\"0.99\"}",
+          "expr": "node_sync_metadata_backfill_batch_processing_duration_seconds{status=\"success\",quantile=\"0.99\"}",
           "instant": false,
           "legendFormat": "processing p99",
           "range": true,
           "refId": "F"
         }
       ],
-      "title": "Batch Fetch vs Processing Duration p50/p95/p99",
+      "title": "Metadata Batch Fetch vs Processing Duration p50/p95/p99",
       "type": "timeseries"
     },
     {

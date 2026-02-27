@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use dkg_blockchain::{
@@ -392,7 +392,8 @@ impl MetadataSyncTask {
                     .min(chunk_from.saturating_add(chunk_size.saturating_sub(1)));
                 let chunk_blocks_scanned = chunk_to.saturating_sub(chunk_from).saturating_add(1);
 
-                let logs = self
+                let fetch_started = Instant::now();
+                let logs = match self
                     .deps
                     .blockchain_manager
                     .get_event_logs_for_address(
@@ -404,7 +405,25 @@ impl MetadataSyncTask {
                         chunk_to,
                     )
                     .await
-                    .map_err(MetadataSyncError::FetchMetadataChunk)?;
+                {
+                    Ok(logs) => {
+                        observability::record_sync_metadata_backfill_batch_fetch_duration(
+                            blockchain_id.as_str(),
+                            "success",
+                            fetch_started.elapsed(),
+                        );
+                        logs
+                    }
+                    Err(error) => {
+                        observability::record_sync_metadata_backfill_batch_fetch_duration(
+                            blockchain_id.as_str(),
+                            "error",
+                            fetch_started.elapsed(),
+                        );
+                        return Err(MetadataSyncError::FetchMetadataChunk(error));
+                    }
+                };
+                let processing_started = Instant::now();
 
                 let mut records = Vec::new();
                 let mut discovered_ids = HashSet::new();
@@ -477,6 +496,11 @@ impl MetadataSyncTask {
                         chunk_blocks_scanned,
                         chunk_events_found,
                     );
+                    observability::record_sync_metadata_backfill_batch_processing_duration(
+                        blockchain_id.as_str(),
+                        "error",
+                        processing_started.elapsed(),
+                    );
                     return Err(MetadataSyncError::IncompleteChunkHydration {
                         contract: contract_addr_str.clone(),
                         chunk_from,
@@ -534,6 +558,11 @@ impl MetadataSyncTask {
                     "success",
                     chunk_blocks_scanned,
                     chunk_events_found,
+                );
+                observability::record_sync_metadata_backfill_batch_processing_duration(
+                    blockchain_id.as_str(),
+                    "success",
+                    processing_started.elapsed(),
                 );
                 result.chunk_processed = true;
                 if single_chunk {

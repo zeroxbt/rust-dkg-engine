@@ -64,6 +64,32 @@ pub fn record_sync_metadata_backfill_batch(
     .record(events_found as f64);
 }
 
+pub fn record_sync_metadata_backfill_batch_fetch_duration(
+    blockchain_id: &str,
+    status: &str,
+    duration: Duration,
+) {
+    histogram!(
+        "node_sync_metadata_backfill_batch_fetch_duration_seconds",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(duration.as_secs_f64());
+}
+
+pub fn record_sync_metadata_backfill_batch_processing_duration(
+    blockchain_id: &str,
+    status: &str,
+    duration: Duration,
+) {
+    histogram!(
+        "node_sync_metadata_backfill_batch_processing_duration_seconds",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(duration.as_secs_f64());
+}
+
 pub fn record_sync_fetch_batch(
     status: &str,
     duration: Duration,
