@@ -25,11 +25,14 @@ impl EvmChain {
         &self,
         block_number: u64,
     ) -> Result<Option<u64>, BlockchainError> {
-        let block = self
+        let block: Option<serde_json::Value> = self
             .rpc_call(|| async {
                 let provider = self.provider().await;
                 provider
-                    .get_block_by_number(block_number.into())
+                    .raw_request(
+                        "eth_getBlockByNumber".into(),
+                        (format!("0x{block_number:x}"), false),
+                    )
                     .await
             })
             .await
@@ -40,7 +43,34 @@ impl EvmChain {
                 ))
             })?;
 
-        Ok(block.and_then(|b| u64::try_from(b.header.timestamp).ok()))
+        let Some(block) = block else {
+            return Ok(None);
+        };
+
+        let timestamp_value = block.get("timestamp").ok_or_else(|| {
+            BlockchainError::Custom(format!(
+                "Failed to parse block {} timestamp: missing `timestamp` field",
+                block_number
+            ))
+        })?;
+
+        if let Some(ts) = timestamp_value.as_u64() {
+            return Ok(Some(ts));
+        }
+
+        if let Some(ts_str) = timestamp_value.as_str() {
+            if let Ok(ts) = u64::from_str_radix(ts_str.trim_start_matches("0x"), 16) {
+                return Ok(Some(ts));
+            }
+            if let Ok(ts) = ts_str.parse::<u64>() {
+                return Ok(Some(ts));
+            }
+        }
+
+        Err(BlockchainError::Custom(format!(
+            "Failed to parse block {} timestamp: unsupported value {}",
+            block_number, timestamp_value
+        )))
     }
 
     /// Get the sender address of a transaction by its hash.
