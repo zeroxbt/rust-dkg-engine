@@ -82,6 +82,7 @@ pub(crate) fn build_periodic_tasks_deps(
         },
         state_snapshot: StateSnapshotDeps {
             kc_sync_repository,
+            kc_chain_metadata_repository,
             peer_registry: Arc::clone(&node_state.peer_registry),
         },
         paranet_sync: ParanetSyncDeps {

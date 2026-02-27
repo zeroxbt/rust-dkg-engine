@@ -32,6 +32,7 @@ bind_address = "127.0.0.1:9464"
   - `observability/grafana/dashboards/triple-store.json`
   - `observability/grafana/dashboards/network.json`
   - `observability/grafana/dashboards/sync.json`
+  - `observability/grafana/dashboards/sync-v2.json`
   - `observability/grafana/dashboards/memory.json`
   - `observability/grafana/dashboards/internals.json`
 - In Grafana:
@@ -77,6 +78,15 @@ bind_address = "127.0.0.1:9464"
 - Peer request rates/latency/yield (valid KCs per request)
 - Fetched vs failed KC rates and failure ratio
 - Shard peer availability (shard members / identified / usable)
+
+`sync-v2.json`:
+- KCs with synced metadata totals from SQL (`node_sync_metadata_kcs_total` and source-filtered `node_sync_metadata_backfill_kcs_total`)
+- KCs estimated fully synced (`clamp_min(node_sync_metadata_kcs_total - node_sync_queue_total, 0)`)
+- Sync queue snapshot: due (`node_sync_queue_due`), retrying (`node_sync_queue_retrying`), failed estimate (`clamp_min(node_sync_queue_total - node_sync_queue_due - node_sync_queue_retrying, 0)`)
+- Fetch batch duration p50/p95/p99 for successful batches (`node_sync_fetch_batch_duration_seconds{status="success",quantile=...}`)
+- KA/KC count per fetch batch averages (`sum(rate(node_sync_fetch_batch_assets_sum[5m])) / sum(rate(node_sync_fetch_batch_assets_count[5m]))` and `sum(rate(node_sync_fetch_batch_kcs_sum[5m])) / sum(rate(node_sync_fetch_batch_kcs_count[5m]))`)
+- Insert batch duration p50/p95/p99 for successful batches (`node_sync_insert_batch_duration_seconds{status="success",quantile=...}`)
+- KC/KA count per insert batch averages (`sum(rate(node_sync_insert_batch_kcs_sum[5m])) / sum(rate(node_sync_insert_batch_kcs_count[5m]))` and `sum(rate(node_sync_insert_batch_assets_sum[5m])) / sum(rate(node_sync_insert_batch_assets_count[5m]))`)
 
 `memory.json`:
 - Process-level memory (RSS/virtual) and file descriptor usage

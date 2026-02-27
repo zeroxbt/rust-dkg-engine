@@ -522,6 +522,7 @@ async fn fetch_kc_batch_from_network(
                                 ual,
                                 assertion,
                                 metadata: Some(kc.metadata.clone()),
+                                estimated_assets: estimate_asset_count(&kc.token_ids),
                             });
                             valid_count += 1;
                         }

@@ -47,9 +47,11 @@ pub(crate) async fn insert_task(
         );
         let batch_start = Instant::now();
         let batch_len = batch.len();
+        let batch_assets: u64 = batch.iter().map(|kc| kc.estimated_assets).sum();
         total_received += batch_len;
         tracing::debug!(
             batch_size = batch_len,
+            assets_in_batch = batch_assets,
             total_received,
             elapsed_ms = task_start.elapsed().as_millis() as u64,
             "Insert: received batch"
@@ -78,6 +80,7 @@ pub(crate) async fn insert_task(
             batch_status,
             batch_start.elapsed(),
             batch_len,
+            batch_assets,
             batch_synced_count,
             batch_failed_count,
         );

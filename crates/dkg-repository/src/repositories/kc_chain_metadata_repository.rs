@@ -7,7 +7,7 @@ use std::{
 use chrono::Utc;
 use sea_orm::{
     ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Statement,
+    PaginatorTrait, Statement,
 };
 use sea_orm::sea_query::{Expr, Value};
 
@@ -48,6 +48,79 @@ pub struct KcChainMetadataRepository {
 impl KcChainMetadataRepository {
     pub fn new(conn: Arc<DatabaseConnection>) -> Self {
         Self { conn }
+    }
+
+    /// Count KC rows with core metadata for a blockchain.
+    pub async fn count_core_metadata_for_blockchain(&self, blockchain_id: &str) -> Result<u64> {
+        let started = Instant::now();
+        let result = CoreEntity::find()
+            .filter(CoreColumn::BlockchainId.eq(blockchain_id))
+            .filter(CoreColumn::PublisherAddress.is_not_null())
+            .count(self.conn.as_ref())
+            .await
+            .map_err(Into::into);
+
+        match &result {
+            Ok(count) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "count_core_metadata_for_blockchain",
+                    "ok",
+                    started.elapsed(),
+                    Some(*count as usize),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "count_core_metadata_for_blockchain",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
+    }
+
+    /// Count KC rows with core metadata for a blockchain and specific source.
+    pub async fn count_core_metadata_for_blockchain_by_source(
+        &self,
+        blockchain_id: &str,
+        source: &str,
+    ) -> Result<u64> {
+        let started = Instant::now();
+        let result = CoreEntity::find()
+            .filter(CoreColumn::BlockchainId.eq(blockchain_id))
+            .filter(CoreColumn::PublisherAddress.is_not_null())
+            .filter(CoreColumn::Source.eq(source))
+            .count(self.conn.as_ref())
+            .await
+            .map_err(Into::into);
+
+        match &result {
+            Ok(count) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "count_core_metadata_for_blockchain_by_source",
+                    "ok",
+                    started.elapsed(),
+                    Some(*count as usize),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "count_core_metadata_for_blockchain_by_source",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 
     /// Backward-compatible alias for upserting core chain metadata.

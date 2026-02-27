@@ -88,6 +88,7 @@ pub(crate) struct SyncDeps {
 #[derive(Clone)]
 pub(crate) struct StateSnapshotDeps {
     pub(crate) kc_sync_repository: KcSyncRepository,
+    pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
     pub(crate) peer_registry: Arc<PeerRegistry>,
 }
 

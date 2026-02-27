@@ -52,6 +52,25 @@ pub fn record_sync_queue_snapshot(
     .set(progress_last_update_age_secs as f64);
 }
 
+pub fn record_sync_metadata_total_snapshot(blockchain_id: &str, metadata_kcs_total: u64) {
+    gauge!(
+        "node_sync_metadata_kcs_total",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(metadata_kcs_total as f64);
+}
+
+pub fn record_sync_metadata_backfill_total_snapshot(
+    blockchain_id: &str,
+    metadata_backfill_kcs_total: u64,
+) {
+    gauge!(
+        "node_sync_metadata_backfill_kcs_total",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(metadata_backfill_kcs_total as f64);
+}
+
 pub fn record_sync_fetch_peer_selection(
     blockchain_id: &str,
     shard_members: usize,
@@ -273,6 +292,7 @@ pub fn record_sync_insert_batch(
     status: &str,
     duration: Duration,
     batch_kcs: usize,
+    batch_assets: u64,
     synced_kcs: usize,
     failed_kcs: usize,
 ) {
@@ -291,6 +311,11 @@ pub fn record_sync_insert_batch(
         "status" => status.to_string()
     )
     .record(batch_kcs as f64);
+    histogram!(
+        "node_sync_insert_batch_assets",
+        "status" => status.to_string()
+    )
+    .record(batch_assets as f64);
     histogram!(
         "node_sync_insert_batch_synced_kcs",
         "status" => status.to_string()

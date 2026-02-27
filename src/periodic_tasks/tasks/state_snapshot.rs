@@ -6,7 +6,7 @@ use dkg_network::{
     PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_GET, STREAM_PROTOCOL_BATCH_GET, STREAM_PROTOCOL_GET,
 };
 use dkg_observability as observability;
-use dkg_repository::KcSyncRepository;
+use dkg_repository::{KcChainMetadataRepository, KcSyncRepository};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -24,6 +24,7 @@ pub(crate) struct StateSnapshotConfig {
 pub(crate) struct StateSnapshotTask {
     config: StateSnapshotConfig,
     kc_sync_repository: KcSyncRepository,
+    kc_chain_metadata_repository: KcChainMetadataRepository,
     peer_registry: Arc<PeerRegistry>,
 }
 
@@ -32,6 +33,7 @@ impl StateSnapshotTask {
         Self {
             config,
             kc_sync_repository: deps.kc_sync_repository,
+            kc_chain_metadata_repository: deps.kc_chain_metadata_repository,
             peer_registry: deps.peer_registry,
         }
     }
@@ -63,6 +65,7 @@ impl StateSnapshotTask {
             let blockchain_label = blockchain_id.as_str();
 
             self.collect_queue_snapshot(blockchain_label, now_ts).await;
+            self.collect_sync_totals_snapshot(blockchain_label).await;
             self.collect_peer_registry_snapshot(blockchain_id);
         }
 
@@ -184,6 +187,46 @@ impl StateSnapshotTask {
             oldest_due_age_secs,
             progress_tracked_contracts,
             progress_last_update_age_secs,
+        );
+    }
+
+    async fn collect_sync_totals_snapshot(&self, blockchain_id: &str) {
+        let metadata_kcs_total = match self
+            .kc_chain_metadata_repository
+            .count_core_metadata_for_blockchain(blockchain_id)
+            .await
+        {
+            Ok(v) => v,
+            Err(error) => {
+                tracing::warn!(
+                    blockchain_id,
+                    error = %error,
+                    "Failed to count KC core metadata rows"
+                );
+                0
+            }
+        };
+
+        let metadata_backfill_kcs_total = match self
+            .kc_chain_metadata_repository
+            .count_core_metadata_for_blockchain_by_source(blockchain_id, "sync_metadata_backfill")
+            .await
+        {
+            Ok(v) => v,
+            Err(error) => {
+                tracing::warn!(
+                    blockchain_id,
+                    error = %error,
+                    "Failed to count KC core metadata rows from sync_metadata_backfill source"
+                );
+                0
+            }
+        };
+
+        observability::record_sync_metadata_total_snapshot(blockchain_id, metadata_kcs_total);
+        observability::record_sync_metadata_backfill_total_snapshot(
+            blockchain_id,
+            metadata_backfill_kcs_total,
         );
     }
 

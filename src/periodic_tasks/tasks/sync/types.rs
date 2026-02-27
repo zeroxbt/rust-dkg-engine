@@ -18,6 +18,7 @@ pub(crate) struct FetchedKc {
     pub ual: String,
     pub assertion: Assertion,
     pub metadata: Option<KnowledgeCollectionMetadata>,
+    pub estimated_assets: u64,
 }
 
 /// Stats collected by filter task
