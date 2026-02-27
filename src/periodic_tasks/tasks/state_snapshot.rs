@@ -125,68 +125,11 @@ impl StateSnapshotTask {
             }
         };
 
-        let oldest_due_age_secs = match self
-            .kc_sync_repository
-            .oldest_due_created_at_for_blockchain(
-                blockchain_id,
-                now_ts,
-                self.config.max_retry_attempts,
-            )
-            .await
-        {
-            Ok(Some(created_at)) => now_ts.saturating_sub(created_at).max(0) as u64,
-            Ok(None) => 0,
-            Err(error) => {
-                tracing::warn!(
-                    blockchain_id,
-                    error = %error,
-                    "Failed to read oldest due sync queue row"
-                );
-                0
-            }
-        };
-
-        let progress_tracked_contracts = match self
-            .kc_sync_repository
-            .count_progress_contracts_for_blockchain(blockchain_id)
-            .await
-        {
-            Ok(v) => v,
-            Err(error) => {
-                tracing::warn!(
-                    blockchain_id,
-                    error = %error,
-                    "Failed to count sync progress contracts"
-                );
-                0
-            }
-        };
-
-        let progress_last_update_age_secs = match self
-            .kc_sync_repository
-            .latest_progress_updated_at_for_blockchain(blockchain_id)
-            .await
-        {
-            Ok(Some(updated_at)) => now_ts.saturating_sub(updated_at).max(0) as u64,
-            Ok(None) => 0,
-            Err(error) => {
-                tracing::warn!(
-                    blockchain_id,
-                    error = %error,
-                    "Failed to read latest sync progress update"
-                );
-                0
-            }
-        };
-
         observability::record_sync_queue_snapshot(
             blockchain_id,
             queue_total,
             queue_due,
             queue_retrying,
-            oldest_due_age_secs,
-            progress_tracked_contracts,
-            progress_last_update_age_secs,
         );
     }
 

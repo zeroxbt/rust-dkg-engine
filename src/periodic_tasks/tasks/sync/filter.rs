@@ -8,7 +8,6 @@ use std::{
 
 use dkg_blockchain::{Address, BlockchainId, BlockchainManager};
 use dkg_domain::{KnowledgeCollectionMetadata, TokenIds, derive_ual};
-use dkg_observability as observability;
 use dkg_repository::{KcChainMetadataRepository, KcChainReadyKcStateMetadataEntry};
 use tokio::sync::mpsc;
 use tracing::instrument;
@@ -47,7 +46,6 @@ pub(crate) async fn filter_task(
     tx: mpsc::Sender<Vec<KcToSync>>,
 ) -> FilterStats {
     let task_start = Instant::now();
-    let blockchain_label = blockchain_id.as_str();
     let mut already_synced = Vec::new();
     let mut expired = Vec::new();
     let mut waiting_for_metadata = Vec::new();
@@ -62,7 +60,6 @@ pub(crate) async fn filter_task(
     let filter_batch_size = filter_batch_size.max(1);
 
     for chunk in pending_kc_ids.chunks(filter_batch_size) {
-        let batch_start = Instant::now();
         let batch_result = process_filter_batch(
             chunk,
             &blockchain_id,
@@ -73,14 +70,6 @@ pub(crate) async fn filter_task(
             &triple_store_assertions,
         )
         .await;
-
-        observability::record_sync_filter_batch(
-            batch_start.elapsed(),
-            chunk.len(),
-            batch_result.to_sync.len(),
-            batch_result.already_synced.len(),
-            batch_result.expired.len(),
-        );
 
         already_synced.extend(batch_result.already_synced);
         expired.extend(batch_result.expired);
@@ -101,19 +90,8 @@ pub(crate) async fn filter_task(
                 tracing::trace!("Filter: fetch stage receiver dropped, stopping");
                 break;
             }
-            observability::record_sync_pipeline_channel_depth(
-                blockchain_label,
-                "filter_to_fetch",
-                tx.max_capacity().saturating_sub(tx.capacity()),
-            );
         }
     }
-
-    observability::record_sync_waiting_for_core_metadata_count(
-        blockchain_label,
-        waiting_for_metadata.len(),
-    );
-    observability::record_sync_waiting_for_kc_state_metadata_count(blockchain_label, waiting_for_state.len());
 
     tracing::trace!(
         total_ms = task_start.elapsed().as_millis() as u64,
@@ -255,8 +233,6 @@ async fn process_filter_batch(
             metadata,
         });
     }
-
-    observability::record_kc_state_metadata_ready_count(blockchain_id.as_str(), to_sync.len());
 
     FilterBatchResult {
         already_synced,

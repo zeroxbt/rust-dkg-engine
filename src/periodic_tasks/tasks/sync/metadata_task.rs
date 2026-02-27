@@ -8,7 +8,6 @@ use dkg_blockchain::{
     Address, BlockchainId, ContractEvent, ContractName, decode_contract_event,
     monitored_contract_events,
 };
-use dkg_observability as observability;
 use dkg_repository::GapBoundaries;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -70,16 +69,6 @@ enum RangeType {
     Leading,
     Internal,
     Tail,
-}
-
-impl RangeType {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Leading => "leading",
-            Self::Internal => "internal",
-            Self::Tail => "tail",
-        }
-    }
 }
 
 /// An inclusive block range [start, end] to scan for KC events.
@@ -341,12 +330,6 @@ impl MetadataSyncTask {
 
         result.gap_ranges_detected = plan.ranges.len() as u64;
 
-        observability::record_sync_metadata_gaps_detected(
-            blockchain_id.as_str(),
-            &contract_addr_str,
-            result.gap_ranges_detected,
-        );
-
         if !scan_non_tail_gaps {
             if let Some(tail_range) = plan
                 .ranges
@@ -361,16 +344,6 @@ impl MetadataSyncTask {
         }
 
         if plan.ranges.is_empty() {
-            observability::record_sync_metadata_cursor(
-                blockchain_id.as_str(),
-                &contract_addr_str,
-                cursor,
-            );
-            observability::record_sync_metadata_cursor_lag(
-                blockchain_id.as_str(),
-                &contract_addr_str,
-                target_tip.saturating_sub(cursor),
-            );
             return Ok(result);
         }
 
@@ -379,8 +352,6 @@ impl MetadataSyncTask {
             .cloned()
             .unwrap_or_default();
         let chunk_size = self.config.metadata_backfill_block_batch_size.max(1);
-
-        let mut current_cursor = cursor;
 
         for scan_range in plan.ranges.iter() {
             // Cursor advances only for tail scans.
@@ -391,7 +362,6 @@ impl MetadataSyncTask {
                 let chunk_to = scan_range
                     .end
                     .min(chunk_from.saturating_add(chunk_size.saturating_sub(1)));
-                let chunk_started = std::time::Instant::now();
 
                 let logs = self
                     .deps
@@ -409,7 +379,6 @@ impl MetadataSyncTask {
 
                 let mut records = Vec::new();
                 let mut discovered_ids = HashSet::new();
-                let mut chunk_events_found = 0_usize;
 
                 for log in logs {
                     let Some(ContractEvent::KnowledgeCollectionCreated {
@@ -441,7 +410,6 @@ impl MetadataSyncTask {
                     discovered_ids.insert(record.kc_id);
                     records.push(record);
                     result.metadata_events_found = result.metadata_events_found.saturating_add(1);
-                    chunk_events_found = chunk_events_found.saturating_add(1);
                 }
 
                 hydrate_block_timestamps(
@@ -472,14 +440,6 @@ impl MetadataSyncTask {
                 });
                 let dropped_not_ready = before_ready_filter.saturating_sub(records.len());
                 if dropped_not_ready > 0 {
-                    observability::record_sync_metadata_backfill_chunk(
-                        blockchain_id.as_str(),
-                        "error",
-                        scan_range.range_type.as_str(),
-                        chunk_started.elapsed(),
-                        chunk_to.saturating_sub(chunk_from).saturating_add(1),
-                        chunk_events_found,
-                    );
                     return Err(MetadataSyncError::IncompleteChunkHydration {
                         contract: contract_addr_str.clone(),
                         chunk_from,
@@ -529,37 +489,12 @@ impl MetadataSyncTask {
                         )
                         .await
                         .map_err(MetadataSyncError::UpdateMetadataProgress)?;
-                    current_cursor = chunk_to;
                     result.cursor_advanced = true;
                 }
-
-                observability::record_sync_metadata_backfill_chunk(
-                    blockchain_id.as_str(),
-                    "ok",
-                    scan_range.range_type.as_str(),
-                    chunk_started.elapsed(),
-                    chunk_to.saturating_sub(chunk_from).saturating_add(1),
-                    chunk_events_found,
-                );
 
                 chunk_from = chunk_to.saturating_add(1);
             }
         }
-
-        observability::record_sync_metadata_events_found_total(
-            blockchain_id.as_str(),
-            result.metadata_events_found,
-        );
-        observability::record_sync_metadata_cursor(
-            blockchain_id.as_str(),
-            &contract_addr_str,
-            current_cursor,
-        );
-        observability::record_sync_metadata_cursor_lag(
-            blockchain_id.as_str(),
-            &contract_addr_str,
-            target_tip.saturating_sub(current_cursor),
-        );
 
         Ok(result)
     }

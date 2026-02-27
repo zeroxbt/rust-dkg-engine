@@ -34,17 +34,11 @@ pub(crate) async fn insert_task(
     triple_store_assertions: Arc<TripleStoreAssertions>,
 ) -> InsertStats {
     let task_start = Instant::now();
-    let blockchain_label = blockchain_id.as_str();
     let mut synced = Vec::new();
     let mut failed = Vec::new();
     let mut total_received = 0usize;
 
     while let Some(batch) = rx.recv().await {
-        observability::record_sync_pipeline_channel_depth(
-            blockchain_label,
-            "fetch_to_insert",
-            rx.len(),
-        );
         let batch_start = Instant::now();
         let batch_len = batch.len();
         let batch_assets: u64 = batch.iter().map(|kc| kc.estimated_assets).sum();
@@ -81,8 +75,6 @@ pub(crate) async fn insert_task(
             batch_start.elapsed(),
             batch_len,
             batch_assets,
-            batch_synced_count,
-            batch_failed_count,
         );
         synced.extend(batch_synced);
         failed.extend(batch_failed);

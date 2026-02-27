@@ -56,7 +56,6 @@ pub(crate) async fn fetch_task(
     tx: mpsc::Sender<Vec<FetchedKc>>,
 ) -> FetchStats {
     let task_start = Instant::now();
-    let blockchain_label = blockchain_id.as_str();
     let network_fetch_batch_size = network_fetch_batch_size.max(1);
     let batch_get_fanout_concurrency = batch_get_fanout_concurrency.max(1);
     let max_assets_per_fetch_batch = max_assets_per_fetch_batch.max(1);
@@ -66,14 +65,7 @@ pub(crate) async fn fetch_task(
 
     // Get shard peers once at the start, sorted by performance score
     let (mut peers, peer_stats) = get_shard_peers(&blockchain_id, &network_manager, &peer_registry);
-    let blockchain_label_owned = blockchain_id.to_string();
     let identified_peers = peer_registry.identified_shard_peer_count(&blockchain_id);
-    observability::record_sync_fetch_peer_selection(
-        &blockchain_label_owned,
-        peer_stats.shard_members,
-        identified_peers,
-        peer_stats.usable,
-    );
 
     if peers.is_empty() {
         tracing::warn!(
@@ -132,11 +124,6 @@ pub(crate) async fn fetch_task(
     let mut accumulated: Vec<KcToSync> = Vec::new();
 
     while let Some(batch) = rx.recv().await {
-        observability::record_sync_pipeline_channel_depth(
-            blockchain_label,
-            "filter_to_fetch",
-            rx.len(),
-        );
         total_received += batch.len();
         accumulated.extend(batch);
 
@@ -187,13 +174,6 @@ pub(crate) async fn fetch_task(
                 fetch_start.elapsed(),
                 to_fetch.len(),
                 assets_total,
-                fetched.len(),
-                batch_failures.len(),
-            );
-            observability::record_sync_fetch_batch_payload_bytes(
-                batch_status,
-                estimate_fetched_batch_payload_bytes(&fetched),
-                fetched.len(),
             );
 
             total_fetched += fetched.len();
@@ -217,11 +197,6 @@ pub(crate) async fn fetch_task(
                     failures.extend(accumulated.iter().map(|kc| kc.kc_id));
                     return FetchStats { failures };
                 }
-                observability::record_sync_pipeline_channel_depth(
-                    blockchain_label,
-                    "fetch_to_insert",
-                    tx.max_capacity().saturating_sub(tx.capacity()),
-                );
             }
 
             // Break inner loop if channel is empty to avoid busy-waiting
@@ -259,13 +234,6 @@ pub(crate) async fn fetch_task(
             fetch_start.elapsed(),
             accumulated.len(),
             assets_total,
-            fetched.len(),
-            batch_failures.len(),
-        );
-        observability::record_sync_fetch_batch_payload_bytes(
-            batch_status,
-            estimate_fetched_batch_payload_bytes(&fetched),
-            fetched.len(),
         );
 
         total_fetched += fetched.len();
@@ -280,13 +248,7 @@ pub(crate) async fn fetch_task(
                 fetch_ms = fetch_start.elapsed().as_millis() as u64,
                 "Fetch: flushing remaining KCs"
             );
-            if tx.send(fetched).await.is_ok() {
-                observability::record_sync_pipeline_channel_depth(
-                    blockchain_label,
-                    "fetch_to_insert",
-                    tx.max_capacity().saturating_sub(tx.capacity()),
-                );
-            }
+            let _ = tx.send(fetched).await;
         }
     }
 
@@ -306,32 +268,6 @@ fn estimate_asset_count(token_ids: &TokenIds) -> u64 {
     let range = end.saturating_sub(start).saturating_add(1);
     let burned = token_ids.burned().len() as u64;
     range.saturating_sub(burned)
-}
-
-fn estimate_fetched_batch_payload_bytes(batch: &[FetchedKc]) -> u64 {
-    batch
-        .iter()
-        .map(|kc| {
-            let public_bytes = kc
-                .assertion
-                .public
-                .iter()
-                .map(|triple| triple.len() as u64)
-                .sum::<u64>();
-            let private_bytes = kc
-                .assertion
-                .private
-                .as_ref()
-                .map(|triples| {
-                    triples
-                        .iter()
-                        .map(|triple| triple.len() as u64)
-                        .sum::<u64>()
-                })
-                .unwrap_or(0);
-            public_bytes.saturating_add(private_bytes)
-        })
-        .sum()
 }
 
 /// Get shard peers for the given blockchain, excluding self.
@@ -531,7 +467,6 @@ async fn fetch_kc_batch_from_network(
 
                 peer_span.record("valid_kcs", valid_count);
                 peer_span.record("status", tracing::field::display("ok"));
-                observability::record_sync_fetch_peer_request("ack", elapsed, valid_count);
 
                 // Break early if we got everything - don't wait for remaining in-flight requests
                 if uals_still_needed.is_empty() {
@@ -541,13 +476,11 @@ async fn fetch_kc_batch_from_network(
             Ok(BatchGetResponseData::Error(_)) => {
                 peer_span.record("valid_kcs", 0usize);
                 peer_span.record("status", tracing::field::display("nack"));
-                observability::record_sync_fetch_peer_request("nack", elapsed, 0);
             }
             Err(e) => {
                 let status = e.to_string();
                 peer_span.record("valid_kcs", 0usize);
                 peer_span.record("status", tracing::field::display(&status));
-                observability::record_sync_fetch_peer_request("failure", elapsed, 0);
             }
         }
 

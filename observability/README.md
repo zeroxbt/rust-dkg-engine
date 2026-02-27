@@ -31,7 +31,6 @@ bind_address = "127.0.0.1:9464"
   - `observability/grafana/dashboards/operations.json`
   - `observability/grafana/dashboards/triple-store.json`
   - `observability/grafana/dashboards/network.json`
-  - `observability/grafana/dashboards/sync.json`
   - `observability/grafana/dashboards/sync-v2.json`
   - `observability/grafana/dashboards/memory.json`
   - `observability/grafana/dashboards/internals.json`
@@ -48,7 +47,6 @@ bind_address = "127.0.0.1:9464"
 - Command p95/p99 latency
 - Task run rates by task/status
 - Task p95/p99 latency
-- Sync heartbeat freshness (`time() - node_sync_last_success_unix`)
 
 `operations.json`:
 - Completed throughput by command
@@ -73,12 +71,6 @@ bind_address = "127.0.0.1:9464"
 - Network action queue backpressure (enqueue wait, depth, enqueue/dequeue rate)
 - Pending outbound request gauges and response-send success/failure rates
 
-`sync.json`:
-- Fetch batch rates/latency by status (success/partial/failed)
-- Peer request rates/latency/yield (valid KCs per request)
-- Fetched vs failed KC rates and failure ratio
-- Shard peer availability (shard members / identified / usable)
-
 `sync-v2.json`:
 - KCs with synced metadata totals from SQL (`node_sync_metadata_kcs_total` and source-filtered `node_sync_metadata_backfill_kcs_total`)
 - KCs estimated fully synced (`clamp_min(node_sync_metadata_kcs_total - node_sync_queue_total, 0)`)
@@ -96,9 +88,6 @@ bind_address = "127.0.0.1:9464"
 - Internal backlog and pressure signals (sync queue, network queue depth, pending requests, peer registry size)
 
 `internals.json`:
-- Sync-cycle internals: cycle outcomes, per-cycle KC volume, RSS start/end/delta
-- Sync pipeline pressure: filter->fetch and fetch->insert channel depths
-- Fetch payload sizing: batch-level and per-KC payload bytes
 - Network channel internals: action channel fill/depth, pending requests, response-channel waits/outcomes
 - Peer registry internals: request outcomes/latency plus population/capability/backoff signals
 - Process FD internals: total snapshots and type breakdown for FD leak detection
