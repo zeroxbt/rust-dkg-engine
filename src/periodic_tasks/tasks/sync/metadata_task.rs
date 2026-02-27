@@ -15,8 +15,8 @@ use tokio_util::sync::CancellationToken;
 use super::SyncConfig;
 use crate::{
     application::kc_chain_metadata_sync::{
-        BuildKcRecordError, build_kc_chain_metadata_record, hydrate_core_metadata_publishers,
-        hydrate_block_timestamps, hydrate_kc_state_metadata,
+        BuildKcRecordError, build_kc_chain_metadata_record, hydrate_block_timestamps,
+        hydrate_core_metadata_publishers, hydrate_kc_state_metadata,
         upsert_kc_chain_metadata_record,
     },
     periodic_tasks::SyncDeps,
@@ -61,6 +61,7 @@ struct ContractMetadataSyncResult {
     metadata_events_found: u64,
     cursor_advanced: bool,
     gap_ranges_detected: u64,
+    chunk_processed: bool,
 }
 
 /// An inclusive block range [start, end] to scan for KC events.
@@ -222,25 +223,24 @@ impl MetadataSyncTask {
             }
         };
 
-        let mut any_cursor_advanced = false;
+        // Process one tail chunk per contract per execution, concurrently.
+        // This keeps iterations bounded while retaining multi-contract throughput.
+        let tail_results =
+            futures::future::join_all(contract_addresses.iter().map(|&contract_address| {
+                self.sync_contract(blockchain_id, contract_address, target_tip, false, true)
+            }))
+            .await;
 
-        for contract_address in contract_addresses {
-            match self
-                .sync_contract(
-                    blockchain_id,
-                    contract_address,
-                    target_tip,
-                    scan_non_tail_gaps,
-                )
-                .await
-            {
-                Ok(result) => {
-                    any_cursor_advanced |= result.cursor_advanced;
+        let mut any_tail_chunk_processed = false;
+        for (index, result) in tail_results.into_iter().enumerate() {
+            match result {
+                Ok(contract_result) => {
+                    any_tail_chunk_processed |= contract_result.chunk_processed;
                 }
                 Err(error) => {
                     tracing::error!(
                         blockchain_id = %blockchain_id,
-                        contract = ?contract_address,
+                        contract = ?contract_addresses[index],
                         error = %error,
                         "Failed metadata sync for contract"
                     );
@@ -248,14 +248,40 @@ impl MetadataSyncTask {
             }
         }
 
-        if scan_non_tail_gaps {
-            self.last_non_tail_scan_at_unix_secs
-                .store(now_unix_secs, Ordering::Relaxed);
+        if any_tail_chunk_processed {
+            return hot_loop_period;
         }
 
-        // Keep hot loop only for tail cursor progress. Gap rescans run on recheck cadence.
-        if any_cursor_advanced {
-            return hot_loop_period;
+        if scan_non_tail_gaps {
+            let gap_results =
+                futures::future::join_all(contract_addresses.iter().map(|&contract_address| {
+                    self.sync_contract(blockchain_id, contract_address, target_tip, true, false)
+                }))
+                .await;
+
+            let mut any_cursor_advanced = false;
+            for (index, result) in gap_results.into_iter().enumerate() {
+                match result {
+                    Ok(contract_result) => {
+                        any_cursor_advanced |= contract_result.cursor_advanced;
+                    }
+                    Err(error) => {
+                        tracing::error!(
+                            blockchain_id = %blockchain_id,
+                            contract = ?contract_addresses[index],
+                            error = %error,
+                            "Failed metadata sync for contract"
+                        );
+                    }
+                }
+            }
+
+            self.last_non_tail_scan_at_unix_secs
+                .store(now_unix_secs, Ordering::Relaxed);
+            // Keep hot loop only for tail cursor progress. Gap rescans run on recheck cadence.
+            if any_cursor_advanced {
+                return hot_loop_period;
+            }
         }
 
         recheck_period
@@ -267,6 +293,7 @@ impl MetadataSyncTask {
         contract_address: Address,
         target_tip: u64,
         scan_non_tail_gaps: bool,
+        single_chunk: bool,
     ) -> Result<ContractMetadataSyncResult, MetadataSyncError> {
         let contract_addr_str = format!("{:?}", contract_address);
         let mut result = ContractMetadataSyncResult::default();
@@ -490,6 +517,10 @@ impl MetadataSyncTask {
                         .await
                         .map_err(MetadataSyncError::UpdateMetadataProgress)?;
                     result.cursor_advanced = true;
+                }
+                result.chunk_processed = true;
+                if single_chunk {
+                    return Ok(result);
                 }
 
                 chunk_from = chunk_to.saturating_add(1);
