@@ -1,6 +1,9 @@
 use alloy::primitives::{Address, FixedBytes, U256};
 
-use crate::{chains::evm::EvmChain, error::BlockchainError};
+use crate::{
+    chains::evm::{EvmChain, error_decode::decode_contract_error},
+    error::BlockchainError,
+};
 
 /// Status of the current proof period.
 #[derive(Debug, Clone)]
@@ -150,11 +153,14 @@ impl EvmChain {
                 Ok(())
             }
             Err(err) => {
-                tracing::warn!("Submit proof failed: {:?}", err);
+                let raw_error = format!("{:?}", err);
+                let reason = decode_contract_error(&err).unwrap_or_else(|| raw_error.clone());
+
+                tracing::warn!(reason = %reason, raw_error = %raw_error, "Submit proof failed");
                 Err(BlockchainError::TransactionFailed {
                     contract: "RandomSampling".to_string(),
                     function: "submitProof".to_string(),
-                    reason: format!("{:?}", err),
+                    reason,
                 })
             }
         }
