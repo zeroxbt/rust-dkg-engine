@@ -79,6 +79,7 @@ bind_address = "127.0.0.1:9464"
 - KA/KC count per fetch batch averages (`sum(rate(node_sync_fetch_batch_assets_sum[5m])) / sum(rate(node_sync_fetch_batch_assets_count[5m]))` and `sum(rate(node_sync_fetch_batch_kcs_sum[5m])) / sum(rate(node_sync_fetch_batch_kcs_count[5m]))`)
 - Insert batch duration p50/p95/p99 for successful batches (`node_sync_insert_batch_duration_seconds{status="success",quantile=...}`)
 - KC/KA count per insert batch averages (`sum(rate(node_sync_insert_batch_kcs_sum[5m])) / sum(rate(node_sync_insert_batch_kcs_count[5m]))` and `sum(rate(node_sync_insert_batch_assets_sum[5m])) / sum(rate(node_sync_insert_batch_assets_count[5m]))`)
+- Metadata backfill batch averages: blocks scanned and events found (`node_sync_metadata_backfill_batch_blocks` and `node_sync_metadata_backfill_batch_events`)
 
 `memory.json`:
 - Process-level memory (RSS/virtual) and file descriptor usage

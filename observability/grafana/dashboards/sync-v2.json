@@ -482,6 +482,176 @@
       ],
       "title": "KC/KA Count per Insert Batch (average)",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_fetch_batch_duration_seconds{status=\"success\",quantile=\"0.5\"}",
+          "instant": false,
+          "legendFormat": "fetch p50",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_fetch_batch_duration_seconds{status=\"success\",quantile=\"0.95\"}",
+          "instant": false,
+          "legendFormat": "fetch p95",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_fetch_batch_duration_seconds{status=\"success\",quantile=\"0.99\"}",
+          "instant": false,
+          "legendFormat": "fetch p99",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_insert_batch_duration_seconds{status=\"success\",quantile=\"0.5\"}",
+          "instant": false,
+          "legendFormat": "processing p50",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_insert_batch_duration_seconds{status=\"success\",quantile=\"0.95\"}",
+          "instant": false,
+          "legendFormat": "processing p95",
+          "range": true,
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_insert_batch_duration_seconds{status=\"success\",quantile=\"0.99\"}",
+          "instant": false,
+          "legendFormat": "processing p99",
+          "range": true,
+          "refId": "F"
+        }
+      ],
+      "title": "Batch Fetch vs Processing Duration p50/p95/p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(node_sync_metadata_backfill_batch_blocks_sum{status=\"success\"}[5m])) / clamp_min(sum(rate(node_sync_metadata_backfill_batch_blocks_count{status=\"success\"}[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "avg_blocks_per_batch",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(node_sync_metadata_backfill_batch_events_sum{status=\"success\"}[5m])) / clamp_min(sum(rate(node_sync_metadata_backfill_batch_events_count{status=\"success\"}[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "avg_events_found_per_batch",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Metadata Backfill Blocks and Events per Batch (average)",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",

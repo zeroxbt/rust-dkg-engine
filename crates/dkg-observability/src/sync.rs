@@ -44,6 +44,26 @@ pub fn record_sync_metadata_backfill_total_snapshot(
     .set(metadata_backfill_kcs_total as f64);
 }
 
+pub fn record_sync_metadata_backfill_batch(
+    blockchain_id: &str,
+    status: &str,
+    blocks_scanned: u64,
+    events_found: usize,
+) {
+    histogram!(
+        "node_sync_metadata_backfill_batch_blocks",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(blocks_scanned as f64);
+    histogram!(
+        "node_sync_metadata_backfill_batch_events",
+        "blockchain_id" => blockchain_id.to_string(),
+        "status" => status.to_string()
+    )
+    .record(events_found as f64);
+}
+
 pub fn record_sync_fetch_batch(
     status: &str,
     duration: Duration,

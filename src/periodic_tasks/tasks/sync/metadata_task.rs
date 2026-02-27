@@ -8,6 +8,7 @@ use dkg_blockchain::{
     Address, BlockchainId, ContractEvent, ContractName, decode_contract_event,
     monitored_contract_events,
 };
+use dkg_observability as observability;
 use dkg_repository::GapBoundaries;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -389,6 +390,7 @@ impl MetadataSyncTask {
                 let chunk_to = scan_range
                     .end
                     .min(chunk_from.saturating_add(chunk_size.saturating_sub(1)));
+                let chunk_blocks_scanned = chunk_to.saturating_sub(chunk_from).saturating_add(1);
 
                 let logs = self
                     .deps
@@ -406,6 +408,7 @@ impl MetadataSyncTask {
 
                 let mut records = Vec::new();
                 let mut discovered_ids = HashSet::new();
+                let mut chunk_events_found = 0_usize;
 
                 for log in logs {
                     let Some(ContractEvent::KnowledgeCollectionCreated {
@@ -436,6 +439,7 @@ impl MetadataSyncTask {
 
                     discovered_ids.insert(record.kc_id);
                     records.push(record);
+                    chunk_events_found = chunk_events_found.saturating_add(1);
                     result.metadata_events_found = result.metadata_events_found.saturating_add(1);
                 }
 
@@ -467,6 +471,12 @@ impl MetadataSyncTask {
                 });
                 let dropped_not_ready = before_ready_filter.saturating_sub(records.len());
                 if dropped_not_ready > 0 {
+                    observability::record_sync_metadata_backfill_batch(
+                        blockchain_id.as_str(),
+                        "error",
+                        chunk_blocks_scanned,
+                        chunk_events_found,
+                    );
                     return Err(MetadataSyncError::IncompleteChunkHydration {
                         contract: contract_addr_str.clone(),
                         chunk_from,
@@ -518,6 +528,13 @@ impl MetadataSyncTask {
                         .map_err(MetadataSyncError::UpdateMetadataProgress)?;
                     result.cursor_advanced = true;
                 }
+
+                observability::record_sync_metadata_backfill_batch(
+                    blockchain_id.as_str(),
+                    "success",
+                    chunk_blocks_scanned,
+                    chunk_events_found,
+                );
                 result.chunk_processed = true;
                 if single_chunk {
                     return Ok(result);
