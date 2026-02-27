@@ -1,6 +1,6 @@
 [package]
 name = "dkg-triple-store"
-version = "0.1.22"
+version = "0.1.23"
 rust-version = "1.92.0"
 edition = "2024"
 
