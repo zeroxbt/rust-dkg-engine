@@ -785,13 +785,13 @@ build_chain_blocks() {
 
   if [[ "$enable_neuroweb" == "y" || "$enable_neuroweb" == "Y" ]]; then
     enabled_count=$((enabled_count + 1))
-    local bc_id hub_addr default_rpc
+    local key_name hub_addr default_rpc
     if [[ "$environment" == "mainnet" ]]; then
-      bc_id="otp:2043"
+      key_name="otp_2043"
       hub_addr="0x0957e25BD33034948abc28204ddA54b6E1142D6F"
       default_rpc="https://astrosat-parachain-rpc.origin-trail.network,https://astrosat.origintrail.network/,https://astrosat-2.origintrail.network/"
     else
-      bc_id="otp:20430"
+      key_name="otp_20430"
       hub_addr="0xe233b5b78853a62b1e11ebe88bf083e25b0a57a6"
       default_rpc="https://lofar-testnet.origin-trail.network,https://lofar-testnet.origintrail.network"
     fi
@@ -808,10 +808,8 @@ build_chain_blocks() {
     rpc_lines="$(toml_array_lines_from_csv "$rpc_csv")"
     blocks+=$(
       cat <<EOF
-[[managers.blockchain]]
-[managers.blockchain.NeuroWeb]
+[managers.blockchain.${key_name}]
 enabled = true
-blockchain_id = "${bc_id}"
 hub_contract_address = "${hub_addr}"
 rpc_endpoints = [
 $rpc_lines
@@ -831,13 +829,13 @@ EOF
 
   if [[ "$enable_gnosis" == "y" || "$enable_gnosis" == "Y" ]]; then
     enabled_count=$((enabled_count + 1))
-    local bc_id hub_addr default_rpc
+    local key_name hub_addr default_rpc
     if [[ "$environment" == "mainnet" ]]; then
-      bc_id="gnosis:100"
+      key_name="gnosis_100"
       hub_addr="0x882D0BF07F956b1b94BBfe9E77F47c6fc7D4EC8f"
       default_rpc=""
     else
-      bc_id="gnosis:10200"
+      key_name="gnosis_10200"
       hub_addr="0x2c08AC4B630c009F709521e56Ac385A6af70650f"
       default_rpc="https://rpc.chiadochain.net"
     fi
@@ -854,10 +852,8 @@ EOF
     rpc_lines="$(toml_array_lines_from_csv "$rpc_csv")"
     blocks+=$(
       cat <<EOF
-[[managers.blockchain]]
-[managers.blockchain.Gnosis]
+[managers.blockchain.${key_name}]
 enabled = true
-blockchain_id = "${bc_id}"
 hub_contract_address = "${hub_addr}"
 rpc_endpoints = [
 $rpc_lines
@@ -876,13 +872,13 @@ EOF
 
   if [[ "$enable_base" == "y" || "$enable_base" == "Y" ]]; then
     enabled_count=$((enabled_count + 1))
-    local bc_id hub_addr default_rpc
+    local key_name hub_addr default_rpc
     if [[ "$environment" == "mainnet" ]]; then
-      bc_id="base:8453"
+      key_name="base_8453"
       hub_addr="0x99Aa571fD5e681c2D27ee08A7b7989DB02541d13"
       default_rpc=""
     else
-      bc_id="base:84532"
+      key_name="base_84532"
       hub_addr="0xf21CE8f8b01548D97DCFb36869f1ccB0814a4e05"
       default_rpc="https://sepolia.base.org"
     fi
@@ -899,10 +895,8 @@ EOF
     rpc_lines="$(toml_array_lines_from_csv "$rpc_csv")"
     blocks+=$(
       cat <<EOF
-[[managers.blockchain]]
-[managers.blockchain.Base]
+[managers.blockchain.${key_name}]
 enabled = true
-blockchain_id = "${bc_id}"
 hub_contract_address = "${hub_addr}"
 rpc_endpoints = [
 $rpc_lines

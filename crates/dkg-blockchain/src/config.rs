@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use alloy::{primitives::Address, signers::local::PrivateKeySigner};
 use dkg_domain::BlockchainId;
@@ -50,6 +50,7 @@ pub struct BlockchainConfigRaw {
 
     /// RPC endpoints for EVM JSON-RPC calls (supports HTTP and WebSocket).
     /// Multiple endpoints enable fallback if primary fails.
+    #[serde(default)]
     pub rpc_endpoints: Vec<String>,
 
     /// Node name used in profile creation.
@@ -125,18 +126,19 @@ impl BlockchainConfigRaw {
     }
 
     pub fn resolve(self) -> Result<BlockchainConfig, ConfigError> {
-        self.ensure_rpc_endpoints()?;
-        self.ensure_management_wallet_address()?;
-        self.ensure_operational_wallet_private_key()?;
-        self.ensure_max_rpc_requests_per_second()?;
+        let config = self;
+        config.ensure_rpc_endpoints()?;
+        config.ensure_management_wallet_address()?;
+        config.ensure_operational_wallet_private_key()?;
+        config.ensure_max_rpc_requests_per_second()?;
 
-        let operational_key = self
+        let operational_key = config
             .evm_operational_wallet_private_key
             .clone()
             .expect("operational private key ensured");
         let derived_operational_address = derive_evm_address_from_private_key(&operational_key)?;
 
-        let operational_address = match self.evm_operational_wallet_address.as_deref() {
+        let operational_address = match config.evm_operational_wallet_address.as_deref() {
             Some(address) => {
                 let parsed = parse_evm_address(address)?;
                 if parsed != derived_operational_address {
@@ -151,21 +153,21 @@ impl BlockchainConfigRaw {
         };
 
         Ok(BlockchainConfig {
-            blockchain_id: self.blockchain_id,
+            blockchain_id: config.blockchain_id,
             evm_operational_wallet_private_key: operational_key,
             evm_operational_wallet_address: operational_address,
-            evm_management_wallet_address: self
+            evm_management_wallet_address: config
                 .evm_management_wallet_address
                 .expect("management address ensured"),
-            evm_management_wallet_private_key: self.evm_management_wallet_private_key,
-            hub_contract_address: self.hub_contract_address,
-            rpc_endpoints: self.rpc_endpoints,
-            node_name: self.node_name,
-            operator_fee: self.operator_fee,
-            substrate_rpc_endpoints: self.substrate_rpc_endpoints,
-            max_rpc_requests_per_second: self.max_rpc_requests_per_second,
-            tx_confirmations: self.tx_confirmations,
-            tx_receipt_timeout_ms: self.tx_receipt_timeout_ms,
+            evm_management_wallet_private_key: config.evm_management_wallet_private_key,
+            hub_contract_address: config.hub_contract_address,
+            rpc_endpoints: config.rpc_endpoints,
+            node_name: config.node_name,
+            operator_fee: config.operator_fee,
+            substrate_rpc_endpoints: config.substrate_rpc_endpoints,
+            max_rpc_requests_per_second: config.max_rpc_requests_per_second,
+            tx_confirmations: config.tx_confirmations,
+            tx_receipt_timeout_ms: config.tx_receipt_timeout_ms,
         })
     }
 }
@@ -258,38 +260,64 @@ fn derive_evm_address_from_private_key(private_key: &str) -> Result<Address, Con
     Ok(signer.address())
 }
 
-/// Supported blockchain types for configuration (raw, deserialized).
+/// Stable config keys for supported blockchains.
 ///
-/// The enum variant determines chain-specific behavior (gas config, token decimals, etc.)
-/// and is used for TOML config structure (e.g., `[managers.blockchain.Hardhat]`).
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum BlockchainRaw {
-    /// Local Hardhat network for development/testing
-    Hardhat(BlockchainConfigRaw),
-    /// Gnosis Chain (formerly xDai) - mainnet chain_id: 100, testnet (Chiado): 10200
-    Gnosis(BlockchainConfigRaw),
-    /// NeuroWeb (OT Parachain) - mainnet chain_id: 2043, testnet: 20430
-    NeuroWeb(BlockchainConfigRaw),
-    /// Base (Coinbase L2) - mainnet chain_id: 8453, testnet (Sepolia): 84532
-    Base(BlockchainConfigRaw),
+/// These keys are the only accepted TOML entries under `[managers.blockchain]`.
+/// The key determines both blockchain implementation kind and expected blockchain_id.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum BlockchainConfigKey {
+    #[serde(rename = "hardhat1_31337")]
+    Hardhat131337,
+    #[serde(rename = "hardhat2_31337")]
+    Hardhat231337,
+    #[serde(rename = "otp_2043")]
+    Otp2043,
+    #[serde(rename = "otp_20430")]
+    Otp20430,
+    #[serde(rename = "gnosis_100")]
+    Gnosis100,
+    #[serde(rename = "gnosis_10200")]
+    Gnosis10200,
+    #[serde(rename = "base_8453")]
+    Base8453,
+    #[serde(rename = "base_84532")]
+    Base84532,
 }
 
-impl BlockchainRaw {
-    pub fn is_enabled(&self) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlockchainKind {
+    Hardhat,
+    Gnosis,
+    NeuroWeb,
+    Base,
+}
+
+impl BlockchainConfigKey {
+    fn expected_blockchain_id(&self) -> BlockchainId {
         match self {
-            BlockchainRaw::Hardhat(config)
-            | BlockchainRaw::Gnosis(config)
-            | BlockchainRaw::NeuroWeb(config)
-            | BlockchainRaw::Base(config) => config.is_enabled(),
+            BlockchainConfigKey::Hardhat131337 => "hardhat1:31337".into(),
+            BlockchainConfigKey::Hardhat231337 => "hardhat2:31337".into(),
+            BlockchainConfigKey::Otp2043 => "otp:2043".into(),
+            BlockchainConfigKey::Otp20430 => "otp:20430".into(),
+            BlockchainConfigKey::Gnosis100 => "gnosis:100".into(),
+            BlockchainConfigKey::Gnosis10200 => "gnosis:10200".into(),
+            BlockchainConfigKey::Base8453 => "base:8453".into(),
+            BlockchainConfigKey::Base84532 => "base:84532".into(),
         }
     }
 
-    pub fn resolve(self) -> Result<Blockchain, ConfigError> {
+    fn expected_kind(&self) -> BlockchainKind {
         match self {
-            BlockchainRaw::Hardhat(config) => Ok(Blockchain::Hardhat(config.resolve()?)),
-            BlockchainRaw::Gnosis(config) => Ok(Blockchain::Gnosis(config.resolve()?)),
-            BlockchainRaw::NeuroWeb(config) => Ok(Blockchain::NeuroWeb(config.resolve()?)),
-            BlockchainRaw::Base(config) => Ok(Blockchain::Base(config.resolve()?)),
+            BlockchainConfigKey::Hardhat131337 | BlockchainConfigKey::Hardhat231337 => {
+                BlockchainKind::Hardhat
+            }
+            BlockchainConfigKey::Otp2043 | BlockchainConfigKey::Otp20430 => {
+                BlockchainKind::NeuroWeb
+            }
+            BlockchainConfigKey::Gnosis100 | BlockchainConfigKey::Gnosis10200 => {
+                BlockchainKind::Gnosis
+            }
+            BlockchainConfigKey::Base8453 | BlockchainConfigKey::Base84532 => BlockchainKind::Base,
         }
     }
 }
@@ -355,26 +383,32 @@ impl Blockchain {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BlockchainManagerConfigRaw(pub Vec<BlockchainRaw>);
+pub struct BlockchainManagerConfigRaw(pub BTreeMap<BlockchainConfigKey, BlockchainConfigRaw>);
 
 impl BlockchainManagerConfigRaw {
     pub fn resolve(self) -> Result<BlockchainManagerConfig, ConfigError> {
-        use std::collections::HashSet;
-
-        let mut seen_ids: HashSet<BlockchainId> = HashSet::new();
         let mut resolved = Vec::with_capacity(self.0.len());
-        for chain in self.0 {
-            if chain.is_enabled() {
-                let resolved_chain = chain.resolve()?;
-                let id = resolved_chain.get_config().blockchain_id().clone();
-                if !seen_ids.insert(id.clone()) {
-                    return Err(ConfigError::InvalidConfig(format!(
-                        "duplicate blockchain_id configured: {}",
-                        id
-                    )));
-                }
-                resolved.push(resolved_chain);
+        for (key, config) in self.0 {
+            if !config.is_enabled() {
+                continue;
             }
+
+            let expected_id = key.expected_blockchain_id();
+            if config.blockchain_id != expected_id {
+                return Err(ConfigError::InvalidConfig(format!(
+                    "blockchain config key '{:?}' expects blockchain_id '{}', got '{}'",
+                    key, expected_id, config.blockchain_id
+                )));
+            }
+
+            let resolved_config = config.resolve()?;
+            let resolved_chain = match key.expected_kind() {
+                BlockchainKind::Hardhat => Blockchain::Hardhat(resolved_config),
+                BlockchainKind::Gnosis => Blockchain::Gnosis(resolved_config),
+                BlockchainKind::NeuroWeb => Blockchain::NeuroWeb(resolved_config),
+                BlockchainKind::Base => Blockchain::Base(resolved_config),
+            };
+            resolved.push(resolved_chain);
         }
         if resolved.is_empty() {
             return Err(ConfigError::InvalidConfig(
@@ -433,5 +467,18 @@ mod tests {
         let config = sample_raw(Some(10));
         let resolved = config.resolve().unwrap();
         assert_eq!(resolved.max_rpc_requests_per_second(), Some(10));
+    }
+
+    #[test]
+    fn resolve_rejects_missing_rpc_endpoints() {
+        let mut config = sample_raw(None);
+        config.rpc_endpoints = vec![];
+
+        let result = config.resolve();
+        assert!(matches!(
+            result,
+            Err(ConfigError::InvalidConfig(ref msg))
+                if msg.contains("rpc_endpoints must include at least one endpoint")
+        ));
     }
 }

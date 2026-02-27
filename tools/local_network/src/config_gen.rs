@@ -37,7 +37,7 @@ struct ControllersConfig {
 struct ManagersConfig {
     network: NetworkConfig,
     repository: RepositoryConfig,
-    blockchain: Vec<BlockchainEntry>,
+    blockchain: BlockchainConfigEntries,
     triple_store: TripleStoreConfig,
 }
 
@@ -57,9 +57,8 @@ struct RepositoryConfig {
 }
 
 #[derive(Serialize)]
-struct BlockchainEntry {
-    #[serde(rename = "Hardhat")]
-    hardhat: HardhatConfig,
+struct BlockchainConfigEntries {
+    hardhat1_31337: HardhatConfig,
 }
 
 #[derive(Serialize)]
@@ -111,8 +110,8 @@ pub(crate) fn render_rust_config(ctx: &RustConfigContext) -> String {
                 user: "root".to_string(),
                 password: "".to_string(),
             },
-            blockchain: vec![BlockchainEntry {
-                hardhat: HardhatConfig {
+            blockchain: BlockchainConfigEntries {
+                hardhat1_31337: HardhatConfig {
                     enabled: true,
                     blockchain_id: ctx.blockchain_id.clone(),
                     hub_contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3".to_string(),
@@ -128,7 +127,7 @@ pub(crate) fn render_rust_config(ctx: &RustConfigContext) -> String {
                     tx_confirmations: 1,
                     tx_receipt_timeout_ms: 300_000,
                 },
-            }],
+            },
             triple_store: TripleStoreConfig {
                 backend: "oxigraph".to_string(),
                 timeouts: TripleStoreTimeouts {
@@ -175,5 +174,14 @@ mod tests {
             .and_then(|v| v.as_integer())
             .expect("controllers.http_api.port should be present");
         assert_eq!(http_port, 8901);
+
+        assert!(
+            parsed
+                .get("managers")
+                .and_then(|v| v.get("blockchain"))
+                .and_then(|v| v.get("hardhat1_31337"))
+                .is_some(),
+            "managers.blockchain.hardhat1_31337 should be present"
+        );
     }
 }

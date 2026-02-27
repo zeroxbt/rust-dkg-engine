@@ -16,8 +16,8 @@ use std::collections::HashMap;
 use chains::evm::EvmChain;
 pub use chains::evm::{ContractLog, ContractName, NodeInfo, ShardingTableNode};
 pub use config::{
-    BlockchainConfig, BlockchainConfigRaw, BlockchainManagerConfig, BlockchainManagerConfigRaw,
-    BlockchainRaw,
+    BlockchainConfig, BlockchainConfigKey, BlockchainConfigRaw, BlockchainManagerConfig,
+    BlockchainManagerConfigRaw,
 };
 pub use config_error::ConfigError;
 pub use contract_events::{ContractEvent, decode_contract_event, monitored_contract_events};

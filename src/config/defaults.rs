@@ -7,9 +7,9 @@
 //! Shared defaults are factored into helper functions to reduce duplication
 //! and make it easy to see what differs between environments.
 
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
-use dkg_blockchain::{BlockchainConfigRaw, BlockchainManagerConfigRaw, BlockchainRaw};
+use dkg_blockchain::{BlockchainConfigKey, BlockchainConfigRaw, BlockchainManagerConfigRaw};
 use dkg_key_value_store::KeyValueStoreManagerConfig;
 use dkg_network::NetworkManagerConfig;
 use dkg_repository::RepositoryManagerConfigRaw;
@@ -243,40 +243,48 @@ fn development() -> ConfigRaw {
                     .to_string(),
             ]),
             repository: repository("root", 10),
-            blockchain: BlockchainManagerConfigRaw(vec![
-                BlockchainRaw::Hardhat(BlockchainConfigRaw {
-                    enabled: true,
-                    blockchain_id: "hardhat1:31337".into(),
-                    hub_contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3".to_string(),
-                    rpc_endpoints: vec!["http://localhost:8545".to_string()],
-                    operator_fee: Some(0),
-                    evm_operational_wallet_address: None,
-                    evm_operational_wallet_private_key: None,
-                    evm_management_wallet_address: None,
-                    evm_management_wallet_private_key: None,
-                    node_name: "LocalNode0".to_string(),
-                    substrate_rpc_endpoints: None,
-                    max_rpc_requests_per_second: None,
-                    tx_confirmations: 1,
-                    tx_receipt_timeout_ms: 300000,
-                }),
-                BlockchainRaw::Hardhat(BlockchainConfigRaw {
-                    enabled: false,
-                    blockchain_id: "hardhat2:31337".into(),
-                    hub_contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3".to_string(),
-                    rpc_endpoints: vec!["http://localhost:9545".to_string()],
-                    operator_fee: Some(0),
-                    evm_operational_wallet_address: None,
-                    evm_operational_wallet_private_key: None,
-                    evm_management_wallet_address: None,
-                    evm_management_wallet_private_key: None,
-                    node_name: "LocalNode1".to_string(),
-                    substrate_rpc_endpoints: None,
-                    max_rpc_requests_per_second: None,
-                    tx_confirmations: 1,
-                    tx_receipt_timeout_ms: 300000,
-                }),
-            ]),
+            blockchain: BlockchainManagerConfigRaw(BTreeMap::from([
+                (
+                    BlockchainConfigKey::Hardhat131337,
+                    BlockchainConfigRaw {
+                        enabled: true,
+                        blockchain_id: "hardhat1:31337".into(),
+                        hub_contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+                            .to_string(),
+                        rpc_endpoints: vec!["http://localhost:8545".to_string()],
+                        operator_fee: Some(0),
+                        evm_operational_wallet_address: None,
+                        evm_operational_wallet_private_key: None,
+                        evm_management_wallet_address: None,
+                        evm_management_wallet_private_key: None,
+                        node_name: "LocalNode0".to_string(),
+                        substrate_rpc_endpoints: None,
+                        max_rpc_requests_per_second: None,
+                        tx_confirmations: 1,
+                        tx_receipt_timeout_ms: 300000,
+                    },
+                ),
+                (
+                    BlockchainConfigKey::Hardhat231337,
+                    BlockchainConfigRaw {
+                        enabled: false,
+                        blockchain_id: "hardhat2:31337".into(),
+                        hub_contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+                            .to_string(),
+                        rpc_endpoints: vec!["http://localhost:9545".to_string()],
+                        operator_fee: Some(0),
+                        evm_operational_wallet_address: None,
+                        evm_operational_wallet_private_key: None,
+                        evm_management_wallet_address: None,
+                        evm_management_wallet_private_key: None,
+                        node_name: "LocalNode1".to_string(),
+                        substrate_rpc_endpoints: None,
+                        max_rpc_requests_per_second: None,
+                        tx_confirmations: 1,
+                        tx_receipt_timeout_ms: 300000,
+                    },
+                ),
+            ])),
             triple_store: triple_store("http://localhost:9999"),
             key_value_store: key_value_store(),
         },
@@ -297,59 +305,71 @@ fn testnet() -> ConfigRaw {
         managers: ManagersConfigRaw {
             network: network(vec![]),
             repository: repository("root", 120),
-            blockchain: BlockchainManagerConfigRaw(vec![
-                BlockchainRaw::NeuroWeb(BlockchainConfigRaw {
-                    enabled: false,
-                    blockchain_id: "otp:20430".into(),
-                    hub_contract_address: "0xe233b5b78853a62b1e11ebe88bf083e25b0a57a6".to_string(),
-                    rpc_endpoints: vec![
-                        "https://lofar-testnet.origin-trail.network".to_string(),
-                        "https://lofar-testnet.origintrail.network".to_string(),
-                    ],
-                    operator_fee: Some(0),
-                    evm_operational_wallet_address: None,
-                    evm_operational_wallet_private_key: None,
-                    evm_management_wallet_address: None,
-                    evm_management_wallet_private_key: None,
-                    node_name: "TestNode".to_string(),
-                    substrate_rpc_endpoints: None,
-                    max_rpc_requests_per_second: None,
-                    tx_confirmations: 1,
-                    tx_receipt_timeout_ms: 300000,
-                }),
-                BlockchainRaw::Gnosis(BlockchainConfigRaw {
-                    enabled: false,
-                    blockchain_id: "gnosis:10200".into(),
-                    hub_contract_address: "0x2c08AC4B630c009F709521e56Ac385A6af70650f".to_string(),
-                    rpc_endpoints: vec!["https://rpc.chiadochain.net".to_string()],
-                    operator_fee: Some(0),
-                    evm_operational_wallet_address: None,
-                    evm_operational_wallet_private_key: None,
-                    evm_management_wallet_address: None,
-                    evm_management_wallet_private_key: None,
-                    node_name: "TestNode".to_string(),
-                    substrate_rpc_endpoints: None,
-                    max_rpc_requests_per_second: None,
-                    tx_confirmations: 1,
-                    tx_receipt_timeout_ms: 300000,
-                }),
-                BlockchainRaw::Base(BlockchainConfigRaw {
-                    enabled: false,
-                    blockchain_id: "base:84532".into(),
-                    hub_contract_address: "0xf21CE8f8b01548D97DCFb36869f1ccB0814a4e05".to_string(),
-                    rpc_endpoints: vec!["https://sepolia.base.org".to_string()],
-                    operator_fee: Some(0),
-                    evm_operational_wallet_address: None,
-                    evm_operational_wallet_private_key: None,
-                    evm_management_wallet_address: None,
-                    evm_management_wallet_private_key: None,
-                    node_name: "TestNode".to_string(),
-                    substrate_rpc_endpoints: None,
-                    max_rpc_requests_per_second: None,
-                    tx_confirmations: 1,
-                    tx_receipt_timeout_ms: 300000,
-                }),
-            ]),
+            blockchain: BlockchainManagerConfigRaw(BTreeMap::from([
+                (
+                    BlockchainConfigKey::Otp20430,
+                    BlockchainConfigRaw {
+                        enabled: false,
+                        blockchain_id: "otp:20430".into(),
+                        hub_contract_address: "0xe233b5b78853a62b1e11ebe88bf083e25b0a57a6"
+                            .to_string(),
+                        rpc_endpoints: vec![
+                            "https://lofar-testnet.origin-trail.network".to_string(),
+                            "https://lofar-testnet.origintrail.network".to_string(),
+                        ],
+                        operator_fee: Some(0),
+                        evm_operational_wallet_address: None,
+                        evm_operational_wallet_private_key: None,
+                        evm_management_wallet_address: None,
+                        evm_management_wallet_private_key: None,
+                        node_name: "TestNode".to_string(),
+                        substrate_rpc_endpoints: None,
+                        max_rpc_requests_per_second: None,
+                        tx_confirmations: 1,
+                        tx_receipt_timeout_ms: 300000,
+                    },
+                ),
+                (
+                    BlockchainConfigKey::Gnosis10200,
+                    BlockchainConfigRaw {
+                        enabled: false,
+                        blockchain_id: "gnosis:10200".into(),
+                        hub_contract_address: "0x2c08AC4B630c009F709521e56Ac385A6af70650f"
+                            .to_string(),
+                        rpc_endpoints: vec!["https://rpc.chiadochain.net".to_string()],
+                        operator_fee: Some(0),
+                        evm_operational_wallet_address: None,
+                        evm_operational_wallet_private_key: None,
+                        evm_management_wallet_address: None,
+                        evm_management_wallet_private_key: None,
+                        node_name: "TestNode".to_string(),
+                        substrate_rpc_endpoints: None,
+                        max_rpc_requests_per_second: None,
+                        tx_confirmations: 1,
+                        tx_receipt_timeout_ms: 300000,
+                    },
+                ),
+                (
+                    BlockchainConfigKey::Base84532,
+                    BlockchainConfigRaw {
+                        enabled: false,
+                        blockchain_id: "base:84532".into(),
+                        hub_contract_address: "0xf21CE8f8b01548D97DCFb36869f1ccB0814a4e05"
+                            .to_string(),
+                        rpc_endpoints: vec!["https://sepolia.base.org".to_string()],
+                        operator_fee: Some(0),
+                        evm_operational_wallet_address: None,
+                        evm_operational_wallet_private_key: None,
+                        evm_management_wallet_address: None,
+                        evm_management_wallet_private_key: None,
+                        node_name: "TestNode".to_string(),
+                        substrate_rpc_endpoints: None,
+                        max_rpc_requests_per_second: None,
+                        tx_confirmations: 1,
+                        tx_receipt_timeout_ms: 300000,
+                    },
+                ),
+            ])),
             triple_store: triple_store("http://localhost:9999"),
             key_value_store: key_value_store(),
         },
@@ -375,60 +395,72 @@ fn mainnet() -> ConfigRaw {
                     .to_string(),
             ]),
             repository: repository("root", 120),
-            blockchain: BlockchainManagerConfigRaw(vec![
-                BlockchainRaw::NeuroWeb(BlockchainConfigRaw {
-                    enabled: false,
-                    blockchain_id: "otp:2043".into(),
-                    hub_contract_address: "0x0957e25BD33034948abc28204ddA54b6E1142D6F".to_string(),
-                    rpc_endpoints: vec![
-                        "https://astrosat-parachain-rpc.origin-trail.network".to_string(),
-                        "https://astrosat.origintrail.network/".to_string(),
-                        "https://astrosat-2.origintrail.network/".to_string(),
-                    ],
-                    operator_fee: Some(0),
-                    evm_operational_wallet_address: None,
-                    evm_operational_wallet_private_key: None,
-                    evm_management_wallet_address: None,
-                    evm_management_wallet_private_key: None,
-                    node_name: "MainnetNode".to_string(),
-                    substrate_rpc_endpoints: None,
-                    max_rpc_requests_per_second: None,
-                    tx_confirmations: 1,
-                    tx_receipt_timeout_ms: 300000,
-                }),
-                BlockchainRaw::Gnosis(BlockchainConfigRaw {
-                    enabled: false,
-                    blockchain_id: "gnosis:100".into(),
-                    hub_contract_address: "0x882D0BF07F956b1b94BBfe9E77F47c6fc7D4EC8f".to_string(),
-                    rpc_endpoints: vec![],
-                    operator_fee: Some(0),
-                    evm_operational_wallet_address: None,
-                    evm_operational_wallet_private_key: None,
-                    evm_management_wallet_address: None,
-                    evm_management_wallet_private_key: None,
-                    node_name: "MainnetNode".to_string(),
-                    substrate_rpc_endpoints: None,
-                    max_rpc_requests_per_second: None,
-                    tx_confirmations: 1,
-                    tx_receipt_timeout_ms: 300000,
-                }),
-                BlockchainRaw::Base(BlockchainConfigRaw {
-                    enabled: false,
-                    blockchain_id: "base:8453".into(),
-                    hub_contract_address: "0x99Aa571fD5e681c2D27ee08A7b7989DB02541d13".to_string(),
-                    rpc_endpoints: vec![],
-                    operator_fee: Some(0),
-                    evm_operational_wallet_address: None,
-                    evm_operational_wallet_private_key: None,
-                    evm_management_wallet_address: None,
-                    evm_management_wallet_private_key: None,
-                    node_name: "MainnetNode".to_string(),
-                    substrate_rpc_endpoints: None,
-                    max_rpc_requests_per_second: None,
-                    tx_confirmations: 1,
-                    tx_receipt_timeout_ms: 300000,
-                }),
-            ]),
+            blockchain: BlockchainManagerConfigRaw(BTreeMap::from([
+                (
+                    BlockchainConfigKey::Otp2043,
+                    BlockchainConfigRaw {
+                        enabled: false,
+                        blockchain_id: "otp:2043".into(),
+                        hub_contract_address: "0x0957e25BD33034948abc28204ddA54b6E1142D6F"
+                            .to_string(),
+                        rpc_endpoints: vec![
+                            "https://astrosat-parachain-rpc.origin-trail.network".to_string(),
+                            "https://astrosat.origintrail.network/".to_string(),
+                            "https://astrosat-2.origintrail.network/".to_string(),
+                        ],
+                        operator_fee: Some(0),
+                        evm_operational_wallet_address: None,
+                        evm_operational_wallet_private_key: None,
+                        evm_management_wallet_address: None,
+                        evm_management_wallet_private_key: None,
+                        node_name: "MainnetNode".to_string(),
+                        substrate_rpc_endpoints: None,
+                        max_rpc_requests_per_second: None,
+                        tx_confirmations: 1,
+                        tx_receipt_timeout_ms: 300000,
+                    },
+                ),
+                (
+                    BlockchainConfigKey::Gnosis100,
+                    BlockchainConfigRaw {
+                        enabled: false,
+                        blockchain_id: "gnosis:100".into(),
+                        hub_contract_address: "0x882D0BF07F956b1b94BBfe9E77F47c6fc7D4EC8f"
+                            .to_string(),
+                        rpc_endpoints: vec![],
+                        operator_fee: Some(0),
+                        evm_operational_wallet_address: None,
+                        evm_operational_wallet_private_key: None,
+                        evm_management_wallet_address: None,
+                        evm_management_wallet_private_key: None,
+                        node_name: "MainnetNode".to_string(),
+                        substrate_rpc_endpoints: None,
+                        max_rpc_requests_per_second: None,
+                        tx_confirmations: 1,
+                        tx_receipt_timeout_ms: 300000,
+                    },
+                ),
+                (
+                    BlockchainConfigKey::Base8453,
+                    BlockchainConfigRaw {
+                        enabled: false,
+                        blockchain_id: "base:8453".into(),
+                        hub_contract_address: "0x99Aa571fD5e681c2D27ee08A7b7989DB02541d13"
+                            .to_string(),
+                        rpc_endpoints: vec![],
+                        operator_fee: Some(0),
+                        evm_operational_wallet_address: None,
+                        evm_operational_wallet_private_key: None,
+                        evm_management_wallet_address: None,
+                        evm_management_wallet_private_key: None,
+                        node_name: "MainnetNode".to_string(),
+                        substrate_rpc_endpoints: None,
+                        max_rpc_requests_per_second: None,
+                        tx_confirmations: 1,
+                        tx_receipt_timeout_ms: 300000,
+                    },
+                ),
+            ])),
             triple_store: triple_store("http://localhost:9999"),
             key_value_store: key_value_store(),
         },
@@ -505,5 +537,44 @@ mod tests {
     fn unknown_environment_returns_error() {
         let error = config_for("staging").expect_err("unknown env should fail");
         assert!(matches!(error, ConfigError::UnknownEnvironment(env) if env == "staging"));
+    }
+
+    #[test]
+    fn blockchain_keyed_overrides_preserve_defaults() {
+        use figment::providers::{Format, Toml};
+
+        let defaults = config_for("mainnet").expect("mainnet defaults should resolve");
+        let user_toml = r#"
+            environment = "mainnet"
+            [managers.blockchain.otp_2043]
+            enabled = true
+            node_name = "custom-node"
+        "#;
+        let figment = Figment::from(Serialized::defaults(&defaults)).merge(Toml::string(user_toml));
+        let config: ConfigRaw = figment.extract().expect("merge failed");
+        let neuroweb = config
+            .managers
+            .blockchain
+            .0
+            .get(&BlockchainConfigKey::Otp2043)
+            .expect("otp_2043 defaults should exist");
+
+        assert_eq!(neuroweb.node_name, "custom-node");
+        assert_eq!(neuroweb.blockchain_id.as_str(), "otp:2043");
+        assert_eq!(neuroweb.rpc_endpoints.len(), 3);
+    }
+
+    #[test]
+    fn unknown_blockchain_key_is_rejected() {
+        use figment::providers::{Format, Toml};
+
+        let defaults = config_for("mainnet").expect("mainnet defaults should resolve");
+        let user_toml = r#"
+            environment = "mainnet"
+            [managers.blockchain.unknown_chain]
+            enabled = true
+        "#;
+        let figment = Figment::from(Serialized::defaults(&defaults)).merge(Toml::string(user_toml));
+        assert!(figment.extract::<ConfigRaw>().is_err());
     }
 }
