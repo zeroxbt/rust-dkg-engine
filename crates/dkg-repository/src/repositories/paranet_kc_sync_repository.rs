@@ -67,7 +67,13 @@ impl ParanetKcSyncRepository {
     ) -> Result<()> {
         let started = Instant::now();
         if kc_uals.is_empty() {
-            record_repository_query("paranet_kc_sync", "enqueue_locators", "ok", started.elapsed(), Some(0));
+            record_repository_query(
+                "paranet_kc_sync",
+                "enqueue_locators",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(());
         }
 
@@ -103,10 +109,22 @@ impl ParanetKcSyncRepository {
 
         match &result {
             Ok(()) => {
-                record_repository_query("paranet_kc_sync", "enqueue_locators", "ok", started.elapsed(), Some(kc_uals.len()));
+                record_repository_query(
+                    "paranet_kc_sync",
+                    "enqueue_locators",
+                    "ok",
+                    started.elapsed(),
+                    Some(kc_uals.len()),
+                );
             }
             Err(_) => {
-                record_repository_query("paranet_kc_sync", "enqueue_locators", "error", started.elapsed(), None);
+                record_repository_query(
+                    "paranet_kc_sync",
+                    "enqueue_locators",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -123,7 +141,13 @@ impl ParanetKcSyncRepository {
     ) -> Result<Vec<ParanetKcSyncEntry>> {
         let started = Instant::now();
         if limit == 0 {
-            record_repository_query("paranet_kc_sync", "get_due_pending_batch", "ok", started.elapsed(), Some(0));
+            record_repository_query(
+                "paranet_kc_sync",
+                "get_due_pending_batch",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(Vec::new());
         }
 
@@ -150,10 +174,22 @@ impl ParanetKcSyncRepository {
 
         match &result {
             Ok(rows) => {
-                record_repository_query("paranet_kc_sync", "get_due_pending_batch", "ok", started.elapsed(), Some(rows.len()));
+                record_repository_query(
+                    "paranet_kc_sync",
+                    "get_due_pending_batch",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
             }
             Err(_) => {
-                record_repository_query("paranet_kc_sync", "get_due_pending_batch", "error", started.elapsed(), None);
+                record_repository_query(
+                    "paranet_kc_sync",
+                    "get_due_pending_batch",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -193,10 +229,22 @@ impl ParanetKcSyncRepository {
 
         match &result {
             Ok(()) => {
-                record_repository_query("paranet_kc_sync", "mark_synced", "ok", started.elapsed(), Some(1));
+                record_repository_query(
+                    "paranet_kc_sync",
+                    "mark_synced",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
             }
             Err(_) => {
-                record_repository_query("paranet_kc_sync", "mark_synced", "error", started.elapsed(), None);
+                record_repository_query(
+                    "paranet_kc_sync",
+                    "mark_synced",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -243,10 +291,22 @@ impl ParanetKcSyncRepository {
 
         match &result {
             Ok(()) => {
-                record_repository_query("paranet_kc_sync", "mark_failed_attempt", "ok", started.elapsed(), Some(1));
+                record_repository_query(
+                    "paranet_kc_sync",
+                    "mark_failed_attempt",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
             }
             Err(_) => {
-                record_repository_query("paranet_kc_sync", "mark_failed_attempt", "error", started.elapsed(), None);
+                record_repository_query(
+                    "paranet_kc_sync",
+                    "mark_failed_attempt",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 

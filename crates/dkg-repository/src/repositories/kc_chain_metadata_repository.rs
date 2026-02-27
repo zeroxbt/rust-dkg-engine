@@ -5,15 +5,14 @@ use std::{
 };
 
 use chrono::Utc;
-use sea_orm::{
-    ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    PaginatorTrait, Statement,
-};
 use sea_orm::sea_query::{Expr, Value};
+use sea_orm::{
+    ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter, Statement,
+};
 
 use crate::{
     error::{RepositoryError, Result},
-    observability::record_repository_query,
     models::{
         kc_chain_core_metadata::{
             ActiveModel as CoreActiveModel, Column as CoreColumn, Entity as CoreEntity,
@@ -24,6 +23,7 @@ use crate::{
             Model as StateModel,
         },
     },
+    observability::record_repository_query,
     types::{KcChainMetadataEntry, KcChainReadyKcStateMetadataEntry},
 };
 
@@ -224,10 +224,8 @@ impl KcChainMetadataRepository {
         _source: Option<&str>,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
-        let range_start_token_id =
-            Self::u64_to_u32(range_start_token_id, "range_start_token_id")?;
-        let range_end_token_id =
-            Self::u64_to_u32(range_end_token_id, "range_end_token_id")?;
+        let range_start_token_id = Self::u64_to_u32(range_start_token_id, "range_start_token_id")?;
+        let range_end_token_id = Self::u64_to_u32(range_end_token_id, "range_end_token_id")?;
         let end_epoch = Self::u64_to_i64(end_epoch, "end_epoch")?;
         let state_observed_block = Self::u64_to_i64(state_observed_block, "state_observed_block")?;
 
@@ -290,7 +288,10 @@ impl KcChainMetadataRepository {
             .filter(StateColumn::BlockchainId.eq(blockchain_id))
             .filter(StateColumn::ContractAddress.eq(contract_address))
             .filter(StateColumn::KcId.eq(kc_id))
-            .col_expr(StateColumn::PrivateGraphMode, Expr::value(private_graph_mode))
+            .col_expr(
+                StateColumn::PrivateGraphMode,
+                Expr::value(private_graph_mode),
+            )
             .col_expr(
                 StateColumn::PrivateGraphPayload,
                 Expr::value(private_graph_payload.map(ToOwned::to_owned)),
@@ -330,7 +331,13 @@ impl KcChainMetadataRepository {
     ) -> Result<HashMap<u64, KcChainMetadataEntry>> {
         let started = Instant::now();
         if kc_ids.is_empty() {
-            record_repository_query("kc_chain_metadata", "get_many_complete", "ok", started.elapsed(), Some(0));
+            record_repository_query(
+                "kc_chain_metadata",
+                "get_many_complete",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(HashMap::new());
         }
 
@@ -374,7 +381,13 @@ impl KcChainMetadataRepository {
                 );
             }
             Err(_) => {
-                record_repository_query("kc_chain_metadata", "get_many_complete", "error", started.elapsed(), None);
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "get_many_complete",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -403,7 +416,13 @@ impl KcChainMetadataRepository {
     ) -> Result<HashMap<u64, KcChainReadyKcStateMetadataEntry>> {
         let started = Instant::now();
         if kc_ids.is_empty() {
-            record_repository_query("kc_chain_metadata", "get_many_ready_with_kc_state_metadata", "ok", started.elapsed(), Some(0));
+            record_repository_query(
+                "kc_chain_metadata",
+                "get_many_ready_with_kc_state_metadata",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(HashMap::new());
         }
 
@@ -598,24 +617,41 @@ impl KcChainMetadataRepository {
         );
 
         let result = async {
-            let ends_rows = db.query_all(ends_sql).await.map_err(RepositoryError::Database)?;
-            let starts_rows = db.query_all(starts_sql).await.map_err(RepositoryError::Database)?;
+            let ends_rows = db
+                .query_all(ends_sql)
+                .await
+                .map_err(RepositoryError::Database)?;
+            let starts_rows = db
+                .query_all(starts_sql)
+                .await
+                .map_err(RepositoryError::Database)?;
 
             let mut ends_of_runs = Vec::with_capacity(ends_rows.len());
             for row in ends_rows {
-                let kc_id: u64 = row.try_get("", "kc_id").map_err(RepositoryError::Database)?;
-                let block_number: i64 = row.try_get("", "block_number").map_err(RepositoryError::Database)?;
+                let kc_id: u64 = row
+                    .try_get("", "kc_id")
+                    .map_err(RepositoryError::Database)?;
+                let block_number: i64 = row
+                    .try_get("", "block_number")
+                    .map_err(RepositoryError::Database)?;
                 ends_of_runs.push((kc_id, block_number.max(0) as u64));
             }
 
             let mut starts_of_runs = Vec::with_capacity(starts_rows.len());
             for row in starts_rows {
-                let kc_id: u64 = row.try_get("", "kc_id").map_err(RepositoryError::Database)?;
-                let block_number: i64 = row.try_get("", "block_number").map_err(RepositoryError::Database)?;
+                let kc_id: u64 = row
+                    .try_get("", "kc_id")
+                    .map_err(RepositoryError::Database)?;
+                let block_number: i64 = row
+                    .try_get("", "block_number")
+                    .map_err(RepositoryError::Database)?;
                 starts_of_runs.push((kc_id, block_number.max(0) as u64));
             }
 
-            Ok(GapBoundaries { ends_of_runs, starts_of_runs })
+            Ok(GapBoundaries {
+                ends_of_runs,
+                starts_of_runs,
+            })
         }
         .await;
 
@@ -626,7 +662,12 @@ impl KcChainMetadataRepository {
                     "find_gap_boundaries",
                     "ok",
                     started.elapsed(),
-                    Some(boundaries.ends_of_runs.len().saturating_add(boundaries.starts_of_runs.len())),
+                    Some(
+                        boundaries
+                            .ends_of_runs
+                            .len()
+                            .saturating_add(boundaries.starts_of_runs.len()),
+                    ),
                 );
             }
             Err(_) => {

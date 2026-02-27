@@ -41,14 +41,24 @@ impl MigrationTrait for Migration {
                     .col(big_unsigned(KcChainStateMetadata::KcId))
                     .col(unsigned(KcChainStateMetadata::RangeStartTokenId))
                     .col(unsigned(KcChainStateMetadata::RangeEndTokenId))
-                    .col(sea_query::ColumnDef::new(KcChainStateMetadata::BurnedMode).unsigned().not_null())
-                    .col(sea_query::ColumnDef::new(KcChainStateMetadata::BurnedPayload).blob().not_null())
+                    .col(
+                        sea_query::ColumnDef::new(KcChainStateMetadata::BurnedMode)
+                            .unsigned()
+                            .not_null(),
+                    )
+                    .col(
+                        sea_query::ColumnDef::new(KcChainStateMetadata::BurnedPayload)
+                            .blob()
+                            .not_null(),
+                    )
                     .col(big_integer(KcChainStateMetadata::EndEpoch))
                     .col(string(KcChainStateMetadata::LatestMerkleRoot))
                     .col(big_integer(KcChainStateMetadata::StateObservedBlock))
                     .col(big_integer(KcChainStateMetadata::StateUpdatedAt).default(0))
                     .col(unsigned_null(KcChainStateMetadata::PrivateGraphMode))
-                    .col(sea_query::ColumnDef::new(KcChainStateMetadata::PrivateGraphPayload).blob())
+                    .col(
+                        sea_query::ColumnDef::new(KcChainStateMetadata::PrivateGraphPayload).blob(),
+                    )
                     .col(big_integer(KcChainStateMetadata::CreatedAt))
                     .col(big_integer(KcChainStateMetadata::UpdatedAt))
                     .primary_key(

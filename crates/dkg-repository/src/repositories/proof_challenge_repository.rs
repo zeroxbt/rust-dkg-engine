@@ -65,13 +65,31 @@ impl ProofChallengeRepository {
 
         match &result {
             Ok(Some(_)) => {
-                record_repository_query("proof_challenge", "get_latest", "ok", started.elapsed(), Some(1));
+                record_repository_query(
+                    "proof_challenge",
+                    "get_latest",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
             }
             Ok(None) => {
-                record_repository_query("proof_challenge", "get_latest", "ok", started.elapsed(), Some(0));
+                record_repository_query(
+                    "proof_challenge",
+                    "get_latest",
+                    "ok",
+                    started.elapsed(),
+                    Some(0),
+                );
             }
             Err(_) => {
-                record_repository_query("proof_challenge", "get_latest", "error", started.elapsed(), None);
+                record_repository_query(
+                    "proof_challenge",
+                    "get_latest",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -126,10 +144,22 @@ impl ProofChallengeRepository {
 
         match &result {
             Ok(_) => {
-                record_repository_query("proof_challenge", "create", "ok", started.elapsed(), Some(1));
+                record_repository_query(
+                    "proof_challenge",
+                    "create",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
             }
             Err(_) => {
-                record_repository_query("proof_challenge", "create", "error", started.elapsed(), None);
+                record_repository_query(
+                    "proof_challenge",
+                    "create",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -182,10 +212,22 @@ impl ProofChallengeRepository {
 
         match &result {
             Ok(()) => {
-                record_repository_query("proof_challenge", "set_state", "ok", started.elapsed(), Some(1));
+                record_repository_query(
+                    "proof_challenge",
+                    "set_state",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
             }
             Err(_) => {
-                record_repository_query("proof_challenge", "set_state", "error", started.elapsed(), None);
+                record_repository_query(
+                    "proof_challenge",
+                    "set_state",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -196,7 +238,13 @@ impl ProofChallengeRepository {
     pub async fn find_expired(&self, cutoff: i64, limit: u64) -> Result<Vec<ProofChallengeEntry>> {
         let started = Instant::now();
         if limit == 0 {
-            record_repository_query("proof_challenge", "find_expired", "ok", started.elapsed(), Some(0));
+            record_repository_query(
+                "proof_challenge",
+                "find_expired",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(Vec::new());
         }
 
@@ -211,10 +259,22 @@ impl ProofChallengeRepository {
 
         match &result {
             Ok(rows) => {
-                record_repository_query("proof_challenge", "find_expired", "ok", started.elapsed(), Some(rows.len()));
+                record_repository_query(
+                    "proof_challenge",
+                    "find_expired",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
             }
             Err(_) => {
-                record_repository_query("proof_challenge", "find_expired", "error", started.elapsed(), None);
+                record_repository_query(
+                    "proof_challenge",
+                    "find_expired",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -225,7 +285,13 @@ impl ProofChallengeRepository {
     pub async fn delete_by_keys(&self, entries: &[ProofChallengeEntry]) -> Result<u64> {
         let started = Instant::now();
         if entries.is_empty() {
-            record_repository_query("proof_challenge", "delete_by_keys", "ok", started.elapsed(), Some(0));
+            record_repository_query(
+                "proof_challenge",
+                "delete_by_keys",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(0);
         }
 

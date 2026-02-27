@@ -77,13 +77,31 @@ impl OperationRepository {
 
         match &result {
             Ok(Some(_)) => {
-                record_repository_query("operation", "get_by_id_and_name", "ok", started.elapsed(), Some(1));
+                record_repository_query(
+                    "operation",
+                    "get_by_id_and_name",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
             }
             Ok(None) => {
-                record_repository_query("operation", "get_by_id_and_name", "ok", started.elapsed(), Some(0));
+                record_repository_query(
+                    "operation",
+                    "get_by_id_and_name",
+                    "ok",
+                    started.elapsed(),
+                    Some(0),
+                );
             }
             Err(_) => {
-                record_repository_query("operation", "get_by_id_and_name", "error", started.elapsed(), None);
+                record_repository_query(
+                    "operation",
+                    "get_by_id_and_name",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -154,7 +172,13 @@ impl OperationRepository {
     ) -> Result<Vec<Uuid>, RepositoryError> {
         let started = Instant::now();
         if statuses.is_empty() || limit == 0 {
-            record_repository_query("operation", "find_ids_by_status_older_than", "ok", started.elapsed(), Some(0));
+            record_repository_query(
+                "operation",
+                "find_ids_by_status_older_than",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(Vec::new());
         }
 
@@ -182,10 +206,22 @@ impl OperationRepository {
 
         match &result {
             Ok(ids) => {
-                record_repository_query("operation", "find_ids_by_status_older_than", "ok", started.elapsed(), Some(ids.len()));
+                record_repository_query(
+                    "operation",
+                    "find_ids_by_status_older_than",
+                    "ok",
+                    started.elapsed(),
+                    Some(ids.len()),
+                );
             }
             Err(_) => {
-                record_repository_query("operation", "find_ids_by_status_older_than", "error", started.elapsed(), None);
+                record_repository_query(
+                    "operation",
+                    "find_ids_by_status_older_than",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -196,7 +232,13 @@ impl OperationRepository {
     pub async fn delete_by_ids(&self, ids: &[Uuid]) -> Result<u64, RepositoryError> {
         let started = Instant::now();
         if ids.is_empty() {
-            record_repository_query("operation", "delete_by_ids", "ok", started.elapsed(), Some(0));
+            record_repository_query(
+                "operation",
+                "delete_by_ids",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(0);
         }
 

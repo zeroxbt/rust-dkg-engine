@@ -144,7 +144,11 @@ pub(crate) fn encode_bitmap_with_base(base: u64, bit_len: usize, ids: &[u64]) ->
     bitmap
 }
 
-pub(crate) fn decode_bitmap_with_base(payload: &[u8], base: u64, bit_len: usize) -> Option<Vec<u64>> {
+pub(crate) fn decode_bitmap_with_base(
+    payload: &[u8],
+    base: u64,
+    bit_len: usize,
+) -> Option<Vec<u64>> {
     let expected_bytes = bit_len.div_ceil(8);
     if payload.len() != expected_bytes {
         return None;

@@ -8,7 +8,6 @@ use sea_orm::{
 
 use crate::{
     error::Result,
-    observability::record_repository_query,
     models::{
         kc_sync_metadata_cursor::{
             ActiveModel as CursorActiveModel, Column as CursorColumn, Entity as CursorEntity,
@@ -17,6 +16,7 @@ use crate::{
             ActiveModel as QueueActiveModel, Column as QueueColumn, Entity as QueueEntity,
         },
     },
+    observability::record_repository_query,
     types::KcSyncQueueEntry,
 };
 
@@ -124,7 +124,10 @@ impl KcSyncRepository {
             CursorEntity::find_by_id((blockchain_id.to_string(), contract_address.to_string()))
                 .one(self.conn.as_ref())
                 .await
-                .map(|row| row.map(|value| value.last_checked_block.max(0) as u64).unwrap_or(0))
+                .map(|row| {
+                    row.map(|value| value.last_checked_block.max(0) as u64)
+                        .unwrap_or(0)
+                })
                 .map_err(Into::into);
 
         match &result {
@@ -256,7 +259,13 @@ impl KcSyncRepository {
 
         match &result {
             Ok(()) => {
-                record_repository_query("kc_sync", "enqueue_kcs", "ok", started.elapsed(), Some(kc_ids.len()));
+                record_repository_query(
+                    "kc_sync",
+                    "enqueue_kcs",
+                    "ok",
+                    started.elapsed(),
+                    Some(kc_ids.len()),
+                );
             }
             Err(_) => {
                 record_repository_query("kc_sync", "enqueue_kcs", "error", started.elapsed(), None);
@@ -286,7 +295,11 @@ impl KcSyncRepository {
             .limit(limit)
             .all(self.conn.as_ref())
             .await
-            .map(|rows| rows.into_iter().map(Self::to_queue_entry).collect::<Vec<_>>())
+            .map(|rows| {
+                rows.into_iter()
+                    .map(Self::to_queue_entry)
+                    .collect::<Vec<_>>()
+            })
             .map_err(Into::into);
 
         match &result {
@@ -550,7 +563,13 @@ impl KcSyncRepository {
 
         match &result {
             Ok(()) => {
-                record_repository_query("kc_sync", "remove_kcs", "ok", started.elapsed(), Some(kc_ids.len()));
+                record_repository_query(
+                    "kc_sync",
+                    "remove_kcs",
+                    "ok",
+                    started.elapsed(),
+                    Some(kc_ids.len()),
+                );
             }
             Err(_) => {
                 record_repository_query("kc_sync", "remove_kcs", "error", started.elapsed(), None);

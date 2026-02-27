@@ -53,7 +53,9 @@ impl FinalityStatusRepository {
                     updated_at: Set(now),
                 };
 
-                Entity::update(active_model).exec(self.conn.as_ref()).await?;
+                Entity::update(active_model)
+                    .exec(self.conn.as_ref())
+                    .await?;
             } else {
                 // Insert new record
                 let active_model = finality_status::ActiveModel {
@@ -76,10 +78,22 @@ impl FinalityStatusRepository {
 
         match &result {
             Ok(()) => {
-                record_repository_query("finality_status", "save_finality_ack", "ok", started.elapsed(), Some(1));
+                record_repository_query(
+                    "finality_status",
+                    "save_finality_ack",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
             }
             Err(_) => {
-                record_repository_query("finality_status", "save_finality_ack", "error", started.elapsed(), None);
+                record_repository_query(
+                    "finality_status",
+                    "save_finality_ack",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -126,7 +140,13 @@ impl FinalityStatusRepository {
     ) -> Result<Vec<i32>, RepositoryError> {
         let started = Instant::now();
         if limit == 0 {
-            record_repository_query("finality_status", "find_ids_older_than", "ok", started.elapsed(), Some(0));
+            record_repository_query(
+                "finality_status",
+                "find_ids_older_than",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(Vec::new());
         }
 
@@ -136,14 +156,31 @@ impl FinalityStatusRepository {
             .limit(limit)
             .all(self.conn.as_ref())
             .await
-            .map(|records| records.into_iter().map(|record| record.id).collect::<Vec<_>>());
+            .map(|records| {
+                records
+                    .into_iter()
+                    .map(|record| record.id)
+                    .collect::<Vec<_>>()
+            });
 
         match &result {
             Ok(rows) => {
-                record_repository_query("finality_status", "find_ids_older_than", "ok", started.elapsed(), Some(rows.len()));
+                record_repository_query(
+                    "finality_status",
+                    "find_ids_older_than",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
             }
             Err(_) => {
-                record_repository_query("finality_status", "find_ids_older_than", "error", started.elapsed(), None);
+                record_repository_query(
+                    "finality_status",
+                    "find_ids_older_than",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
             }
         }
 
@@ -154,7 +191,13 @@ impl FinalityStatusRepository {
     pub async fn delete_by_ids(&self, ids: &[i32]) -> Result<u64, RepositoryError> {
         let started = Instant::now();
         if ids.is_empty() {
-            record_repository_query("finality_status", "delete_by_ids", "ok", started.elapsed(), Some(0));
+            record_repository_query(
+                "finality_status",
+                "delete_by_ids",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
             return Ok(0);
         }
 

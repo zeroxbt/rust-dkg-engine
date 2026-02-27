@@ -12,9 +12,7 @@ use dkg_repository::{KcChainMetadataRepository, KcChainReadyKcStateMetadataEntry
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::{
-    types::{FilterStats, KcToSync},
-};
+use super::types::{FilterStats, KcToSync};
 use crate::application::TripleStoreAssertions;
 use crate::application::state_metadata::{BurnedMode, decode_burned_ids};
 

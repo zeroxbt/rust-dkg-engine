@@ -84,7 +84,10 @@ pub(crate) fn encode_private_graph_presence(
         };
         token_ids.push(token_id);
 
-        if ka.private_triples().is_some_and(|triples| !triples.is_empty()) {
+        if ka
+            .private_triples()
+            .is_some_and(|triples| !triples.is_empty())
+        {
             private_ids.push(token_id);
         }
     }

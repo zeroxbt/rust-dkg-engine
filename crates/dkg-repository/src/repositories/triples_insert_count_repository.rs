@@ -41,7 +41,9 @@ impl TriplesInsertCountRepository {
                     id: Set(1),
                     count: Set(by),
                 };
-                Entity::insert(active_model).exec_with_returning(&txn).await?
+                Entity::insert(active_model)
+                    .exec_with_returning(&txn)
+                    .await?
             };
 
             txn.commit().await?;
