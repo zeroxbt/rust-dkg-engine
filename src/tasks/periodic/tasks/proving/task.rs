@@ -23,8 +23,8 @@ use crate::{
         group_and_sort_public_triples,
     },
     node_state::PeerRegistry,
-    periodic_tasks::ProvingDeps,
-    periodic_tasks::runner::run_with_shutdown,
+    tasks::periodic::ProvingDeps,
+    tasks::periodic::runner::run_with_shutdown,
 };
 
 pub(crate) struct ProvingTask {

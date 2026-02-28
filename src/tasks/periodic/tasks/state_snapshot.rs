@@ -10,8 +10,8 @@ use dkg_repository::{KcChainMetadataRepository, KcSyncRepository};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    node_state::PeerRegistry, periodic_tasks::StateSnapshotDeps,
-    periodic_tasks::runner::run_with_shutdown,
+    node_state::PeerRegistry, tasks::periodic::StateSnapshotDeps,
+    tasks::periodic::runner::run_with_shutdown,
 };
 
 #[derive(Debug, Clone)]

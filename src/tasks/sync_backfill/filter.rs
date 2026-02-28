@@ -32,7 +32,7 @@ use crate::application::state_metadata::{BurnedMode, decode_burned_ids};
         pending_count = pending_kc_ids.len(),
     )
 )]
-pub(crate) async fn filter_task(
+pub(crate) async fn run_filter_stage(
     pending_kc_ids: Vec<u64>,
     filter_batch_size: usize,
     blockchain_id: BlockchainId,
@@ -97,7 +97,7 @@ pub(crate) async fn filter_task(
         expired = expired.len(),
         waiting_for_metadata = waiting_for_metadata.len(),
         waiting_for_state = waiting_for_state.len(),
-        "Filter task completed"
+        "Filter stage completed"
     );
 
     FilterStats {

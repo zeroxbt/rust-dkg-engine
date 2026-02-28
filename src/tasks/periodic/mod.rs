@@ -4,6 +4,7 @@ mod runner;
 pub(crate) mod tasks;
 use std::sync::Arc;
 
+use crate::tasks::sync_backfill::{SyncBackfillTask, SyncConfig};
 pub(crate) use deps::{
     BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, ParanetSyncDeps,
     PeriodicTasksDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps,
@@ -22,7 +23,6 @@ use tasks::{
     save_peer_addresses::SavePeerAddressesTask,
     sharding_table_check::ShardingTableCheckTask,
     state_snapshot::{StateSnapshotConfig, StateSnapshotTask},
-    sync::{MetadataSyncTask, SyncConfig, SyncTask},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -34,7 +34,7 @@ use self::registry::{
 #[serde(deny_unknown_fields)]
 pub(crate) struct PeriodicTasksConfig {
     pub cleanup: CleanupConfig,
-    pub sync: SyncConfig,
+    pub sync_backfill: SyncConfig,
     pub paranet_sync: ParanetSyncConfig,
     pub proving: ProvingConfig,
 }
@@ -161,17 +161,17 @@ pub(crate) async fn run(
 ) {
     let PeriodicTasksConfig {
         cleanup: cleanup_config,
-        sync: sync_config,
+        sync_backfill: sync_backfill_config,
         paranet_sync: paranet_sync_config,
         proving: proving_config,
     } = periodic_tasks_config;
 
     let mut set = tokio::task::JoinSet::new();
     let cleanup_enabled = cleanup_config.enabled;
-    let sync_enabled = sync_config.enabled;
+    let sync_backfill_enabled = sync_backfill_config.enabled;
     let paranet_sync_enabled =
         paranet_sync_config.enabled && !paranet_sync_config.sync_paranets.is_empty();
-    let state_snapshot_enabled = sync_config.enabled && metrics_enabled;
+    let state_snapshot_enabled = sync_backfill_config.enabled && metrics_enabled;
 
     // Global periodic tasks
     spawn_registered_global_tasks!(
@@ -192,34 +192,20 @@ pub(crate) async fn run(
             StateSnapshotConfig {
                 interval_secs: 60,
                 blockchain_ids: blockchain_ids.clone(),
-                max_retry_attempts: sync_config.max_retry_attempts,
+                max_retry_attempts: sync_backfill_config.max_retry_attempts,
             },
         );
     }
 
-    // Per-blockchain periodic tasks
+    // Per-blockchain tasks/workloads
     for blockchain_id in blockchain_ids {
-        // Per-blockchain sync tasks have dedicated config and do not fit
-        // the generic BlockchainPeriodicTask registry helper.
-        if sync_enabled {
+        if sync_backfill_enabled {
             let deps = Arc::clone(&deps);
             let shutdown = shutdown.clone();
             let blockchain_id = blockchain_id.clone();
-            let config = sync_config.clone();
+            let config = sync_backfill_config.clone();
             set.spawn(async move {
-                MetadataSyncTask::new(deps.sync.clone(), config)
-                    .run(&blockchain_id, shutdown)
-                    .await;
-            });
-        }
-
-        if sync_enabled {
-            let deps = Arc::clone(&deps);
-            let shutdown = shutdown.clone();
-            let blockchain_id = blockchain_id.clone();
-            let config = sync_config.clone();
-            set.spawn(async move {
-                SyncTask::new(deps.sync.clone(), config)
+                SyncBackfillTask::new(deps.sync_backfill.clone(), config)
                     .run(&blockchain_id, shutdown)
                     .await;
             });

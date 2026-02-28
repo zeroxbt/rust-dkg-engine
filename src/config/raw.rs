@@ -7,7 +7,7 @@ use crate::{
     controllers::ControllersConfig,
     logger::{LoggerConfig, TelemetryConfig},
     managers::{ManagersConfig, ManagersConfigRaw},
-    periodic_tasks::PeriodicTasksConfig,
+    tasks::periodic::PeriodicTasksConfig,
 };
 
 /// Centralized application paths derived from the root data directory.

@@ -97,6 +97,30 @@ pub struct KcChainReadyKcStateMetadataEntry {
     pub state_observed_block: u64,
 }
 
+/// Input DTO for KC state metadata upsert in sync metadata pipeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncMetadataStateInput {
+    pub range_start_token_id: u64,
+    pub range_end_token_id: u64,
+    pub burned_mode: u32,
+    pub burned_payload: Vec<u8>,
+    pub end_epoch: u64,
+    pub latest_merkle_root: String,
+}
+
+/// Input DTO for atomic metadata+queue persistence in sync metadata pipeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncMetadataRecordInput {
+    pub kc_id: u64,
+    pub publisher_address: Option<String>,
+    pub block_number: u64,
+    pub transaction_hash: String,
+    pub block_timestamp: u64,
+    pub publish_operation_id: String,
+    pub source: String,
+    pub state: Option<SyncMetadataStateInput>,
+}
+
 /// Public DTO for proof challenge rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProofChallengeEntry {

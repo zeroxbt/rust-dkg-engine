@@ -13,8 +13,8 @@ use crate::{
     application::OperationTracking,
     node_state::ResponseChannels,
     operations::{GetOperation, PublishStoreOperation},
-    periodic_tasks::CleanupDeps,
-    periodic_tasks::runner::run_with_shutdown,
+    tasks::periodic::CleanupDeps,
+    tasks::periodic::runner::run_with_shutdown,
 };
 
 pub(crate) struct CleanupTask {

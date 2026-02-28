@@ -11,7 +11,7 @@ use crate::{
         http_api_controller::router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
     },
     node_state::PeerRegistry,
-    periodic_tasks::{self, PeriodicTasksConfig},
+    tasks::periodic::{self, PeriodicTasksConfig},
 };
 
 pub(crate) async fn run(
@@ -39,7 +39,7 @@ pub(crate) async fn run(
     let execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
 
     let periodic_shutdown = CancellationToken::new();
-    let periodic_handle = tokio::task::spawn(periodic_tasks::run(
+    let periodic_handle = tokio::task::spawn(periodic::run(
         Arc::clone(&deps.periodic_tasks_deps),
         deps.blockchain_ids.clone(),
         periodic_tasks_config,

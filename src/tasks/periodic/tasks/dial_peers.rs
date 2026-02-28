@@ -9,8 +9,8 @@ use dkg_observability as observability;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    node_state::PeerRegistry, periodic_tasks::DialPeersDeps,
-    periodic_tasks::runner::run_with_shutdown,
+    node_state::PeerRegistry, tasks::periodic::DialPeersDeps,
+    tasks::periodic::runner::run_with_shutdown,
 };
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);

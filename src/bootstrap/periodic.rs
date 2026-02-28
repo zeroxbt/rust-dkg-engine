@@ -5,7 +5,7 @@ use crate::{
     commands::scheduler::CommandScheduler,
     managers::Managers,
     node_state::NodeState,
-    periodic_tasks::{
+    tasks::periodic::{
         self, BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
         ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps,
         StateSnapshotDeps, SyncDeps,
@@ -17,7 +17,7 @@ pub(crate) fn build_periodic_tasks_deps(
     node_state: &NodeState,
     application: &ApplicationDeps,
     command_scheduler: &CommandScheduler,
-) -> Arc<periodic_tasks::PeriodicTasksDeps> {
+) -> Arc<periodic::PeriodicTasksDeps> {
     let publish_tmp_dataset_store = Arc::new(managers.key_value_store.publish_tmp_dataset_store());
     let peer_address_store = Arc::new(managers.key_value_store.peer_address_store());
     let operation_repository = managers.repository.operation_repository();
@@ -28,7 +28,7 @@ pub(crate) fn build_periodic_tasks_deps(
     let kc_sync_repository = managers.repository.kc_sync_repository();
     let paranet_kc_sync_repository = managers.repository.paranet_kc_sync_repository();
 
-    Arc::new(periodic_tasks::PeriodicTasksDeps {
+    Arc::new(periodic::PeriodicTasksDeps {
         dial_peers: DialPeersDeps {
             network_manager: Arc::clone(&managers.network),
             peer_registry: Arc::clone(&node_state.peer_registry),
@@ -71,7 +71,7 @@ pub(crate) fn build_periodic_tasks_deps(
             assertion_validation: Arc::clone(&application.assertion_validation),
             peer_registry: Arc::clone(&node_state.peer_registry),
         },
-        sync: SyncDeps {
+        sync_backfill: SyncDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
             kc_sync_repository: kc_sync_repository.clone(),
             kc_chain_metadata_repository: kc_chain_metadata_repository.clone(),

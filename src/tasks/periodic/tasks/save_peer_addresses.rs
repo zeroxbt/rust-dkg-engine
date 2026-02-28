@@ -4,8 +4,8 @@ use dkg_key_value_store::PeerAddressStore;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    node_state::PeerRegistry, periodic_tasks::SavePeerAddressesDeps,
-    periodic_tasks::runner::run_with_shutdown,
+    node_state::PeerRegistry, tasks::periodic::SavePeerAddressesDeps,
+    tasks::periodic::runner::run_with_shutdown,
 };
 
 const SAVE_PEER_ADDRESSES_PERIOD: Duration = Duration::from_secs(60);

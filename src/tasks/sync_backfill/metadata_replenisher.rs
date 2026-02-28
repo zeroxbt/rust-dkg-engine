@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::Mutex,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use dkg_blockchain::{
@@ -9,21 +9,19 @@ use dkg_blockchain::{
     monitored_contract_events,
 };
 use dkg_observability as observability;
+use dkg_repository::{SyncMetadataRecordInput, SyncMetadataStateInput};
 use thiserror::Error;
-use tokio_util::sync::CancellationToken;
 
 use super::SyncConfig;
 use crate::{
     application::kc_chain_metadata_sync::{
         BuildKcRecordError, build_kc_chain_metadata_record, hydrate_block_timestamps,
         hydrate_core_metadata_publishers, hydrate_kc_state_metadata,
-        upsert_kc_chain_metadata_record,
     },
-    periodic_tasks::SyncDeps,
-    periodic_tasks::runner::run_with_shutdown,
+    tasks::periodic::SyncDeps,
 };
 
-pub(crate) struct MetadataSyncTask {
+pub(crate) struct MetadataReplenisher {
     config: SyncConfig,
     deps: SyncDeps,
     active_range_by_contract: Mutex<HashMap<String, BlockRange>>,
@@ -31,19 +29,15 @@ pub(crate) struct MetadataSyncTask {
 }
 
 #[derive(Debug, Error)]
-enum MetadataSyncError {
+pub(crate) enum MetadataReplenisherError {
     #[error("Failed to load metadata sync progress")]
     LoadMetadataProgress(#[source] dkg_repository::error::RepositoryError),
-    #[error("Failed to update metadata sync progress")]
-    UpdateMetadataProgress(#[source] dkg_repository::error::RepositoryError),
     #[error("Failed to fetch metadata events chunk")]
     FetchMetadataChunk(#[source] dkg_blockchain::BlockchainError),
     #[error("Failed to fetch deployment block")]
     FindDeploymentBlock(#[source] dkg_blockchain::BlockchainError),
     #[error("Failed to upsert core metadata")]
     UpsertCoreMetadata(#[source] dkg_repository::error::RepositoryError),
-    #[error("Failed to enqueue KC IDs")]
-    EnqueueKcs(#[source] dkg_repository::error::RepositoryError),
     #[error("Failed to query oldest KC gap range")]
     FindOldestGapRange(#[source] dkg_repository::error::RepositoryError),
     #[error(
@@ -58,11 +52,8 @@ enum MetadataSyncError {
 }
 
 #[derive(Default)]
-struct ContractMetadataSyncResult {
-    metadata_events_found: u64,
-    cursor_advanced: bool,
-    gap_ranges_detected: u64,
-    chunk_processed: bool,
+pub(crate) struct ReplenishContractOutcome {
+    pub(crate) chunk_processed: bool,
 }
 
 /// An inclusive block range [start, end] to scan for KC events.
@@ -72,7 +63,7 @@ struct BlockRange {
     end: u64,
 }
 
-impl MetadataSyncTask {
+impl MetadataReplenisher {
     pub(crate) fn new(deps: SyncDeps, config: SyncConfig) -> Self {
         Self {
             config,
@@ -82,99 +73,21 @@ impl MetadataSyncTask {
         }
     }
 
-    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
-        run_with_shutdown("sync_metadata", shutdown, || self.execute(blockchain_id)).await;
-    }
-
-    #[tracing::instrument(name = "periodic_tasks.sync_metadata", skip(self), fields(blockchain_id = %blockchain_id))]
-    async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
-        let idle_period = Duration::from_secs(self.config.sync_idle_sleep_secs.max(1));
-        let hot_loop_period = Duration::from_millis(500);
-        let recheck_period =
-            Duration::from_secs(self.config.metadata_gap_recheck_interval_secs.max(1));
-
-        let current_block = match self
-            .deps
-            .blockchain_manager
-            .get_block_number(blockchain_id)
-            .await
-        {
-            Ok(block) => block,
-            Err(error) => {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    error = %error,
-                    "Failed to resolve current block for metadata sync cycle"
-                );
-                return idle_period;
-            }
-        };
-        let target_tip = current_block.saturating_sub(self.config.head_safety_blocks);
-
-        let contract_addresses = match self
-            .deps
-            .blockchain_manager
-            .get_all_contract_addresses(blockchain_id, &ContractName::KnowledgeCollectionStorage)
-            .await
-        {
-            Ok(addresses) => addresses,
-            Err(error) => {
-                tracing::error!(
-                    blockchain_id = %blockchain_id,
-                    error = %error,
-                    "Failed to get KC storage contract addresses for metadata sync"
-                );
-                return idle_period;
-            }
-        };
-
-        // Process one chunk from the oldest unresolved range per contract per execution.
-        let results =
-            futures::future::join_all(contract_addresses.iter().map(|&contract_address| {
-                self.sync_contract(blockchain_id, contract_address, target_tip, true)
-            }))
-            .await;
-
-        let mut any_chunk_processed = false;
-        for (index, result) in results.into_iter().enumerate() {
-            match result {
-                Ok(contract_result) => {
-                    any_chunk_processed |= contract_result.chunk_processed;
-                }
-                Err(error) => {
-                    tracing::error!(
-                        blockchain_id = %blockchain_id,
-                        contract = ?contract_addresses[index],
-                        error = %error,
-                        "Failed metadata sync for contract"
-                    );
-                }
-            }
-        }
-
-        if any_chunk_processed {
-            return hot_loop_period;
-        }
-
-        recheck_period
-    }
-
-    async fn sync_contract(
+    pub(crate) async fn replenish_contract_once(
         &self,
         blockchain_id: &BlockchainId,
         contract_address: Address,
         target_tip: u64,
-        single_chunk: bool,
-    ) -> Result<ContractMetadataSyncResult, MetadataSyncError> {
+    ) -> Result<ReplenishContractOutcome, MetadataReplenisherError> {
         let contract_addr_str = format!("{:?}", contract_address);
-        let mut result = ContractMetadataSyncResult::default();
+        let mut result = ReplenishContractOutcome::default();
 
         let cursor = self
             .deps
             .kc_sync_repository
             .get_metadata_progress(blockchain_id.as_str(), &contract_addr_str)
             .await
-            .map_err(MetadataSyncError::LoadMetadataProgress)?;
+            .map_err(MetadataReplenisherError::LoadMetadataProgress)?;
 
         // Fast path: keep processing cached active range for this contract until exhausted.
         let mut active_range = self
@@ -216,9 +129,7 @@ impl MetadataSyncTask {
                     deployment_block,
                 )
                 .await
-                .map_err(MetadataSyncError::FindOldestGapRange)?;
-
-            result.gap_ranges_detected = oldest_gap.as_ref().map(|_| 1).unwrap_or(0);
+                .map_err(MetadataReplenisherError::FindOldestGapRange)?;
 
             active_range = oldest_gap.map(|gap| BlockRange {
                 start: gap.start_block.max(cursor.saturating_add(1)),
@@ -244,9 +155,8 @@ impl MetadataSyncTask {
             .unwrap_or_default();
         let chunk_size = self.config.metadata_backfill_block_batch_size.max(1);
 
-        let mut chunk_from = active_range.start;
-
-        while chunk_from <= active_range.end {
+        let chunk_from = active_range.start;
+        if chunk_from <= active_range.end {
             let chunk_to = active_range
                 .end
                 .min(chunk_from.saturating_add(chunk_size.saturating_sub(1)));
@@ -280,7 +190,7 @@ impl MetadataSyncTask {
                         "error",
                         fetch_started.elapsed(),
                     );
-                    return Err(MetadataSyncError::FetchMetadataChunk(error));
+                    return Err(MetadataReplenisherError::FetchMetadataChunk(error));
                 }
             };
             let processing_started = Instant::now();
@@ -319,7 +229,6 @@ impl MetadataSyncTask {
                 discovered_ids.insert(record.kc_id);
                 records.push(record);
                 chunk_events_found = chunk_events_found.saturating_add(1);
-                result.metadata_events_found = result.metadata_events_found.saturating_add(1);
             }
 
             hydrate_block_timestamps(
@@ -361,7 +270,7 @@ impl MetadataSyncTask {
                     "error",
                     processing_started.elapsed(),
                 );
-                return Err(MetadataSyncError::IncompleteChunkHydration {
+                return Err(MetadataReplenisherError::IncompleteChunkHydration {
                     contract: contract_addr_str.clone(),
                     chunk_from,
                     chunk_to,
@@ -378,34 +287,43 @@ impl MetadataSyncTask {
                 );
             }
 
-            for record in &records {
-                upsert_kc_chain_metadata_record(
-                    &self.deps.kc_chain_metadata_repository,
-                    blockchain_id.as_str(),
-                    "sync_metadata_backfill",
-                    record,
-                )
-                .await
-                .map_err(MetadataSyncError::UpsertCoreMetadata)?;
-            }
+            let metadata_inputs: Vec<SyncMetadataRecordInput> = records
+                .iter()
+                .map(|record| SyncMetadataRecordInput {
+                    kc_id: record.kc_id,
+                    publisher_address: record.publisher_address.clone(),
+                    block_number: record.block_number,
+                    transaction_hash: format!("{:#x}", record.transaction_hash),
+                    block_timestamp: record.block_timestamp,
+                    publish_operation_id: record.publish_operation_id.clone(),
+                    source: "sync_metadata_backfill".to_string(),
+                    state: record
+                        .kc_state_metadata
+                        .as_ref()
+                        .map(|state| SyncMetadataStateInput {
+                            range_start_token_id: state.range_start_token_id,
+                            range_end_token_id: state.range_end_token_id,
+                            burned_mode: state.burned_mode,
+                            burned_payload: state.burned_payload.clone(),
+                            end_epoch: state.end_epoch,
+                            latest_merkle_root: state.latest_merkle_root.clone(),
+                        }),
+                })
+                .collect();
+            let mut ids: Vec<u64> = discovered_ids.into_iter().collect();
+            ids.sort_unstable();
 
-            if !discovered_ids.is_empty() {
-                let mut ids: Vec<u64> = discovered_ids.into_iter().collect();
-                ids.sort_unstable();
-                self.deps
-                    .kc_sync_repository
-                    .enqueue_kcs(blockchain_id.as_str(), &contract_addr_str, &ids)
-                    .await
-                    .map_err(MetadataSyncError::EnqueueKcs)?;
-            }
-
-            // Cursor always advances inside the chosen active range.
             self.deps
                 .kc_sync_repository
-                .upsert_metadata_progress(blockchain_id.as_str(), &contract_addr_str, chunk_to)
+                .persist_metadata_chunk_and_enqueue(
+                    blockchain_id.as_str(),
+                    &contract_addr_str,
+                    chunk_to,
+                    &metadata_inputs,
+                    &ids,
+                )
                 .await
-                .map_err(MetadataSyncError::UpdateMetadataProgress)?;
-            result.cursor_advanced = true;
+                .map_err(MetadataReplenisherError::UpsertCoreMetadata)?;
             if chunk_to >= active_range.end {
                 self.clear_cached_active_range(&contract_addr_str);
             }
@@ -422,11 +340,7 @@ impl MetadataSyncTask {
                 processing_started.elapsed(),
             );
             result.chunk_processed = true;
-            if single_chunk {
-                return Ok(result);
-            }
-
-            chunk_from = chunk_to.saturating_add(1);
+            return Ok(result);
         }
 
         Ok(result)
@@ -460,7 +374,7 @@ impl MetadataSyncTask {
         contract_address: Address,
         contract_address_str: &str,
         target_tip: u64,
-    ) -> Result<Option<u64>, MetadataSyncError> {
+    ) -> Result<Option<u64>, MetadataReplenisherError> {
         if let Some(cached) = self
             .deployment_block_by_contract
             .lock()
@@ -476,7 +390,7 @@ impl MetadataSyncTask {
             .blockchain_manager
             .find_contract_deployment_block(blockchain_id, contract_address, target_tip)
             .await
-            .map_err(MetadataSyncError::FindDeploymentBlock)?;
+            .map_err(MetadataReplenisherError::FindDeploymentBlock)?;
 
         self.deployment_block_by_contract
             .lock()

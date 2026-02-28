@@ -10,6 +10,10 @@ pub enum RepositoryError {
     /// Record not found error
     #[error("Record not found: {0}")]
     NotFound(String),
+
+    /// Invalid sync metadata payload for persistence.
+    #[error("Invalid sync metadata: {0}")]
+    SyncMetadata(String),
 }
 
 /// Convenient Result type alias for RepositoryError

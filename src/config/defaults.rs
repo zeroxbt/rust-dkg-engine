@@ -29,17 +29,19 @@ use crate::{
     },
     logger::{LogFormat, LoggerConfig, TelemetryConfig, TelemetryMetricsConfig},
     managers::ManagersConfigRaw,
-    periodic_tasks::{
-        PeriodicTasksConfig,
-        tasks::{
-            cleanup::{
-                CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
-                ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
+    tasks::{
+        periodic::{
+            PeriodicTasksConfig,
+            tasks::{
+                cleanup::{
+                    CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
+                    ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
+                },
+                paranet_sync::ParanetSyncConfig,
+                proving::ProvingConfig,
             },
-            paranet_sync::ParanetSyncConfig,
-            proving::ProvingConfig,
-            sync::SyncConfig,
         },
+        sync_backfill::SyncConfig,
     },
 };
 
@@ -102,19 +104,16 @@ fn sync() -> SyncConfig {
     SyncConfig {
         enabled: true,
         head_safety_blocks: 2,
-        sync_idle_sleep_secs: 30,
         metadata_backfill_block_batch_size: 100,
         metadata_state_batch_size: 20,
         metadata_gap_recheck_interval_secs: 300,
         no_peers_retry_delay_secs: 5,
         max_retry_attempts: 2,
         max_new_kcs_per_contract: 500,
-        filter_batch_size: 100,
-        network_fetch_batch_size: 100,
-        batch_get_fanout_concurrency: 3,
+        pipeline_capacity: 8,
+        pipeline_channel_buffer: 3,
         max_assets_per_fetch_batch: 20_000,
         insert_batch_concurrency: 8,
-        pipeline_channel_buffer: 3,
         retry_base_delay_secs: 10,
         retry_max_delay_secs: 300,
         retry_jitter_secs: 2,
@@ -158,7 +157,7 @@ fn controllers() -> ControllersConfig {
 fn periodic_tasks() -> PeriodicTasksConfig {
     PeriodicTasksConfig {
         cleanup: cleanup(),
-        sync: sync(),
+        sync_backfill: sync(),
         paranet_sync: paranet_sync(),
         proving: proving(),
     }

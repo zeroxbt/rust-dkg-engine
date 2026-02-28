@@ -8,12 +8,12 @@ mod logger;
 mod managers;
 mod node_state;
 mod operations;
-mod periodic_tasks;
 mod runtime;
+mod tasks;
 
 use std::sync::Arc;
 
-use periodic_tasks::seed_sharding_tables;
+use tasks::periodic::seed_sharding_tables;
 
 pub async fn run() {
     // Install rustls crypto provider before any TLS connections

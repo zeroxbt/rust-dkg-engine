@@ -11,8 +11,8 @@ use uuid::Uuid;
 use super::ParanetSyncConfig;
 use crate::{
     application::{AssertionSource, GetAssertionInput},
-    periodic_tasks::ParanetSyncDeps,
-    periodic_tasks::runner::run_with_shutdown,
+    tasks::periodic::ParanetSyncDeps,
+    tasks::periodic::runner::run_with_shutdown,
 };
 
 pub(crate) struct ParanetSyncTask {

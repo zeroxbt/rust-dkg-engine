@@ -31,7 +31,7 @@ use crate::{
 /// For very large KC batches, use a single in-flight peer request to reduce peak memory.
 const LARGE_BATCH_ASSET_THRESHOLD_FOR_SINGLE_PEER: u64 = 1_000;
 
-/// Fetch task: receives filtered KCs, fetches from network, sends to insert stage.
+/// Fetch stage: receives filtered KCs, fetches from network, sends to insert stage.
 #[allow(clippy::too_many_arguments)]
 #[instrument(
     name = "sync_fetch",
@@ -44,7 +44,7 @@ const LARGE_BATCH_ASSET_THRESHOLD_FOR_SINGLE_PEER: u64 = 1_000;
     ),
     fields(blockchain_id = %blockchain_id)
 )]
-pub(crate) async fn fetch_task(
+pub(crate) async fn run_fetch_stage(
     mut rx: mpsc::Receiver<Vec<KcToSync>>,
     network_fetch_batch_size: usize,
     batch_get_fanout_concurrency: usize,
@@ -256,7 +256,7 @@ pub(crate) async fn fetch_task(
         total_ms = task_start.elapsed().as_millis() as u64,
         total_fetched,
         failures = failures.len(),
-        "Fetch task completed"
+        "Fetch stage completed"
     );
 
     FetchStats { failures }

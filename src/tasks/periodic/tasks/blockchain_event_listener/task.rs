@@ -27,8 +27,8 @@ use crate::{
     },
     config,
     error::NodeError,
-    periodic_tasks::BlockchainEventListenerDeps,
-    periodic_tasks::runner::run_with_shutdown,
+    tasks::periodic::BlockchainEventListenerDeps,
+    tasks::periodic::runner::run_with_shutdown,
 };
 
 /// Event fetch interval for mainnet (10 seconds)

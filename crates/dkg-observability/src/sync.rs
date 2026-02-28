@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use metrics::{gauge, histogram};
+use metrics::{counter, gauge, histogram};
 
 pub fn record_sync_queue_snapshot(
     blockchain_id: &str,
@@ -134,4 +134,26 @@ pub fn record_sync_insert_batch(
         "status" => status.to_string()
     )
     .record(batch_assets as f64);
+}
+
+pub fn record_sync_pipeline_inflight(inflight: usize) {
+    gauge!("node_sync_pipeline_inflight").set(inflight as f64);
+}
+
+pub fn record_sync_pipeline_mode(mode: &str) {
+    for known_mode in ["running", "draining", "completed"] {
+        gauge!(
+            "node_sync_pipeline_mode",
+            "mode" => known_mode.to_string()
+        )
+        .set(if known_mode == mode { 1.0 } else { 0.0 });
+    }
+}
+
+pub fn record_sync_pipeline_dispatch_wake(reason: &str) {
+    counter!(
+        "node_sync_pipeline_dispatch_wake_total",
+        "reason" => reason.to_string()
+    )
+    .increment(1);
 }

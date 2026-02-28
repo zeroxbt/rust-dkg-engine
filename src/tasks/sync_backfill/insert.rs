@@ -14,7 +14,7 @@ use tracing::instrument;
 use super::types::{FetchedKc, InsertStats};
 use crate::application::TripleStoreAssertions;
 
-/// Insert task: receives fetched KCs and inserts into triple store.
+/// Insert stage: receives fetched KCs and inserts into triple store.
 ///
 /// Expiration filtering is already performed in the filter stage, so all KCs
 /// received here are valid and ready for insertion.
@@ -26,7 +26,7 @@ use crate::application::TripleStoreAssertions;
         contract = %contract_addr_str,
     )
 )]
-pub(crate) async fn insert_task(
+pub(crate) async fn run_insert_stage(
     mut rx: mpsc::Receiver<Vec<FetchedKc>>,
     blockchain_id: BlockchainId,
     contract_addr_str: String,
@@ -92,7 +92,7 @@ pub(crate) async fn insert_task(
         total_ms = task_start.elapsed().as_millis() as u64,
         synced = synced.len(),
         failed = failed.len(),
-        "Insert task completed"
+        "Insert stage completed"
     );
 
     InsertStats { synced, failed }

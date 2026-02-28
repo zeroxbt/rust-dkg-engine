@@ -109,7 +109,7 @@ pub(crate) struct PeriodicTasksDeps {
     pub(crate) blockchain_event_listener: BlockchainEventListenerDeps,
     pub(crate) claim_rewards: ClaimRewardsDeps,
     pub(crate) proving: ProvingDeps,
-    pub(crate) sync: SyncDeps,
+    pub(crate) sync_backfill: SyncDeps,
     pub(crate) state_snapshot: StateSnapshotDeps,
     pub(crate) paranet_sync: ParanetSyncDeps,
 }

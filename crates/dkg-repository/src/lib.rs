@@ -24,5 +24,6 @@ pub use repositories::{
 };
 pub use types::{
     KcChainMetadataEntry, KcChainReadyKcStateMetadataEntry, KcSyncQueueEntry, OperationRecord,
-    OperationStatus, ParanetKcSyncEntry, ProofChallengeEntry,
+    OperationStatus, ParanetKcSyncEntry, ProofChallengeEntry, SyncMetadataRecordInput,
+    SyncMetadataStateInput,
 };
