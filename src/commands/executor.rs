@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::scheduler::CommandScheduler;
 use super::{
-    constants::{COMMAND_CONCURRENT_LIMIT, MAX_COMMAND_LIFETIME},
+    constants::{COMMAND_CONCURRENT_LIMIT, COMMAND_QUEUE_SIZE, MAX_COMMAND_LIFETIME},
     registry::{Command, CommandResolver},
 };
 
@@ -39,9 +39,13 @@ impl CommandExecutionRequest {
     }
 
     pub(crate) fn is_expired(&self) -> bool {
+        self.execution_delay() > MAX_COMMAND_LIFETIME
+    }
+
+    pub(crate) fn execution_delay(&self) -> std::time::Duration {
         let now = Utc::now().timestamp_millis();
         let elapsed_ms = (now - self.created_at).max(0) as u64;
-        std::time::Duration::from_millis(elapsed_ms) > MAX_COMMAND_LIFETIME
+        std::time::Duration::from_millis(elapsed_ms)
     }
 }
 
@@ -83,6 +87,7 @@ impl CommandExecutor {
         let mut pending_tasks: FuturesUnordered<_> = FuturesUnordered::new();
         let mut intake_closed = false;
         let mut shutdown_logged = false;
+        self.record_queue_saturation();
 
         loop {
             tokio::select! {
@@ -100,11 +105,14 @@ impl CommandExecutor {
                 command = self.rx.recv(), if !intake_closed && pending_tasks.len() < COMMAND_CONCURRENT_LIMIT => {
                     match command {
                         Some(request) => {
+                            self.record_queue_saturation();
                             let resolver = Arc::clone(&self.command_resolver);
                             pending_tasks.push(Self::execute(resolver, request));
                         }
                         None => {
                             intake_closed = true;
+                            observability::record_command_queue_depth(0);
+                            observability::record_command_queue_fill_ratio(0.0);
                             tracing::info!("Command intake closed; waiting for in-flight commands to complete");
                         }
                     }
@@ -116,17 +124,22 @@ impl CommandExecutor {
                 }
             }
         }
+
+        observability::record_command_queue_depth(0);
+        observability::record_command_queue_fill_ratio(0.0);
     }
 
     /// Execute a command.
     async fn execute(command_resolver: Arc<CommandResolver>, request: CommandExecutionRequest) {
         let command_name = request.command().name();
         let started_at = Instant::now();
+        let execution_delay = request.execution_delay();
 
         // Check if command has expired
         if request.is_expired() {
             tracing::warn!(command = %command_name, "Command expired, dropping");
             observability::record_command_total(command_name, "expired");
+            observability::record_command_execution_delay(command_name, "expired", execution_delay);
             observability::record_command_duration(command_name, "expired", started_at.elapsed());
             return;
         }
@@ -134,6 +147,18 @@ impl CommandExecutor {
         let _outcome = command_resolver.execute(request.command()).await;
         tracing::trace!(command = %command_name, "Command completed");
         observability::record_command_total(command_name, "completed");
+        observability::record_command_execution_delay(command_name, "completed", execution_delay);
         observability::record_command_duration(command_name, "completed", started_at.elapsed());
+    }
+
+    fn record_queue_saturation(&self) {
+        let depth = self.rx.len();
+        let fill_ratio = if COMMAND_QUEUE_SIZE == 0 {
+            0.0
+        } else {
+            depth as f64 / COMMAND_QUEUE_SIZE as f64
+        };
+        observability::record_command_queue_depth(depth);
+        observability::record_command_queue_fill_ratio(fill_ratio);
     }
 }

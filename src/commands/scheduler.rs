@@ -21,7 +21,20 @@ impl CommandScheduler {
     pub(crate) fn channel() -> (Self, mpsc::Receiver<CommandExecutionRequest>) {
         let (tx, rx) = mpsc::channel::<CommandExecutionRequest>(COMMAND_QUEUE_SIZE);
         let shutdown = CancellationToken::new();
+        observability::record_command_queue_depth(0);
+        observability::record_command_queue_fill_ratio(0.0);
         (Self { tx, shutdown }, rx)
+    }
+
+    fn record_queue_saturation(&self) {
+        let depth = COMMAND_QUEUE_SIZE.saturating_sub(self.tx.capacity());
+        let fill_ratio = if COMMAND_QUEUE_SIZE == 0 {
+            0.0
+        } else {
+            depth as f64 / COMMAND_QUEUE_SIZE as f64
+        };
+        observability::record_command_queue_depth(depth);
+        observability::record_command_queue_fill_ratio(fill_ratio);
     }
 
     /// Signal shutdown to stop accepting new commands.
@@ -45,6 +58,7 @@ impl CommandScheduler {
     pub(crate) async fn schedule(&self, request: CommandExecutionRequest) {
         if self.shutdown.is_cancelled() {
             observability::record_command_total(request.command().name(), "rejected_shutdown");
+            self.record_queue_saturation();
             tracing::debug!(
                 command = %request.command().name(),
                 "Shutdown in progress, not scheduling command"
@@ -56,11 +70,15 @@ impl CommandScheduler {
 
         if let Err(e) = self.tx.send(request).await {
             observability::record_command_total(command_name, "rejected_channel_closed");
+            observability::record_command_queue_depth(0);
+            observability::record_command_queue_fill_ratio(0.0);
             tracing::error!(
                 command = %command_name,
                 error = %e,
                 "Failed to schedule command"
             );
+        } else {
+            self.record_queue_saturation();
         }
     }
 
@@ -72,6 +90,7 @@ impl CommandScheduler {
     pub(crate) fn try_schedule(&self, request: CommandExecutionRequest) -> bool {
         if self.shutdown.is_cancelled() {
             observability::record_command_total(request.command().name(), "rejected_shutdown");
+            self.record_queue_saturation();
             tracing::debug!(
                 command = %request.command().name(),
                 "Shutdown in progress, not scheduling command"
@@ -80,12 +99,16 @@ impl CommandScheduler {
         }
 
         match self.tx.try_send(request) {
-            Ok(()) => true,
+            Ok(()) => {
+                self.record_queue_saturation();
+                true
+            }
             Err(mpsc::error::TrySendError::Full(request)) => {
                 observability::record_command_total(
                     request.command().name(),
                     "rejected_queue_full",
                 );
+                self.record_queue_saturation();
                 tracing::warn!("Command queue full, rejecting command");
                 false
             }
@@ -94,6 +117,8 @@ impl CommandScheduler {
                     request.command().name(),
                     "rejected_channel_closed",
                 );
+                observability::record_command_queue_depth(0);
+                observability::record_command_queue_fill_ratio(0.0);
                 tracing::error!("Command channel closed");
                 false
             }
