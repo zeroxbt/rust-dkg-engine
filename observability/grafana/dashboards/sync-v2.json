@@ -450,7 +450,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_metadata_backfill_batch_fetch_duration_seconds_count{status=\"error\"}[5m]))",
+          "expr": "sum(increase(node_sync_metadata_backfill_batch_fetch_duration_seconds_count{status=\"error\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "fetch_errors_5m",
           "range": true,
@@ -462,7 +462,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_metadata_backfill_batch_processing_duration_seconds_count{status=\"error\"}[5m]))",
+          "expr": "sum(increase(node_sync_metadata_backfill_batch_processing_duration_seconds_count{status=\"error\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "processing_errors_5m",
           "range": true,
@@ -474,7 +474,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_metadata_backfill_batch_fetch_duration_seconds_count{status=\"error\"}[5m])) + sum(increase(node_sync_metadata_backfill_batch_processing_duration_seconds_count{status=\"error\"}[5m]))",
+          "expr": "(sum(increase(node_sync_metadata_backfill_batch_fetch_duration_seconds_count{status=\"error\"}[5m])) + sum(increase(node_sync_metadata_backfill_batch_processing_duration_seconds_count{status=\"error\"}[5m]))) or on() vector(0)",
           "instant": false,
           "legendFormat": "total_errors_5m",
           "range": true,
@@ -670,7 +670,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_fetch_batch_duration_seconds_count{status=\"failed\"}[5m]))",
+          "expr": "sum(increase(node_sync_fetch_batch_duration_seconds_count{status=\"failed\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "failed_batches_5m",
           "range": true,
@@ -682,7 +682,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_fetch_batch_duration_seconds_count{status=\"partial\"}[5m]))",
+          "expr": "sum(increase(node_sync_fetch_batch_duration_seconds_count{status=\"partial\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "partial_batches_5m",
           "range": true,
@@ -694,7 +694,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_fetch_batch_duration_seconds_count{status=~\"failed|partial\"}[5m]))",
+          "expr": "sum(increase(node_sync_fetch_batch_duration_seconds_count{status=~\"failed|partial\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "total_failure_batches_5m",
           "range": true,
@@ -890,7 +890,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_insert_batch_duration_seconds_count{status=\"failed\"}[5m]))",
+          "expr": "sum(increase(node_sync_insert_batch_duration_seconds_count{status=\"failed\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "failed_batches_5m",
           "range": true,
@@ -902,7 +902,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_insert_batch_duration_seconds_count{status=\"partial\"}[5m]))",
+          "expr": "sum(increase(node_sync_insert_batch_duration_seconds_count{status=\"partial\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "partial_batches_5m",
           "range": true,
@@ -914,7 +914,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_insert_batch_duration_seconds_count{status=~\"failed|partial\"}[5m]))",
+          "expr": "sum(increase(node_sync_insert_batch_duration_seconds_count{status=~\"failed|partial\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "total_failure_batches_5m",
           "range": true,
