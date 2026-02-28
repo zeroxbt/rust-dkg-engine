@@ -4,7 +4,8 @@ use dkg_blockchain::{Address, B256, BlockchainId, U256};
 use dkg_domain::{KnowledgeCollectionMetadata, derive_ual};
 use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{FinalityRequestData, FinalityResponseData, NetworkManager, PeerId};
-use dkg_repository::{FinalityStatusRepository, TriplesInsertCountRepository};
+use dkg_observability as observability;
+use dkg_repository::{FinalityStatusRepository, OperationRepository, TriplesInsertCountRepository};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -58,6 +59,7 @@ impl SendPublishFinalityRequestCommandData {
 
 pub(crate) struct SendPublishFinalityRequestCommandHandler {
     finality_status_repository: FinalityStatusRepository,
+    operation_repository: OperationRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
     pub(super) network_manager: Arc<NetworkManager>,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
@@ -68,11 +70,54 @@ impl SendPublishFinalityRequestCommandHandler {
     pub(crate) fn new(deps: SendPublishFinalityRequestDeps) -> Self {
         Self {
             finality_status_repository: deps.finality_status_repository,
+            operation_repository: deps.operation_repository,
             triples_insert_count_repository: deps.triples_insert_count_repository,
             network_manager: deps.network_manager,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
             triple_store_assertions: deps.triple_store_assertions,
         }
+    }
+
+    async fn record_publish_finalization_metrics(
+        &self,
+        blockchain_id: &str,
+        publish_operation_id: Uuid,
+        finalization_block_timestamp_secs: u64,
+    ) {
+        observability::record_publish_finalization_total(blockchain_id);
+
+        let created_at_ms = match self
+            .operation_repository
+            .get_created_at_timestamp_millis(publish_operation_id)
+            .await
+        {
+            Ok(Some(created_at_ms)) => created_at_ms.max(0) as u64,
+            Ok(None) => {
+                tracing::warn!(
+                    publish_operation_id = %publish_operation_id,
+                    blockchain_id = blockchain_id,
+                    "Publish operation missing while recording finalization duration"
+                );
+                return;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    publish_operation_id = %publish_operation_id,
+                    blockchain_id = blockchain_id,
+                    error = %error,
+                    "Failed to load publish operation start time for finalization duration"
+                );
+                return;
+            }
+        };
+
+        let finalization_ms = finalization_block_timestamp_secs.saturating_mul(1000);
+        let duration_ms = finalization_ms.saturating_sub(created_at_ms);
+
+        observability::record_publish_finalization_duration(
+            blockchain_id,
+            std::time::Duration::from_millis(duration_ms),
+        );
     }
 }
 
@@ -242,6 +287,13 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         };
 
         if &publisher_peer_id == self.network_manager.peer_id() {
+            self.record_publish_finalization_metrics(
+                data.blockchain.as_str(),
+                publish_operation_id,
+                data.metadata.block_timestamp(),
+            )
+            .await;
+
             // Save the finality ack to the database
             if let Err(e) = self
                 .finality_status_repository

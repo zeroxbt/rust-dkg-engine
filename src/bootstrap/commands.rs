@@ -25,6 +25,7 @@ pub(crate) fn build_command_executor(
 ) -> CommandExecutor {
     let publish_tmp_dataset_store = Arc::new(managers.key_value_store.publish_tmp_dataset_store());
     let finality_status_repository = managers.repository.finality_status_repository();
+    let operation_repository = managers.repository.operation_repository();
     let triples_insert_count_repository = managers.repository.triples_insert_count_repository();
 
     let command_resolver = CommandResolver::new(CommandResolverDeps {
@@ -46,6 +47,7 @@ pub(crate) fn build_command_executor(
         },
         send_publish_finality_request: SendPublishFinalityRequestDeps {
             finality_status_repository: finality_status_repository.clone(),
+            operation_repository: operation_repository.clone(),
             triples_insert_count_repository: triples_insert_count_repository.clone(),
             network_manager: Arc::clone(&managers.network),
             publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),

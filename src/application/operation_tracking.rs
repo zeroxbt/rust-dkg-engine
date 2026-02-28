@@ -1,4 +1,5 @@
 use dkg_key_value_store::{KeyValueStoreManager, OperationResultStore};
+use dkg_observability as observability;
 use dkg_repository::{OperationRepository, OperationStatus};
 use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
@@ -130,6 +131,8 @@ where
         self.operation_repository
             .update_status(operation_id, OperationStatus::Completed)
             .await?;
+        self.record_operation_duration(operation_id, "completed")
+            .await;
 
         tracing::info!(
             operation_id = %operation_id,
@@ -151,6 +154,7 @@ where
         self.operation_repository
             .update(operation_id, Some(OperationStatus::Failed), Some(reason))
             .await?;
+        self.record_operation_duration(operation_id, "failed").await;
 
         let _ = self.result_store.remove_result(operation_id).await?;
 
@@ -163,5 +167,39 @@ where
         );
 
         Ok(())
+    }
+
+    async fn record_operation_duration(&self, operation_id: Uuid, status: &str) {
+        let created_at_ms = match self
+            .operation_repository
+            .get_created_at_timestamp_millis(operation_id)
+            .await
+        {
+            Ok(Some(created_at_ms)) => created_at_ms,
+            Ok(None) => {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    operation_kind = K::NAME,
+                    "Operation missing while recording duration metric"
+                );
+                return;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    operation_kind = K::NAME,
+                    error = %error,
+                    "Failed to load operation start time for duration metric"
+                );
+                return;
+            }
+        };
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let elapsed_ms = (now_ms - created_at_ms).max(0) as u64;
+        observability::record_operation_duration(
+            K::NAME,
+            status,
+            std::time::Duration::from_millis(elapsed_ms),
+        );
     }
 }

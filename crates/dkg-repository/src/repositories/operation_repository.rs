@@ -108,6 +108,50 @@ impl OperationRepository {
         result.map_err(Into::into)
     }
 
+    /// Get operation created_at timestamp (milliseconds since epoch) by operation id.
+    pub async fn get_created_at_timestamp_millis(
+        &self,
+        operation_id: Uuid,
+    ) -> Result<Option<i64>, RepositoryError> {
+        let started = Instant::now();
+        let result = Entity::find_by_id(operation_id.to_string())
+            .one(self.conn.as_ref())
+            .await
+            .map(|record| record.map(|value| value.created_at.timestamp_millis()));
+
+        match &result {
+            Ok(Some(_)) => {
+                record_repository_query(
+                    "operation",
+                    "get_created_at_timestamp_millis",
+                    "ok",
+                    started.elapsed(),
+                    Some(1),
+                );
+            }
+            Ok(None) => {
+                record_repository_query(
+                    "operation",
+                    "get_created_at_timestamp_millis",
+                    "ok",
+                    started.elapsed(),
+                    Some(0),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "operation",
+                    "get_created_at_timestamp_millis",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result.map_err(Into::into)
+    }
+
     /// Update an operation record with flexible field updates
     pub async fn update(
         &self,

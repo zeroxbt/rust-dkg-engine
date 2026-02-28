@@ -33,6 +33,19 @@
   "liveNow": false,
   "panels": [
     {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "panels": [],
+      "title": "Overview",
+      "type": "row"
+    },
+    {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -42,15 +55,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "ops"
+          "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 8,
         "x": 0,
-        "y": 0
+        "y": 1
       },
       "id": 1,
       "options": {
@@ -71,14 +84,26 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (command) (rate(node_command_total{status=\"completed\"}[5m]))",
+          "expr": "sum(increase(node_operation_duration_seconds_count{operation=\"get\",status=\"completed\"}[5m]))",
           "instant": false,
-          "legendFormat": "{{command}}",
+          "legendFormat": "get_completed_5m",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(node_operation_duration_seconds_count{operation=\"get\",status=\"failed\"}[5m]))",
+          "instant": false,
+          "legendFormat": "get_failed_5m",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "Completed Throughput by Command (5m rate)",
+      "title": "Get Terminal Outcomes (5m)",
       "type": "timeseries"
     },
     {
@@ -91,15 +116,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "ops"
+          "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
+        "w": 8,
+        "x": 8,
+        "y": 1
       },
       "id": 2,
       "options": {
@@ -120,14 +145,26 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (command, status) (rate(node_command_total{status=~\"rejected_.*|expired\"}[5m]))",
+          "expr": "sum(increase(node_operation_duration_seconds_count{operation=\"publish\",status=\"completed\"}[5m]))",
           "instant": false,
-          "legendFormat": "{{command}} {{status}}",
+          "legendFormat": "publish_completed_5m",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(node_operation_duration_seconds_count{operation=\"publish\",status=\"failed\"}[5m]))",
+          "instant": false,
+          "legendFormat": "publish_failed_5m",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "Rejected/Expired by Command (5m rate)",
+      "title": "Publish (Store) Terminal Outcomes (5m)",
       "type": "timeseries"
     },
     {
@@ -140,15 +177,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "percent"
+          "unit": "percentunit"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 8
+        "w": 8,
+        "x": 16,
+        "y": 1
       },
       "id": 3,
       "options": {
@@ -169,15 +206,40 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * (sum by (command) (rate(node_command_total{status=~\"rejected_.*|expired\"}[5m])) / clamp_min(sum by (command) (rate(node_command_total[5m])), 1e-9))",
+          "expr": "sum(increase(node_operation_duration_seconds_count{operation=\"get\",status=\"completed\"}[5m])) / clamp_min(sum(increase(node_operation_duration_seconds_count{operation=\"get\",status=~\"completed|failed\"}[5m])), 1e-9)",
           "instant": false,
-          "legendFormat": "{{command}}",
+          "legendFormat": "get_success_ratio_5m",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(node_operation_duration_seconds_count{operation=\"publish\",status=\"completed\"}[5m])) / clamp_min(sum(increase(node_operation_duration_seconds_count{operation=\"publish\",status=~\"completed|failed\"}[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "publish_success_ratio_5m",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "Reject/Expire Ratio by Command",
+      "title": "Operation Success Ratio (5m)",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "id": 101,
+      "panels": [],
+      "title": "Get",
+      "type": "row"
     },
     {
       "datasource": {
@@ -189,15 +251,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "short"
+          "unit": "s"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 8
+        "w": 24,
+        "x": 0,
+        "y": 10
       },
       "id": 4,
       "options": {
@@ -218,15 +280,88 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (command) (increase(node_command_total{status=\"completed\"}[1h]))",
+          "expr": "node_operation_duration_seconds{operation=\"get\",status=\"completed\",quantile=\"0.5\"}",
           "instant": false,
-          "legendFormat": "{{command}}",
+          "legendFormat": "completed p50",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_operation_duration_seconds{operation=\"get\",status=\"completed\",quantile=\"0.95\"}",
+          "instant": false,
+          "legendFormat": "completed p95",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_operation_duration_seconds{operation=\"get\",status=\"completed\",quantile=\"0.99\"}",
+          "instant": false,
+          "legendFormat": "completed p99",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_operation_duration_seconds{operation=\"get\",status=\"failed\",quantile=\"0.5\"}",
+          "instant": false,
+          "legendFormat": "failed p50",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_operation_duration_seconds{operation=\"get\",status=\"failed\",quantile=\"0.95\"}",
+          "instant": false,
+          "legendFormat": "failed p95",
+          "range": true,
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_operation_duration_seconds{operation=\"get\",status=\"failed\",quantile=\"0.99\"}",
+          "instant": false,
+          "legendFormat": "failed p99",
+          "range": true,
+          "refId": "F"
         }
       ],
-      "title": "Completed Volume by Command (1h increase)",
+      "title": "Get Operation Lifecycle Duration p50/p95/p99",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "id": 102,
+      "panels": [],
+      "title": "Publish",
+      "type": "row"
     },
     {
       "datasource": {
@@ -244,9 +379,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
-        "y": 16
+        "y": 19
       },
       "id": 5,
       "options": {
@@ -267,9 +402,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_command_duration_seconds{quantile=\"0.95\",status=\"completed\"}",
+          "expr": "node_operation_duration_seconds{operation=\"publish\",status=\"completed\",quantile=\"0.5\"}",
           "instant": false,
-          "legendFormat": "{{command}} p95",
+          "legendFormat": "completed p50",
           "range": true,
           "refId": "A"
         },
@@ -279,14 +414,62 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_command_duration_seconds{quantile=\"0.99\",status=\"completed\"}",
+          "expr": "node_operation_duration_seconds{operation=\"publish\",status=\"completed\",quantile=\"0.95\"}",
           "instant": false,
-          "legendFormat": "{{command}} p99",
+          "legendFormat": "completed p95",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_operation_duration_seconds{operation=\"publish\",status=\"completed\",quantile=\"0.99\"}",
+          "instant": false,
+          "legendFormat": "completed p99",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_operation_duration_seconds{operation=\"publish\",status=\"failed\",quantile=\"0.5\"}",
+          "instant": false,
+          "legendFormat": "failed p50",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_operation_duration_seconds{operation=\"publish\",status=\"failed\",quantile=\"0.95\"}",
+          "instant": false,
+          "legendFormat": "failed p95",
+          "range": true,
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_operation_duration_seconds{operation=\"publish\",status=\"failed\",quantile=\"0.99\"}",
+          "instant": false,
+          "legendFormat": "failed p99",
+          "range": true,
+          "refId": "F"
         }
       ],
-      "title": "Command Latency p95/p99",
+      "title": "Publish (Store) Lifecycle Duration p50/p95/p99",
       "type": "timeseries"
     },
     {
@@ -299,15 +482,15 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "s"
+          "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 16
+        "x": 0,
+        "y": 27
       },
       "id": 6,
       "options": {
@@ -328,99 +511,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (command) (rate(node_command_duration_seconds_sum{status=\"completed\"}[5m])) / clamp_min(sum by (command) (rate(node_command_duration_seconds_count{status=\"completed\"}[5m])), 1e-9)",
+          "expr": "sum(increase(node_publish_finalization_total[5m]))",
           "instant": false,
-          "legendFormat": "{{command}} avg",
+          "legendFormat": "finalized_5m",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Command Average Latency (5m)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 24
-      },
-      "id": 7,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(node_command_total{status=\"completed\",command=~\".*Publish.*\"}[5m]))",
-          "instant": false,
-          "legendFormat": "publish",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(node_command_total{status=\"completed\",command=~\".*Finality.*\"}[5m]))",
-          "instant": false,
-          "legendFormat": "finality",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(node_command_total{status=\"completed\",command=~\".*BatchGet.*\"}[5m]))",
-          "instant": false,
-          "legendFormat": "batch_get",
-          "range": true,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(node_command_total{status=\"completed\",command=~\".*Get.*\",command!~\".*BatchGet.*\"}[5m]))",
-          "instant": false,
-          "legendFormat": "get",
-          "range": true,
-          "refId": "D"
-        }
-      ],
-      "title": "Completed Throughput by Operation Family",
+      "title": "Publish Finalized on Chain (5m)",
       "type": "timeseries"
     },
     {
@@ -441,9 +539,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 27
       },
-      "id": 8,
+      "id": 7,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -462,9 +560,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(node_command_duration_seconds_sum{status=\"completed\",command=~\".*Publish.*\"}[5m])) / clamp_min(sum(rate(node_command_duration_seconds_count{status=\"completed\",command=~\".*Publish.*\"}[5m])), 1e-9)",
+          "expr": "node_publish_finalization_duration_seconds{quantile=\"0.5\"}",
           "instant": false,
-          "legendFormat": "publish avg",
+          "legendFormat": "{{blockchain_id}} p50",
           "range": true,
           "refId": "A"
         },
@@ -474,9 +572,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(node_command_duration_seconds_sum{status=\"completed\",command=~\".*Finality.*\"}[5m])) / clamp_min(sum(rate(node_command_duration_seconds_count{status=\"completed\",command=~\".*Finality.*\"}[5m])), 1e-9)",
+          "expr": "node_publish_finalization_duration_seconds{quantile=\"0.95\"}",
           "instant": false,
-          "legendFormat": "finality avg",
+          "legendFormat": "{{blockchain_id}} p95",
           "range": true,
           "refId": "B"
         },
@@ -486,26 +584,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(node_command_duration_seconds_sum{status=\"completed\",command=~\".*BatchGet.*\"}[5m])) / clamp_min(sum(rate(node_command_duration_seconds_count{status=\"completed\",command=~\".*BatchGet.*\"}[5m])), 1e-9)",
+          "expr": "node_publish_finalization_duration_seconds{quantile=\"0.99\"}",
           "instant": false,
-          "legendFormat": "batch_get avg",
+          "legendFormat": "{{blockchain_id}} p99",
           "range": true,
           "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(node_command_duration_seconds_sum{status=\"completed\",command=~\".*Get.*\",command!~\".*BatchGet.*\"}[5m])) / clamp_min(sum(rate(node_command_duration_seconds_count{status=\"completed\",command=~\".*Get.*\",command!~\".*BatchGet.*\"}[5m])), 1e-9)",
-          "instant": false,
-          "legendFormat": "get avg",
-          "range": true,
-          "refId": "D"
         }
       ],
-      "title": "Operation Family Average Latency (5m)",
+      "title": "Publish (Store + Chain Mint) Duration p50/p95/p99",
       "type": "timeseries"
     }
   ],
@@ -514,7 +600,8 @@
   "style": "dark",
   "tags": [
     "rust-dkg-engine",
-    "operations"
+    "operations",
+    "v2"
   ],
   "templating": {
     "list": []
@@ -525,8 +612,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Rust DKG Engine - Operations",
-  "uid": "rust-dkg-operations",
+  "title": "Rust DKG Engine - Operations v2",
+  "uid": "rust-dkg-operations-v2",
   "version": 1,
   "weekStart": ""
 }
