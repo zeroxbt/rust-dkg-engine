@@ -17,6 +17,14 @@ pub fn record_task_run(task: &str, status: &str, duration: Duration) {
     .record(duration.as_secs_f64());
 }
 
+pub fn record_task_cadence(task: &str, cadence: Duration) {
+    histogram!(
+        "node_task_cadence_seconds",
+        "task" => task.to_string()
+    )
+    .record(cadence.as_secs_f64());
+}
+
 pub fn record_proving_stage(blockchain_id: &str, stage: &str, status: &str, duration: Duration) {
     counter!(
         "node_proving_stage_total",

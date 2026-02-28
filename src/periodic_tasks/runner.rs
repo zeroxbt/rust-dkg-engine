@@ -1,4 +1,7 @@
-use std::{future::Future, time::Duration};
+use std::{
+    future::Future,
+    time::{Duration, Instant},
+};
 
 use futures::FutureExt;
 use tokio_util::sync::CancellationToken;
@@ -13,8 +16,14 @@ pub(crate) async fn run_with_shutdown<F, Fut>(
     F: FnMut() -> Fut,
     Fut: Future<Output = Duration>,
 {
+    let mut previous_started_at: Option<Instant> = None;
     loop {
-        let started_at = std::time::Instant::now();
+        let started_at = Instant::now();
+        if let Some(previous) = previous_started_at {
+            observability::record_task_cadence(task_name, started_at.duration_since(previous));
+        }
+        previous_started_at = Some(started_at);
+
         let run_once_result = std::panic::AssertUnwindSafe(run_once())
             .catch_unwind()
             .await;
