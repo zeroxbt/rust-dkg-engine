@@ -40,6 +40,13 @@ pub struct GapBoundaries {
     pub starts_of_runs: Vec<(u64, u64)>,
 }
 
+/// Oldest unresolved block range to scan for a contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GapRange {
+    pub start_block: u64,
+    pub end_block: u64,
+}
+
 #[derive(Clone)]
 pub struct KcChainMetadataRepository {
     conn: Arc<DatabaseConnection>,
@@ -556,124 +563,150 @@ impl KcChainMetadataRepository {
         result
     }
 
-    /// Find KC ID sequence gap boundaries for a contract using two NOT EXISTS queries.
+    /// Find the oldest unresolved gap range for a contract at/after the provided cursor.
     ///
-    /// Returns `GapBoundaries` containing:
-    /// - `ends_of_runs`: last KC of each consecutive run (sorted by kc_id)
-    /// - `starts_of_runs`: first KC of each consecutive run (sorted by kc_id)
-    ///
-    /// The caller uses these to compute scan ranges:
-    /// - leading gap: `starts_of_runs[0].kc_id > 1`
-    /// - internal gaps: `zip(ends[..n-1], starts[1..])`
-    /// - tail: `ends[last]`
-    pub async fn find_gap_boundaries(
+    /// Returns at most one range:
+    /// - leading/internal gap candidate from the next run start with missing predecessor
+    /// - otherwise tail gap candidate from last known KC block to pinned tip
+    pub async fn find_oldest_gap_range(
         &self,
         blockchain_id: &str,
         contract_address: &str,
-    ) -> Result<GapBoundaries> {
+        cursor_block: u64,
+        target_tip: u64,
+        deployment_block: Option<u64>,
+    ) -> Result<Option<GapRange>> {
         let started = Instant::now();
         let db = self.conn.as_ref();
+        let next_block = cursor_block.saturating_add(1);
+        let cursor_i64 = next_block.min(i64::MAX as u64) as i64;
+        let target_tip_i64 = target_tip.min(i64::MAX as u64) as i64;
+        let deployment_i64 = deployment_block.map(|v| v.min(i64::MAX as u64) as i64);
 
-        let ends_sql = Statement::from_sql_and_values(
+        let sql = Statement::from_sql_and_values(
             db.get_database_backend(),
             r#"
-            SELECT t.kc_id, t.block_number
-            FROM kc_chain_core_metadata t
-            WHERE t.blockchain_id = ?
-              AND t.contract_address = ?
-              AND NOT EXISTS (
-                SELECT 1 FROM kc_chain_core_metadata
-                WHERE blockchain_id = t.blockchain_id
-                  AND contract_address = t.contract_address
-                  AND kc_id = t.kc_id + 1
-              )
-            ORDER BY t.kc_id ASC
-            "#,
-            [
-                Value::String(Some(Box::new(blockchain_id.to_string()))),
-                Value::String(Some(Box::new(contract_address.to_string()))),
-            ],
-        );
+            SELECT g.gap_start_block, g.gap_end_block
+            FROM (
+                (
+                    SELECT
+                        COALESCE(
+                            (
+                                SELECT p.block_number
+                                FROM kc_chain_core_metadata p
+                                WHERE p.blockchain_id = t.blockchain_id
+                                  AND p.contract_address = t.contract_address
+                                  AND p.kc_id < t.kc_id
+                                ORDER BY p.kc_id DESC
+                                LIMIT 1
+                            ),
+                            ?
+                        ) AS gap_start_block,
+                        t.block_number AS gap_end_block,
+                        0 AS priority_rank,
+                        t.kc_id AS priority_order
+                    FROM kc_chain_core_metadata t
+                    WHERE t.blockchain_id = ?
+                      AND t.contract_address = ?
+                      AND t.kc_id > 1
+                      AND t.block_number >= ?
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM kc_chain_core_metadata prev
+                        WHERE prev.blockchain_id = t.blockchain_id
+                          AND prev.contract_address = t.contract_address
+                          AND prev.kc_id = t.kc_id - 1
+                        LIMIT 1
+                      )
+                    ORDER BY t.kc_id ASC
+                    LIMIT 1
+                )
 
-        let starts_sql = Statement::from_sql_and_values(
-            db.get_database_backend(),
-            r#"
-            SELECT t.kc_id, t.block_number
-            FROM kc_chain_core_metadata t
-            WHERE t.blockchain_id = ?
-              AND t.contract_address = ?
-              AND NOT EXISTS (
-                SELECT 1 FROM kc_chain_core_metadata
-                WHERE blockchain_id = t.blockchain_id
-                  AND contract_address = t.contract_address
-                  AND kc_id = t.kc_id - 1
-              )
-            ORDER BY t.kc_id ASC
+                UNION ALL
+
+                SELECT
+                    COALESCE(
+                        (
+                            SELECT last.block_number
+                            FROM kc_chain_core_metadata last
+                            WHERE last.blockchain_id = ?
+                              AND last.contract_address = ?
+                            ORDER BY last.kc_id DESC
+                            LIMIT 1
+                        ),
+                        ?
+                    ) AS gap_start_block,
+                    ? AS gap_end_block,
+                    1 AS priority_rank,
+                    9223372036854775807 AS priority_order
+            ) g
+            WHERE g.gap_start_block IS NOT NULL
+              AND g.gap_start_block < g.gap_end_block
+              AND g.gap_end_block >= ?
+            ORDER BY g.priority_rank ASC, g.priority_order ASC
+            LIMIT 1
             "#,
             [
+                Value::BigInt(deployment_i64),
                 Value::String(Some(Box::new(blockchain_id.to_string()))),
                 Value::String(Some(Box::new(contract_address.to_string()))),
+                Value::BigInt(Some(cursor_i64)),
+                Value::String(Some(Box::new(blockchain_id.to_string()))),
+                Value::String(Some(Box::new(contract_address.to_string()))),
+                Value::BigInt(deployment_i64),
+                Value::BigInt(Some(target_tip_i64)),
+                Value::BigInt(Some(cursor_i64)),
             ],
         );
 
         let result = async {
-            let ends_rows = db
-                .query_all(ends_sql)
-                .await
+            let row = db.query_one(sql).await.map_err(RepositoryError::Database)?;
+            let Some(row) = row else {
+                return Ok(None);
+            };
+            let start_block: i64 = row
+                .try_get("", "gap_start_block")
                 .map_err(RepositoryError::Database)?;
-            let starts_rows = db
-                .query_all(starts_sql)
-                .await
+            let end_block: i64 = row
+                .try_get("", "gap_end_block")
                 .map_err(RepositoryError::Database)?;
 
-            let mut ends_of_runs = Vec::with_capacity(ends_rows.len());
-            for row in ends_rows {
-                let kc_id: u64 = row
-                    .try_get("", "kc_id")
-                    .map_err(RepositoryError::Database)?;
-                let block_number: i64 = row
-                    .try_get("", "block_number")
-                    .map_err(RepositoryError::Database)?;
-                ends_of_runs.push((kc_id, block_number.max(0) as u64));
+            let start_block = start_block.max(0) as u64;
+            let end_block = end_block.max(0) as u64;
+            if start_block >= end_block {
+                return Ok(None);
             }
 
-            let mut starts_of_runs = Vec::with_capacity(starts_rows.len());
-            for row in starts_rows {
-                let kc_id: u64 = row
-                    .try_get("", "kc_id")
-                    .map_err(RepositoryError::Database)?;
-                let block_number: i64 = row
-                    .try_get("", "block_number")
-                    .map_err(RepositoryError::Database)?;
-                starts_of_runs.push((kc_id, block_number.max(0) as u64));
-            }
-
-            Ok(GapBoundaries {
-                ends_of_runs,
-                starts_of_runs,
-            })
+            Ok(Some(GapRange {
+                start_block,
+                end_block,
+            }))
         }
         .await;
 
         match &result {
-            Ok(boundaries) => {
+            Ok(Some(_)) => {
                 record_repository_query(
                     "kc_chain_metadata",
-                    "find_gap_boundaries",
+                    "find_oldest_gap_range",
                     "ok",
                     started.elapsed(),
-                    Some(
-                        boundaries
-                            .ends_of_runs
-                            .len()
-                            .saturating_add(boundaries.starts_of_runs.len()),
-                    ),
+                    Some(1),
+                );
+            }
+            Ok(None) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "find_oldest_gap_range",
+                    "ok",
+                    started.elapsed(),
+                    Some(0),
                 );
             }
             Err(_) => {
                 record_repository_query(
                     "kc_chain_metadata",
-                    "find_gap_boundaries",
+                    "find_oldest_gap_range",
                     "error",
                     started.elapsed(),
                     None,

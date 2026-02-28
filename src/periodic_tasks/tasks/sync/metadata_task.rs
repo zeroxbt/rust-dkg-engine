@@ -1,5 +1,6 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
+    sync::Mutex,
     time::{Duration, Instant},
 };
 
@@ -8,7 +9,6 @@ use dkg_blockchain::{
     monitored_contract_events,
 };
 use dkg_observability as observability;
-use dkg_repository::GapBoundaries;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 
@@ -26,6 +26,8 @@ use crate::{
 pub(crate) struct MetadataSyncTask {
     config: SyncConfig,
     deps: SyncDeps,
+    active_range_by_contract: Mutex<HashMap<String, BlockRange>>,
+    deployment_block_by_contract: Mutex<HashMap<String, Option<u64>>>,
 }
 
 #[derive(Debug, Error)]
@@ -42,8 +44,8 @@ enum MetadataSyncError {
     UpsertCoreMetadata(#[source] dkg_repository::error::RepositoryError),
     #[error("Failed to enqueue KC IDs")]
     EnqueueKcs(#[source] dkg_repository::error::RepositoryError),
-    #[error("Failed to query KC ID gap boundaries")]
-    FindGapBoundaries(#[source] dkg_repository::error::RepositoryError),
+    #[error("Failed to query oldest KC gap range")]
+    FindOldestGapRange(#[source] dkg_repository::error::RepositoryError),
     #[error(
         "Incomplete metadata hydration for chunk [{chunk_from}..{chunk_to}] in contract {contract}; {dropped_not_ready} records missing full metadata"
     )]
@@ -64,106 +66,20 @@ struct ContractMetadataSyncResult {
 }
 
 /// An inclusive block range [start, end] to scan for KC events.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RangeType {
-    Leading,
-    Internal,
-    Tail,
-}
-
-/// An inclusive block range [start, end] to scan for KC events.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BlockRange {
     start: u64,
     end: u64,
-    range_type: RangeType,
-}
-
-/// Output of `compute_scan_ranges`.
-struct ScanPlan {
-    ranges: Vec<BlockRange>,
-}
-
-/// Compute the set of block ranges to scan given the gap boundaries from the DB,
-/// the deployment block, the current chain tip, and the last scanned block cursor.
-///
-/// Rules:
-/// - Leading and internal gaps are NOT clamped by cursor (always fully re-scanned).
-/// - Only the tail gap is clamped: `start = max(tail_start_block, cursor + 1)`.
-/// - Ranges are inclusive; a single-block range (start == end) is valid.
-/// - Ranges where start > end are skipped.
-/// - `deployment_block = None` means the deployment block could not be resolved;
-///   empty-DB and leading-gap ranges are skipped in that case.
-fn compute_scan_ranges(
-    boundaries: &GapBoundaries,
-    deployment_block: Option<u64>,
-    target_tip: u64,
-    cursor: u64,
-) -> ScanPlan {
-    let starts = &boundaries.starts_of_runs;
-    let ends = &boundaries.ends_of_runs;
-    let mut ranges = Vec::new();
-
-    if starts.is_empty() {
-        // No KCs in DB — scan from deployment to tip (this range is the tail).
-        if let Some(dep) = deployment_block {
-            let start = dep.max(cursor.saturating_add(1));
-            if start <= target_tip {
-                ranges.push(BlockRange {
-                    start,
-                    end: target_tip,
-                    range_type: RangeType::Tail,
-                });
-            }
-        }
-        return ScanPlan { ranges };
-    }
-
-    // Leading gap: first known KC doesn't have ID 1.
-    let (first_kc_id, first_kc_block) = starts[0];
-    if first_kc_id > 1
-        && let Some(dep) = deployment_block
-        && dep <= first_kc_block
-    {
-        ranges.push(BlockRange {
-            start: dep,
-            end: first_kc_block,
-            range_type: RangeType::Leading,
-        });
-    }
-    // deployment_block == None: leading-gap skipped (no known lower bound).
-
-    // Internal gaps: pair ends[i] with starts[i+1].
-    let n = ends.len();
-    for i in 0..n.saturating_sub(1) {
-        let (_, lower_block) = ends[i];
-        let (_, upper_block) = starts[i + 1];
-        if lower_block <= upper_block {
-            ranges.push(BlockRange {
-                start: lower_block,
-                end: upper_block,
-                range_type: RangeType::Internal,
-            });
-        }
-    }
-
-    // Tail gap: from last known KC block to the current tip, clamped by cursor.
-    let (_, tail_start_block): (u64, u64) = ends[n - 1];
-    let tail_start = tail_start_block.max(cursor.saturating_add(1));
-    if tail_start <= target_tip {
-        ranges.push(BlockRange {
-            start: tail_start,
-            end: target_tip,
-            range_type: RangeType::Tail,
-        });
-    }
-
-    ScanPlan { ranges }
 }
 
 impl MetadataSyncTask {
     pub(crate) fn new(deps: SyncDeps, config: SyncConfig) -> Self {
-        Self { config, deps }
+        Self {
+            config,
+            deps,
+            active_range_by_contract: Mutex::new(HashMap::new()),
+            deployment_block_by_contract: Mutex::new(HashMap::new()),
+        }
     }
 
     pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
@@ -260,78 +176,67 @@ impl MetadataSyncTask {
             .await
             .map_err(MetadataSyncError::LoadMetadataProgress)?;
 
-        // Query gap boundaries first so we know whether deployment block is needed.
-        let boundaries = self
-            .deps
-            .kc_chain_metadata_repository
-            .find_gap_boundaries(blockchain_id.as_str(), &contract_addr_str)
-            .await
-            .map_err(MetadataSyncError::FindGapBoundaries)?;
-
-        // Resolve the deployment block only when required:
-        // - DB is empty (we need a start anchor for the tail scan), or
-        // - A leading gap exists (first KC ID > 1, so we need the lower bound).
-        // For internal and tail gaps the deployment block is irrelevant.
-        let needs_deployment_block = boundaries.starts_of_runs.is_empty()
-            || boundaries
-                .starts_of_runs
-                .first()
-                .is_some_and(|pair| pair.0 > 1);
-
-        let deployment_block: Option<u64> = if needs_deployment_block {
-            match self
-                .deps
-                .blockchain_manager
-                .find_contract_deployment_block(blockchain_id, contract_address, target_tip)
-                .await
-                .map_err(MetadataSyncError::FindDeploymentBlock)?
-            {
-                Some(block) => Some(block),
-                None if boundaries.starts_of_runs.is_empty() => {
-                    tracing::warn!(
-                        blockchain_id = %blockchain_id,
-                        contract = %contract_addr_str,
-                        "No deployment block found and DB is empty; skipping metadata sync"
-                    );
-                    return Ok(result);
-                }
-                None => {
-                    tracing::warn!(
-                        blockchain_id = %blockchain_id,
-                        contract = %contract_addr_str,
-                        "Deployment block unavailable; leading-gap scan will be skipped"
-                    );
+        // Fast path: keep processing cached active range for this contract until exhausted.
+        let mut active_range = self
+            .cached_active_range(&contract_addr_str)
+            .and_then(|range| {
+                let start = range.start.max(cursor.saturating_add(1));
+                if start <= range.end {
+                    Some(BlockRange {
+                        start,
+                        end: range.end,
+                    })
+                } else {
                     None
                 }
-            }
-        } else {
-            None
-        };
-
-        let plan = compute_scan_ranges(&boundaries, deployment_block, target_tip, cursor);
-
-        result.gap_ranges_detected = plan.ranges.len() as u64;
-
-        if plan.ranges.is_empty() {
-            return Ok(result);
+            });
+        if active_range.is_none() {
+            self.clear_cached_active_range(&contract_addr_str);
         }
 
-        // Oldest-gap-first progression with monotonic cursor.
-        // Select the first range (lowest block) that is not yet covered by cursor.
-        let Some(active_range) = plan.ranges.into_iter().find_map(|range| {
-            let start = range.start.max(cursor.saturating_add(1));
-            if start <= range.end {
-                Some(BlockRange {
-                    start,
-                    end: range.end,
-                    range_type: range.range_type,
-                })
-            } else {
-                None
-            }
-        }) else {
-            return Ok(result);
-        };
+        if active_range.is_none() {
+            let deployment_block = self
+                .resolve_deployment_block(
+                    blockchain_id,
+                    contract_address,
+                    &contract_addr_str,
+                    target_tip,
+                )
+                .await?;
+
+            // Query only one gap range when we need to pick a new active range.
+            let oldest_gap = self
+                .deps
+                .kc_chain_metadata_repository
+                .find_oldest_gap_range(
+                    blockchain_id.as_str(),
+                    &contract_addr_str,
+                    cursor,
+                    target_tip,
+                    deployment_block,
+                )
+                .await
+                .map_err(MetadataSyncError::FindOldestGapRange)?;
+
+            result.gap_ranges_detected = oldest_gap.as_ref().map(|_| 1).unwrap_or(0);
+
+            active_range = oldest_gap.map(|gap| BlockRange {
+                start: gap.start_block.max(cursor.saturating_add(1)),
+                end: gap.end_block,
+            });
+
+            let Some(range) = active_range
+                .as_ref()
+                .filter(|range| range.start <= range.end)
+            else {
+                self.clear_cached_active_range(&contract_addr_str);
+                return Ok(result);
+            };
+            self.set_cached_active_range(&contract_addr_str, range);
+        }
+
+        let active_range =
+            active_range.expect("active_range should be present after cache/query selection");
 
         let event_signatures = monitored_contract_events()
             .get(&ContractName::KnowledgeCollectionStorage)
@@ -501,6 +406,9 @@ impl MetadataSyncTask {
                 .await
                 .map_err(MetadataSyncError::UpdateMetadataProgress)?;
             result.cursor_advanced = true;
+            if chunk_to >= active_range.end {
+                self.clear_cached_active_range(&contract_addr_str);
+            }
 
             observability::record_sync_metadata_backfill_batch(
                 blockchain_id.as_str(),
@@ -523,166 +431,58 @@ impl MetadataSyncTask {
 
         Ok(result)
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use dkg_repository::GapBoundaries;
+    fn cached_active_range(&self, contract_address: &str) -> Option<BlockRange> {
+        self.active_range_by_contract
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(contract_address)
+            .cloned()
+    }
 
-    fn boundaries(ends: Vec<(u64, u64)>, starts: Vec<(u64, u64)>) -> GapBoundaries {
-        GapBoundaries {
-            ends_of_runs: ends,
-            starts_of_runs: starts,
+    fn set_cached_active_range(&self, contract_address: &str, range: &BlockRange) {
+        self.active_range_by_contract
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(contract_address.to_string(), range.clone());
+    }
+
+    fn clear_cached_active_range(&self, contract_address: &str) {
+        self.active_range_by_contract
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(contract_address);
+    }
+
+    async fn resolve_deployment_block(
+        &self,
+        blockchain_id: &BlockchainId,
+        contract_address: Address,
+        contract_address_str: &str,
+        target_tip: u64,
+    ) -> Result<Option<u64>, MetadataSyncError> {
+        if let Some(cached) = self
+            .deployment_block_by_contract
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(contract_address_str)
+            .cloned()
+        {
+            return Ok(cached);
         }
-    }
 
-    fn br(start: u64, end: u64, range_type: RangeType) -> BlockRange {
-        BlockRange {
-            start,
-            end,
-            range_type,
-        }
-    }
+        let resolved = self
+            .deps
+            .blockchain_manager
+            .find_contract_deployment_block(blockchain_id, contract_address, target_tip)
+            .await
+            .map_err(MetadataSyncError::FindDeploymentBlock)?;
 
-    #[test]
-    fn empty_db_scans_deployment_to_tip() {
-        let b = boundaries(vec![], vec![]);
-        let plan = compute_scan_ranges(&b, Some(100), 500, 0);
-        assert_eq!(plan.ranges, vec![br(100, 500, RangeType::Tail)]);
-    }
+        self.deployment_block_by_contract
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(contract_address_str.to_string(), resolved);
 
-    #[test]
-    fn empty_db_with_cursor_clamps_start() {
-        let b = boundaries(vec![], vec![]);
-        let plan = compute_scan_ranges(&b, Some(100), 500, 300);
-        assert_eq!(plan.ranges, vec![br(301, 500, RangeType::Tail)]);
-    }
-
-    #[test]
-    fn empty_db_no_deployment_block_yields_empty() {
-        let b = boundaries(vec![], vec![]);
-        let plan = compute_scan_ranges(&b, None, 500, 0);
-        assert!(plan.ranges.is_empty());
-    }
-
-    #[test]
-    fn contiguous_ids_only_tail() {
-        // KCs [1-3], no gaps, last block at 200, cursor at 150.
-        let b = boundaries(vec![(3, 200)], vec![(1, 50)]);
-        let plan = compute_scan_ranges(&b, None, 500, 150);
-        // No leading gap (starts[0].kc_id == 1). No internal gaps. Tail: max(200, 151) = 200.
-        assert_eq!(plan.ranges, vec![br(200, 500, RangeType::Tail)]);
-    }
-
-    #[test]
-    fn contiguous_ids_cursor_past_tail_start() {
-        let b = boundaries(vec![(3, 200)], vec![(1, 50)]);
-        let plan = compute_scan_ranges(&b, None, 500, 350);
-        assert_eq!(plan.ranges, vec![br(351, 500, RangeType::Tail)]);
-    }
-
-    #[test]
-    fn cursor_at_tip_yields_empty_tail() {
-        let b = boundaries(vec![(3, 200)], vec![(1, 50)]);
-        let plan = compute_scan_ranges(&b, None, 500, 500);
-        // Tail skipped; no ranges at all.
-        assert_eq!(plan.ranges, vec![]);
-    }
-
-    #[test]
-    fn internal_gaps_not_clamped_by_cursor() {
-        // KCs [1-3], [7-9], [12-13]. Cursor = 600 (past all gap blocks).
-        // ends: [(3,100),(9,300),(13,450)]
-        // starts: [(1,50),(7,200),(12,400)]
-        let b = boundaries(
-            vec![(3, 100), (9, 300), (13, 450)],
-            vec![(1, 50), (7, 200), (12, 400)],
-        );
-        let plan = compute_scan_ranges(&b, None, 700, 600);
-        // No leading gap (starts[0].kc_id == 1).
-        // Internal gap 1: ends[0]=(3,100) ↔ starts[1]=(7,200) → [100,200]
-        // Internal gap 2: ends[1]=(9,300) ↔ starts[2]=(12,400) → [300,400]
-        // Tail: max(450, 601) = 601 → [601, 700]
-        assert_eq!(
-            plan.ranges,
-            vec![
-                br(100, 200, RangeType::Internal),
-                br(300, 400, RangeType::Internal),
-                br(601, 700, RangeType::Tail),
-            ]
-        );
-    }
-
-    #[test]
-    fn internal_gaps_with_cursor_at_tip_no_tail() {
-        // Same gaps, cursor already at tip — tail skipped, internal gaps still scanned.
-        let b = boundaries(
-            vec![(3, 100), (9, 300), (13, 450)],
-            vec![(1, 50), (7, 200), (12, 400)],
-        );
-        let plan = compute_scan_ranges(&b, None, 700, 700);
-        assert_eq!(
-            plan.ranges,
-            vec![
-                br(100, 200, RangeType::Internal),
-                br(300, 400, RangeType::Internal),
-                // No tail — cursor is at tip.
-            ]
-        );
-    }
-
-    #[test]
-    fn leading_gap_uses_deployment_block() {
-        // First KC in DB is ID 5 at block 300. Deployment at 100.
-        let b = boundaries(vec![(5, 300)], vec![(5, 300)]);
-        let plan = compute_scan_ranges(&b, Some(100), 600, 0);
-        // Leading gap: [100, 300]
-        // Tail: max(300, 1) = 300 → [300, 600]
-        assert_eq!(
-            plan.ranges,
-            vec![
-                br(100, 300, RangeType::Leading),
-                br(300, 600, RangeType::Tail),
-            ]
-        );
-    }
-
-    #[test]
-    fn leading_gap_skipped_when_no_deployment_block() {
-        // Leading gap exists but deployment block unavailable.
-        let b = boundaries(vec![(5, 300)], vec![(5, 300)]);
-        let plan = compute_scan_ranges(&b, None, 600, 0);
-        // Leading gap skipped; only tail remains.
-        assert_eq!(plan.ranges, vec![br(300, 600, RangeType::Tail)]);
-    }
-
-    #[test]
-    fn single_block_range_is_valid() {
-        // Three runs [1-3],[7-9],[12-13] where gap boundaries land on the same block.
-        // ends: [(3,150),(9,300),(13,450)], starts: [(1,50),(7,150),(12,300)]
-        let b = boundaries(
-            vec![(3, 150), (9, 300), (13, 450)],
-            vec![(1, 50), (7, 150), (12, 300)],
-        );
-        let plan = compute_scan_ranges(&b, None, 500, 0);
-        // Internal gap 1: ends[0]=(3,150) ↔ starts[1]=(7,150) → [150, 150] single-block
-        // Internal gap 2: ends[1]=(9,300) ↔ starts[2]=(12,300) → [300, 300] single-block
-        // Tail: [450, 500]
-        assert!(
-            plan.ranges
-                .iter()
-                .any(|r| r.start == 150 && r.end == 150 && r.range_type == RangeType::Internal)
-        );
-        assert!(
-            plan.ranges
-                .iter()
-                .any(|r| r.start == 300 && r.end == 300 && r.range_type == RangeType::Internal)
-        );
-        assert!(
-            plan.ranges
-                .iter()
-                .any(|r| r.start == 450 && r.end == 500 && r.range_type == RangeType::Tail)
-        );
+        Ok(resolved)
     }
 }
