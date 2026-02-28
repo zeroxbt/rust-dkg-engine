@@ -1,7 +1,6 @@
 use std::{
     collections::HashSet,
-    sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
 use dkg_blockchain::{
@@ -27,7 +26,6 @@ use crate::{
 pub(crate) struct MetadataSyncTask {
     config: SyncConfig,
     deps: SyncDeps,
-    last_non_tail_scan_at_unix_secs: AtomicU64,
 }
 
 #[derive(Debug, Error)]
@@ -165,11 +163,7 @@ fn compute_scan_ranges(
 
 impl MetadataSyncTask {
     pub(crate) fn new(deps: SyncDeps, config: SyncConfig) -> Self {
-        Self {
-            config,
-            deps,
-            last_non_tail_scan_at_unix_secs: AtomicU64::new(0),
-        }
+        Self { config, deps }
     }
 
     pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
@@ -180,14 +174,8 @@ impl MetadataSyncTask {
     async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
         let idle_period = Duration::from_secs(self.config.sync_idle_sleep_secs.max(1));
         let hot_loop_period = Duration::from_millis(500);
-        let recheck_secs = self.config.metadata_gap_recheck_interval_secs.max(1);
-        let recheck_period = Duration::from_secs(recheck_secs);
-        let now_unix_secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let last_non_tail_scan = self.last_non_tail_scan_at_unix_secs.load(Ordering::Relaxed);
-        let scan_non_tail_gaps = now_unix_secs.saturating_sub(last_non_tail_scan) >= recheck_secs;
+        let recheck_period =
+            Duration::from_secs(self.config.metadata_gap_recheck_interval_secs.max(1));
 
         let current_block = match self
             .deps
@@ -224,19 +212,18 @@ impl MetadataSyncTask {
             }
         };
 
-        // Process one tail chunk per contract per execution, concurrently.
-        // This keeps iterations bounded while retaining multi-contract throughput.
-        let tail_results =
+        // Process one chunk from the oldest unresolved range per contract per execution.
+        let results =
             futures::future::join_all(contract_addresses.iter().map(|&contract_address| {
-                self.sync_contract(blockchain_id, contract_address, target_tip, false, true)
+                self.sync_contract(blockchain_id, contract_address, target_tip, true)
             }))
             .await;
 
-        let mut any_tail_chunk_processed = false;
-        for (index, result) in tail_results.into_iter().enumerate() {
+        let mut any_chunk_processed = false;
+        for (index, result) in results.into_iter().enumerate() {
             match result {
                 Ok(contract_result) => {
-                    any_tail_chunk_processed |= contract_result.chunk_processed;
+                    any_chunk_processed |= contract_result.chunk_processed;
                 }
                 Err(error) => {
                     tracing::error!(
@@ -249,40 +236,8 @@ impl MetadataSyncTask {
             }
         }
 
-        if any_tail_chunk_processed {
+        if any_chunk_processed {
             return hot_loop_period;
-        }
-
-        if scan_non_tail_gaps {
-            let gap_results =
-                futures::future::join_all(contract_addresses.iter().map(|&contract_address| {
-                    self.sync_contract(blockchain_id, contract_address, target_tip, true, false)
-                }))
-                .await;
-
-            let mut any_cursor_advanced = false;
-            for (index, result) in gap_results.into_iter().enumerate() {
-                match result {
-                    Ok(contract_result) => {
-                        any_cursor_advanced |= contract_result.cursor_advanced;
-                    }
-                    Err(error) => {
-                        tracing::error!(
-                            blockchain_id = %blockchain_id,
-                            contract = ?contract_addresses[index],
-                            error = %error,
-                            "Failed metadata sync for contract"
-                        );
-                    }
-                }
-            }
-
-            self.last_non_tail_scan_at_unix_secs
-                .store(now_unix_secs, Ordering::Relaxed);
-            // Keep hot loop only for tail cursor progress. Gap rescans run on recheck cadence.
-            if any_cursor_advanced {
-                return hot_loop_period;
-            }
         }
 
         recheck_period
@@ -293,7 +248,6 @@ impl MetadataSyncTask {
         blockchain_id: &BlockchainId,
         contract_address: Address,
         target_tip: u64,
-        scan_non_tail_gaps: bool,
         single_chunk: bool,
     ) -> Result<ContractMetadataSyncResult, MetadataSyncError> {
         let contract_addr_str = format!("{:?}", contract_address);
@@ -354,26 +308,30 @@ impl MetadataSyncTask {
             None
         };
 
-        let mut plan = compute_scan_ranges(&boundaries, deployment_block, target_tip, cursor);
+        let plan = compute_scan_ranges(&boundaries, deployment_block, target_tip, cursor);
 
         result.gap_ranges_detected = plan.ranges.len() as u64;
-
-        if !scan_non_tail_gaps {
-            if let Some(tail_range) = plan
-                .ranges
-                .iter()
-                .find(|range| range.range_type == RangeType::Tail)
-                .cloned()
-            {
-                plan.ranges = vec![tail_range];
-            } else {
-                plan.ranges.clear();
-            }
-        }
 
         if plan.ranges.is_empty() {
             return Ok(result);
         }
+
+        // Oldest-gap-first progression with monotonic cursor.
+        // Select the first range (lowest block) that is not yet covered by cursor.
+        let Some(active_range) = plan.ranges.into_iter().find_map(|range| {
+            let start = range.start.max(cursor.saturating_add(1));
+            if start <= range.end {
+                Some(BlockRange {
+                    start,
+                    end: range.end,
+                    range_type: range.range_type,
+                })
+            } else {
+                None
+            }
+        }) else {
+            return Ok(result);
+        };
 
         let event_signatures = monitored_contract_events()
             .get(&ContractName::KnowledgeCollectionStorage)
@@ -381,196 +339,186 @@ impl MetadataSyncTask {
             .unwrap_or_default();
         let chunk_size = self.config.metadata_backfill_block_batch_size.max(1);
 
-        for scan_range in plan.ranges.iter() {
-            // Cursor advances only for tail scans.
-            let is_tail = scan_range.range_type == RangeType::Tail;
-            let mut chunk_from = scan_range.start;
+        let mut chunk_from = active_range.start;
 
-            while chunk_from <= scan_range.end {
-                let chunk_to = scan_range
-                    .end
-                    .min(chunk_from.saturating_add(chunk_size.saturating_sub(1)));
-                let chunk_blocks_scanned = chunk_to.saturating_sub(chunk_from).saturating_add(1);
+        while chunk_from <= active_range.end {
+            let chunk_to = active_range
+                .end
+                .min(chunk_from.saturating_add(chunk_size.saturating_sub(1)));
+            let chunk_blocks_scanned = chunk_to.saturating_sub(chunk_from).saturating_add(1);
 
-                let fetch_started = Instant::now();
-                let logs = match self
-                    .deps
-                    .blockchain_manager
-                    .get_event_logs_for_address(
-                        blockchain_id,
-                        ContractName::KnowledgeCollectionStorage,
-                        contract_address,
-                        &event_signatures,
-                        chunk_from,
-                        chunk_to,
-                    )
-                    .await
-                {
-                    Ok(logs) => {
-                        observability::record_sync_metadata_backfill_batch_fetch_duration(
-                            blockchain_id.as_str(),
-                            "success",
-                            fetch_started.elapsed(),
-                        );
-                        logs
-                    }
-                    Err(error) => {
-                        observability::record_sync_metadata_backfill_batch_fetch_duration(
-                            blockchain_id.as_str(),
-                            "error",
-                            fetch_started.elapsed(),
-                        );
-                        return Err(MetadataSyncError::FetchMetadataChunk(error));
-                    }
+            let fetch_started = Instant::now();
+            let logs = match self
+                .deps
+                .blockchain_manager
+                .get_event_logs_for_address(
+                    blockchain_id,
+                    ContractName::KnowledgeCollectionStorage,
+                    contract_address,
+                    &event_signatures,
+                    chunk_from,
+                    chunk_to,
+                )
+                .await
+            {
+                Ok(logs) => {
+                    observability::record_sync_metadata_backfill_batch_fetch_duration(
+                        blockchain_id.as_str(),
+                        "success",
+                        fetch_started.elapsed(),
+                    );
+                    logs
+                }
+                Err(error) => {
+                    observability::record_sync_metadata_backfill_batch_fetch_duration(
+                        blockchain_id.as_str(),
+                        "error",
+                        fetch_started.elapsed(),
+                    );
+                    return Err(MetadataSyncError::FetchMetadataChunk(error));
+                }
+            };
+            let processing_started = Instant::now();
+
+            let mut records = Vec::new();
+            let mut discovered_ids = HashSet::new();
+            let mut chunk_events_found = 0_usize;
+
+            for log in logs {
+                let Some(ContractEvent::KnowledgeCollectionCreated {
+                    event,
+                    transaction_hash,
+                    block_number,
+                    block_timestamp,
+                    ..
+                }) = decode_contract_event(log.contract_name(), log.log())
+                else {
+                    continue;
                 };
-                let processing_started = Instant::now();
 
-                let mut records = Vec::new();
-                let mut discovered_ids = HashSet::new();
-                let mut chunk_events_found = 0_usize;
+                let record = match build_kc_chain_metadata_record(
+                    event.publishOperationId.clone(),
+                    event.id,
+                    event.merkleRoot,
+                    event.byteSize.to(),
+                    contract_address,
+                    transaction_hash,
+                    block_number,
+                    block_timestamp,
+                ) {
+                    Ok(record) => record,
+                    Err(BuildKcRecordError::KcIdOutOfRange) => continue,
+                    Err(BuildKcRecordError::MissingTransactionHash) => continue,
+                };
 
-                for log in logs {
-                    let Some(ContractEvent::KnowledgeCollectionCreated {
-                        event,
-                        transaction_hash,
-                        block_number,
-                        block_timestamp,
-                        ..
-                    }) = decode_contract_event(log.contract_name(), log.log())
-                    else {
-                        continue;
-                    };
+                discovered_ids.insert(record.kc_id);
+                records.push(record);
+                chunk_events_found = chunk_events_found.saturating_add(1);
+                result.metadata_events_found = result.metadata_events_found.saturating_add(1);
+            }
 
-                    let record = match build_kc_chain_metadata_record(
-                        event.publishOperationId.clone(),
-                        event.id,
-                        event.merkleRoot,
-                        event.byteSize.to(),
-                        contract_address,
-                        transaction_hash,
-                        block_number,
-                        block_timestamp,
-                    ) {
-                        Ok(record) => record,
-                        Err(BuildKcRecordError::KcIdOutOfRange) => continue,
-                        Err(BuildKcRecordError::MissingTransactionHash) => continue,
-                    };
+            hydrate_block_timestamps(
+                self.deps.blockchain_manager.as_ref(),
+                blockchain_id,
+                &mut records,
+            )
+            .await;
+            hydrate_core_metadata_publishers(
+                self.deps.blockchain_manager.as_ref(),
+                blockchain_id,
+                &mut records,
+            )
+            .await;
+            hydrate_kc_state_metadata(
+                self.deps.blockchain_manager.as_ref(),
+                blockchain_id,
+                &mut records,
+                self.config.metadata_state_batch_size.max(1),
+            )
+            .await;
 
-                    discovered_ids.insert(record.kc_id);
-                    records.push(record);
-                    chunk_events_found = chunk_events_found.saturating_add(1);
-                    result.metadata_events_found = result.metadata_events_found.saturating_add(1);
-                }
-
-                hydrate_block_timestamps(
-                    self.deps.blockchain_manager.as_ref(),
-                    blockchain_id,
-                    &mut records,
-                )
-                .await;
-                hydrate_core_metadata_publishers(
-                    self.deps.blockchain_manager.as_ref(),
-                    blockchain_id,
-                    &mut records,
-                )
-                .await;
-                hydrate_kc_state_metadata(
-                    self.deps.blockchain_manager.as_ref(),
-                    blockchain_id,
-                    &mut records,
-                    self.config.metadata_state_batch_size.max(1),
-                )
-                .await;
-
-                let before_ready_filter = records.len();
-                records.retain(|record| {
-                    record.block_timestamp > 0
-                        && record.publisher_address.is_some()
-                        && record.kc_state_metadata.is_some()
-                });
-                let dropped_not_ready = before_ready_filter.saturating_sub(records.len());
-                if dropped_not_ready > 0 {
-                    observability::record_sync_metadata_backfill_batch(
-                        blockchain_id.as_str(),
-                        "error",
-                        chunk_blocks_scanned,
-                        chunk_events_found,
-                    );
-                    observability::record_sync_metadata_backfill_batch_processing_duration(
-                        blockchain_id.as_str(),
-                        "error",
-                        processing_started.elapsed(),
-                    );
-                    return Err(MetadataSyncError::IncompleteChunkHydration {
-                        contract: contract_addr_str.clone(),
-                        chunk_from,
-                        chunk_to,
-                        dropped_not_ready,
-                    });
-                }
-
-                if !records.is_empty() {
-                    tracing::trace!(
-                        blockchain_id = %blockchain_id,
-                        contract = %contract_addr_str,
-                        hydrated_records = records.len(),
-                        "Chunk metadata hydration complete; persisting records"
-                    );
-                }
-
-                for record in &records {
-                    upsert_kc_chain_metadata_record(
-                        &self.deps.kc_chain_metadata_repository,
-                        blockchain_id.as_str(),
-                        "sync_metadata_backfill",
-                        record,
-                    )
-                    .await
-                    .map_err(MetadataSyncError::UpsertCoreMetadata)?;
-                }
-
-                if !discovered_ids.is_empty() {
-                    let mut ids: Vec<u64> = discovered_ids.into_iter().collect();
-                    ids.sort_unstable();
-                    self.deps
-                        .kc_sync_repository
-                        .enqueue_kcs(blockchain_id.as_str(), &contract_addr_str, &ids)
-                        .await
-                        .map_err(MetadataSyncError::EnqueueKcs)?;
-                }
-
-                // Only advance the persistent cursor during tail scans.
-                if is_tail {
-                    self.deps
-                        .kc_sync_repository
-                        .upsert_metadata_progress(
-                            blockchain_id.as_str(),
-                            &contract_addr_str,
-                            chunk_to,
-                        )
-                        .await
-                        .map_err(MetadataSyncError::UpdateMetadataProgress)?;
-                    result.cursor_advanced = true;
-                }
-
+            let before_ready_filter = records.len();
+            records.retain(|record| {
+                record.block_timestamp > 0
+                    && record.publisher_address.is_some()
+                    && record.kc_state_metadata.is_some()
+            });
+            let dropped_not_ready = before_ready_filter.saturating_sub(records.len());
+            if dropped_not_ready > 0 {
                 observability::record_sync_metadata_backfill_batch(
                     blockchain_id.as_str(),
-                    "success",
+                    "error",
                     chunk_blocks_scanned,
                     chunk_events_found,
                 );
                 observability::record_sync_metadata_backfill_batch_processing_duration(
                     blockchain_id.as_str(),
-                    "success",
+                    "error",
                     processing_started.elapsed(),
                 );
-                result.chunk_processed = true;
-                if single_chunk {
-                    return Ok(result);
-                }
-
-                chunk_from = chunk_to.saturating_add(1);
+                return Err(MetadataSyncError::IncompleteChunkHydration {
+                    contract: contract_addr_str.clone(),
+                    chunk_from,
+                    chunk_to,
+                    dropped_not_ready,
+                });
             }
+
+            if !records.is_empty() {
+                tracing::trace!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract_addr_str,
+                    hydrated_records = records.len(),
+                    "Chunk metadata hydration complete; persisting records"
+                );
+            }
+
+            for record in &records {
+                upsert_kc_chain_metadata_record(
+                    &self.deps.kc_chain_metadata_repository,
+                    blockchain_id.as_str(),
+                    "sync_metadata_backfill",
+                    record,
+                )
+                .await
+                .map_err(MetadataSyncError::UpsertCoreMetadata)?;
+            }
+
+            if !discovered_ids.is_empty() {
+                let mut ids: Vec<u64> = discovered_ids.into_iter().collect();
+                ids.sort_unstable();
+                self.deps
+                    .kc_sync_repository
+                    .enqueue_kcs(blockchain_id.as_str(), &contract_addr_str, &ids)
+                    .await
+                    .map_err(MetadataSyncError::EnqueueKcs)?;
+            }
+
+            // Cursor always advances inside the chosen active range.
+            self.deps
+                .kc_sync_repository
+                .upsert_metadata_progress(blockchain_id.as_str(), &contract_addr_str, chunk_to)
+                .await
+                .map_err(MetadataSyncError::UpdateMetadataProgress)?;
+            result.cursor_advanced = true;
+
+            observability::record_sync_metadata_backfill_batch(
+                blockchain_id.as_str(),
+                "success",
+                chunk_blocks_scanned,
+                chunk_events_found,
+            );
+            observability::record_sync_metadata_backfill_batch_processing_duration(
+                blockchain_id.as_str(),
+                "success",
+                processing_started.elapsed(),
+            );
+            result.chunk_processed = true;
+            if single_chunk {
+                return Ok(result);
+            }
+
+            chunk_from = chunk_to.saturating_add(1);
         }
 
         Ok(result)
