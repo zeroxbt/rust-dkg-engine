@@ -140,20 +140,15 @@ pub fn record_sync_pipeline_inflight(inflight: usize) {
     gauge!("node_sync_pipeline_inflight").set(inflight as f64);
 }
 
-pub fn record_sync_pipeline_mode(mode: &str) {
-    for known_mode in ["running", "draining", "completed"] {
-        gauge!(
-            "node_sync_pipeline_mode",
-            "mode" => known_mode.to_string()
-        )
-        .set(if known_mode == mode { 1.0 } else { 0.0 });
+pub fn record_sync_kc_outcome(blockchain_id: &str, stage: &str, outcome: &str, count: usize) {
+    if count == 0 {
+        return;
     }
-}
-
-pub fn record_sync_pipeline_dispatch_wake(reason: &str) {
     counter!(
-        "node_sync_pipeline_dispatch_wake_total",
-        "reason" => reason.to_string()
+        "node_sync_kc_outcome_total",
+        "blockchain_id" => blockchain_id.to_string(),
+        "stage" => stage.to_string(),
+        "outcome" => outcome.to_string()
     )
-    .increment(1);
+    .increment(count as u64);
 }

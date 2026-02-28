@@ -104,19 +104,21 @@ fn sync() -> SyncConfig {
     SyncConfig {
         enabled: true,
         head_safety_blocks: 2,
+        // Replenisher
         metadata_backfill_block_batch_size: 100,
-        metadata_state_batch_size: 20,
-        metadata_gap_recheck_interval_secs: 300,
-        no_peers_retry_delay_secs: 5,
-        max_retry_attempts: 2,
-        max_new_kcs_per_contract: 500,
-        pipeline_capacity: 8,
-        pipeline_channel_buffer: 3,
-        max_assets_per_fetch_batch: 20_000,
+        metadata_state_batch_size: 50,
+        metadata_error_retry_interval_secs: 30,
+        queue_high_watermark: 500,
+        queue_low_watermark: 200,
+        // Pipeline / dispatch
+        pipeline_capacity: 128,
+        stage_channel_buffer: 4,
+        filter_batch_size: 64,
+        max_assets_per_fetch_batch: 16_384,
         insert_batch_concurrency: 8,
-        retry_base_delay_secs: 10,
-        retry_max_delay_secs: 300,
-        retry_jitter_secs: 2,
+        // Retry
+        dispatch_idle_poll_secs: 5,
+        max_retry_attempts: 3,
     }
 }
 

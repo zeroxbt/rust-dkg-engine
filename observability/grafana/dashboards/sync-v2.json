@@ -40,9 +40,178 @@
         "x": 0,
         "y": 0
       },
+      "id": 106,
+      "panels": [],
+      "title": "Pipeline",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal"
+            }
+          },
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 1
+      },
+      "id": 104,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rate(node_sync_kc_outcome_total{outcome=\"synced\"}[5m])",
+          "instant": false,
+          "legendFormat": "synced",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rate(node_sync_kc_outcome_total{outcome=\"already_synced\"}[5m])",
+          "instant": false,
+          "legendFormat": "already_synced",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rate(node_sync_kc_outcome_total{outcome=\"expired\"}[5m])",
+          "instant": false,
+          "legendFormat": "expired",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rate(node_sync_kc_outcome_total{outcome=\"retry_later\"}[5m])",
+          "instant": false,
+          "legendFormat": "retry_later",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rate(node_sync_kc_outcome_total{outcome=\"failed\"}[5m])",
+          "instant": false,
+          "legendFormat": "fetch/insert failed",
+          "range": true,
+          "refId": "E"
+        }
+      ],
+      "title": "KC Outcomes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "id": 105,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "node_sync_pipeline_inflight",
+          "instant": false,
+          "legendFormat": "inflight",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "In-Flight KCs",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
       "id": 100,
       "panels": [],
-      "title": "Overview",
+      "title": "Progress",
       "type": "row"
     },
     {
@@ -63,7 +232,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 1
+        "y": 10
       },
       "id": 1,
       "options": {
@@ -103,7 +272,7 @@
           "refId": "B"
         }
       ],
-      "title": "KCs with Synced Metadata (SQL Total)",
+      "title": "Metadata Indexed (SQL)",
       "type": "timeseries"
     },
     {
@@ -124,7 +293,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 1
+        "y": 10
       },
       "id": 2,
       "options": {
@@ -152,7 +321,7 @@
           "refId": "A"
         }
       ],
-      "title": "Estimated Fully Synced KCs (Metadata - Queue)",
+      "title": "Estimated Synced KCs",
       "type": "timeseries"
     },
     {
@@ -173,7 +342,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 1
+        "y": 10
       },
       "id": 3,
       "options": {
@@ -225,7 +394,7 @@
           "refId": "C"
         }
       ],
-      "title": "Sync Queue Snapshot (Due, Retrying, Failed Estimate)",
+      "title": "Sync Queue",
       "type": "timeseries"
     },
     {
@@ -234,11 +403,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 18
       },
       "id": 101,
       "panels": [],
-      "title": "Metadata",
+      "title": "Replenisher",
       "type": "row"
     },
     {
@@ -259,7 +428,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 10
+        "y": 19
       },
       "id": 8,
       "options": {
@@ -347,7 +516,7 @@
           "refId": "F"
         }
       ],
-      "title": "Metadata Batch Duration (Fetch vs Processing, p50/p95/p99)",
+      "title": "Replenisher Batch Duration",
       "type": "timeseries"
     },
     {
@@ -368,7 +537,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 10
+        "y": 19
       },
       "id": 9,
       "options": {
@@ -408,7 +577,7 @@
           "refId": "B"
         }
       ],
-      "title": "Metadata Backfill Batch Size (Avg Blocks/Events)",
+      "title": "Replenisher Batch Size",
       "type": "timeseries"
     },
     {
@@ -429,7 +598,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 10
+        "y": 19
       },
       "id": 12,
       "options": {
@@ -481,7 +650,7 @@
           "refId": "C"
         }
       ],
-      "title": "Metadata Sync Failures (5m)",
+      "title": "Replenisher Failures (5m)",
       "type": "timeseries"
     },
     {
@@ -490,7 +659,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 27
       },
       "id": 102,
       "panels": [],
@@ -515,7 +684,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 19
+        "y": 28
       },
       "id": 4,
       "options": {
@@ -567,7 +736,7 @@
           "refId": "C"
         }
       ],
-      "title": "Fetch Batch Duration (p50/p95/p99, Success)",
+      "title": "Fetch Duration (p50/p95/p99)",
       "type": "timeseries"
     },
     {
@@ -588,7 +757,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 19
+        "y": 28
       },
       "id": 5,
       "options": {
@@ -628,7 +797,7 @@
           "refId": "B"
         }
       ],
-      "title": "Fetch Batch Size (Avg KCs/KAs)",
+      "title": "Fetch Batch Size",
       "type": "timeseries"
     },
     {
@@ -649,7 +818,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 19
+        "y": 28
       },
       "id": 10,
       "options": {
@@ -701,7 +870,7 @@
           "refId": "C"
         }
       ],
-      "title": "Fetch Failure Batches (5m)",
+      "title": "Fetch Failures (5m)",
       "type": "timeseries"
     },
     {
@@ -710,7 +879,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 36
       },
       "id": 103,
       "panels": [],
@@ -735,7 +904,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 28
+        "y": 37
       },
       "id": 6,
       "options": {
@@ -787,7 +956,7 @@
           "refId": "C"
         }
       ],
-      "title": "Insert Batch Duration (p50/p95/p99, Success)",
+      "title": "Insert Duration (p50/p95/p99)",
       "type": "timeseries"
     },
     {
@@ -808,7 +977,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 28
+        "y": 37
       },
       "id": 7,
       "options": {
@@ -848,7 +1017,7 @@
           "refId": "B"
         }
       ],
-      "title": "Insert Batch Size (Avg KCs/KAs)",
+      "title": "Insert Batch Size",
       "type": "timeseries"
     },
     {
@@ -869,7 +1038,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 28
+        "y": 37
       },
       "id": 11,
       "options": {
@@ -921,7 +1090,7 @@
           "refId": "C"
         }
       ],
-      "title": "Insert Failure Batches (5m)",
+      "title": "Insert Failures (5m)",
       "type": "timeseries"
     }
   ],

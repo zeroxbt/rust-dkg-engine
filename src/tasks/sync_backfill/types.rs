@@ -1,9 +1,52 @@
 //! Shared types for the sync pipeline stages.
+
+use dkg_blockchain::Address;
 use dkg_domain::{Assertion, KnowledgeCollectionMetadata, TokenIds};
 
-/// KC that needs to be fetched from the network (output of filter stage)
+/// Dispatcher work item flowing into the filter stage.
+#[derive(Clone)]
+pub(crate) struct QueueKcWorkItem {
+    pub contract_address: Address,
+    pub contract_addr_str: String,
+    pub kc_id: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QueueOutcomeKind {
+    Remove,
+    Retry,
+}
+
+/// Terminal queue action emitted by filter/fetch/insert stages.
+#[derive(Clone)]
+pub(crate) struct QueueOutcome {
+    pub contract_addr_str: String,
+    pub kc_id: u64,
+    pub kind: QueueOutcomeKind,
+}
+
+impl QueueOutcome {
+    pub(crate) fn remove(contract_addr_str: String, kc_id: u64) -> Self {
+        Self {
+            contract_addr_str,
+            kc_id,
+            kind: QueueOutcomeKind::Remove,
+        }
+    }
+
+    pub(crate) fn retry(contract_addr_str: String, kc_id: u64) -> Self {
+        Self {
+            contract_addr_str,
+            kc_id,
+            kind: QueueOutcomeKind::Retry,
+        }
+    }
+}
+
+/// KC that needs to be fetched from the network (output of filter stage).
 #[derive(Clone)]
 pub(crate) struct KcToSync {
+    pub contract_addr_str: String,
     pub kc_id: u64,
     pub ual: String,
     pub token_ids: TokenIds,
@@ -11,38 +54,13 @@ pub(crate) struct KcToSync {
     pub metadata: KnowledgeCollectionMetadata,
 }
 
-/// KC fetched from network (output of fetch stage, input to insert stage)
+/// KC fetched from network (output of fetch stage, input to insert stage).
 #[derive(Clone)]
 pub(crate) struct FetchedKc {
+    pub contract_addr_str: String,
     pub kc_id: u64,
     pub ual: String,
     pub assertion: Assertion,
     pub metadata: Option<KnowledgeCollectionMetadata>,
     pub estimated_assets: u64,
-}
-
-/// Stats collected by filter task
-pub(crate) struct FilterStats {
-    pub already_synced: Vec<u64>,
-    pub expired: Vec<u64>,
-    pub waiting_for_metadata: Vec<u64>,
-    pub waiting_for_state: Vec<u64>,
-}
-
-/// Stats collected by fetch task
-pub(crate) struct FetchStats {
-    pub failures: Vec<u64>,
-}
-
-/// Stats collected by insert task
-pub(crate) struct InsertStats {
-    pub synced: Vec<u64>,
-    pub failed: Vec<u64>,
-}
-
-/// Result of syncing a single contract
-pub(crate) struct ContractSyncResult {
-    pub pending: usize,
-    pub synced: u64,
-    pub failed: u64,
 }

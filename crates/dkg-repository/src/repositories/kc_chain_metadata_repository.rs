@@ -494,6 +494,101 @@ impl KcChainMetadataRepository {
         result
     }
 
+    /// Return complete metadata + state rows for a mixed (contract_address, kc_id) key set.
+    pub async fn get_many_ready_with_kc_state_metadata_for_keys(
+        &self,
+        blockchain_id: &str,
+        keys: &[(String, u64)],
+    ) -> Result<HashMap<(String, u64), KcChainReadyKcStateMetadataEntry>> {
+        let started = Instant::now();
+        if keys.is_empty() {
+            record_repository_query(
+                "kc_chain_metadata",
+                "get_many_ready_with_kc_state_metadata_for_keys",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
+            return Ok(HashMap::new());
+        }
+
+        let key_set: HashSet<(String, u64)> = keys.iter().cloned().collect();
+        let mut contract_addresses: HashSet<String> = HashSet::new();
+        let mut kc_ids: HashSet<u64> = HashSet::new();
+        for (contract_address, kc_id) in &key_set {
+            contract_addresses.insert(contract_address.clone());
+            kc_ids.insert(*kc_id);
+        }
+        let contract_addresses: Vec<String> = contract_addresses.into_iter().collect();
+        let kc_ids: Vec<u64> = kc_ids.into_iter().collect();
+
+        let result = async {
+            let core_rows = CoreEntity::find()
+                .filter(CoreColumn::BlockchainId.eq(blockchain_id))
+                .filter(CoreColumn::ContractAddress.is_in(contract_addresses.clone()))
+                .filter(CoreColumn::KcId.is_in(kc_ids.clone()))
+                .filter(CoreColumn::PublisherAddress.is_not_null())
+                .all(self.conn.as_ref())
+                .await?;
+            let core_by_key: HashMap<(String, u64), CoreModel> = core_rows
+                .into_iter()
+                .filter_map(|row| {
+                    let key = (row.contract_address.clone(), row.kc_id);
+                    key_set.contains(&key).then_some((key, row))
+                })
+                .collect();
+
+            let state_rows = StateEntity::find()
+                .filter(StateColumn::BlockchainId.eq(blockchain_id))
+                .filter(StateColumn::ContractAddress.is_in(contract_addresses))
+                .filter(StateColumn::KcId.is_in(kc_ids))
+                .filter(StateColumn::RangeStartTokenId.is_not_null())
+                .filter(StateColumn::RangeEndTokenId.is_not_null())
+                .filter(StateColumn::BurnedMode.is_not_null())
+                .filter(StateColumn::BurnedPayload.is_not_null())
+                .filter(StateColumn::EndEpoch.is_not_null())
+                .filter(StateColumn::LatestMerkleRoot.is_not_null())
+                .filter(StateColumn::StateObservedBlock.is_not_null())
+                .all(self.conn.as_ref())
+                .await?;
+
+            let mut out = HashMap::with_capacity(state_rows.len());
+            for state in state_rows {
+                let key = (state.contract_address.clone(), state.kc_id);
+                if let Some(core) = core_by_key.get(&key)
+                    && let Some(entry) = Self::to_ready_kc_state_metadata_entry(core, &state)
+                {
+                    out.insert(key, entry);
+                }
+            }
+            Ok(out)
+        }
+        .await;
+
+        match &result {
+            Ok(rows) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "get_many_ready_with_kc_state_metadata_for_keys",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "get_many_ready_with_kc_state_metadata_for_keys",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
+    }
+
     /// Return KC IDs from the provided set that are missing sync state.
     pub async fn get_ids_missing_kc_state_metadata(
         &self,

@@ -11,16 +11,24 @@ use chrono::Utc;
 use dkg_blockchain::{Address, BlockchainId, ContractName};
 use dkg_observability as observability;
 use futures::StreamExt;
-use tokio::sync::Notify;
+use tokio::sync::{Mutex, Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 
-use super::{SyncConfig, metadata_replenisher::MetadataReplenisher, pipeline::SyncPipeline};
+use super::{
+    SyncConfig,
+    metadata_replenisher::MetadataReplenisher,
+    pipeline::SyncPipeline,
+    types::{QueueKcWorkItem, QueueOutcome, QueueOutcomeKind},
+};
 use crate::tasks::periodic::SyncDeps;
+
+const SYNC_RETRY_DELAY_SECS: i64 = 60;
 
 pub(crate) struct SyncBackfillTask {
     config: SyncConfig,
     deps: SyncDeps,
     notify: Arc<Notify>,
+    inflight: Arc<Mutex<HashSet<(String, u64)>>>,
 }
 
 impl SyncBackfillTask {
@@ -29,6 +37,7 @@ impl SyncBackfillTask {
             config,
             deps,
             notify: Arc::new(Notify::new()),
+            inflight: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -91,10 +100,29 @@ impl SyncBackfillTask {
             "Starting sync backfill task"
         );
 
-        observability::record_sync_pipeline_mode("running");
         observability::record_sync_pipeline_inflight(0);
 
+        let current_epoch = match self
+            .deps
+            .blockchain_manager
+            .get_current_epoch(blockchain_id)
+            .await
+        {
+            Ok(epoch) => Some(epoch),
+            Err(error) => {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    error = %error,
+                    "Failed to snapshot current epoch for sync filter stage"
+                );
+                None
+            }
+        };
+
         let sync_pipeline = SyncPipeline::new(self.deps.clone(), self.config.clone());
+        let (outcome_tx, mut outcome_rx) =
+            mpsc::channel::<Vec<QueueOutcome>>(self.config.stage_channel_buffer.max(1) * 2);
+        let pipeline_runtime = sync_pipeline.start(blockchain_id, current_epoch, outcome_tx);
 
         let replenisher_done = Arc::new(AtomicBool::new(false));
         let replenisher_handle = tokio::spawn(Self::replenisher_loop(
@@ -109,14 +137,17 @@ impl SyncBackfillTask {
             shutdown.clone(),
         ));
 
-        let fallback_retry_poll = Duration::from_secs(self.config.no_peers_retry_delay_secs.max(1));
+        let fallback_retry_poll = Duration::from_secs(self.config.dispatch_idle_poll_secs.max(1));
         let mut draining = false;
+        let mut pipeline_runtime = Some(pipeline_runtime);
 
         loop {
+            while let Ok(outcomes) = outcome_rx.try_recv() {
+                self.apply_queue_outcomes(blockchain_id, outcomes).await;
+            }
+
             if shutdown.is_cancelled() && !draining {
                 draining = true;
-                observability::record_sync_pipeline_mode("draining");
-                observability::record_sync_pipeline_dispatch_wake("shutdown");
                 tracing::info!(
                     blockchain_id = %blockchain_id,
                     "Sync backfill task entering draining mode"
@@ -124,8 +155,10 @@ impl SyncBackfillTask {
             }
 
             let queue_total = self.active_queue_count(blockchain_id).await;
+            let inflight_count = self.inflight_count().await;
+            observability::record_sync_pipeline_inflight(inflight_count);
 
-            if replenisher_done.load(Ordering::Acquire) && queue_total == 0 {
+            if replenisher_done.load(Ordering::Acquire) && queue_total == 0 && inflight_count == 0 {
                 tracing::info!(
                     blockchain_id = %blockchain_id,
                     "Sync backfill catch-up completed"
@@ -133,8 +166,7 @@ impl SyncBackfillTask {
                 break;
             }
 
-            // In drain mode we stop claiming new work and exit.
-            if draining {
+            if draining && inflight_count == 0 {
                 tracing::info!(
                     blockchain_id = %blockchain_id,
                     "Sync backfill drained in-flight work"
@@ -142,32 +174,34 @@ impl SyncBackfillTask {
                 break;
             }
 
-            let mut processed = false;
-            if sync_pipeline.enough_peers_for_fetch(blockchain_id) {
-                processed = self
-                    .process_due_fifo_batches(
-                        &sync_pipeline,
-                        blockchain_id,
-                        &contract_address_by_str,
-                    )
+            let mut dispatched = false;
+            if !draining
+                && sync_pipeline.enough_peers_for_fetch(blockchain_id)
+                && let Some(runtime) = pipeline_runtime.as_ref()
+            {
+                dispatched = self
+                    .dispatch_due_fifo(&runtime.input_tx, blockchain_id, &contract_address_by_str)
                     .await;
             }
 
-            if processed {
+            if dispatched {
                 continue;
             }
 
             tokio::select! {
-                _ = shutdown.cancelled() => {
-                    observability::record_sync_pipeline_dispatch_wake("shutdown");
+                _ = shutdown.cancelled(), if !draining => {}
+                maybe_outcomes = outcome_rx.recv() => {
+                    if let Some(outcomes) = maybe_outcomes {
+                        self.apply_queue_outcomes(blockchain_id, outcomes).await;
+                    }
                 }
-                _ = self.notify.notified() => {
-                    observability::record_sync_pipeline_dispatch_wake("notify");
-                }
-                _ = tokio::time::sleep(fallback_retry_poll) => {
-                    observability::record_sync_pipeline_dispatch_wake("timer");
-                }
+                _ = self.notify.notified() => {}
+                _ = tokio::time::sleep(fallback_retry_poll) => {}
             }
+        }
+
+        if let Some(runtime) = pipeline_runtime.take() {
+            runtime.shutdown().await;
         }
 
         if let Err(error) = replenisher_handle.await {
@@ -175,7 +209,6 @@ impl SyncBackfillTask {
         }
 
         observability::record_sync_pipeline_inflight(0);
-        observability::record_sync_pipeline_mode("completed");
         tracing::info!(blockchain_id = %blockchain_id, "Sync backfill task stopped");
     }
 
@@ -192,9 +225,9 @@ impl SyncBackfillTask {
         shutdown: CancellationToken,
     ) {
         let capacity = config.pipeline_capacity.max(1);
-        let high_watermark = (capacity * 3) as u64;
-        let low_watermark = (capacity * 2) as u64;
-        let recheck_period = Duration::from_secs(config.metadata_gap_recheck_interval_secs.max(1));
+        let high_watermark = config.queue_high_watermark.max(1);
+        let low_watermark = config.queue_low_watermark.max(1);
+        let recheck_period = Duration::from_secs(config.metadata_error_retry_interval_secs.max(1));
 
         let mut completed_contracts: HashSet<String> = HashSet::new();
 
@@ -294,15 +327,22 @@ impl SyncBackfillTask {
         done.store(true, Ordering::Release);
     }
 
-    async fn process_due_fifo_batches(
+    async fn dispatch_due_fifo(
         &self,
-        sync_pipeline: &SyncPipeline,
+        input_tx: &mpsc::Sender<Vec<QueueKcWorkItem>>,
         blockchain_id: &BlockchainId,
         contract_address_by_str: &HashMap<String, Address>,
     ) -> bool {
-        let now_ts = Utc::now().timestamp();
-        let limit = self.config.pipeline_capacity.max(1) as u64;
+        let free_slots = self
+            .config
+            .pipeline_capacity
+            .max(1)
+            .saturating_sub(self.inflight_count().await);
+        if free_slots == 0 {
+            return false;
+        }
 
+        let now_ts = Utc::now().timestamp();
         let due_rows = match self
             .deps
             .kc_sync_repository
@@ -310,7 +350,7 @@ impl SyncBackfillTask {
                 blockchain_id.as_str(),
                 now_ts,
                 self.config.max_retry_attempts,
-                limit,
+                free_slots as u64,
             )
             .await
         {
@@ -329,52 +369,133 @@ impl SyncBackfillTask {
             return false;
         }
 
-        let mut processed_any = false;
-        for row in due_rows {
-            let Some(&contract_address) = contract_address_by_str.get(&row.contract_address) else {
-                tracing::warn!(
-                    blockchain_id = %blockchain_id,
-                    contract = %row.contract_address,
-                    kc_id = row.kc_id,
-                    "Skipping queue row for unknown contract"
-                );
-                continue;
-            };
+        let mut accepted = Vec::with_capacity(due_rows.len());
+        {
+            let mut inflight = self.inflight.lock().await;
+            for row in due_rows {
+                let Some(&contract_address) = contract_address_by_str.get(&row.contract_address)
+                else {
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        contract = %row.contract_address,
+                        kc_id = row.kc_id,
+                        "Skipping queue row for unknown contract"
+                    );
+                    continue;
+                };
 
-            processed_any = true;
-            observability::record_sync_pipeline_inflight(1);
-            match sync_pipeline
-                .process_contract_batch(blockchain_id, contract_address, vec![row.kc_id])
-                .await
-            {
-                Ok(outcome) => {
-                    tracing::trace!(
-                        blockchain_id = %blockchain_id,
-                        contract = %row.contract_address,
-                        kc_id = row.kc_id,
-                        pending = outcome.pending,
-                        synced = outcome.synced,
-                        failed = outcome.failed,
-                        "Sync backfill processed contract batch"
-                    );
-                }
-                Err(error) => {
-                    tracing::error!(
-                        blockchain_id = %blockchain_id,
-                        contract = %row.contract_address,
-                        kc_id = row.kc_id,
-                        error = %error,
-                        "Sync backfill failed to process contract batch"
-                    );
+                let key = (row.contract_address.clone(), row.kc_id);
+                if inflight.insert(key) {
+                    accepted.push(QueueKcWorkItem {
+                        contract_address,
+                        contract_addr_str: row.contract_address,
+                        kc_id: row.kc_id,
+                    });
                 }
             }
-            observability::record_sync_pipeline_inflight(0);
+            observability::record_sync_pipeline_inflight(inflight.len());
         }
 
-        if processed_any {
-            observability::record_sync_pipeline_dispatch_wake("batch_processed");
+        if accepted.is_empty() {
+            return false;
         }
-        processed_any
+
+        let rollback_keys: Vec<(String, u64)> = accepted
+            .iter()
+            .map(|item| (item.contract_addr_str.clone(), item.kc_id))
+            .collect();
+
+        if input_tx.send(accepted).await.is_err() {
+            tracing::warn!("Sync pipeline input channel closed");
+            let mut inflight = self.inflight.lock().await;
+            for key in rollback_keys {
+                inflight.remove(&key);
+            }
+            observability::record_sync_pipeline_inflight(inflight.len());
+            return false;
+        }
+
+        true
+    }
+
+    async fn apply_queue_outcomes(
+        &self,
+        blockchain_id: &BlockchainId,
+        outcomes: Vec<QueueOutcome>,
+    ) {
+        if outcomes.is_empty() {
+            return;
+        }
+
+        let mut remove_by_contract: HashMap<String, Vec<u64>> = HashMap::new();
+        let mut retry_by_contract: HashMap<String, Vec<u64>> = HashMap::new();
+        for outcome in &outcomes {
+            match outcome.kind {
+                QueueOutcomeKind::Remove => remove_by_contract
+                    .entry(outcome.contract_addr_str.clone())
+                    .or_default()
+                    .push(outcome.kc_id),
+                QueueOutcomeKind::Retry => retry_by_contract
+                    .entry(outcome.contract_addr_str.clone())
+                    .or_default()
+                    .push(outcome.kc_id),
+            }
+        }
+
+        for (contract, mut kc_ids) in remove_by_contract {
+            kc_ids.sort_unstable();
+            kc_ids.dedup();
+            if let Err(error) = self
+                .deps
+                .kc_sync_repository
+                .remove_kcs(blockchain_id.as_str(), &contract, &kc_ids)
+                .await
+            {
+                tracing::error!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract,
+                    error = %error,
+                    "Failed to remove KCs from queue"
+                );
+            }
+        }
+
+        for (contract, mut kc_ids) in retry_by_contract {
+            kc_ids.sort_unstable();
+            kc_ids.dedup();
+            if let Err(error) = self
+                .deps
+                .kc_sync_repository
+                .increment_retry_count(
+                    blockchain_id.as_str(),
+                    &contract,
+                    &kc_ids,
+                    SYNC_RETRY_DELAY_SECS,
+                )
+                .await
+            {
+                tracing::error!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract,
+                    error = %error,
+                    "Failed to increment retry count"
+                );
+            }
+        }
+
+        {
+            let mut inflight = self.inflight.lock().await;
+            for outcome in outcomes {
+                inflight.remove(&(outcome.contract_addr_str, outcome.kc_id));
+            }
+            observability::record_sync_pipeline_inflight(inflight.len());
+        }
+
+        self.notify.notify_waiters();
+    }
+
+    async fn inflight_count(&self) -> usize {
+        self.inflight.lock().await.len()
     }
 
     async fn active_queue_count(&self, blockchain_id: &BlockchainId) -> u64 {

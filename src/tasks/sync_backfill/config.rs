@@ -5,17 +5,22 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct SyncConfig {
     pub enabled: bool,
     pub head_safety_blocks: u64,
+
+    // Replenisher
     pub metadata_backfill_block_batch_size: u64,
     pub metadata_state_batch_size: usize,
-    pub metadata_gap_recheck_interval_secs: u64,
-    pub no_peers_retry_delay_secs: u64,
-    pub max_retry_attempts: u32,
-    pub max_new_kcs_per_contract: u64,
+    pub metadata_error_retry_interval_secs: u64,
+    pub queue_high_watermark: u64,
+    pub queue_low_watermark: u64,
+
+    // Pipeline / dispatch
     pub pipeline_capacity: usize,
-    pub pipeline_channel_buffer: usize,
+    pub stage_channel_buffer: usize,
+    pub filter_batch_size: usize,
     pub max_assets_per_fetch_batch: u64,
     pub insert_batch_concurrency: usize,
-    pub retry_base_delay_secs: u64,
-    pub retry_max_delay_secs: u64,
-    pub retry_jitter_secs: u64,
+
+    // Retry
+    pub dispatch_idle_poll_secs: u64,
+    pub max_retry_attempts: u32,
 }

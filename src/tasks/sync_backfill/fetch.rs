@@ -21,7 +21,7 @@ use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::types::{FetchStats, FetchedKc, KcToSync};
+use super::types::{FetchedKc, KcToSync, QueueOutcome};
 use crate::{
     application::{AssertionValidation, UAL_MAX_LIMIT},
     node_state::PeerRegistry,
@@ -40,7 +40,8 @@ const LARGE_BATCH_ASSET_THRESHOLD_FOR_SINGLE_PEER: u64 = 1_000;
         network_manager,
         assertion_validation,
         peer_registry,
-        tx
+        tx,
+        outcome_tx
     ),
     fields(blockchain_id = %blockchain_id)
 )]
@@ -54,71 +55,15 @@ pub(crate) async fn run_fetch_stage(
     assertion_validation: Arc<AssertionValidation>,
     peer_registry: Arc<PeerRegistry>,
     tx: mpsc::Sender<Vec<FetchedKc>>,
-) -> FetchStats {
+    outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
+) {
     let task_start = Instant::now();
     let network_fetch_batch_size = network_fetch_batch_size.max(1);
     let batch_get_fanout_concurrency = batch_get_fanout_concurrency.max(1);
     let max_assets_per_fetch_batch = max_assets_per_fetch_batch.max(1);
-    let mut failures: Vec<u64> = Vec::new();
+    let mut total_failures = 0usize;
     let mut total_fetched = 0usize;
     let mut total_received = 0usize;
-
-    // Get shard peers once at the start, sorted by performance score
-    let (mut peers, peer_stats) = get_shard_peers(&blockchain_id, &network_manager, &peer_registry);
-    let identified_peers = peer_registry.identified_shard_peer_count(&blockchain_id);
-
-    if peers.is_empty() {
-        tracing::warn!(
-            blockchain_id = %blockchain_id,
-            shard_members = peer_stats.shard_members,
-            identified = identified_peers,
-            usable = peer_stats.usable,
-            "Fetch: no peers available"
-        );
-        while let Some(batch) = rx.recv().await {
-            failures.extend(batch.iter().map(|kc| kc.kc_id));
-        }
-        return FetchStats { failures };
-    }
-
-    // Sort peers by latency (fastest first)
-    peer_registry.sort_by_latency(&mut peers);
-    if tracing::enabled!(tracing::Level::TRACE) {
-        const MAX_PEERS_TO_LOG: usize = 20;
-        let peer_latencies: Vec<String> = peers
-            .iter()
-            .take(MAX_PEERS_TO_LOG)
-            .map(|peer| {
-                let latency = peer_registry.get_average_latency(peer);
-                format!("{peer}:{latency}ms")
-            })
-            .collect();
-
-        tracing::trace!(
-            peer_count = peers.len(),
-            displayed = peer_latencies.len(),
-            truncated = peers.len() > MAX_PEERS_TO_LOG,
-            peers = ?peer_latencies,
-            "Fetch: peer latency order"
-        );
-    }
-
-    let min_required_peers = 1;
-    if peers.len() < min_required_peers {
-        tracing::warn!(
-            blockchain_id = %blockchain_id,
-            found = peers.len(),
-            required = min_required_peers,
-            shard_members = peer_stats.shard_members,
-            identified = identified_peers,
-            usable = peer_stats.usable,
-            "Fetch: not enough peers available"
-        );
-        while let Some(batch) = rx.recv().await {
-            failures.extend(batch.iter().map(|kc| kc.kc_id));
-        }
-        return FetchStats { failures };
-    }
 
     // Accumulate KCs until we have enough for a network batch
     let mut accumulated: Vec<KcToSync> = Vec::new();
@@ -153,13 +98,13 @@ pub(crate) async fn run_fetch_stage(
             let to_fetch: Vec<KcToSync> = accumulated.drain(..take).collect();
 
             let fetch_start = Instant::now();
-            let (fetched, batch_failures) = fetch_kc_batch_from_network(
+            let (fetched, batch_failures) = fetch_kc_batch_with_live_peers(
                 &blockchain_id,
                 &to_fetch,
-                &peers,
                 batch_get_fanout_concurrency,
                 &network_manager,
                 &assertion_validation,
+                &peer_registry,
             )
             .await;
             let batch_status = if batch_failures.is_empty() {
@@ -177,7 +122,16 @@ pub(crate) async fn run_fetch_stage(
             );
 
             total_fetched += fetched.len();
-            failures.extend(batch_failures);
+            total_failures += batch_failures.len();
+            observability::record_sync_kc_outcome(
+                blockchain_id.as_str(),
+                "fetch",
+                "failed",
+                batch_failures.len(),
+            );
+            if !batch_failures.is_empty() && outcome_tx.send(batch_failures).await.is_err() {
+                return;
+            }
 
             // Send fetched KCs to insert stage
             if !fetched.is_empty() {
@@ -185,7 +139,7 @@ pub(crate) async fn run_fetch_stage(
                     batch_size = to_fetch.len(),
                     assets_in_batch = assets_total,
                     fetched_count = fetched.len(),
-                    failed_count = failures.len(),
+                    total_failures,
                     fetch_ms = fetch_start.elapsed().as_millis() as u64,
                     total_received,
                     total_fetched,
@@ -194,8 +148,14 @@ pub(crate) async fn run_fetch_stage(
                 );
                 if tx.send(fetched).await.is_err() {
                     tracing::trace!("Fetch: insert stage receiver dropped, stopping");
-                    failures.extend(accumulated.iter().map(|kc| kc.kc_id));
-                    return FetchStats { failures };
+                    let remaining_outcomes: Vec<QueueOutcome> = accumulated
+                        .drain(..)
+                        .map(|kc| QueueOutcome::retry(kc.contract_addr_str, kc.kc_id))
+                        .collect();
+                    if !remaining_outcomes.is_empty() {
+                        let _ = outcome_tx.send(remaining_outcomes).await;
+                    }
+                    return;
                 }
             }
 
@@ -213,13 +173,13 @@ pub(crate) async fn run_fetch_stage(
             .iter()
             .map(|kc| estimate_asset_count(&kc.token_ids))
             .sum();
-        let (fetched, batch_failures) = fetch_kc_batch_from_network(
+        let (fetched, batch_failures) = fetch_kc_batch_with_live_peers(
             &blockchain_id,
             &accumulated,
-            &peers,
             batch_get_fanout_concurrency,
             &network_manager,
-            assertion_validation.as_ref(),
+            &assertion_validation,
+            &peer_registry,
         )
         .await;
         let batch_status = if batch_failures.is_empty() {
@@ -237,14 +197,23 @@ pub(crate) async fn run_fetch_stage(
         );
 
         total_fetched += fetched.len();
-        failures.extend(batch_failures);
+        total_failures += batch_failures.len();
+        observability::record_sync_kc_outcome(
+            blockchain_id.as_str(),
+            "fetch",
+            "failed",
+            batch_failures.len(),
+        );
+        if !batch_failures.is_empty() {
+            let _ = outcome_tx.send(batch_failures).await;
+        }
 
         if !fetched.is_empty() {
             tracing::trace!(
                 remaining = accumulated.len(),
                 assets_in_batch = assets_total,
                 fetched_count = fetched.len(),
-                final_failures = failures.len(),
+                total_failures,
                 fetch_ms = fetch_start.elapsed().as_millis() as u64,
                 "Fetch: flushing remaining KCs"
             );
@@ -255,11 +224,9 @@ pub(crate) async fn run_fetch_stage(
     tracing::debug!(
         total_ms = task_start.elapsed().as_millis() as u64,
         total_fetched,
-        failures = failures.len(),
+        failures = total_failures,
         "Fetch stage completed"
     );
-
-    FetchStats { failures }
 }
 
 fn estimate_asset_count(token_ids: &TokenIds) -> u64 {
@@ -268,6 +235,44 @@ fn estimate_asset_count(token_ids: &TokenIds) -> u64 {
     let range = end.saturating_sub(start).saturating_add(1);
     let burned = token_ids.burned().len() as u64;
     range.saturating_sub(burned)
+}
+
+async fn fetch_kc_batch_with_live_peers(
+    blockchain_id: &BlockchainId,
+    kcs: &[KcToSync],
+    batch_get_fanout_concurrency: usize,
+    network_manager: &Arc<NetworkManager>,
+    assertion_validation: &AssertionValidation,
+    peer_registry: &PeerRegistry,
+) -> (Vec<FetchedKc>, Vec<QueueOutcome>) {
+    let (mut peers, peer_stats) = get_shard_peers(blockchain_id, network_manager, peer_registry);
+    if peers.is_empty() {
+        let identified_peers = peer_registry.identified_shard_peer_count(blockchain_id);
+        tracing::debug!(
+            blockchain_id = %blockchain_id,
+            batch_kcs = kcs.len(),
+            shard_members = peer_stats.shard_members,
+            identified = identified_peers,
+            usable = peer_stats.usable,
+            "Fetch: no peers available for batch"
+        );
+        let failures = kcs
+            .iter()
+            .map(|kc| QueueOutcome::retry(kc.contract_addr_str.clone(), kc.kc_id))
+            .collect();
+        return (Vec::new(), failures);
+    }
+
+    peer_registry.sort_by_latency(&mut peers);
+    fetch_kc_batch_from_network(
+        blockchain_id,
+        kcs,
+        &peers,
+        batch_get_fanout_concurrency,
+        network_manager,
+        assertion_validation,
+    )
+    .await
 }
 
 /// Get shard peers for the given blockchain, excluding self.
@@ -320,7 +325,7 @@ async fn make_peer_request(
 }
 
 /// Fetch a batch of KCs from the network.
-/// Returns (fetched KCs, failed KC IDs).
+/// Returns (fetched KCs, failed KCs).
 ///
 /// Uses FuturesUnordered to process peer responses as they arrive,
 /// avoiding being blocked by slow/unreachable peers.
@@ -343,7 +348,7 @@ async fn fetch_kc_batch_from_network(
     batch_get_fanout_concurrency: usize,
     network_manager: &Arc<NetworkManager>,
     assertion_validation: &AssertionValidation,
-) -> (Vec<FetchedKc>, Vec<u64>) {
+) -> (Vec<FetchedKc>, Vec<QueueOutcome>) {
     let mut fetched: Vec<FetchedKc> = Vec::new();
     let mut uals_still_needed: HashSet<String> = kcs.iter().map(|kc| kc.ual.clone()).collect();
     let estimated_assets: u64 = kcs
@@ -454,6 +459,7 @@ async fn fetch_kc_batch_from_network(
                         if is_valid {
                             uals_still_needed.remove(&ual);
                             fetched.push(FetchedKc {
+                                contract_addr_str: kc.contract_addr_str.clone(),
                                 kc_id: kc.kc_id,
                                 ual,
                                 assertion,
@@ -497,15 +503,18 @@ async fn fetch_kc_batch_from_network(
         }
     }
 
-    // Map remaining UALs back to KC IDs for the failed list
-    let failed_kc_ids: Vec<u64> = uals_still_needed
+    // Map remaining UALs back to queue outcomes.
+    let failed: Vec<QueueOutcome> = uals_still_needed
         .iter()
-        .filter_map(|ual| ual_to_kc.get(ual.as_str()).map(|kc| kc.kc_id))
+        .filter_map(|ual| {
+            ual_to_kc
+                .get(ual.as_str())
+                .map(|kc| QueueOutcome::retry(kc.contract_addr_str.clone(), kc.kc_id))
+        })
         .collect();
 
-    // Record results in span
     tracing::Span::current().record("fetched", fetched.len());
-    tracing::Span::current().record("failed", failed_kc_ids.len());
+    tracing::Span::current().record("failed", failed.len());
 
-    (fetched, failed_kc_ids)
+    (fetched, failed)
 }

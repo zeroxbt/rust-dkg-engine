@@ -36,7 +36,7 @@ const EVENT_FETCH_INTERVAL_MAINNET: Duration = Duration::from_secs(10);
 
 /// Event fetch interval for dev environments (4 seconds)
 const EVENT_FETCH_INTERVAL_DEV: Duration = Duration::from_secs(4);
-const KC_CREATED_STATE_BATCH_SIZE: usize = 20;
+const KC_CREATED_STATE_BATCH_SIZE: usize = 50;
 
 pub(crate) struct BlockchainEventListenerTask {
     blockchain_manager: Arc<BlockchainManager>,

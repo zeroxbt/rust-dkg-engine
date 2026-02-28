@@ -11,7 +11,7 @@ use futures::{StreamExt, stream};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::types::{FetchedKc, InsertStats};
+use super::types::{FetchedKc, QueueOutcome};
 use crate::application::TripleStoreAssertions;
 
 /// Insert stage: receives fetched KCs and inserts into triple store.
@@ -20,22 +20,19 @@ use crate::application::TripleStoreAssertions;
 /// received here are valid and ready for insertion.
 #[instrument(
     name = "sync_insert",
-    skip(rx, triple_store_assertions),
-    fields(
-        blockchain_id = %blockchain_id,
-        contract = %contract_addr_str,
-    )
+    skip(rx, triple_store_assertions, outcome_tx),
+    fields(blockchain_id = %blockchain_id)
 )]
 pub(crate) async fn run_insert_stage(
     mut rx: mpsc::Receiver<Vec<FetchedKc>>,
     blockchain_id: BlockchainId,
-    contract_addr_str: String,
     insert_batch_concurrency: usize,
     triple_store_assertions: Arc<TripleStoreAssertions>,
-) -> InsertStats {
+    outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
+) {
     let task_start = Instant::now();
-    let mut synced = Vec::new();
-    let mut failed = Vec::new();
+    let mut total_synced = 0usize;
+    let mut total_failed = 0usize;
     let mut total_received = 0usize;
 
     while let Some(batch) = rx.recv().await {
@@ -52,17 +49,31 @@ pub(crate) async fn run_insert_stage(
         );
 
         // Insert all KCs in parallel
-        let (batch_synced, batch_failed) = insert_kcs_to_store(
+        let (remove_outcomes, retry_outcomes) = insert_kcs_to_store(
             batch,
             Arc::clone(&triple_store_assertions),
             blockchain_id.clone(),
-            contract_addr_str.clone(),
             insert_batch_concurrency,
         )
         .await;
 
-        let batch_synced_count = batch_synced.len();
-        let batch_failed_count = batch_failed.len();
+        let batch_synced_count = remove_outcomes.len();
+        let batch_failed_count = retry_outcomes.len();
+        total_synced += batch_synced_count;
+        total_failed += batch_failed_count;
+        observability::record_sync_kc_outcome(
+            blockchain_id.as_str(),
+            "insert",
+            "synced",
+            batch_synced_count,
+        );
+        observability::record_sync_kc_outcome(
+            blockchain_id.as_str(),
+            "insert",
+            "failed",
+            batch_failed_count,
+        );
+
         let batch_status = if batch_failed_count == 0 {
             "success"
         } else if batch_synced_count == 0 {
@@ -76,45 +87,48 @@ pub(crate) async fn run_insert_stage(
             batch_len,
             batch_assets,
         );
-        synced.extend(batch_synced);
-        failed.extend(batch_failed);
+
+        if !remove_outcomes.is_empty() && outcome_tx.send(remove_outcomes).await.is_err() {
+            return;
+        }
+        if !retry_outcomes.is_empty() && outcome_tx.send(retry_outcomes).await.is_err() {
+            return;
+        }
 
         tracing::debug!(
             batch_ms = batch_start.elapsed().as_millis() as u64,
             batch_synced = batch_synced_count,
             batch_failed = batch_failed_count,
-            total_synced = synced.len(),
+            total_synced,
+            total_failed,
             "Insert: batch completed"
         );
     }
 
     tracing::debug!(
         total_ms = task_start.elapsed().as_millis() as u64,
-        synced = synced.len(),
-        failed = failed.len(),
+        total_synced,
+        total_failed,
         "Insert stage completed"
     );
-
-    InsertStats { synced, failed }
 }
 
 /// Insert KCs into the triple store in parallel.
-/// Returns (synced KC IDs, failed KC IDs).
+/// Returns (remove outcomes, retry outcomes).
 async fn insert_kcs_to_store(
     kcs: Vec<FetchedKc>,
     triple_store_assertions: Arc<TripleStoreAssertions>,
     blockchain_id: BlockchainId,
-    contract_addr_str: String,
     insert_batch_concurrency: usize,
-) -> (Vec<u64>, Vec<u64>) {
-    let mut synced = Vec::new();
-    let mut failed = Vec::new();
+) -> (Vec<QueueOutcome>, Vec<QueueOutcome>) {
+    let mut remove_outcomes = Vec::new();
+    let mut retry_outcomes = Vec::new();
 
     // Bound in-flight inserts to avoid large bursts and long permit waits.
-    // Process completions as they arrive to avoid holding an extra results vec.
     let mut insert_results = stream::iter(kcs.into_iter())
         .map(|kc| {
             let ts = Arc::clone(&triple_store_assertions);
+            let contract_addr_str = kc.contract_addr_str;
             let ual = kc.ual;
             let assertion = kc.assertion;
             let metadata = kc.metadata;
@@ -123,13 +137,13 @@ async fn insert_kcs_to_store(
                 let result = ts
                     .insert_knowledge_collection(&ual, &assertion, &metadata, None)
                     .await;
-                (kc_id, ual, result)
+                (contract_addr_str, kc_id, ual, result)
             }
         })
         .buffer_unordered(insert_batch_concurrency.max(1))
         .fuse();
 
-    while let Some((kc_id, ual, result)) = insert_results.next().await {
+    while let Some((contract_addr_str, kc_id, ual, result)) = insert_results.next().await {
         match result {
             Ok(triples_inserted) => {
                 tracing::trace!(
@@ -138,7 +152,7 @@ async fn insert_kcs_to_store(
                     triples = triples_inserted,
                     "Stored synced KC in triple store"
                 );
-                synced.push(kc_id);
+                remove_outcomes.push(QueueOutcome::remove(contract_addr_str, kc_id));
             }
             Err(e) => {
                 tracing::warn!(
@@ -148,10 +162,10 @@ async fn insert_kcs_to_store(
                     error = %e,
                     "Failed to store KC in triple store"
                 );
-                failed.push(kc_id);
+                retry_outcomes.push(QueueOutcome::retry(contract_addr_str, kc_id));
             }
         }
     }
 
-    (synced, failed)
+    (remove_outcomes, retry_outcomes)
 }
