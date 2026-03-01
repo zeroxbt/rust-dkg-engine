@@ -658,6 +658,96 @@ impl KcChainMetadataRepository {
         result
     }
 
+    /// Return ready metadata keys that are missing projection rows.
+    ///
+    /// A key is considered ready when:
+    /// - core metadata row exists with non-null publisher address
+    /// - matching state metadata row exists
+    /// - no row exists in `kc_projection_state`
+    pub async fn list_ready_keys_missing_projection(
+        &self,
+        blockchain_id: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, u64)>> {
+        let started = Instant::now();
+        if limit == 0 {
+            record_repository_query(
+                "kc_chain_metadata",
+                "list_ready_keys_missing_projection",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
+            return Ok(Vec::new());
+        }
+
+        let db = self.conn.as_ref();
+        let limit_i64 = Self::u64_to_i64(limit as u64, "limit")?;
+        let sql = Statement::from_sql_and_values(
+            db.get_database_backend(),
+            r#"
+            SELECT c.contract_address, c.kc_id
+            FROM kc_chain_core_metadata c
+            INNER JOIN kc_chain_state_metadata s
+                ON s.blockchain_id = c.blockchain_id
+               AND s.contract_address = c.contract_address
+               AND s.kc_id = c.kc_id
+            LEFT JOIN kc_projection_state p
+                ON p.blockchain_id = c.blockchain_id
+               AND p.contract_address = c.contract_address
+               AND p.kc_id = c.kc_id
+            WHERE c.blockchain_id = ?
+              AND c.publisher_address IS NOT NULL
+              AND p.kc_id IS NULL
+            ORDER BY c.contract_address ASC, c.kc_id ASC
+            LIMIT ?
+            "#,
+            [
+                Value::String(Some(Box::new(blockchain_id.to_string()))),
+                Value::BigInt(Some(limit_i64)),
+            ],
+        );
+
+        let result = async {
+            let rows = db.query_all(sql).await.map_err(RepositoryError::Database)?;
+            let mut out = Vec::with_capacity(rows.len());
+            for row in rows {
+                let contract_address: String = row
+                    .try_get("", "contract_address")
+                    .map_err(RepositoryError::Database)?;
+                let kc_id: u64 = row
+                    .try_get("", "kc_id")
+                    .map_err(RepositoryError::Database)?;
+                out.push((contract_address, kc_id));
+            }
+            Ok(out)
+        }
+        .await;
+
+        match &result {
+            Ok(rows) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "list_ready_keys_missing_projection",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_chain_metadata",
+                    "list_ready_keys_missing_projection",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
+    }
+
     /// Find the oldest unresolved gap range for a contract at/after the provided cursor.
     ///
     /// Returns at most one range:

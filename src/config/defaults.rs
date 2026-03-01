@@ -37,9 +37,9 @@ use crate::{
                     CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
                     ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
                 },
+                kc_reconciliation::KcReconciliationConfig,
                 paranet_sync::ParanetSyncConfig,
                 proving::ProvingConfig,
-                sync_reconciliation::SyncReconciliationConfig,
             },
         },
         sync_backfill::SyncConfig,
@@ -97,8 +97,8 @@ fn paranet_sync() -> ParanetSyncConfig {
     }
 }
 
-fn sync_reconciliation() -> SyncReconciliationConfig {
-    SyncReconciliationConfig {
+fn kc_reconciliation() -> KcReconciliationConfig {
+    KcReconciliationConfig {
         enabled: false,
         interval_secs: 300,
         batch_size: 500,
@@ -169,7 +169,7 @@ fn periodic_tasks() -> PeriodicTasksConfig {
     PeriodicTasksConfig {
         cleanup: cleanup(),
         sync_backfill: sync(),
-        sync_reconciliation: sync_reconciliation(),
+        kc_reconciliation: kc_reconciliation(),
         paranet_sync: paranet_sync(),
         proving: proving(),
     }

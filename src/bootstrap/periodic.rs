@@ -7,8 +7,8 @@ use crate::{
     node_state::NodeState,
     tasks::periodic::{
         self, BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
-        ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps,
-        StateSnapshotDeps, SyncDeps, SyncReconciliationDeps,
+        KcReconciliationDeps, ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps,
+        ShardingTableCheckDeps, StateSnapshotDeps, SyncDeps,
     },
 };
 
@@ -96,7 +96,7 @@ pub(crate) fn build_periodic_tasks_deps(
             kc_materialization_service: Arc::clone(&application.kc_materialization_service),
             get_assertion_use_case: Arc::clone(&application.get_assertion_use_case),
         },
-        sync_reconciliation: SyncReconciliationDeps {
+        kc_reconciliation: KcReconciliationDeps {
             kc_sync_repository: kc_sync_repository.clone(),
             kc_projection_repository: kc_projection_repository.clone(),
             kc_chain_metadata_repository,

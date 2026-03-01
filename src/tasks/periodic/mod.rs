@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use crate::tasks::sync_backfill::{SyncBackfillTask, SyncConfig};
 pub(crate) use deps::{
-    BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, ParanetSyncDeps,
-    PeriodicTasksDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps,
-    StateSnapshotDeps, SyncDeps, SyncReconciliationDeps,
+    BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
+    KcReconciliationDeps, ParanetSyncDeps, PeriodicTasksDeps, ProvingDeps, SavePeerAddressesDeps,
+    ShardingTableCheckDeps, StateSnapshotDeps, SyncDeps,
 };
 use dkg_blockchain::BlockchainId;
 use serde::{Deserialize, Serialize};
@@ -18,12 +18,12 @@ use tasks::{
     claim_rewards::ClaimRewardsTask,
     cleanup::{CleanupConfig, CleanupTask},
     dial_peers::DialPeersTask,
+    kc_reconciliation::{KcReconciliationConfig, KcReconciliationTask},
     paranet_sync::{ParanetSyncConfig, ParanetSyncTask},
     proving::{ProvingConfig, ProvingTask},
     save_peer_addresses::SavePeerAddressesTask,
     sharding_table_check::ShardingTableCheckTask,
     state_snapshot::{StateSnapshotConfig, StateSnapshotTask},
-    sync_reconciliation::{SyncReconciliationConfig, SyncReconciliationTask},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -36,7 +36,7 @@ use self::registry::{
 pub(crate) struct PeriodicTasksConfig {
     pub cleanup: CleanupConfig,
     pub sync_backfill: SyncConfig,
-    pub sync_reconciliation: SyncReconciliationConfig,
+    pub kc_reconciliation: KcReconciliationConfig,
     pub paranet_sync: ParanetSyncConfig,
     pub proving: ProvingConfig,
 }
@@ -164,7 +164,7 @@ pub(crate) async fn run(
     let PeriodicTasksConfig {
         cleanup: cleanup_config,
         sync_backfill: sync_backfill_config,
-        sync_reconciliation: sync_reconciliation_config,
+        kc_reconciliation: kc_reconciliation_config,
         paranet_sync: paranet_sync_config,
         proving: proving_config,
     } = periodic_tasks_config;
@@ -172,7 +172,7 @@ pub(crate) async fn run(
     let mut set = tokio::task::JoinSet::new();
     let cleanup_enabled = cleanup_config.enabled;
     let sync_backfill_enabled = sync_backfill_config.enabled;
-    let sync_reconciliation_enabled = sync_reconciliation_config.enabled;
+    let kc_reconciliation_enabled = kc_reconciliation_config.enabled;
     let paranet_sync_enabled =
         paranet_sync_config.enabled && !paranet_sync_config.sync_paranets.is_empty();
     let state_snapshot_enabled = sync_backfill_config.enabled && metrics_enabled;
@@ -229,13 +229,13 @@ pub(crate) async fn run(
             });
         }
 
-        if sync_reconciliation_enabled {
+        if kc_reconciliation_enabled {
             let deps = Arc::clone(&deps);
             let shutdown = shutdown.clone();
             let blockchain_id = blockchain_id.clone();
-            let config = sync_reconciliation_config.clone();
+            let config = kc_reconciliation_config.clone();
             set.spawn(async move {
-                SyncReconciliationTask::new(deps.sync_reconciliation.clone(), config)
+                KcReconciliationTask::new(deps.kc_reconciliation.clone(), config)
                     .run(&blockchain_id, shutdown)
                     .await;
             });
