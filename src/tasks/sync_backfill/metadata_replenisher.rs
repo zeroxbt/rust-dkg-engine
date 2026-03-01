@@ -313,7 +313,8 @@ impl MetadataReplenisher {
             let mut ids: Vec<u64> = discovered_ids.into_iter().collect();
             ids.sort_unstable();
 
-            self.deps
+            if let Err(error) = self
+                .deps
                 .kc_sync_repository
                 .persist_metadata_chunk_and_enqueue(
                     blockchain_id.as_str(),
@@ -323,7 +324,19 @@ impl MetadataReplenisher {
                     &ids,
                 )
                 .await
-                .map_err(MetadataReplenisherError::UpsertCoreMetadata)?;
+            {
+                tracing::error!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract_addr_str,
+                    chunk_from,
+                    chunk_to,
+                    records = metadata_inputs.len(),
+                    discovered_ids = ids.len(),
+                    error = ?error,
+                    "Failed to persist metadata chunk"
+                );
+                return Err(MetadataReplenisherError::UpsertCoreMetadata(error));
+            }
             if chunk_to >= active_range.end {
                 self.clear_cached_active_range(&contract_addr_str);
             }

@@ -358,7 +358,8 @@ impl KcSyncRepository {
                                 QueueColumn::ContractAddress,
                                 QueueColumn::KcId,
                             ])
-                            .do_nothing()
+                            // Use no-op update for MySQL compatibility (acts like insert-ignore).
+                            .update_column(QueueColumn::KcId)
                             .to_owned(),
                         )
                         .exec(&txn)
@@ -456,7 +457,7 @@ impl KcSyncRepository {
             })
             .collect();
 
-        // Insert with ON CONFLICT DO NOTHING to skip existing entries.
+        // Insert with conflict no-op update to skip existing entries.
         let result = QueueEntity::insert_many(models)
             .on_conflict(
                 sea_orm::sea_query::OnConflict::columns([
@@ -464,7 +465,8 @@ impl KcSyncRepository {
                     QueueColumn::ContractAddress,
                     QueueColumn::KcId,
                 ])
-                .do_nothing()
+                // Use no-op update for MySQL compatibility (acts like insert-ignore).
+                .update_column(QueueColumn::KcId)
                 .to_owned(),
             )
             .exec(self.conn.as_ref())

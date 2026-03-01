@@ -56,11 +56,8 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15,
-            "lineWidth": 1,
-            "stacking": {
-              "mode": "normal"
-            }
+            "fillOpacity": 10,
+            "lineWidth": 1
           },
           "unit": "short",
           "min": 0
@@ -91,7 +88,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(node_sync_kc_outcome_total{outcome=\"synced\"}[5m])",
+          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"synced\"}[5m]))",
           "instant": false,
           "legendFormat": "synced",
           "range": true,
@@ -103,7 +100,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(node_sync_kc_outcome_total{outcome=\"already_synced\"}[5m])",
+          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"already_synced\"}[5m]))",
           "instant": false,
           "legendFormat": "already_synced",
           "range": true,
@@ -115,7 +112,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(node_sync_kc_outcome_total{outcome=\"expired\"}[5m])",
+          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"expired\"}[5m]))",
           "instant": false,
           "legendFormat": "expired",
           "range": true,
@@ -127,7 +124,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(node_sync_kc_outcome_total{outcome=\"retry_later\"}[5m])",
+          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"retry_later\"}[5m]))",
           "instant": false,
           "legendFormat": "retry_later",
           "range": true,
@@ -139,14 +136,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(node_sync_kc_outcome_total{outcome=\"failed\"}[5m])",
+          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"failed\"}[5m]))",
           "instant": false,
           "legendFormat": "fetch/insert failed",
           "range": true,
           "refId": "E"
         }
       ],
-      "title": "KC Outcomes",
+      "title": "KC Outcomes (5m)",
       "type": "timeseries"
     },
     {
