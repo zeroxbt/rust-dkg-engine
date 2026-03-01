@@ -11,7 +11,9 @@ use dkg_blockchain::{
 };
 use dkg_domain::KnowledgeCollectionMetadata;
 use dkg_observability as observability;
-use dkg_repository::{BlockchainRepository, KcChainMetadataRepository};
+use dkg_repository::{
+    BlockchainRepository, KcChainMetadataRepository, KcProjectionRepository, KcSyncRepository,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -42,6 +44,8 @@ pub(crate) struct BlockchainEventListenerTask {
     blockchain_manager: Arc<BlockchainManager>,
     blockchain_repository: BlockchainRepository,
     kc_chain_metadata_repository: KcChainMetadataRepository,
+    kc_projection_repository: KcProjectionRepository,
+    kc_sync_repository: KcSyncRepository,
     command_scheduler: CommandScheduler,
     /// Polling interval
     poll_interval: Duration,
@@ -75,6 +79,8 @@ impl BlockchainEventListenerTask {
             blockchain_manager: deps.blockchain_manager,
             blockchain_repository: deps.blockchain_repository,
             kc_chain_metadata_repository: deps.kc_chain_metadata_repository,
+            kc_projection_repository: deps.kc_projection_repository,
+            kc_sync_repository: deps.kc_sync_repository,
             command_scheduler: deps.command_scheduler,
             poll_interval,
         }
@@ -618,6 +624,44 @@ impl BlockchainEventListenerTask {
                 kc_id = event.kc_id,
                 error = %error,
                 "Failed to upsert live KC chain metadata"
+            );
+            return;
+        }
+
+        let contract_address_str = format!("{:?}", event.contract_address);
+        if let Err(error) = self
+            .kc_projection_repository
+            .ensure_desired_present(
+                blockchain_id.as_str(),
+                &contract_address_str,
+                &[event.kc_id],
+            )
+            .await
+        {
+            tracing::warn!(
+                blockchain = %blockchain_id,
+                contract = %contract_address_str,
+                kc_id = event.kc_id,
+                error = %error,
+                "Failed to upsert projection desired state for live KC"
+            );
+        }
+
+        if let Err(error) = self
+            .kc_sync_repository
+            .enqueue_kcs(
+                blockchain_id.as_str(),
+                &contract_address_str,
+                &[event.kc_id],
+            )
+            .await
+        {
+            tracing::warn!(
+                blockchain = %blockchain_id,
+                contract = %contract_address_str,
+                kc_id = event.kc_id,
+                error = %error,
+                "Failed to enqueue live KC in sync queue"
             );
         }
 

@@ -30,6 +30,7 @@ use crate::{
 /// Maximum number of in-flight peer requests for this operation.
 /// For very large KC batches, use a single in-flight peer request to reduce peak memory.
 const LARGE_BATCH_ASSET_THRESHOLD_FOR_SINGLE_PEER: u64 = 1_000;
+const FETCH_STAGE_FAILURE_REASON: &str = "fetch_stage_failure";
 
 /// Fetch stage: receives filtered KCs, fetches from network, sends to insert stage.
 #[allow(clippy::too_many_arguments)]
@@ -150,7 +151,7 @@ pub(crate) async fn run_fetch_stage(
                     tracing::trace!("Fetch: insert stage receiver dropped, stopping");
                     let remaining_outcomes: Vec<QueueOutcome> = accumulated
                         .drain(..)
-                        .map(|kc| QueueOutcome::retry(kc.contract_addr_str, kc.kc_id))
+                        .map(|kc| QueueOutcome::retry_without_projection(kc.key))
                         .collect();
                     if !remaining_outcomes.is_empty() {
                         let _ = outcome_tx.send(remaining_outcomes).await;
@@ -258,7 +259,12 @@ async fn fetch_kc_batch_with_live_peers(
         );
         let failures = kcs
             .iter()
-            .map(|kc| QueueOutcome::retry(kc.contract_addr_str.clone(), kc.kc_id))
+            .map(|kc| {
+                QueueOutcome::retry_with_projection_failure(
+                    kc.key.clone(),
+                    FETCH_STAGE_FAILURE_REASON,
+                )
+            })
             .collect();
         return (Vec::new(), failures);
     }
@@ -459,8 +465,7 @@ async fn fetch_kc_batch_from_network(
                         if is_valid {
                             uals_still_needed.remove(&ual);
                             fetched.push(FetchedKc {
-                                contract_addr_str: kc.contract_addr_str.clone(),
-                                kc_id: kc.kc_id,
+                                key: kc.key.clone(),
                                 ual,
                                 assertion,
                                 metadata: Some(kc.metadata.clone()),
@@ -507,9 +512,12 @@ async fn fetch_kc_batch_from_network(
     let failed: Vec<QueueOutcome> = uals_still_needed
         .iter()
         .filter_map(|ual| {
-            ual_to_kc
-                .get(ual.as_str())
-                .map(|kc| QueueOutcome::retry(kc.contract_addr_str.clone(), kc.kc_id))
+            ual_to_kc.get(ual.as_str()).map(|kc| {
+                QueueOutcome::retry_with_projection_failure(
+                    kc.key.clone(),
+                    FETCH_STAGE_FAILURE_REASON,
+                )
+            })
         })
         .collect();
 

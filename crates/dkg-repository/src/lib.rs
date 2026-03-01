@@ -16,6 +16,7 @@ pub use repositories::{
     blockchain_repository::BlockchainRepository,
     finality_status_repository::FinalityStatusRepository,
     kc_chain_metadata_repository::{GapBoundaries, GapRange, KcChainMetadataRepository},
+    kc_projection_repository::KcProjectionRepository,
     kc_sync_repository::KcSyncRepository,
     operation_repository::OperationRepository,
     paranet_kc_sync_repository::ParanetKcSyncRepository,
@@ -23,7 +24,7 @@ pub use repositories::{
     triples_insert_count_repository::TriplesInsertCountRepository,
 };
 pub use types::{
-    KcChainMetadataEntry, KcChainReadyKcStateMetadataEntry, KcSyncQueueEntry, OperationRecord,
-    OperationStatus, ParanetKcSyncEntry, ProofChallengeEntry, SyncMetadataRecordInput,
-    SyncMetadataStateInput,
+    KcChainMetadataEntry, KcChainReadyKcStateMetadataEntry, KcProjectionActualState,
+    KcProjectionDesiredState, KcSyncQueueEntry, OperationRecord, OperationStatus,
+    ParanetKcSyncEntry, ProofChallengeEntry, SyncMetadataRecordInput, SyncMetadataStateInput,
 };

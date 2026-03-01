@@ -4,13 +4,15 @@ use dkg_blockchain::BlockchainManager;
 use dkg_key_value_store::{PeerAddressStore, PublishTmpDatasetStore};
 use dkg_network::{BatchGetAck, FinalityAck, GetAck, NetworkManager, StoreAck};
 use dkg_repository::{
-    BlockchainRepository, FinalityStatusRepository, KcChainMetadataRepository, KcSyncRepository,
-    OperationRepository, ParanetKcSyncRepository, ProofChallengeRepository,
+    BlockchainRepository, FinalityStatusRepository, KcChainMetadataRepository,
+    KcProjectionRepository, KcSyncRepository, OperationRepository, ParanetKcSyncRepository,
+    ProofChallengeRepository,
 };
 
 use crate::{
     application::{
-        AssertionValidation, GetAssertionUseCase, OperationTracking, TripleStoreAssertions,
+        AssertionValidation, GetAssertionUseCase, KcMaterializationService, OperationTracking,
+        TripleStoreAssertions,
     },
     commands::scheduler::CommandScheduler,
     node_state::PeerRegistry,
@@ -61,6 +63,8 @@ pub(crate) struct BlockchainEventListenerDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) blockchain_repository: BlockchainRepository,
     pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
+    pub(crate) kc_projection_repository: KcProjectionRepository,
+    pub(crate) kc_sync_repository: KcSyncRepository,
     pub(crate) command_scheduler: CommandScheduler,
 }
 
@@ -78,7 +82,9 @@ pub(crate) struct ProvingDeps {
 pub(crate) struct SyncDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) kc_sync_repository: KcSyncRepository,
+    pub(crate) kc_projection_repository: KcProjectionRepository,
     pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
+    pub(crate) kc_materialization_service: Arc<KcMaterializationService>,
     pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) assertion_validation: Arc<AssertionValidation>,
@@ -96,7 +102,7 @@ pub(crate) struct StateSnapshotDeps {
 pub(crate) struct ParanetSyncDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) paranet_kc_sync_repository: ParanetKcSyncRepository,
-    pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
+    pub(crate) kc_materialization_service: Arc<KcMaterializationService>,
     pub(crate) get_assertion_use_case: Arc<GetAssertionUseCase>,
 }
 

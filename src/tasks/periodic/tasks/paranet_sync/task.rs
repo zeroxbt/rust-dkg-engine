@@ -326,7 +326,7 @@ impl ParanetSyncTask {
             .collect();
 
         let paranet_kc_sync_repository = self.deps.paranet_kc_sync_repository.clone();
-        let triple_store_assertions = Arc::clone(&self.deps.triple_store_assertions);
+        let kc_materialization_service = Arc::clone(&self.deps.kc_materialization_service);
         let get_assertion_use_case = Arc::clone(&self.deps.get_assertion_use_case);
         let retries_limit = self.config.retries_limit;
         let retry_delay_secs = self.config.retry_delay_secs;
@@ -337,7 +337,7 @@ impl ParanetSyncTask {
             .map(|row| {
                 let target = target_map.get(&row.paranet_ual).cloned();
                 let paranet_kc_sync_repository = paranet_kc_sync_repository.clone();
-                let triple_store_assertions = Arc::clone(&triple_store_assertions);
+                let kc_materialization_service = Arc::clone(&kc_materialization_service);
                 let get_assertion_use_case = Arc::clone(&get_assertion_use_case);
                 let blockchain_id = blockchain_id.clone();
 
@@ -375,7 +375,7 @@ impl ParanetSyncTask {
                                 .as_ref()
                                 .and_then(|triples| parse_metadata_from_triples(triples));
 
-                            match triple_store_assertions
+                            match kc_materialization_service
                                 .insert_knowledge_collection(
                                     &row.kc_ual,
                                     &fetch_result.assertion,

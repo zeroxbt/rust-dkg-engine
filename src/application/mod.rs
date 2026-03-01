@@ -7,6 +7,7 @@ pub(crate) const UAL_MAX_LIMIT: usize = 1000;
 pub(crate) mod assertions;
 pub(crate) mod get_assertion;
 pub(crate) mod kc_chain_metadata_sync;
+pub(crate) mod kc_materialization;
 pub(crate) mod operation_tracking;
 pub(crate) mod paranet;
 pub(crate) mod signature;
@@ -17,4 +18,5 @@ pub(crate) use get_assertion::{
     AssertionSource, GetAssertionInput, GetAssertionUseCase, TokenRangeResolutionPolicy,
     fetch_assertion_from_local,
 };
+pub(crate) use kc_materialization::KcMaterializationService;
 pub(crate) use operation_tracking::OperationTracking;

@@ -10,7 +10,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    application::TripleStoreAssertions,
+    application::KcMaterializationService,
     commands::SendPublishFinalityRequestDeps,
     commands::{executor::CommandOutcome, registry::CommandHandler},
 };
@@ -61,9 +61,9 @@ pub(crate) struct SendPublishFinalityRequestCommandHandler {
     finality_status_repository: FinalityStatusRepository,
     operation_repository: OperationRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
+    kc_materialization_service: Arc<KcMaterializationService>,
     pub(super) network_manager: Arc<NetworkManager>,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
-    triple_store_assertions: Arc<TripleStoreAssertions>,
 }
 
 impl SendPublishFinalityRequestCommandHandler {
@@ -72,9 +72,9 @@ impl SendPublishFinalityRequestCommandHandler {
             finality_status_repository: deps.finality_status_repository,
             operation_repository: deps.operation_repository,
             triples_insert_count_repository: deps.triples_insert_count_repository,
+            kc_materialization_service: deps.kc_materialization_service,
             network_manager: deps.network_manager,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
-            triple_store_assertions: deps.triple_store_assertions,
         }
     }
 
@@ -222,7 +222,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
         );
 
         let total_triples = match self
-            .triple_store_assertions
+            .kc_materialization_service
             .insert_knowledge_collection(&ual, pending_data.dataset(), &Some(metadata), None)
             .await
         {

@@ -1,20 +1,16 @@
 use std::{collections::HashMap, sync::Arc};
 
-mod build_assets;
+pub(crate) mod build_assets;
 mod metadata;
 
-use dkg_domain::{
-    Assertion, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility, parse_ual,
-};
+use dkg_domain::{Assertion, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility};
 use dkg_repository::KcChainMetadataRepository;
 use dkg_triple_store::{GraphVisibility, TripleStoreManager, error::TripleStoreError};
 use futures::{StreamExt, stream};
 use tracing::instrument;
 
 use self::{build_assets::build_knowledge_assets, metadata::reconstruct_metadata_triples};
-use crate::application::state_metadata::{
-    PrivateGraphMode, PrivateGraphPresence, encode_private_graph_presence,
-};
+use crate::application::state_metadata::{PrivateGraphMode, PrivateGraphPresence};
 #[cfg(test)]
 use crate::application::state_metadata::{decode_sparse_ids, encode_bitmap, encode_sparse_ids};
 
@@ -377,71 +373,16 @@ impl TripleStoreAssertions {
     ) -> Result<usize, TripleStoreError> {
         // Build knowledge assets from the dataset
         let knowledge_assets = build_knowledge_assets(knowledge_collection_ual, dataset)?;
-        let private_graph_encoding = encode_private_graph_presence(&knowledge_assets);
 
         // Delegate to the triple store manager for RDF serialization and insertion
-        let inserted = self
-            .triple_store_manager
+        self.triple_store_manager
             .insert_knowledge_collection(
                 knowledge_collection_ual,
                 &knowledge_assets,
                 metadata,
                 paranet_ual,
             )
-            .await?;
-
-        let parsed_ual = match parse_ual(knowledge_collection_ual) {
-            Ok(parsed) => parsed,
-            Err(error) => {
-                if metadata.is_some() {
-                    return Err(TripleStoreError::Other(format!(
-                        "Failed to parse KC UAL '{knowledge_collection_ual}' for private graph metadata persistence: {error}"
-                    )));
-                }
-                return Ok(inserted);
-            }
-        };
-
-        let Ok(kc_id) = u64::try_from(parsed_ual.knowledge_collection_id) else {
-            if metadata.is_some() {
-                return Err(TripleStoreError::Other(format!(
-                    "KC id out of range for private graph metadata persistence: ual={knowledge_collection_ual}, kc_id={}",
-                    parsed_ual.knowledge_collection_id
-                )));
-            }
-            return Ok(inserted);
-        };
-
-        let contract_address = format!("{:?}", parsed_ual.contract);
-        let persist_result = self
-            .kc_chain_metadata_repository
-            .upsert_private_graph_encoding(
-                parsed_ual.blockchain.as_str(),
-                &contract_address,
-                kc_id,
-                Some(private_graph_encoding.mode as u32),
-                private_graph_encoding.payload.as_deref(),
-                Some("triple_store_insert"),
-            )
-            .await;
-
-        if metadata.is_some() {
-            if let Err(error) = persist_result {
-                return Err(TripleStoreError::Other(format!(
-                    "Failed to persist private graph metadata in kc_chain_state_metadata for ual={knowledge_collection_ual}: {error}"
-                )));
-            }
-        } else if let Err(error) = persist_result {
-            tracing::warn!(
-                blockchain_id = %parsed_ual.blockchain,
-                contract_address = %contract_address,
-                kc_id = kc_id,
-                error = %error,
-                "Failed to persist private graph encoding"
-            );
-        }
-
-        Ok(inserted)
+            .await
     }
 
     /// Check if a knowledge collection exists locally in the triple store.

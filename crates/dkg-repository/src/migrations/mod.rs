@@ -12,6 +12,7 @@ mod m013_add_next_retry_at_to_kc_sync_queue;
 mod m017_create_kc_chain_core_metadata;
 mod m018_create_kc_chain_state_metadata;
 mod m019_create_kc_sync_metadata_cursor;
+mod m020_create_kc_projection_state;
 
 pub struct Migrator;
 
@@ -31,6 +32,7 @@ impl MigratorTrait for Migrator {
             Box::new(m017_create_kc_chain_core_metadata::Migration),
             Box::new(m018_create_kc_chain_state_metadata::Migration),
             Box::new(m019_create_kc_sync_metadata_cursor::Migration),
+            Box::new(m020_create_kc_projection_state::Migration),
         ]
     }
 }

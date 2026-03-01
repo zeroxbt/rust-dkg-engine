@@ -62,7 +62,6 @@ impl SyncPipeline {
     pub(crate) fn start(
         &self,
         blockchain_id: &BlockchainId,
-        current_epoch: Option<u64>,
         queue_outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
     ) -> SyncPipelineRuntime {
         let pipeline_capacity = self.config.pipeline_capacity.max(1);
@@ -85,7 +84,6 @@ impl SyncPipeline {
                     input_rx,
                     filter_batch_size,
                     blockchain_id,
-                    current_epoch,
                     kc_chain_metadata_repository,
                     triple_store_assertions,
                     filter_tx,
@@ -120,13 +118,13 @@ impl SyncPipeline {
 
         let insert_handle = {
             let blockchain_id = blockchain_id.clone();
-            let triple_store_assertions = self.deps.triple_store_assertions.clone();
+            let kc_materialization_service = self.deps.kc_materialization_service.clone();
             tokio::spawn(async move {
                 run_insert_stage(
                     fetch_rx,
                     blockchain_id,
                     insert_batch_concurrency,
-                    triple_store_assertions,
+                    kc_materialization_service,
                     queue_outcome_tx,
                 )
                 .await;

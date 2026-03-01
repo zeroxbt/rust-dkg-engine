@@ -337,6 +337,24 @@ impl MetadataReplenisher {
                 );
                 return Err(MetadataReplenisherError::UpsertCoreMetadata(error));
             }
+
+            if let Err(error) = self
+                .deps
+                .kc_projection_repository
+                .ensure_desired_present(blockchain_id.as_str(), &contract_addr_str, &ids)
+                .await
+            {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract_addr_str,
+                    chunk_from,
+                    chunk_to,
+                    discovered_ids = ids.len(),
+                    error = %error,
+                    "Failed to upsert projection desired state for metadata chunk"
+                );
+            }
+
             if chunk_to >= active_range.end {
                 self.clear_cached_active_range(&contract_addr_str);
             }

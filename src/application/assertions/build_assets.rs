@@ -5,7 +5,7 @@ use dkg_triple_store::{
     PRIVATE_HASH_SUBJECT_PREFIX, error::TripleStoreError, extract_subject, group_triples_by_subject,
 };
 
-pub(super) fn build_knowledge_assets(
+pub(crate) fn build_knowledge_assets(
     knowledge_collection_ual: &str,
     dataset: &Assertion,
 ) -> Result<Vec<KnowledgeAsset>, TripleStoreError> {

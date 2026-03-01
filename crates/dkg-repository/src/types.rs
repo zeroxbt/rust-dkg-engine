@@ -13,6 +13,32 @@ pub enum OperationStatus {
     Failed,
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KcProjectionDesiredState {
+    Present = 1,
+}
+
+impl KcProjectionDesiredState {
+    pub fn as_u8(self) -> u8 {
+        self as u8
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KcProjectionActualState {
+    Unknown = 0,
+    Present = 1,
+    Failed = 2,
+}
+
+impl KcProjectionActualState {
+    pub fn as_u8(self) -> u8 {
+        self as u8
+    }
+}
+
 /// Public DTO for paranet knowledge collection sync queue entries.
 ///
 /// This type is intentionally decoupled from SeaORM model internals so

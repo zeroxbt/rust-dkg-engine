@@ -26,6 +26,7 @@ pub(crate) fn build_periodic_tasks_deps(
     let blockchain_repository = managers.repository.blockchain_repository();
     let kc_chain_metadata_repository = managers.repository.kc_chain_metadata_repository();
     let kc_sync_repository = managers.repository.kc_sync_repository();
+    let kc_projection_repository = managers.repository.kc_projection_repository();
     let paranet_kc_sync_repository = managers.repository.paranet_kc_sync_repository();
 
     Arc::new(periodic::PeriodicTasksDeps {
@@ -58,6 +59,8 @@ pub(crate) fn build_periodic_tasks_deps(
             blockchain_manager: Arc::clone(&managers.blockchain),
             blockchain_repository,
             kc_chain_metadata_repository: kc_chain_metadata_repository.clone(),
+            kc_projection_repository: kc_projection_repository.clone(),
+            kc_sync_repository: kc_sync_repository.clone(),
             command_scheduler: command_scheduler.clone(),
         },
         claim_rewards: ClaimRewardsDeps {
@@ -74,7 +77,9 @@ pub(crate) fn build_periodic_tasks_deps(
         sync_backfill: SyncDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
             kc_sync_repository: kc_sync_repository.clone(),
+            kc_projection_repository: kc_projection_repository.clone(),
             kc_chain_metadata_repository: kc_chain_metadata_repository.clone(),
+            kc_materialization_service: Arc::clone(&application.kc_materialization_service),
             triple_store_assertions: Arc::clone(&application.triple_store_assertions),
             network_manager: Arc::clone(&managers.network),
             assertion_validation: Arc::clone(&application.assertion_validation),
@@ -88,7 +93,7 @@ pub(crate) fn build_periodic_tasks_deps(
         paranet_sync: ParanetSyncDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
             paranet_kc_sync_repository,
-            triple_store_assertions: Arc::clone(&application.triple_store_assertions),
+            kc_materialization_service: Arc::clone(&application.kc_materialization_service),
             get_assertion_use_case: Arc::clone(&application.get_assertion_use_case),
         },
     })

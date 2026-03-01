@@ -18,7 +18,7 @@ use super::{
     SyncConfig,
     metadata_replenisher::MetadataReplenisher,
     pipeline::SyncPipeline,
-    types::{QueueKcWorkItem, QueueOutcome, QueueOutcomeKind},
+    types::{ProjectionWriteAction, QueueKcKey, QueueKcWorkItem, QueueOutcome, QueueWriteAction},
 };
 use crate::tasks::periodic::SyncDeps;
 
@@ -28,7 +28,7 @@ pub(crate) struct SyncBackfillTask {
     config: SyncConfig,
     deps: SyncDeps,
     notify: Arc<Notify>,
-    inflight: Arc<Mutex<HashSet<(String, u64)>>>,
+    inflight: Arc<Mutex<HashSet<QueueKcKey>>>,
 }
 
 impl SyncBackfillTask {
@@ -102,27 +102,10 @@ impl SyncBackfillTask {
 
         observability::record_sync_pipeline_inflight(0);
 
-        let current_epoch = match self
-            .deps
-            .blockchain_manager
-            .get_current_epoch(blockchain_id)
-            .await
-        {
-            Ok(epoch) => Some(epoch),
-            Err(error) => {
-                tracing::warn!(
-                    blockchain_id = %blockchain_id,
-                    error = %error,
-                    "Failed to snapshot current epoch for sync filter stage"
-                );
-                None
-            }
-        };
-
         let sync_pipeline = SyncPipeline::new(self.deps.clone(), self.config.clone());
         let (outcome_tx, mut outcome_rx) =
             mpsc::channel::<Vec<QueueOutcome>>(self.config.stage_channel_buffer.max(1) * 2);
-        let pipeline_runtime = sync_pipeline.start(blockchain_id, current_epoch, outcome_tx);
+        let pipeline_runtime = sync_pipeline.start(blockchain_id, outcome_tx);
 
         let replenisher_done = Arc::new(AtomicBool::new(false));
         let replenisher_handle = tokio::spawn(Self::replenisher_loop(
@@ -384,12 +367,11 @@ impl SyncBackfillTask {
                     continue;
                 };
 
-                let key = (row.contract_address.clone(), row.kc_id);
-                if inflight.insert(key) {
+                let key = QueueKcKey::new(row.contract_address, row.kc_id);
+                if inflight.insert(key.clone()) {
                     accepted.push(QueueKcWorkItem {
+                        key,
                         contract_address,
-                        contract_addr_str: row.contract_address,
-                        kc_id: row.kc_id,
                     });
                 }
             }
@@ -400,10 +382,7 @@ impl SyncBackfillTask {
             return false;
         }
 
-        let rollback_keys: Vec<(String, u64)> = accepted
-            .iter()
-            .map(|item| (item.contract_addr_str.clone(), item.kc_id))
-            .collect();
+        let rollback_keys: Vec<QueueKcKey> = accepted.iter().map(|item| item.key.clone()).collect();
 
         if input_tx.send(accepted).await.is_err() {
             tracing::warn!("Sync pipeline input channel closed");
@@ -429,16 +408,31 @@ impl SyncBackfillTask {
 
         let mut remove_by_contract: HashMap<String, Vec<u64>> = HashMap::new();
         let mut retry_by_contract: HashMap<String, Vec<u64>> = HashMap::new();
+        let mut present_by_contract: HashMap<String, Vec<u64>> = HashMap::new();
+        let mut failed_by_reason_and_contract: HashMap<(&'static str, String), Vec<u64>> =
+            HashMap::new();
         for outcome in &outcomes {
-            match outcome.kind {
-                QueueOutcomeKind::Remove => remove_by_contract
-                    .entry(outcome.contract_addr_str.clone())
+            match outcome.queue_action {
+                QueueWriteAction::Remove => remove_by_contract
+                    .entry(outcome.key.contract_addr_str.clone())
                     .or_default()
-                    .push(outcome.kc_id),
-                QueueOutcomeKind::Retry => retry_by_contract
-                    .entry(outcome.contract_addr_str.clone())
+                    .push(outcome.key.kc_id),
+                QueueWriteAction::Retry => retry_by_contract
+                    .entry(outcome.key.contract_addr_str.clone())
                     .or_default()
-                    .push(outcome.kc_id),
+                    .push(outcome.key.kc_id),
+            }
+
+            match outcome.projection_action {
+                ProjectionWriteAction::Noop => {}
+                ProjectionWriteAction::MarkPresent => present_by_contract
+                    .entry(outcome.key.contract_addr_str.clone())
+                    .or_default()
+                    .push(outcome.key.kc_id),
+                ProjectionWriteAction::MarkFailed { reason } => failed_by_reason_and_contract
+                    .entry((reason, outcome.key.contract_addr_str.clone()))
+                    .or_default()
+                    .push(outcome.key.kc_id),
             }
         }
 
@@ -483,10 +477,46 @@ impl SyncBackfillTask {
             }
         }
 
+        for ((reason, contract), mut kc_ids) in failed_by_reason_and_contract {
+            kc_ids.sort_unstable();
+            kc_ids.dedup();
+            if let Err(error) = self
+                .deps
+                .kc_projection_repository
+                .mark_failed(blockchain_id.as_str(), &contract, &kc_ids, reason)
+                .await
+            {
+                tracing::error!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract,
+                    error = %error,
+                    "Failed to mark projection rows as failed for retried KCs"
+                );
+            }
+        }
+
+        for (contract, mut kc_ids) in present_by_contract {
+            kc_ids.sort_unstable();
+            kc_ids.dedup();
+            if let Err(error) = self
+                .deps
+                .kc_projection_repository
+                .mark_present(blockchain_id.as_str(), &contract, &kc_ids)
+                .await
+            {
+                tracing::error!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract,
+                    error = %error,
+                    "Failed to mark projection rows as present"
+                );
+            }
+        }
+
         {
             let mut inflight = self.inflight.lock().await;
             for outcome in outcomes {
-                inflight.remove(&(outcome.contract_addr_str, outcome.kc_id));
+                inflight.remove(&outcome.key);
             }
             observability::record_sync_pipeline_inflight(inflight.len());
         }

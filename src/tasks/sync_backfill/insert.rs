@@ -1,7 +1,6 @@
 //! Insert stage: stores KCs in the triple store.
 //!
 //! Receives fetched KCs from the fetch stage and inserts them into the triple store.
-//! Expiration filtering is already done in the filter stage.
 
 use std::{sync::Arc, time::Instant};
 
@@ -12,22 +11,21 @@ use tokio::sync::mpsc;
 use tracing::instrument;
 
 use super::types::{FetchedKc, QueueOutcome};
-use crate::application::TripleStoreAssertions;
+use crate::application::KcMaterializationService;
 
 /// Insert stage: receives fetched KCs and inserts into triple store.
 ///
-/// Expiration filtering is already performed in the filter stage, so all KCs
-/// received here are valid and ready for insertion.
+/// All KCs received here already passed filter-stage readiness checks.
 #[instrument(
     name = "sync_insert",
-    skip(rx, triple_store_assertions, outcome_tx),
+    skip(rx, kc_materialization_service, outcome_tx),
     fields(blockchain_id = %blockchain_id)
 )]
 pub(crate) async fn run_insert_stage(
     mut rx: mpsc::Receiver<Vec<FetchedKc>>,
     blockchain_id: BlockchainId,
     insert_batch_concurrency: usize,
-    triple_store_assertions: Arc<TripleStoreAssertions>,
+    kc_materialization_service: Arc<KcMaterializationService>,
     outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
 ) {
     let task_start = Instant::now();
@@ -51,7 +49,7 @@ pub(crate) async fn run_insert_stage(
         // Insert all KCs in parallel
         let (remove_outcomes, retry_outcomes) = insert_kcs_to_store(
             batch,
-            Arc::clone(&triple_store_assertions),
+            Arc::clone(&kc_materialization_service),
             blockchain_id.clone(),
             insert_batch_concurrency,
         )
@@ -117,7 +115,7 @@ pub(crate) async fn run_insert_stage(
 /// Returns (remove outcomes, retry outcomes).
 async fn insert_kcs_to_store(
     kcs: Vec<FetchedKc>,
-    triple_store_assertions: Arc<TripleStoreAssertions>,
+    kc_materialization_service: Arc<KcMaterializationService>,
     blockchain_id: BlockchainId,
     insert_batch_concurrency: usize,
 ) -> (Vec<QueueOutcome>, Vec<QueueOutcome>) {
@@ -127,42 +125,42 @@ async fn insert_kcs_to_store(
     // Bound in-flight inserts to avoid large bursts and long permit waits.
     let mut insert_results = stream::iter(kcs.into_iter())
         .map(|kc| {
-            let ts = Arc::clone(&triple_store_assertions);
-            let contract_addr_str = kc.contract_addr_str;
+            let materializer = Arc::clone(&kc_materialization_service);
+            let key = kc.key;
             let ual = kc.ual;
             let assertion = kc.assertion;
             let metadata = kc.metadata;
-            let kc_id = kc.kc_id;
             async move {
-                let result = ts
+                let result = materializer
                     .insert_knowledge_collection(&ual, &assertion, &metadata, None)
                     .await;
-                (contract_addr_str, kc_id, ual, result)
+                (key, ual, result)
             }
         })
         .buffer_unordered(insert_batch_concurrency.max(1))
         .fuse();
 
-    while let Some((contract_addr_str, kc_id, ual, result)) = insert_results.next().await {
+    while let Some((key, ual, result)) = insert_results.next().await {
         match result {
             Ok(triples_inserted) => {
                 tracing::trace!(
-                    kc_id = kc_id,
+                    contract = %key.contract_addr_str,
+                    kc_id = key.kc_id,
                     ual = %ual,
                     triples = triples_inserted,
                     "Stored synced KC in triple store"
                 );
-                remove_outcomes.push(QueueOutcome::remove(contract_addr_str, kc_id));
+                remove_outcomes.push(QueueOutcome::remove_synced(key));
             }
             Err(e) => {
                 tracing::warn!(
                     blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    kc_id = kc_id,
+                    contract = %key.contract_addr_str,
+                    kc_id = key.kc_id,
                     error = %e,
                     "Failed to store KC in triple store"
                 );
-                retry_outcomes.push(QueueOutcome::retry(contract_addr_str, kc_id));
+                retry_outcomes.push(QueueOutcome::retry_without_projection(key));
             }
         }
     }

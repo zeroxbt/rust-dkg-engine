@@ -1,4 +1,4 @@
-//! Filter stage: checks local existence and SQL readiness, then filters expired KCs.
+//! Filter stage: checks local existence and SQL readiness before fetch.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -14,7 +14,7 @@ use tracing::instrument;
 
 use dkg_observability as observability;
 
-use super::types::{KcToSync, QueueKcWorkItem, QueueOutcome};
+use super::types::{KcToSync, QueueKcKey, QueueKcWorkItem, QueueOutcome};
 use crate::application::TripleStoreAssertions;
 use crate::application::state_metadata::{BurnedMode, decode_burned_ids};
 
@@ -34,7 +34,6 @@ pub(crate) async fn run_filter_stage(
     mut rx: mpsc::Receiver<Vec<QueueKcWorkItem>>,
     filter_batch_size: usize,
     blockchain_id: BlockchainId,
-    current_epoch: Option<u64>,
     kc_chain_metadata_repository: KcChainMetadataRepository,
     triple_store_assertions: Arc<TripleStoreAssertions>,
     tx: mpsc::Sender<Vec<KcToSync>>,
@@ -48,7 +47,6 @@ pub(crate) async fn run_filter_stage(
             let batch_result = process_filter_batch(
                 chunk,
                 &blockchain_id,
-                current_epoch,
                 &kc_chain_metadata_repository,
                 &triple_store_assertions,
             )
@@ -63,12 +61,6 @@ pub(crate) async fn run_filter_stage(
             observability::record_sync_kc_outcome(
                 blockchain_id.as_str(),
                 "filter",
-                "expired",
-                batch_result.expired.len(),
-            );
-            observability::record_sync_kc_outcome(
-                blockchain_id.as_str(),
-                "filter",
                 "retry_later",
                 batch_result.retry_later.len(),
             );
@@ -79,28 +71,17 @@ pub(crate) async fn run_filter_stage(
             }
 
             let mut outcomes = Vec::with_capacity(
-                batch_result.already_synced.len()
-                    + batch_result.expired.len()
-                    + batch_result.retry_later.len(),
+                batch_result.already_synced.len() + batch_result.retry_later.len(),
             );
             outcomes.extend(
                 batch_result
                     .already_synced
                     .into_iter()
-                    .map(|(contract, kc_id)| QueueOutcome::remove(contract, kc_id)),
+                    .map(QueueOutcome::remove_already_synced),
             );
-            outcomes.extend(
-                batch_result
-                    .expired
-                    .into_iter()
-                    .map(|(contract, kc_id)| QueueOutcome::remove(contract, kc_id)),
-            );
-            outcomes.extend(
-                batch_result
-                    .retry_later
-                    .into_iter()
-                    .map(|(contract, kc_id)| QueueOutcome::retry(contract, kc_id)),
-            );
+            outcomes.extend(batch_result.retry_later.into_iter().map(|key| {
+                QueueOutcome::retry_with_projection_failure(key, "filter_stage_rejection")
+            }));
 
             if !outcomes.is_empty() && outcome_tx.send(outcomes).await.is_err() {
                 tracing::trace!("Filter: queue outcome receiver dropped, stopping");
@@ -116,16 +97,14 @@ pub(crate) async fn run_filter_stage(
 }
 
 struct FilterBatchResult {
-    already_synced: Vec<(String, u64)>,
-    expired: Vec<(String, u64)>,
-    retry_later: Vec<(String, u64)>,
+    already_synced: Vec<QueueKcKey>,
+    retry_later: Vec<QueueKcKey>,
     to_sync: Vec<KcToSync>,
 }
 
 #[derive(Clone)]
 struct PendingKc {
-    contract_addr_str: String,
-    kc_id: u64,
+    key: QueueKcKey,
     ual: String,
 }
 
@@ -142,22 +121,20 @@ struct PendingKc {
 async fn process_filter_batch(
     chunk: &[QueueKcWorkItem],
     blockchain_id: &BlockchainId,
-    current_epoch: Option<u64>,
     kc_chain_metadata_repository: &KcChainMetadataRepository,
     triple_store_assertions: &TripleStoreAssertions,
 ) -> FilterBatchResult {
     let mut already_synced = Vec::new();
-    let mut expired = Vec::new();
 
     let kcs_needing_sync =
         check_local_existence(chunk, blockchain_id, triple_store_assertions).await;
 
-    let needing_sync_keys: HashSet<(String, u64)> = kcs_needing_sync
+    let needing_sync_keys: HashSet<QueueKcKey> = kcs_needing_sync
         .iter()
-        .map(|pending| (pending.contract_addr_str.clone(), pending.kc_id))
+        .map(|pending| pending.key.clone())
         .collect();
     for item in chunk {
-        let key = (item.contract_addr_str.clone(), item.kc_id);
+        let key = item.key.clone();
         if !needing_sync_keys.contains(&key) {
             already_synced.push(key);
         }
@@ -166,7 +143,6 @@ async fn process_filter_batch(
     if kcs_needing_sync.is_empty() {
         return FilterBatchResult {
             already_synced,
-            expired,
             retry_later: Vec::new(),
             to_sync: Vec::new(),
         };
@@ -183,7 +159,7 @@ async fn process_filter_batch(
     if !retry_later.is_empty() {
         let contracts: HashSet<&str> = retry_later
             .iter()
-            .map(|(contract, _)| contract.as_str())
+            .map(|key| key.contract_addr_str.as_str())
             .collect();
         tracing::error!(
             blockchain_id = %blockchain_id,
@@ -196,7 +172,6 @@ async fn process_filter_batch(
     if ready.is_empty() {
         return FilterBatchResult {
             already_synced,
-            expired,
             retry_later,
             to_sync: Vec::new(),
         };
@@ -204,22 +179,15 @@ async fn process_filter_batch(
 
     let mut to_sync = Vec::with_capacity(ready.len());
     for (pending, entry) in ready {
-        if let Some(current) = current_epoch
-            && current > entry.end_epoch
-        {
-            expired.push((pending.contract_addr_str.clone(), pending.kc_id));
-            continue;
-        }
-
         let Some(mode) = BurnedMode::from_raw(entry.burned_mode) else {
             tracing::warn!(
                 blockchain_id = %blockchain_id,
-                contract = %pending.contract_addr_str,
-                kc_id = pending.kc_id,
+                contract = %pending.key.contract_addr_str,
+                kc_id = pending.key.kc_id,
                 burned_mode = entry.burned_mode,
                 "Invalid burned mode in SQL state"
             );
-            retry_later.push((pending.contract_addr_str.clone(), pending.kc_id));
+            retry_later.push(pending.key.clone());
             continue;
         };
         let Some(burned) = decode_burned_ids(
@@ -230,11 +198,11 @@ async fn process_filter_batch(
         ) else {
             tracing::warn!(
                 blockchain_id = %blockchain_id,
-                contract = %pending.contract_addr_str,
-                kc_id = pending.kc_id,
+                contract = %pending.key.contract_addr_str,
+                kc_id = pending.key.kc_id,
                 "Failed to decode burned payload from SQL state"
             );
-            retry_later.push((pending.contract_addr_str.clone(), pending.kc_id));
+            retry_later.push(pending.key.clone());
             continue;
         };
 
@@ -246,8 +214,7 @@ async fn process_filter_batch(
             entry.block_timestamp,
         );
         to_sync.push(KcToSync {
-            contract_addr_str: pending.contract_addr_str,
-            kc_id: pending.kc_id,
+            key: pending.key,
             ual: pending.ual,
             token_ids,
             merkle_root: Some(entry.latest_merkle_root),
@@ -257,7 +224,6 @@ async fn process_filter_batch(
 
     FilterBatchResult {
         already_synced,
-        expired,
         retry_later,
         to_sync,
     }
@@ -269,7 +235,7 @@ async fn gate_on_sql_readiness(
     kc_chain_metadata_repository: &KcChainMetadataRepository,
 ) -> (
     Vec<(PendingKc, KcChainReadyKcStateMetadataEntry)>,
-    Vec<(String, u64)>,
+    Vec<QueueKcKey>,
 ) {
     if kcs_needing_sync.is_empty() {
         return (Vec::new(), Vec::new());
@@ -277,7 +243,7 @@ async fn gate_on_sql_readiness(
 
     let keys: Vec<(String, u64)> = kcs_needing_sync
         .iter()
-        .map(|pending| (pending.contract_addr_str.clone(), pending.kc_id))
+        .map(|pending| (pending.key.contract_addr_str.clone(), pending.key.kc_id))
         .collect();
     let ready_by_id = match kc_chain_metadata_repository
         .get_many_ready_with_kc_state_metadata_for_keys(blockchain_id.as_str(), &keys)
@@ -298,7 +264,7 @@ async fn gate_on_sql_readiness(
     let mut queued_without_ready_metadata = Vec::new();
 
     for pending in kcs_needing_sync {
-        let key = (pending.contract_addr_str.clone(), pending.kc_id);
+        let key = (pending.key.contract_addr_str.clone(), pending.key.kc_id);
         if let Some(entry) = ready_by_id.get(&key) {
             ready.push((pending.clone(), entry.clone()));
             continue;
@@ -306,7 +272,7 @@ async fn gate_on_sql_readiness(
         // Queue rows should only exist after atomic metadata+state+enqueue persistence.
         // If this branch is hit, data was manually inserted, is legacy/inconsistent,
         // or an invariant was violated elsewhere.
-        queued_without_ready_metadata.push(key);
+        queued_without_ready_metadata.push(pending.key.clone());
     }
 
     tracing::trace!(
@@ -339,13 +305,12 @@ async fn check_local_existence(
         let ual = derive_ual(
             blockchain_id,
             &item.contract_address,
-            u128::from(item.kc_id),
+            u128::from(item.key.kc_id),
             None,
         );
         uals.push(ual.clone());
         pending.push(PendingKc {
-            contract_addr_str: item.contract_addr_str.clone(),
-            kc_id: item.kc_id,
+            key: item.key.clone(),
             ual,
         });
     }

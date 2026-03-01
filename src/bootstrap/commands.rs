@@ -49,9 +49,9 @@ pub(crate) fn build_command_executor(
             finality_status_repository: finality_status_repository.clone(),
             operation_repository: operation_repository.clone(),
             triples_insert_count_repository: triples_insert_count_repository.clone(),
+            kc_materialization_service: Arc::clone(&application.kc_materialization_service),
             network_manager: Arc::clone(&managers.network),
             publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
-            triple_store_assertions: Arc::clone(&application.triple_store_assertions),
         },
         handle_publish_finality_request: HandlePublishFinalityRequestDeps {
             finality_status_repository,

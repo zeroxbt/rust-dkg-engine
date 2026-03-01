@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use crate::{
     application::{
-        AssertionValidation, GetAssertionUseCase, OperationTracking, TripleStoreAssertions,
+        AssertionValidation, GetAssertionUseCase, KcMaterializationService, OperationTracking,
+        TripleStoreAssertions,
     },
     managers::Managers,
     node_state::NodeState,
@@ -13,6 +14,7 @@ pub(crate) struct ApplicationDeps {
     pub(crate) publish_store_operation_tracking: Arc<OperationTracking<PublishStoreOperation>>,
     pub(crate) get_operation_tracking: Arc<OperationTracking<GetOperation>>,
     pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
+    pub(crate) kc_materialization_service: Arc<KcMaterializationService>,
     pub(crate) assertion_validation: Arc<AssertionValidation>,
     pub(crate) get_assertion_use_case: Arc<GetAssertionUseCase>,
 }
@@ -35,6 +37,11 @@ pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> 
         Arc::clone(&managers.triple_store),
         managers.repository.kc_chain_metadata_repository(),
     ));
+    let kc_materialization_service = Arc::new(KcMaterializationService::new(
+        Arc::clone(&triple_store_assertions),
+        managers.repository.kc_chain_metadata_repository(),
+        managers.repository.kc_projection_repository(),
+    ));
 
     let assertion_validation = Arc::new(AssertionValidation::new(Arc::clone(&managers.blockchain)));
 
@@ -50,6 +57,7 @@ pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> 
         publish_store_operation_tracking,
         get_operation_tracking,
         triple_store_assertions,
+        kc_materialization_service,
         assertion_validation,
         get_assertion_use_case,
     }

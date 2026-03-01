@@ -6,7 +6,9 @@ use dkg_network::{BatchGetAck, FinalityAck, GetAck, NetworkManager, StoreAck};
 use dkg_repository::{FinalityStatusRepository, OperationRepository, TriplesInsertCountRepository};
 
 use crate::{
-    application::{GetAssertionUseCase, OperationTracking, TripleStoreAssertions},
+    application::{
+        GetAssertionUseCase, KcMaterializationService, OperationTracking, TripleStoreAssertions,
+    },
     node_state::PeerRegistry,
     node_state::ResponseChannels,
     operations::{GetOperation, PublishStoreOperation},
@@ -35,9 +37,9 @@ pub(crate) struct SendPublishFinalityRequestDeps {
     pub(crate) finality_status_repository: FinalityStatusRepository,
     pub(crate) operation_repository: OperationRepository,
     pub(crate) triples_insert_count_repository: TriplesInsertCountRepository,
+    pub(crate) kc_materialization_service: Arc<KcMaterializationService>,
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
-    pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
 }
 
 #[derive(Clone)]
