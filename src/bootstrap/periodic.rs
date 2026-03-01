@@ -8,7 +8,7 @@ use crate::{
     tasks::periodic::{
         self, BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
         ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps, ShardingTableCheckDeps,
-        StateSnapshotDeps, SyncDeps,
+        StateSnapshotDeps, SyncDeps, SyncReconciliationDeps,
     },
 };
 
@@ -86,8 +86,8 @@ pub(crate) fn build_periodic_tasks_deps(
             peer_registry: Arc::clone(&node_state.peer_registry),
         },
         state_snapshot: StateSnapshotDeps {
-            kc_sync_repository,
-            kc_chain_metadata_repository,
+            kc_sync_repository: kc_sync_repository.clone(),
+            kc_chain_metadata_repository: kc_chain_metadata_repository.clone(),
             peer_registry: Arc::clone(&node_state.peer_registry),
         },
         paranet_sync: ParanetSyncDeps {
@@ -95,6 +95,12 @@ pub(crate) fn build_periodic_tasks_deps(
             paranet_kc_sync_repository,
             kc_materialization_service: Arc::clone(&application.kc_materialization_service),
             get_assertion_use_case: Arc::clone(&application.get_assertion_use_case),
+        },
+        sync_reconciliation: SyncReconciliationDeps {
+            kc_sync_repository: kc_sync_repository.clone(),
+            kc_projection_repository: kc_projection_repository.clone(),
+            kc_chain_metadata_repository,
+            triple_store_assertions: Arc::clone(&application.triple_store_assertions),
         },
     })
 }

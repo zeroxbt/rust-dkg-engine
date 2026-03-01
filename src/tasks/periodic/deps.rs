@@ -107,6 +107,14 @@ pub(crate) struct ParanetSyncDeps {
 }
 
 #[derive(Clone)]
+pub(crate) struct SyncReconciliationDeps {
+    pub(crate) kc_sync_repository: KcSyncRepository,
+    pub(crate) kc_projection_repository: KcProjectionRepository,
+    pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
+    pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
+}
+
+#[derive(Clone)]
 pub(crate) struct PeriodicTasksDeps {
     pub(crate) dial_peers: DialPeersDeps,
     pub(crate) cleanup: CleanupDeps,
@@ -118,4 +126,5 @@ pub(crate) struct PeriodicTasksDeps {
     pub(crate) sync_backfill: SyncDeps,
     pub(crate) state_snapshot: StateSnapshotDeps,
     pub(crate) paranet_sync: ParanetSyncDeps,
+    pub(crate) sync_reconciliation: SyncReconciliationDeps,
 }

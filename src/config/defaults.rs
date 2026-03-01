@@ -39,6 +39,7 @@ use crate::{
                 },
                 paranet_sync::ParanetSyncConfig,
                 proving::ProvingConfig,
+                sync_reconciliation::SyncReconciliationConfig,
             },
         },
         sync_backfill::SyncConfig,
@@ -93,6 +94,14 @@ fn paranet_sync() -> ParanetSyncConfig {
         retries_limit: 3,
         retry_delay_secs: 60,
         sync_paranets: Vec::new(),
+    }
+}
+
+fn sync_reconciliation() -> SyncReconciliationConfig {
+    SyncReconciliationConfig {
+        enabled: false,
+        interval_secs: 300,
+        batch_size: 500,
     }
 }
 
@@ -160,6 +169,7 @@ fn periodic_tasks() -> PeriodicTasksConfig {
     PeriodicTasksConfig {
         cleanup: cleanup(),
         sync_backfill: sync(),
+        sync_reconciliation: sync_reconciliation(),
         paranet_sync: paranet_sync(),
         proving: proving(),
     }
