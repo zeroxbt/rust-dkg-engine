@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     KcReconciliationConfig,
-    phases::{hydrate_projection, reconcile_non_present},
+    phases::{hydrate_projection, reconcile_non_present, repair_orphans},
 };
 use crate::{
     application::TripleStoreAssertions, tasks::periodic::KcReconciliationDeps,
@@ -51,6 +51,7 @@ impl KcReconciliationTask {
         }
 
         self.run_hydrate_projection_phase(blockchain_id).await;
+        self.run_repair_orphans_phase(blockchain_id).await;
         self.run_reconcile_non_present_phase(blockchain_id).await;
 
         interval
@@ -140,6 +141,49 @@ impl KcReconciliationTask {
             metadata_missing = phase_outcome.metadata_missing,
             failed_projection_updates = phase_outcome.failed_projection_updates,
             "KC reconciliation non-present phase completed"
+        );
+    }
+
+    async fn run_repair_orphans_phase(&self, blockchain_id: &BlockchainId) {
+        let batch_size = self.config.batch_size.max(1);
+        let phase_outcome = match repair_orphans::run(
+            blockchain_id,
+            batch_size,
+            &self.kc_projection_repository,
+            &self.kc_sync_repository,
+        )
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    batch_size,
+                    error = %error,
+                    "KC reconciliation orphan-repair phase failed"
+                );
+                return;
+            }
+        };
+
+        if phase_outcome.queue_missing_projection == 0 && phase_outcome.pending_missing_queue == 0 {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                batch_size,
+                "KC reconciliation orphan-repair phase found no orphans"
+            );
+            return;
+        }
+
+        tracing::info!(
+            blockchain_id = %blockchain_id,
+            batch_size,
+            queue_missing_projection = phase_outcome.queue_missing_projection,
+            hydrated_pending = phase_outcome.hydrated_pending,
+            pending_missing_queue = phase_outcome.pending_missing_queue,
+            reset_unknown = phase_outcome.reset_unknown,
+            failed_projection_updates = phase_outcome.failed_projection_updates,
+            "KC reconciliation orphan-repair phase completed"
         );
     }
 }
