@@ -11,6 +11,7 @@ use crate::application::TripleStoreAssertions;
 
 const REASON_METADATA_MISSING: &str = "reconcile_metadata_missing";
 const REASON_INVALID_CONTRACT_ADDRESS: &str = "reconcile_invalid_contract_address";
+const REASON_MISSING_IN_TRIPLE_STORE: &str = "reconcile_missing_in_triplestore";
 
 pub(crate) struct ReconcileNonPresentOutcome {
     pub(crate) candidates: usize,
@@ -125,6 +126,9 @@ pub(crate) async fn run(
         kc_projection_repository
             .mark_present(blockchain_id.as_str(), &contract_address, &kc_ids)
             .await?;
+        kc_sync_repository
+            .remove_kcs(blockchain_id.as_str(), &contract_address, &kc_ids)
+            .await?;
     }
 
     let missing_keys: Vec<(String, u64)> = missing_candidates
@@ -162,6 +166,24 @@ pub(crate) async fn run(
         kc_sync_repository
             .enqueue_kcs(blockchain_id.as_str(), &contract_address, &kc_ids)
             .await?;
+        if let Err(error) = kc_projection_repository
+            .mark_pending_with_error(
+                blockchain_id.as_str(),
+                &contract_address,
+                &kc_ids,
+                Some(REASON_MISSING_IN_TRIPLE_STORE),
+            )
+            .await
+        {
+            failed_projection_updates = failed_projection_updates.saturating_add(kc_ids.len());
+            tracing::warn!(
+                blockchain_id = %blockchain_id,
+                contract_address = %contract_address,
+                count = kc_ids.len(),
+                error = %error,
+                "KC reconciliation failed to mark enqueued projection rows as pending"
+            );
+        }
         enqueued = enqueued.saturating_add(count);
     }
 
