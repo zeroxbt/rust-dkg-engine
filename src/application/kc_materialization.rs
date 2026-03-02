@@ -29,7 +29,7 @@ impl KcMaterializationService {
         &self,
         knowledge_collection_ual: &str,
         dataset: &Assertion,
-        metadata: &Option<KnowledgeCollectionMetadata>,
+        metadata: Option<&KnowledgeCollectionMetadata>,
         paranet_ual: Option<&str>,
     ) -> Result<usize, TripleStoreError> {
         let inserted = match self
@@ -59,7 +59,7 @@ impl KcMaterializationService {
         &self,
         knowledge_collection_ual: &str,
         dataset: &Assertion,
-        metadata: &Option<KnowledgeCollectionMetadata>,
+        metadata: Option<&KnowledgeCollectionMetadata>,
     ) -> Result<(), TripleStoreError> {
         let parsed_ual = match parse_ual(knowledge_collection_ual) {
             Ok(parsed) => parsed,

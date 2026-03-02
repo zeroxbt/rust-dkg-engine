@@ -379,7 +379,7 @@ impl ParanetSyncTask {
                                 .insert_knowledge_collection(
                                     &row.kc_ual,
                                     &fetch_result.assertion,
-                                    &metadata,
+                                    metadata.as_ref(),
                                     Some(&row.paranet_ual),
                                 )
                                 .await

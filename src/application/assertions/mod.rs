@@ -368,7 +368,7 @@ impl TripleStoreAssertions {
         &self,
         knowledge_collection_ual: &str,
         dataset: &Assertion,
-        metadata: &Option<KnowledgeCollectionMetadata>,
+        metadata: Option<&KnowledgeCollectionMetadata>,
         paranet_ual: Option<&str>,
     ) -> Result<usize, TripleStoreError> {
         // Build knowledge assets from the dataset

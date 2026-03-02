@@ -32,7 +32,7 @@ impl TripleStoreManager {
         &self,
         kc_ual: &str,
         knowledge_assets: &[KnowledgeAsset],
-        metadata: &Option<KnowledgeCollectionMetadata>,
+        metadata: Option<&KnowledgeCollectionMetadata>,
         paranet_ual: Option<&str>,
     ) -> Result<usize> {
         let started = Instant::now();
@@ -56,7 +56,7 @@ impl TripleStoreManager {
                     .is_some_and(|triples| !triples.is_empty()),
             })
             .collect();
-        let built_metadata = MetadataTriples::build(kc_ual, &metadata_assets, metadata.as_ref());
+        let built_metadata = MetadataTriples::build(kc_ual, &metadata_assets, metadata);
 
         // Build public named graphs
         let mut public_graphs_insert = String::new();

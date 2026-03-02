@@ -134,7 +134,7 @@ async fn insert_kcs_to_store(
             let metadata = kc.metadata;
             async move {
                 let result = materializer
-                    .insert_knowledge_collection(&ual, &assertion, &metadata, None)
+                    .insert_knowledge_collection(&ual, &assertion, metadata.as_ref(), None)
                     .await;
                 (key, ual, result)
             }

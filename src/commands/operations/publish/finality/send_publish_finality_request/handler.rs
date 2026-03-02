@@ -202,8 +202,6 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             return CommandOutcome::Completed;
         }
 
-        let metadata = data.metadata.clone();
-
         // Derive UAL for the knowledge collection
         let ual = derive_ual(
             &data.blockchain,
@@ -214,7 +212,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
 
         let total_triples = match self
             .kc_materialization_service
-            .insert_knowledge_collection(&ual, &data.dataset, &Some(metadata), None)
+            .insert_knowledge_collection(&ual, &data.dataset, Some(&data.metadata), None)
             .await
         {
             Ok(count) => {
