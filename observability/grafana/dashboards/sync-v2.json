@@ -112,9 +112,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"expired\"}[5m]))",
+          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"retry_later\"}[5m]))",
           "instant": false,
-          "legendFormat": "expired",
+          "legendFormat": "retry_later",
           "range": true,
           "refId": "C"
         },
@@ -124,23 +124,11 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"retry_later\"}[5m]))",
-          "instant": false,
-          "legendFormat": "retry_later",
-          "range": true,
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
           "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"failed\"}[5m]))",
           "instant": false,
-          "legendFormat": "fetch/insert failed",
+          "legendFormat": "pipeline_failed",
           "range": true,
-          "refId": "E"
+          "refId": "D"
         }
       ],
       "title": "KC Outcomes (5m)",
@@ -404,7 +392,7 @@
       },
       "id": 101,
       "panels": [],
-      "title": "Replenisher",
+      "title": "Discovery",
       "type": "row"
     },
     {
@@ -513,7 +501,7 @@
           "refId": "F"
         }
       ],
-      "title": "Replenisher Batch Duration",
+      "title": "Discovery Batch Duration",
       "type": "timeseries"
     },
     {
@@ -574,7 +562,7 @@
           "refId": "B"
         }
       ],
-      "title": "Replenisher Batch Size",
+      "title": "Discovery Batch Size",
       "type": "timeseries"
     },
     {
@@ -647,7 +635,7 @@
           "refId": "C"
         }
       ],
-      "title": "Replenisher Failures (5m)",
+      "title": "Discovery Failures (5m)",
       "type": "timeseries"
     },
     {
@@ -1096,7 +1084,6 @@
   "style": "dark",
   "tags": [
     "rust-dkg-engine",
-    "pilot",
     "sync",
     "v2"
   ],
@@ -1109,7 +1096,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Rust DKG Engine - Sync V2 (Pilot)",
+  "title": "Rust DKG Engine - Sync V2",
   "uid": "rust-dkg-sync-v2",
   "version": 1,
   "weekStart": ""
