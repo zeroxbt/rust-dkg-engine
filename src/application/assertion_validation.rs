@@ -223,6 +223,14 @@ impl AssertionValidation {
     }
 
     fn normalize_public_triples(public_triples: &[String]) -> Vec<String> {
+        if !public_triples.iter().any(|entry| entry.contains('\n')) {
+            return public_triples
+                .iter()
+                .filter(|entry| !entry.is_empty())
+                .cloned()
+                .collect();
+        }
+
         public_triples
             .iter()
             .flat_map(|entry| entry.lines())
@@ -373,6 +381,15 @@ fn extract_private_merkle_root(triple: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    fn normalize_public_triples_old(public_triples: &[String]) -> Vec<String> {
+        public_triples
+            .iter()
+            .flat_map(|entry| entry.lines())
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
     fn group_and_sort_public_triples_old(triples: &[String]) -> Result<Vec<String>, String> {
         let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
 
@@ -493,6 +510,40 @@ mod tests {
         let current =
             group_and_sort_public_triples(&triples).expect("current grouping should work");
         assert_eq!(current, expected);
+    }
+
+    #[test]
+    fn test_normalize_public_triples_matches_previous_logic() {
+        let explicit_cases: Vec<Vec<String>> = vec![
+            vec![],
+            vec!["a".to_string(), "b".to_string()],
+            vec!["".to_string(), "x".to_string(), "".to_string()],
+            vec!["one\ntwo".to_string(), "three".to_string()],
+            vec!["line1\n\nline3".to_string(), "line4\n".to_string()],
+            vec!["😄".to_string(), "caf\u{00e9}\ncafe\u{301}".to_string()],
+        ];
+
+        for input in explicit_cases {
+            let expected = normalize_public_triples_old(&input);
+            let current = AssertionValidation::normalize_public_triples(&input);
+            assert_eq!(current, expected, "mismatch for input: {:?}", input);
+        }
+
+        for size in 0..128 {
+            let input: Vec<String> = (0..size)
+                .map(|i| match i % 5 {
+                    0 => format!("triple-{i}"),
+                    1 => format!("line-{i}\nnext-{i}"),
+                    2 => String::new(),
+                    3 => "x".repeat((i % 16) + 1),
+                    _ => format!("unicode-{}-😄", i),
+                })
+                .collect();
+
+            let expected = normalize_public_triples_old(&input);
+            let current = AssertionValidation::normalize_public_triples(&input);
+            assert_eq!(current, expected, "generated mismatch for size={size}");
+        }
     }
 
     fn sample_kc_4210492_public_triples() -> Vec<String> {

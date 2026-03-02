@@ -97,10 +97,66 @@ pub(crate) fn build_knowledge_assets(
 }
 
 fn normalize_triple_lines(triples: &[String]) -> Vec<String> {
+    if !triples.iter().any(|entry| entry.contains('\n')) {
+        return triples
+            .iter()
+            .filter(|entry| !entry.is_empty())
+            .cloned()
+            .collect();
+    }
+
     triples
         .iter()
         .flat_map(|entry| entry.lines())
         .filter(|line| !line.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_triple_lines;
+
+    fn normalize_triple_lines_old(triples: &[String]) -> Vec<String> {
+        triples
+            .iter()
+            .flat_map(|entry| entry.lines())
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn test_normalize_triple_lines_matches_previous_logic() {
+        let explicit_cases: Vec<Vec<String>> = vec![
+            vec![],
+            vec!["a".to_string(), "b".to_string()],
+            vec!["".to_string(), "x".to_string(), "".to_string()],
+            vec!["one\ntwo".to_string(), "three".to_string()],
+            vec!["line1\n\nline3".to_string(), "line4\n".to_string()],
+            vec!["😄".to_string(), "caf\u{00e9}\ncafe\u{301}".to_string()],
+        ];
+
+        for input in explicit_cases {
+            let expected = normalize_triple_lines_old(&input);
+            let current = normalize_triple_lines(&input);
+            assert_eq!(current, expected, "mismatch for input: {:?}", input);
+        }
+
+        for size in 0..128 {
+            let input: Vec<String> = (0..size)
+                .map(|i| match i % 5 {
+                    0 => format!("triple-{i}"),
+                    1 => format!("line-{i}\nnext-{i}"),
+                    2 => String::new(),
+                    3 => "x".repeat((i % 16) + 1),
+                    _ => format!("unicode-{}-😄", i),
+                })
+                .collect();
+
+            let expected = normalize_triple_lines_old(&input);
+            let current = normalize_triple_lines(&input);
+            assert_eq!(current, expected, "generated mismatch for size={size}");
+        }
+    }
 }
