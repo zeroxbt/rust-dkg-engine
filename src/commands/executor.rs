@@ -66,7 +66,7 @@ pub(crate) struct CommandExecutor {
 
 impl CommandExecutor {
     pub(crate) fn new(
-        command_scheduler: CommandScheduler,
+        command_scheduler: &CommandScheduler,
         command_resolver: CommandResolver,
         rx: mpsc::Receiver<CommandExecutionRequest>,
     ) -> Self {

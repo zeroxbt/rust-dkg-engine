@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +37,8 @@ impl AppPaths {
     /// └── triple-store/
     ///     └── {repository}/        <- oxigraph store per repository
     /// ```
-    pub(crate) fn from_root(root: PathBuf) -> Self {
+    pub(crate) fn from_root(root: impl AsRef<Path>) -> Self {
+        let root = root.as_ref();
         Self {
             network_key: root.join("network/private_key"),
             key_value_store: root.join("key-value-store/key_value_store.redb"),

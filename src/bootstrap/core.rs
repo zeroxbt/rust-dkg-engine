@@ -27,7 +27,7 @@ pub(crate) async fn build_core() -> CoreBootstrap {
     let config = Arc::new(config::initialize_configuration());
     crate::logger::initialize(&config.logger, &config.telemetry);
 
-    let paths = AppPaths::from_root(config.app_data_path.clone());
+    let paths = AppPaths::from_root(&config.app_data_path);
     let network_key = KeyManager::load_or_generate(&paths.network_key)
         .await
         .expect("Failed to load or generate network identity key");

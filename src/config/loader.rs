@@ -102,7 +102,7 @@ fn resolve_environment(custom_config_path: Option<&str>) -> Result<String, Confi
         )
     })?;
 
-    let env = normalize_env(env);
+    let env = normalize_env(&env);
 
     if !matches!(env.as_str(), "development" | "testnet" | "mainnet") {
         return Err(ConfigError::UnknownEnvironment(env));
@@ -119,9 +119,9 @@ fn read_environment_from(path: &str) -> Result<Option<String>, ConfigError> {
     let config: EnvironmentConfig = Figment::from(Toml::file(path))
         .extract()
         .map_err(ConfigError::from)?;
-    Ok(config.environment.map(normalize_env))
+    Ok(config.environment.map(|env| normalize_env(&env)))
 }
 
-fn normalize_env(env: String) -> String {
+fn normalize_env(env: &str) -> String {
     env.trim().to_lowercase()
 }

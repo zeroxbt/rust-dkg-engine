@@ -79,5 +79,5 @@ pub(crate) fn build_command_executor(
         },
     });
 
-    CommandExecutor::new(command_scheduler.clone(), command_resolver, command_rx)
+    CommandExecutor::new(command_scheduler, command_resolver, command_rx)
 }
