@@ -43,11 +43,22 @@ pub fn extract_subject(triple: &str) -> Option<&str> {
 ///
 /// This is closer to JS `groupNquadsBySubject` behavior, which parses RDF quads
 /// and then serializes each quad back before sorting/hashing.
-pub fn group_triples_by_subject(triples: &[String]) -> Result<Vec<Vec<String>>, String> {
+pub fn group_triples_by_subject<T: AsRef<str>>(triples: &[T]) -> Result<Vec<Vec<String>>, String> {
     let mut groups: Vec<(String, Vec<String>)> = Vec::new();
     let mut subject_to_index: HashMap<String, usize> = HashMap::new();
     let parser = RdfParser::from_format(RdfFormat::NQuads).lenient();
-    let joined = triples.join("\n");
+    let total_bytes = triples
+        .iter()
+        .map(|triple| triple.as_ref().len())
+        .sum::<usize>()
+        + triples.len().saturating_sub(1);
+    let mut joined = String::with_capacity(total_bytes);
+    for (idx, triple) in triples.iter().enumerate() {
+        if idx > 0 {
+            joined.push('\n');
+        }
+        joined.push_str(triple.as_ref());
+    }
 
     for parsed in parser.for_reader(joined.as_bytes()) {
         let quad = parsed.map_err(|e| format!("Failed to parse triple for grouping: {}", e))?;
@@ -308,6 +319,30 @@ pub fn parse_metadata_from_triples(triples: &[String]) -> Option<KnowledgeCollec
 mod tests {
     use super::*;
 
+    fn group_triples_by_subject_old(triples: &[String]) -> Result<Vec<Vec<String>>, String> {
+        let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+        let mut subject_to_index: HashMap<String, usize> = HashMap::new();
+        let parser = RdfParser::from_format(RdfFormat::NQuads).lenient();
+        let joined = triples.join("\n");
+
+        for parsed in parser.for_reader(joined.as_bytes()) {
+            let quad = parsed.map_err(|e| format!("Failed to parse triple for grouping: {}", e))?;
+            let subject_key = subject_key_from_quad(&quad);
+            let quad_string = serialize_quad_nquads(&quad)?;
+
+            if let Some(&idx) = subject_to_index.get(&subject_key) {
+                groups[idx].1.push(quad_string);
+            } else {
+                let idx = groups.len();
+                subject_to_index.insert(subject_key.clone(), idx);
+                groups.push((subject_key, vec![quad_string]));
+            }
+        }
+
+        groups.sort_by(|a, b| compare_subject_keys_js_locale_like(a.0.as_str(), b.0.as_str()));
+        Ok(groups.into_iter().map(|(_, quads)| quads).collect())
+    }
+
     #[test]
     fn test_extract_subject_iri() {
         let triple = r#"<http://example.org/subject1> <http://example.org/predicate1> "value1" ."#;
@@ -437,6 +472,50 @@ mod tests {
         assert_eq!(groups.len(), 2);
         assert!(groups[0][0].contains("<uuid:gemini:2.0:flash>"));
         assert!(groups[1][0].contains("<uuid:gemini2.0flash>"));
+    }
+
+    #[test]
+    fn test_group_triples_by_subject_matches_previous_logic() {
+        let triples = vec![
+            r#"<http://example.org/person/1> <http://schema.org/name> "Alice" ."#.to_string(),
+            r#"<http://example.org/person/1> <http://schema.org/age> "30" ."#.to_string(),
+            r#"<http://example.org/person/2> <http://schema.org/name> "Bob" ."#.to_string(),
+            r#"<http://example.org/organization/1> <http://schema.org/name> "Acme Corp" ."#
+                .to_string(),
+            r#"<uuid:gemini2.0flash> <http://schema.org/name> "Gemini 2.0 Flash" ."#.to_string(),
+            r#"<uuid:gemini:2.0:flash> <http://schema.org/name> "Gemini 2.0 Flash" ."#.to_string(),
+        ];
+
+        let expected = group_triples_by_subject_old(&triples).expect("old grouping should work");
+        let current = group_triples_by_subject(&triples).expect("current grouping should work");
+        assert_eq!(current, expected);
+
+        let borrowed: Vec<&str> = triples.iter().map(String::as_str).collect();
+        let borrowed_current =
+            group_triples_by_subject(&borrowed).expect("borrowed grouping should work");
+        assert_eq!(borrowed_current, expected);
+    }
+
+    #[test]
+    fn test_group_triples_by_subject_generated_matches_previous_logic() {
+        for size in 1..64 {
+            let triples: Vec<String> = (0..size)
+                .map(|i| {
+                    format!(
+                        "<http://example.org/s/{}> <http://example.org/p/{}> \"value-{}\" .",
+                        i % 9,
+                        i % 5,
+                        i
+                    )
+                })
+                .collect();
+
+            let expected =
+                group_triples_by_subject_old(&triples).expect("old grouping should parse");
+            let current =
+                group_triples_by_subject(&triples).expect("current grouping should parse");
+            assert_eq!(current, expected, "mismatch for size={size}");
+        }
     }
 
     #[test]

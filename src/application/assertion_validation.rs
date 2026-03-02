@@ -331,28 +331,27 @@ impl AssertionValidation {
 pub(crate) fn group_and_sort_public_triples(triples: &[String]) -> Result<Vec<String>, String> {
     let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
 
-    let mut filtered_public: Vec<String> = Vec::new();
-    let mut private_hash_triples: Vec<String> = Vec::new();
+    let mut filtered_public: Vec<&str> = Vec::new();
+    let mut private_hash_triples: Vec<&str> = Vec::new();
 
     for triple in triples {
         if triple.starts_with(&private_hash_prefix) {
-            private_hash_triples.push(triple.clone());
+            private_hash_triples.push(triple);
         } else {
-            filtered_public.push(triple.clone());
+            filtered_public.push(triple);
         }
     }
 
     let mut grouped = group_triples_by_subject(&filtered_public)?;
     grouped.extend(group_triples_by_subject(&private_hash_triples)?);
 
-    Ok(grouped
-        .iter()
-        .flat_map(|group| {
-            let mut sorted_group: Vec<&str> = group.iter().map(String::as_str).collect();
-            sorted_group.sort_by(|a, b| compare_js_default_string_order(a, b));
-            sorted_group.into_iter().map(String::from)
-        })
-        .collect())
+    let mut sorted_flat = Vec::new();
+    for mut group in grouped {
+        group.sort_by(|a, b| compare_js_default_string_order(a, b));
+        sorted_flat.extend(group);
+    }
+
+    Ok(sorted_flat)
 }
 
 /// Extract the merkle root value from a privateMerkleRoot triple.
@@ -373,6 +372,33 @@ fn extract_private_merkle_root(triple: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn group_and_sort_public_triples_old(triples: &[String]) -> Result<Vec<String>, String> {
+        let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
+
+        let mut filtered_public: Vec<String> = Vec::new();
+        let mut private_hash_triples: Vec<String> = Vec::new();
+
+        for triple in triples {
+            if triple.starts_with(&private_hash_prefix) {
+                private_hash_triples.push(triple.clone());
+            } else {
+                filtered_public.push(triple.clone());
+            }
+        }
+
+        let mut grouped = group_triples_by_subject(&filtered_public)?;
+        grouped.extend(group_triples_by_subject(&private_hash_triples)?);
+
+        Ok(grouped
+            .iter()
+            .flat_map(|group| {
+                let mut sorted_group: Vec<&str> = group.iter().map(String::as_str).collect();
+                sorted_group.sort_by(|a, b| compare_js_default_string_order(a, b));
+                sorted_group.into_iter().map(String::from)
+            })
+            .collect())
+    }
 
     /// Check if public assertion contains privateMerkleRoot predicate.
     ///
@@ -457,6 +483,16 @@ mod tests {
             triples,
             vec!["a\u{10000}".to_string(), "a\u{E000}".to_string()]
         );
+    }
+
+    #[test]
+    fn test_group_and_sort_public_triples_matches_previous_logic() {
+        let triples = sample_kc_4210492_public_triples();
+        let expected =
+            group_and_sort_public_triples_old(&triples).expect("old grouping should succeed");
+        let current =
+            group_and_sort_public_triples(&triples).expect("current grouping should work");
+        assert_eq!(current, expected);
     }
 
     fn sample_kc_4210492_public_triples() -> Vec<String> {
