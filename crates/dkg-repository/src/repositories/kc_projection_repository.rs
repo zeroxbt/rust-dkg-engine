@@ -53,7 +53,6 @@ impl KcProjectionRepository {
                 kc_id: ActiveValue::Set(kc_id),
                 desired_state: ActiveValue::Set(KcProjectionDesiredState::Present.as_u8()),
                 actual_state: ActiveValue::Set(KcProjectionActualState::Unknown.as_u8()),
-                attempt_count: ActiveValue::Set(0),
                 last_synced_at: ActiveValue::Set(None),
                 last_error: ActiveValue::Set(None),
                 created_at: ActiveValue::Set(now),
@@ -183,10 +182,6 @@ impl KcProjectionRepository {
             .col_expr(
                 ProjectionColumn::ActualState,
                 Expr::value(KcProjectionActualState::Failed.as_u8()),
-            )
-            .col_expr(
-                ProjectionColumn::AttemptCount,
-                Expr::col(ProjectionColumn::AttemptCount).add(1u32),
             )
             .col_expr(
                 ProjectionColumn::LastError,

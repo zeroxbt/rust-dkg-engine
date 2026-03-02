@@ -4,7 +4,10 @@ use dkg_blockchain::BlockchainId;
 use dkg_repository::{KcChainMetadataRepository, KcProjectionRepository, KcSyncRepository};
 use tokio_util::sync::CancellationToken;
 
-use super::{KcReconciliationConfig, phases::hydrate_projection};
+use super::{
+    KcReconciliationConfig,
+    phases::{hydrate_projection, reconcile_non_present},
+};
 use crate::{
     application::TripleStoreAssertions, tasks::periodic::KcReconciliationDeps,
     tasks::periodic::runner::run_with_shutdown,
@@ -47,8 +50,8 @@ impl KcReconciliationTask {
             return interval;
         }
 
-        let _ = (&self.kc_sync_repository, &self.triple_store_assertions);
         self.run_hydrate_projection_phase(blockchain_id).await;
+        self.run_reconcile_non_present_phase(blockchain_id).await;
 
         interval
     }
@@ -92,6 +95,51 @@ impl KcReconciliationTask {
             failed = phase_outcome.failed_keys,
             failed_contracts = phase_outcome.failed_contracts,
             "KC reconciliation hydration phase completed"
+        );
+    }
+
+    async fn run_reconcile_non_present_phase(&self, blockchain_id: &BlockchainId) {
+        let batch_size = self.config.batch_size.max(1);
+        let phase_outcome = match reconcile_non_present::run(
+            blockchain_id,
+            batch_size,
+            &self.kc_projection_repository,
+            &self.kc_chain_metadata_repository,
+            &self.kc_sync_repository,
+            self.triple_store_assertions.as_ref(),
+        )
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    batch_size,
+                    error = %error,
+                    "KC reconciliation non-present phase failed"
+                );
+                return;
+            }
+        };
+
+        if phase_outcome.candidates == 0 {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                batch_size,
+                "KC reconciliation non-present phase found no candidates"
+            );
+            return;
+        }
+
+        tracing::info!(
+            blockchain_id = %blockchain_id,
+            batch_size,
+            candidates = phase_outcome.candidates,
+            found_present = phase_outcome.found_present,
+            enqueued = phase_outcome.enqueued,
+            metadata_missing = phase_outcome.metadata_missing,
+            failed_projection_updates = phase_outcome.failed_projection_updates,
+            "KC reconciliation non-present phase completed"
         );
     }
 }

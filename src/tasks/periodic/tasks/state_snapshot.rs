@@ -152,7 +152,7 @@ impl StateSnapshotTask {
 
         let metadata_discovery_kcs_total = match self
             .kc_chain_metadata_repository
-            .count_core_metadata_for_blockchain_by_source(blockchain_id, "sync_metadata_discovery")
+            .count_core_metadata_for_blockchain_by_source(blockchain_id, "dkg_sync")
             .await
         {
             Ok(v) => v,

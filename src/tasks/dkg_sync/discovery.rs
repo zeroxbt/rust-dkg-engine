@@ -301,7 +301,7 @@ impl DiscoveryWorker {
                     transaction_hash: format!("{:#x}", record.transaction_hash),
                     block_timestamp: record.block_timestamp,
                     publish_operation_id: record.publish_operation_id.clone(),
-                    source: "sync_metadata_discovery".to_string(),
+                    source: "dkg_sync".to_string(),
                     state: record
                         .kc_state_metadata
                         .as_ref()

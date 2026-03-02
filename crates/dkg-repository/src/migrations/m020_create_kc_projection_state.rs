@@ -1,7 +1,7 @@
 use sea_orm_migration::{
     async_trait::async_trait,
     prelude::{DbErr, DeriveMigrationName, Iden, Index, MigrationTrait, SchemaManager, Table},
-    schema::{big_integer, big_integer_null, big_unsigned, string, string_null, unsigned},
+    schema::{big_integer, big_integer_null, big_unsigned, string, string_null},
     sea_query,
 };
 
@@ -13,7 +13,6 @@ enum KcProjectionState {
     KcId,
     DesiredState,
     ActualState,
-    AttemptCount,
     LastSyncedAt,
     LastError,
     CreatedAt,
@@ -44,7 +43,6 @@ impl MigrationTrait for Migration {
                             .tiny_unsigned()
                             .not_null(),
                     )
-                    .col(unsigned(KcProjectionState::AttemptCount).default(0))
                     .col(big_integer_null(KcProjectionState::LastSyncedAt))
                     .col(string_null(KcProjectionState::LastError))
                     .col(big_integer(KcProjectionState::CreatedAt))

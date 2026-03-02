@@ -16,7 +16,6 @@ pub struct Model {
     pub kc_id: u64,
     pub desired_state: u8,
     pub actual_state: u8,
-    pub attempt_count: u32,
     pub last_synced_at: Option<i64>,
     pub last_error: Option<String>,
     pub created_at: i64,
