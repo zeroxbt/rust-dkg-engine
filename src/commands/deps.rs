@@ -3,7 +3,10 @@ use std::sync::Arc;
 use dkg_blockchain::BlockchainManager;
 use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{BatchGetAck, FinalityAck, GetAck, NetworkManager, StoreAck};
-use dkg_repository::{FinalityStatusRepository, OperationRepository, TriplesInsertCountRepository};
+use dkg_repository::{
+    FinalityStatusRepository, KcProjectionRepository, OperationRepository,
+    TriplesInsertCountRepository,
+};
 
 use crate::{
     application::{
@@ -37,6 +40,7 @@ pub(crate) struct SendPublishFinalityRequestDeps {
     pub(crate) finality_status_repository: FinalityStatusRepository,
     pub(crate) operation_repository: OperationRepository,
     pub(crate) triples_insert_count_repository: TriplesInsertCountRepository,
+    pub(crate) kc_projection_repository: KcProjectionRepository,
     pub(crate) kc_materialization_service: Arc<KcMaterializationService>,
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,

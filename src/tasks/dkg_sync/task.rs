@@ -70,6 +70,7 @@ impl DkgSyncTask {
                     blockchain_id,
                     outcomes,
                     SYNC_RETRY_DELAY_SECS,
+                    self.config.queue_processor.max_retry_attempts,
                 )
                 .await;
             }
@@ -123,6 +124,7 @@ impl DkgSyncTask {
                             blockchain_id,
                             outcomes,
                             SYNC_RETRY_DELAY_SECS,
+                            self.config.queue_processor.max_retry_attempts,
                         )
                         .await;
                     }

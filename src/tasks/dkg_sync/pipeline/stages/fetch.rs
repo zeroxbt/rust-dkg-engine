@@ -151,7 +151,12 @@ pub(crate) async fn run_fetch_stage(
                     tracing::trace!("Fetch: insert stage receiver dropped, stopping");
                     let remaining_outcomes: Vec<QueueOutcome> = accumulated
                         .drain(..)
-                        .map(|kc| QueueOutcome::retry_without_projection(kc.key))
+                        .map(|kc| {
+                            QueueOutcome::retry_with_pending_error(
+                                kc.key,
+                                FETCH_STAGE_FAILURE_REASON,
+                            )
+                        })
                         .collect();
                     if !remaining_outcomes.is_empty() {
                         let _ = outcome_tx.send(remaining_outcomes).await;
@@ -260,10 +265,7 @@ async fn fetch_kc_batch_with_live_peers(
         let failures = kcs
             .iter()
             .map(|kc| {
-                QueueOutcome::retry_with_projection_failure(
-                    kc.key.clone(),
-                    FETCH_STAGE_FAILURE_REASON,
-                )
+                QueueOutcome::retry_with_pending_error(kc.key.clone(), FETCH_STAGE_FAILURE_REASON)
             })
             .collect();
         return (Vec::new(), failures);
@@ -513,10 +515,7 @@ async fn fetch_kc_batch_from_network(
         .iter()
         .filter_map(|ual| {
             ual_to_kc.get(ual.as_str()).map(|kc| {
-                QueueOutcome::retry_with_projection_failure(
-                    kc.key.clone(),
-                    FETCH_STAGE_FAILURE_REASON,
-                )
+                QueueOutcome::retry_with_pending_error(kc.key.clone(), FETCH_STAGE_FAILURE_REASON)
             })
         })
         .collect();

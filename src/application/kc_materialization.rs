@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use dkg_domain::{Assertion, KnowledgeCollectionMetadata, canonical_evm_address, parse_ual};
-use dkg_repository::{KcChainMetadataRepository, KcProjectionRepository};
+use dkg_repository::KcChainMetadataRepository;
 use dkg_triple_store::error::TripleStoreError;
 
 use super::{
@@ -12,19 +12,16 @@ use super::{
 pub(crate) struct KcMaterializationService {
     triple_store_assertions: Arc<TripleStoreAssertions>,
     kc_chain_metadata_repository: KcChainMetadataRepository,
-    kc_projection_repository: KcProjectionRepository,
 }
 
 impl KcMaterializationService {
     pub(crate) fn new(
         triple_store_assertions: Arc<TripleStoreAssertions>,
         kc_chain_metadata_repository: KcChainMetadataRepository,
-        kc_projection_repository: KcProjectionRepository,
     ) -> Self {
         Self {
             triple_store_assertions,
             kc_chain_metadata_repository,
-            kc_projection_repository,
         }
     }
 
@@ -35,50 +32,13 @@ impl KcMaterializationService {
         metadata: &Option<KnowledgeCollectionMetadata>,
         paranet_ual: Option<&str>,
     ) -> Result<usize, TripleStoreError> {
-        let projection_key = projection_key_from_ual(knowledge_collection_ual);
-        if let Some((blockchain_id, contract_address, kc_id)) = projection_key.as_ref()
-            && let Err(error) = self
-                .kc_projection_repository
-                .ensure_desired_present(blockchain_id, contract_address, &[*kc_id])
-                .await
-        {
-            tracing::warn!(
-                blockchain_id = blockchain_id,
-                contract_address = contract_address,
-                kc_id = *kc_id,
-                error = %error,
-                "Failed to upsert projection desired state before materialization"
-            );
-        }
-
         let inserted = match self
             .triple_store_assertions
             .insert_knowledge_collection(knowledge_collection_ual, dataset, metadata, paranet_ual)
             .await
         {
             Ok(inserted) => inserted,
-            Err(error) => {
-                if let Some((blockchain_id, contract_address, kc_id)) = projection_key.as_ref()
-                    && let Err(mark_error) = self
-                        .kc_projection_repository
-                        .mark_failed(
-                            blockchain_id,
-                            contract_address,
-                            &[*kc_id],
-                            "triple_store_insert_failed",
-                        )
-                        .await
-                {
-                    tracing::warn!(
-                        blockchain_id = blockchain_id,
-                        contract_address = contract_address,
-                        kc_id = *kc_id,
-                        error = %mark_error,
-                        "Failed to mark projection row as failed after insert error"
-                    );
-                }
-                return Err(error);
-            }
+            Err(error) => return Err(error),
         };
 
         if let Err(error) = self
@@ -89,21 +49,6 @@ impl KcMaterializationService {
                 ual = %knowledge_collection_ual,
                 error = %error,
                 "Failed to persist private graph encoding after successful triple store insert"
-            );
-        }
-
-        if let Some((blockchain_id, contract_address, kc_id)) = projection_key.as_ref()
-            && let Err(error) = self
-                .kc_projection_repository
-                .mark_present(blockchain_id, contract_address, &[*kc_id])
-                .await
-        {
-            tracing::warn!(
-                blockchain_id = blockchain_id,
-                contract_address = contract_address,
-                kc_id = *kc_id,
-                error = %error,
-                "Failed to mark projection row as present after materialization"
             );
         }
 
@@ -172,14 +117,4 @@ impl KcMaterializationService {
 
         Ok(())
     }
-}
-
-fn projection_key_from_ual(ual: &str) -> Option<(String, String, u64)> {
-    let parsed = parse_ual(ual).ok()?;
-    let kc_id = u64::try_from(parsed.knowledge_collection_id).ok()?;
-    Some((
-        parsed.blockchain.as_str().to_string(),
-        canonical_evm_address(&parsed.contract),
-        kc_id,
-    ))
 }

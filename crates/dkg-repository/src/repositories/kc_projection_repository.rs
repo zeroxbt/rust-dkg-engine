@@ -158,6 +158,80 @@ impl KcProjectionRepository {
         result
     }
 
+    pub async fn mark_pending(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        kc_ids: &[u64],
+    ) -> Result<()> {
+        self.mark_pending_with_error(blockchain_id, contract_address, kc_ids, None)
+            .await
+    }
+
+    pub async fn mark_pending_with_error(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        kc_ids: &[u64],
+        error_reason: Option<&str>,
+    ) -> Result<()> {
+        let started = Instant::now();
+        if kc_ids.is_empty() {
+            record_repository_query(
+                "kc_projection",
+                "mark_pending_with_error",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
+            return Ok(());
+        }
+
+        let now = Utc::now().timestamp();
+        let result = ProjectionEntity::update_many()
+            .col_expr(
+                ProjectionColumn::ActualState,
+                Expr::value(KcProjectionActualState::Pending.as_u8()),
+            )
+            .col_expr(
+                ProjectionColumn::LastError,
+                Expr::value(error_reason.map(ToString::to_string)),
+            )
+            .col_expr(ProjectionColumn::UpdatedAt, Expr::value(now))
+            .filter(ProjectionColumn::BlockchainId.eq(blockchain_id))
+            .filter(ProjectionColumn::ContractAddress.eq(contract_address))
+            // Do not downgrade already-materialized rows back to pending.
+            .filter(ProjectionColumn::ActualState.ne(KcProjectionActualState::Present.as_u8()))
+            .filter(ProjectionColumn::KcId.is_in(kc_ids.to_vec()))
+            .exec(self.conn.as_ref())
+            .await
+            .map(|_| ())
+            .map_err(Into::into);
+
+        match &result {
+            Ok(()) => {
+                record_repository_query(
+                    "kc_projection",
+                    "mark_pending_with_error",
+                    "ok",
+                    started.elapsed(),
+                    Some(kc_ids.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_projection",
+                    "mark_pending_with_error",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
+    }
+
     pub async fn mark_failed(
         &self,
         blockchain_id: &str,
@@ -222,12 +296,13 @@ impl KcProjectionRepository {
 
     /// Return projection keys that should be reconciled against triple-store materialization.
     ///
-    /// Includes rows with desired=Present and actual in {Unknown, Failed}.
+    /// Includes rows with desired=Present and actual=Unknown.
+    /// Failed rows are terminal and require explicit operator reset.
     pub async fn list_non_present_desired_keys(
         &self,
         blockchain_id: &str,
         limit: usize,
-    ) -> Result<Vec<(String, u64, KcProjectionActualState)>> {
+    ) -> Result<Vec<(String, u64)>> {
         let started = Instant::now();
         if limit == 0 {
             record_repository_query(
@@ -243,10 +318,7 @@ impl KcProjectionRepository {
         let result = ProjectionEntity::find()
             .filter(ProjectionColumn::BlockchainId.eq(blockchain_id))
             .filter(ProjectionColumn::DesiredState.eq(KcProjectionDesiredState::Present.as_u8()))
-            .filter(ProjectionColumn::ActualState.is_in([
-                KcProjectionActualState::Unknown.as_u8(),
-                KcProjectionActualState::Failed.as_u8(),
-            ]))
+            .filter(ProjectionColumn::ActualState.eq(KcProjectionActualState::Unknown.as_u8()))
             .order_by_asc(ProjectionColumn::UpdatedAt)
             .order_by_asc(ProjectionColumn::ContractAddress)
             .order_by_asc(ProjectionColumn::KcId)
@@ -255,18 +327,7 @@ impl KcProjectionRepository {
             .await
             .map(|rows| {
                 rows.into_iter()
-                    .filter_map(|row| {
-                        let actual_state = match row.actual_state {
-                            value if value == KcProjectionActualState::Unknown.as_u8() => {
-                                KcProjectionActualState::Unknown
-                            }
-                            value if value == KcProjectionActualState::Failed.as_u8() => {
-                                KcProjectionActualState::Failed
-                            }
-                            _ => return None,
-                        };
-                        Some((row.contract_address, row.kc_id, actual_state))
-                    })
+                    .map(|row| (row.contract_address, row.kc_id))
                     .collect::<Vec<_>>()
             })
             .map_err(Into::into);

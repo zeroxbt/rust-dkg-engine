@@ -3,14 +3,12 @@ use std::collections::HashMap;
 use dkg_blockchain::{Address, BlockchainId};
 use dkg_domain::derive_ual;
 use dkg_repository::{
-    KcChainMetadataRepository, KcProjectionActualState, KcProjectionRepository, KcSyncRepository,
-    error::RepositoryError,
+    KcChainMetadataRepository, KcProjectionRepository, KcSyncRepository, error::RepositoryError,
 };
 use dkg_triple_store::error::TripleStoreError;
 
 use crate::application::TripleStoreAssertions;
 
-const REASON_MISSING_IN_TRIPLE_STORE: &str = "reconcile_missing_in_triplestore";
 const REASON_METADATA_MISSING: &str = "reconcile_metadata_missing";
 const REASON_INVALID_CONTRACT_ADDRESS: &str = "reconcile_invalid_contract_address";
 
@@ -52,7 +50,6 @@ impl From<TripleStoreError> for ReconcileNonPresentError {
 struct PreparedCandidate {
     contract_address: String,
     kc_id: u64,
-    actual_state: KcProjectionActualState,
     ual: String,
 }
 
@@ -81,7 +78,7 @@ pub(crate) async fn run(
     let mut prepared = Vec::with_capacity(candidates.len());
     let mut uals = Vec::with_capacity(candidates.len());
     let mut invalid_contract_rows: HashMap<String, Vec<u64>> = HashMap::new();
-    for (contract_address, kc_id, actual_state) in candidates {
+    for (contract_address, kc_id) in candidates {
         let Ok(contract) = contract_address.parse::<Address>() else {
             invalid_contract_rows
                 .entry(contract_address)
@@ -94,7 +91,6 @@ pub(crate) async fn run(
         prepared.push(PreparedCandidate {
             contract_address,
             kc_id,
-            actual_state,
             ual,
         });
     }
@@ -104,20 +100,21 @@ pub(crate) async fn run(
         .await?;
 
     let mut present_by_contract: HashMap<String, Vec<u64>> = HashMap::new();
-    let mut missing_candidates: Vec<(String, u64, KcProjectionActualState)> = Vec::new();
+    let mut missing_candidates: Vec<(String, u64)> = Vec::new();
 
-    for candidate in prepared {
-        if existing.contains(&candidate.ual) {
+    for PreparedCandidate {
+        contract_address,
+        kc_id,
+        ual,
+    } in prepared
+    {
+        if existing.contains(&ual) {
             present_by_contract
-                .entry(candidate.contract_address)
+                .entry(contract_address)
                 .or_default()
-                .push(candidate.kc_id);
+                .push(kc_id);
         } else {
-            missing_candidates.push((
-                candidate.contract_address,
-                candidate.kc_id,
-                candidate.actual_state,
-            ));
+            missing_candidates.push((contract_address, kc_id));
         }
     }
 
@@ -132,7 +129,7 @@ pub(crate) async fn run(
 
     let missing_keys: Vec<(String, u64)> = missing_candidates
         .iter()
-        .map(|(contract, kc_id, _)| (contract.clone(), *kc_id))
+        .map(|(contract, kc_id)| (contract.clone(), *kc_id))
         .collect();
     let ready_by_key = kc_chain_metadata_repository
         .get_many_ready_with_kc_state_metadata_for_keys(blockchain_id.as_str(), &missing_keys)
@@ -140,22 +137,14 @@ pub(crate) async fn run(
 
     let mut enqueue_by_contract: HashMap<String, Vec<u64>> = HashMap::new();
     let mut mark_missing_by_contract: HashMap<String, Vec<u64>> = HashMap::new();
-    let mut mark_missing_in_store_by_contract: HashMap<String, Vec<u64>> = HashMap::new();
 
-    for (contract_address, kc_id, actual_state) in missing_candidates {
+    for (contract_address, kc_id) in missing_candidates {
         let key = (contract_address.clone(), kc_id);
         if ready_by_key.contains_key(&key) {
             enqueue_by_contract
                 .entry(contract_address.clone())
                 .or_default()
                 .push(kc_id);
-
-            if actual_state == KcProjectionActualState::Unknown {
-                mark_missing_in_store_by_contract
-                    .entry(contract_address)
-                    .or_default()
-                    .push(kc_id);
-            }
         } else {
             mark_missing_by_contract
                 .entry(contract_address)
@@ -165,17 +154,18 @@ pub(crate) async fn run(
     }
 
     let mut enqueued = 0usize;
+    let mut failed_projection_updates = 0usize;
     for (contract_address, mut kc_ids) in enqueue_by_contract {
         kc_ids.sort_unstable();
         kc_ids.dedup();
-        enqueued = enqueued.saturating_add(kc_ids.len());
+        let count = kc_ids.len();
         kc_sync_repository
             .enqueue_kcs(blockchain_id.as_str(), &contract_address, &kc_ids)
             .await?;
+        enqueued = enqueued.saturating_add(count);
     }
 
     let mut metadata_missing = 0usize;
-    let mut failed_projection_updates = 0usize;
     for (contract_address, mut kc_ids) in mark_missing_by_contract {
         kc_ids.sort_unstable();
         kc_ids.dedup();
@@ -196,29 +186,6 @@ pub(crate) async fn run(
                 count = kc_ids.len(),
                 error = %error,
                 "KC reconciliation failed to mark metadata-missing projection rows"
-            );
-        }
-    }
-
-    for (contract_address, mut kc_ids) in mark_missing_in_store_by_contract {
-        kc_ids.sort_unstable();
-        kc_ids.dedup();
-        if let Err(error) = kc_projection_repository
-            .mark_failed(
-                blockchain_id.as_str(),
-                &contract_address,
-                &kc_ids,
-                REASON_MISSING_IN_TRIPLE_STORE,
-            )
-            .await
-        {
-            failed_projection_updates = failed_projection_updates.saturating_add(kc_ids.len());
-            tracing::warn!(
-                blockchain_id = %blockchain_id,
-                contract_address = %contract_address,
-                count = kc_ids.len(),
-                error = %error,
-                "KC reconciliation failed to mark missing-in-store projection rows"
             );
         }
     }

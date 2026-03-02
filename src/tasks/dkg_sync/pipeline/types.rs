@@ -33,9 +33,8 @@ pub(crate) enum QueueWriteAction {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProjectionWriteAction {
-    Noop,
     MarkPresent,
-    MarkFailed { reason: &'static str },
+    MarkPending { last_error: Option<&'static str> },
 }
 
 /// Terminal queue action emitted by filter/fetch/insert stages.
@@ -51,7 +50,7 @@ impl QueueOutcome {
         Self {
             key,
             queue_action: QueueWriteAction::Remove,
-            projection_action: ProjectionWriteAction::Noop,
+            projection_action: ProjectionWriteAction::MarkPresent,
         }
     }
 
@@ -63,19 +62,13 @@ impl QueueOutcome {
         }
     }
 
-    pub(crate) fn retry_with_projection_failure(key: QueueKcKey, reason: &'static str) -> Self {
+    pub(crate) fn retry_with_pending_error(key: QueueKcKey, reason: &'static str) -> Self {
         Self {
             key,
             queue_action: QueueWriteAction::Retry,
-            projection_action: ProjectionWriteAction::MarkFailed { reason },
-        }
-    }
-
-    pub(crate) fn retry_without_projection(key: QueueKcKey) -> Self {
-        Self {
-            key,
-            queue_action: QueueWriteAction::Retry,
-            projection_action: ProjectionWriteAction::Noop,
+            projection_action: ProjectionWriteAction::MarkPending {
+                last_error: Some(reason),
+            },
         }
     }
 }

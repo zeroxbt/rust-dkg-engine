@@ -27,6 +27,7 @@ pub(crate) fn build_command_executor(
     let finality_status_repository = managers.repository.finality_status_repository();
     let operation_repository = managers.repository.operation_repository();
     let triples_insert_count_repository = managers.repository.triples_insert_count_repository();
+    let kc_projection_repository = managers.repository.kc_projection_repository();
 
     let command_resolver = CommandResolver::new(CommandResolverDeps {
         send_publish_store_requests: SendPublishStoreRequestsDeps {
@@ -49,6 +50,7 @@ pub(crate) fn build_command_executor(
             finality_status_repository: finality_status_repository.clone(),
             operation_repository: operation_repository.clone(),
             triples_insert_count_repository: triples_insert_count_repository.clone(),
+            kc_projection_repository: kc_projection_repository.clone(),
             kc_materialization_service: Arc::clone(&application.kc_materialization_service),
             network_manager: Arc::clone(&managers.network),
             publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),

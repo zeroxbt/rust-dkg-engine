@@ -40,7 +40,6 @@ pub(crate) fn build_application(managers: &Managers, node_state: &NodeState) -> 
     let kc_materialization_service = Arc::new(KcMaterializationService::new(
         Arc::clone(&triple_store_assertions),
         managers.repository.kc_chain_metadata_repository(),
-        managers.repository.kc_projection_repository(),
     ));
 
     let assertion_validation = Arc::new(AssertionValidation::new(Arc::clone(&managers.blockchain)));

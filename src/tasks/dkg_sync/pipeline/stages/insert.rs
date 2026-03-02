@@ -13,6 +13,8 @@ use tracing::instrument;
 use crate::application::KcMaterializationService;
 use crate::tasks::dkg_sync::pipeline::types::{FetchedKc, QueueOutcome};
 
+const INSERT_STAGE_FAILURE_REASON: &str = "insert_stage_failure";
+
 /// Insert stage: receives fetched KCs and inserts into triple store.
 ///
 /// All KCs received here already passed filter-stage readiness checks.
@@ -160,7 +162,10 @@ async fn insert_kcs_to_store(
                     error = %e,
                     "Failed to store KC in triple store"
                 );
-                retry_outcomes.push(QueueOutcome::retry_without_projection(key));
+                retry_outcomes.push(QueueOutcome::retry_with_pending_error(
+                    key,
+                    INSERT_STAGE_FAILURE_REASON,
+                ));
             }
         }
     }

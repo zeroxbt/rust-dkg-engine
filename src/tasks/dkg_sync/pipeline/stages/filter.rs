@@ -81,9 +81,11 @@ pub(crate) async fn run_filter_stage(
                     .into_iter()
                     .map(QueueOutcome::remove_already_synced),
             );
-            outcomes.extend(batch_result.retry_later.into_iter().map(|key| {
-                QueueOutcome::retry_with_projection_failure(key, "filter_stage_rejection")
-            }));
+            outcomes.extend(
+                batch_result.retry_later.into_iter().map(|key| {
+                    QueueOutcome::retry_with_pending_error(key, "filter_stage_rejection")
+                }),
+            );
 
             if !outcomes.is_empty() && outcome_tx.send(outcomes).await.is_err() {
                 tracing::trace!("Filter: queue outcome receiver dropped, stopping");

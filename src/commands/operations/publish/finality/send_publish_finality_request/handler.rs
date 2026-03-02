@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
 use dkg_blockchain::{Address, B256, BlockchainId, U256};
-use dkg_domain::{KnowledgeCollectionMetadata, derive_ual};
+use dkg_domain::{KnowledgeCollectionMetadata, canonical_evm_address, derive_ual};
 use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{FinalityRequestData, FinalityResponseData, NetworkManager, PeerId};
 use dkg_observability as observability;
-use dkg_repository::{FinalityStatusRepository, OperationRepository, TriplesInsertCountRepository};
+use dkg_repository::{
+    FinalityStatusRepository, KcProjectionRepository, OperationRepository,
+    TriplesInsertCountRepository,
+};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -61,6 +64,7 @@ pub(crate) struct SendPublishFinalityRequestCommandHandler {
     finality_status_repository: FinalityStatusRepository,
     operation_repository: OperationRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
+    kc_projection_repository: KcProjectionRepository,
     kc_materialization_service: Arc<KcMaterializationService>,
     pub(super) network_manager: Arc<NetworkManager>,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
@@ -72,6 +76,7 @@ impl SendPublishFinalityRequestCommandHandler {
             finality_status_repository: deps.finality_status_repository,
             operation_repository: deps.operation_repository,
             triples_insert_count_repository: deps.triples_insert_count_repository,
+            kc_projection_repository: deps.kc_projection_repository,
             kc_materialization_service: deps.kc_materialization_service,
             network_manager: deps.network_manager,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
@@ -244,6 +249,46 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
                 return CommandOutcome::Completed;
             }
         };
+
+        // Publish finality insert path bypasses sync queue outcomes, so mark projection present here.
+        let contract_address = canonical_evm_address(&data.knowledge_collection_storage_address);
+        if let Ok(kc_id) = u64::try_from(knowledge_collection_id) {
+            if let Err(error) = self
+                .kc_projection_repository
+                .ensure_desired_present(data.blockchain.as_str(), &contract_address, &[kc_id])
+                .await
+            {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    blockchain = %data.blockchain,
+                    contract = %contract_address,
+                    kc_id,
+                    error = %error,
+                    "Failed to upsert projection desired state after publish finality insert"
+                );
+            } else if let Err(error) = self
+                .kc_projection_repository
+                .mark_present(data.blockchain.as_str(), &contract_address, &[kc_id])
+                .await
+            {
+                tracing::warn!(
+                    operation_id = %operation_id,
+                    blockchain = %data.blockchain,
+                    contract = %contract_address,
+                    kc_id,
+                    error = %error,
+                    "Failed to mark projection state as present after publish finality insert"
+                );
+            }
+        } else {
+            tracing::warn!(
+                operation_id = %operation_id,
+                blockchain = %data.blockchain,
+                contract = %contract_address,
+                kc_id = knowledge_collection_id,
+                "Skipping projection update: KC id out of u64 range"
+            );
+        }
 
         // Remove from publish tmp dataset store now that insertion succeeded
         if let Err(e) = self

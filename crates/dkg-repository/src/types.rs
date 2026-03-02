@@ -31,6 +31,7 @@ pub enum KcProjectionActualState {
     Unknown = 0,
     Present = 1,
     Failed = 2,
+    Pending = 3,
 }
 
 impl KcProjectionActualState {

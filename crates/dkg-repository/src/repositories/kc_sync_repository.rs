@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use chrono::Utc;
 use sea_orm::sea_query::Expr;
@@ -898,6 +898,62 @@ impl KcSyncRepository {
                 record_repository_query(
                     "kc_sync",
                     "increment_retry_count",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
+    }
+
+    /// Get current retry counts for specific queue rows.
+    pub async fn get_retry_counts_for_kcs(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        kc_ids: &[u64],
+    ) -> Result<HashMap<u64, u32>> {
+        let started = Instant::now();
+        if kc_ids.is_empty() {
+            record_repository_query(
+                "kc_sync",
+                "get_retry_counts_for_kcs",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
+            return Ok(HashMap::new());
+        }
+
+        let result = QueueEntity::find()
+            .filter(QueueColumn::BlockchainId.eq(blockchain_id))
+            .filter(QueueColumn::ContractAddress.eq(contract_address))
+            .filter(QueueColumn::KcId.is_in(kc_ids.to_vec()))
+            .all(self.conn.as_ref())
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| (row.kc_id, row.retry_count))
+                    .collect::<HashMap<_, _>>()
+            })
+            .map_err(Into::into);
+
+        match &result {
+            Ok(counts) => {
+                record_repository_query(
+                    "kc_sync",
+                    "get_retry_counts_for_kcs",
+                    "ok",
+                    started.elapsed(),
+                    Some(counts.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "get_retry_counts_for_kcs",
                     "error",
                     started.elapsed(),
                     None,
