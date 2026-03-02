@@ -300,8 +300,8 @@ impl AssertionValidation {
         let expected_root = extract_private_merkle_root(root_triple)
             .ok_or(AssertionValidationError::PrivateMerkleRootExtractionFailed)?;
 
-        // Sort private triples and calculate merkle root
-        let mut sorted_private: Vec<String> = private_triples.to_vec();
+        // Sort borrowed private triples and calculate merkle root without cloning the full vector.
+        let mut sorted_private: Vec<&str> = private_triples.iter().map(String::as_str).collect();
         sorted_private.sort_by(|a, b| compare_js_default_string_order(a, b));
 
         let calculated_root = dkg_domain::calculate_merkle_root(&sorted_private);

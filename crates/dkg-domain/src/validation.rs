@@ -5,52 +5,6 @@ use alloy::{
 
 const CHUNK_SIZE: usize = 32;
 
-pub fn calculate_merkle_root(quads: &[String]) -> String {
-    let chunks = split_into_chunks(quads);
-
-    let mut leaves: Vec<B256> = chunks
-        .iter()
-        .enumerate()
-        .map(|(i, c)| leaf_hash(c, i))
-        .collect();
-
-    if leaves.is_empty() {
-        return "0x".to_string();
-    }
-
-    while leaves.len() > 1 {
-        let mut next = Vec::with_capacity(leaves.len().div_ceil(2));
-
-        let mut i = 0usize;
-        while i < leaves.len() {
-            let left = leaves[i];
-
-            if i + 1 >= leaves.len() {
-                next.push(left); // carry
-                break;
-            }
-
-            let right = leaves[i + 1];
-            let (a, b) = if left <= right {
-                (left, right)
-            } else {
-                (right, left)
-            };
-
-            let mut buf = [0u8; 64];
-            buf[..32].copy_from_slice(a.as_slice());
-            buf[32..].copy_from_slice(b.as_slice());
-
-            next.push(keccak256(buf));
-            i += 2;
-        }
-
-        leaves = next;
-    }
-
-    format!("0x{}", hex::encode(leaves[0].as_slice()))
-}
-
 /// Calculate the byte size of an assertion based on its chunks.
 /// This matches the on-chain byteSize calculation: numberOfChunks * CHUNK_SIZE
 ///
@@ -171,8 +125,63 @@ fn build_merkle_proof(leaves: &[B256], leaf_index: usize) -> Vec<B256> {
     proof
 }
 
-fn split_into_chunks(quads: &[String]) -> Vec<String> {
-    let concatenated = quads.join("\n");
+pub fn calculate_merkle_root<T: AsRef<str>>(quads: &[T]) -> String {
+    let chunks = split_into_chunks(quads);
+
+    let mut leaves: Vec<B256> = chunks
+        .iter()
+        .enumerate()
+        .map(|(i, c)| leaf_hash(c, i))
+        .collect();
+
+    if leaves.is_empty() {
+        return "0x".to_string();
+    }
+
+    while leaves.len() > 1 {
+        let mut next = Vec::with_capacity(leaves.len().div_ceil(2));
+
+        let mut i = 0usize;
+        while i < leaves.len() {
+            let left = leaves[i];
+
+            if i + 1 >= leaves.len() {
+                next.push(left); // carry
+                break;
+            }
+
+            let right = leaves[i + 1];
+            let (a, b) = if left <= right {
+                (left, right)
+            } else {
+                (right, left)
+            };
+
+            let mut buf = [0u8; 64];
+            buf[..32].copy_from_slice(a.as_slice());
+            buf[32..].copy_from_slice(b.as_slice());
+
+            next.push(keccak256(buf));
+            i += 2;
+        }
+
+        leaves = next;
+    }
+
+    format!("0x{}", hex::encode(leaves[0].as_slice()))
+}
+
+fn split_into_chunks<T: AsRef<str>>(quads: &[T]) -> Vec<String> {
+    let total_bytes =
+        quads.iter().map(|quad| quad.as_ref().len()).sum::<usize>() + quads.len().saturating_sub(1);
+    let mut concatenated = String::with_capacity(total_bytes);
+    for (idx, quad) in quads.iter().enumerate() {
+        if idx > 0 {
+            concatenated.push('\n');
+        }
+        concatenated.push_str(quad.as_ref());
+    }
+
     let bytes = concatenated.as_bytes();
 
     let mut chunks = Vec::new();
@@ -238,6 +247,23 @@ mod tests {
         assert_eq!(
             root,
             "0x66ca3160277b181d0307262a0127f5f570f1d8c1b3276e8fe3b0e19ba8edcc35".to_string()
+        );
+    }
+
+    #[test]
+    fn test_calculate_merkle_root_with_borrowed_inputs() {
+        let quads = [
+            "<urn:us-cities:info:new-york> <http://schema.org/name> \"New York\" .",
+            "<urn:us-cities:info:new-york> <http://schema.org/state> \"New York\" .",
+            "<urn:us-cities:info:new-york> <http://schema.org/population> \"8,336,817\" .",
+        ]
+        .map(String::from)
+        .to_vec();
+        let borrowed: Vec<&str> = quads.iter().map(String::as_str).collect();
+
+        assert_eq!(
+            calculate_merkle_root(&quads),
+            calculate_merkle_root(&borrowed)
         );
     }
 
