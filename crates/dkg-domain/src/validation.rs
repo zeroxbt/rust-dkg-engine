@@ -60,8 +60,8 @@ pub fn calculate_merkle_root(quads: &[String]) -> String {
 /// 3. numberOfChunks = ceil(totalBytes / CHUNK_SIZE)
 /// 4. byteSize = numberOfChunks * CHUNK_SIZE
 pub fn calculate_assertion_size(quads: &[String]) -> usize {
-    let concatenated = quads.join("\n");
-    let total_bytes = concatenated.len();
+    let total_bytes =
+        quads.iter().map(|quad| quad.len()).sum::<usize>() + quads.len().saturating_sub(1);
     let num_chunks = total_bytes.div_ceil(CHUNK_SIZE);
     num_chunks * CHUNK_SIZE
 }
@@ -197,6 +197,13 @@ mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
 
+    fn calculate_assertion_size_old(quads: &[String]) -> usize {
+        let concatenated = quads.join("\n");
+        let total_bytes = concatenated.len();
+        let num_chunks = total_bytes.div_ceil(CHUNK_SIZE);
+        num_chunks * CHUNK_SIZE
+    }
+
     #[test]
     fn test_calculate_merkle_root() {
         let quads: Vec<String> = [
@@ -245,6 +252,48 @@ mod tests {
         let quads = vec!["a".to_string(), "b".to_string()];
         let chunks = split_into_chunks(&quads);
         assert_eq!(chunks, vec!["a\nb"]);
+    }
+
+    #[test]
+    fn test_calculate_assertion_size_matches_previous_logic() {
+        let explicit_cases: Vec<Vec<String>> = vec![
+            vec![],
+            vec!["a".to_string()],
+            vec!["hello".to_string(), "world".to_string()],
+            vec!["x".repeat(31)],
+            vec!["x".repeat(32)],
+            vec!["x".repeat(33)],
+            vec!["hello\nworld".to_string(), "line2".to_string()],
+            vec!["cafe".to_string(), "cafe\u{301}".to_string()],
+            vec!["😄".to_string(), "multi-byte-✓".to_string()],
+        ];
+
+        for quads in explicit_cases {
+            assert_eq!(
+                calculate_assertion_size(&quads),
+                calculate_assertion_size_old(&quads),
+                "size mismatch for explicit case: {:?}",
+                quads
+            );
+        }
+
+        for count in 0..128 {
+            let quads: Vec<String> = (0..count)
+                .map(|i| match i % 5 {
+                    0 => format!("triple-{i}"),
+                    1 => "x".repeat((i % 64) + 1),
+                    2 => format!("subject-{i}\npredicate-{i}\nobject-{i}"),
+                    3 => format!("utf8-{}-😄", i),
+                    _ => format!("combining-{}-cafe\u{301}", i),
+                })
+                .collect();
+
+            assert_eq!(
+                calculate_assertion_size(&quads),
+                calculate_assertion_size_old(&quads),
+                "size mismatch for generated case with count={count}"
+            );
+        }
     }
 
     #[test]
