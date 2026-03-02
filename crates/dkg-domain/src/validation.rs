@@ -213,6 +213,96 @@ mod tests {
         num_chunks * CHUNK_SIZE
     }
 
+    fn split_into_chunks_old(quads: &[String]) -> Vec<String> {
+        let concatenated = quads.join("\n");
+        let bytes = concatenated.as_bytes();
+
+        let mut chunks = Vec::new();
+        let mut start = 0usize;
+        while start < bytes.len() {
+            let end = (start + CHUNK_SIZE).min(bytes.len());
+            chunks.push(String::from_utf8_lossy(&bytes[start..end]).into_owned());
+            start = end;
+        }
+        chunks
+    }
+
+    fn leaf_hash_old(chunk: &str, index: usize) -> B256 {
+        let packed = (chunk.to_string(), U256::from(index)).abi_encode_packed();
+        keccak256(packed)
+    }
+
+    fn calculate_merkle_root_old(quads: &[String]) -> String {
+        let chunks = split_into_chunks_old(quads);
+
+        let mut leaves: Vec<B256> = chunks
+            .iter()
+            .enumerate()
+            .map(|(i, c)| leaf_hash_old(c, i))
+            .collect();
+
+        if leaves.is_empty() {
+            return "0x".to_string();
+        }
+
+        while leaves.len() > 1 {
+            let mut next = Vec::with_capacity(leaves.len().div_ceil(2));
+            let mut i = 0usize;
+            while i < leaves.len() {
+                let left = leaves[i];
+                if i + 1 >= leaves.len() {
+                    next.push(left);
+                    break;
+                }
+
+                let right = leaves[i + 1];
+                let (a, b) = if left <= right {
+                    (left, right)
+                } else {
+                    (right, left)
+                };
+                let mut buf = [0u8; 64];
+                buf[..32].copy_from_slice(a.as_slice());
+                buf[32..].copy_from_slice(b.as_slice());
+                next.push(keccak256(buf));
+                i += 2;
+            }
+            leaves = next;
+        }
+
+        format!("0x{}", hex::encode(leaves[0].as_slice()))
+    }
+
+    fn calculate_merkle_proof_old(
+        quads: &[String],
+        chunk_index: usize,
+    ) -> Result<MerkleProofResult, String> {
+        let chunks = split_into_chunks_old(quads);
+
+        if chunks.is_empty() {
+            return Err("No chunks to prove".to_string());
+        }
+        if chunk_index >= chunks.len() {
+            return Err(format!(
+                "Chunk index {} out of range, only {} chunks exist",
+                chunk_index,
+                chunks.len()
+            ));
+        }
+
+        let leaves: Vec<B256> = chunks
+            .iter()
+            .enumerate()
+            .map(|(i, c)| leaf_hash_old(c, i))
+            .collect();
+        let proof = build_merkle_proof(&leaves, chunk_index);
+
+        Ok(MerkleProofResult {
+            chunk: chunks[chunk_index].clone(),
+            proof,
+        })
+    }
+
     #[test]
     fn test_calculate_merkle_root() {
         let quads: Vec<String> = [
@@ -319,6 +409,81 @@ mod tests {
                 calculate_assertion_size_old(&quads),
                 "size mismatch for generated case with count={count}"
             );
+        }
+    }
+
+    #[test]
+    fn test_merkle_chunk_root_and_proof_match_previous_logic() {
+        let explicit_cases: Vec<Vec<String>> = vec![
+            vec![],
+            vec!["a".to_string()],
+            vec!["hello".to_string(), "world".to_string()],
+            vec!["x".repeat(31)],
+            vec!["x".repeat(32)],
+            vec!["x".repeat(33)],
+            vec!["hello\nworld".to_string(), "line2".to_string()],
+            vec!["cafe".to_string(), "cafe\u{301}".to_string()],
+            vec!["😄".repeat(9), "unicode-boundary-✓".to_string()],
+            vec![
+                "prefix-😄-suffix".to_string(),
+                "very-long-".to_string() + &"a".repeat(128),
+            ],
+        ];
+
+        for quads in explicit_cases {
+            let chunks_old = split_into_chunks_old(&quads);
+            let chunks_new = split_into_chunks(&quads);
+            assert_eq!(chunks_new, chunks_old, "chunk split mismatch");
+
+            assert_eq!(
+                calculate_merkle_root(&quads),
+                calculate_merkle_root_old(&quads),
+                "root mismatch for explicit case"
+            );
+
+            for idx in 0..chunks_new.len() {
+                let proof_old = calculate_merkle_proof_old(&quads, idx).unwrap();
+                let proof_new = calculate_merkle_proof(&quads, idx).unwrap();
+                assert_eq!(proof_new.chunk, proof_old.chunk, "proof chunk mismatch");
+                assert_eq!(proof_new.proof, proof_old.proof, "proof path mismatch");
+            }
+        }
+
+        for count in 0..64 {
+            let quads: Vec<String> = (0..count)
+                .map(|i| match i % 7 {
+                    0 => format!("triple-{i}"),
+                    1 => "x".repeat((i % 96) + 1),
+                    2 => format!("subject-{i}\npredicate-{i}\nobject-{i}"),
+                    3 => format!("utf8-{}-😄", i),
+                    4 => format!("combining-{}-cafe\u{301}", i),
+                    5 => format!("long-{}-{}", i, "a".repeat((i % 37) + 13)),
+                    _ => String::new(),
+                })
+                .collect();
+
+            let chunks_old = split_into_chunks_old(&quads);
+            let chunks_new = split_into_chunks(&quads);
+            assert_eq!(chunks_new, chunks_old, "chunk mismatch for count={count}");
+
+            assert_eq!(
+                calculate_merkle_root(&quads),
+                calculate_merkle_root_old(&quads),
+                "root mismatch for count={count}"
+            );
+
+            for idx in 0..chunks_new.len() {
+                let proof_old = calculate_merkle_proof_old(&quads, idx).unwrap();
+                let proof_new = calculate_merkle_proof(&quads, idx).unwrap();
+                assert_eq!(
+                    proof_new.chunk, proof_old.chunk,
+                    "proof chunk mismatch for count={count}, idx={idx}"
+                );
+                assert_eq!(
+                    proof_new.proof, proof_old.proof,
+                    "proof path mismatch for count={count}, idx={idx}"
+                );
+            }
         }
     }
 
