@@ -4,7 +4,7 @@ use dkg_blockchain::{
     Address, B256, BlockchainId, BlockchainManager, MulticallBatch, MulticallRequest, U256,
     encoders, to_hex_string,
 };
-use dkg_domain::TokenIds;
+use dkg_domain::{TokenIds, canonical_evm_address};
 use dkg_repository::{KcChainMetadataRepository, error::RepositoryError};
 use futures::{StreamExt, stream};
 
@@ -85,7 +85,7 @@ pub(crate) async fn hydrate_core_metadata_publishers(
             .get_transaction_sender(blockchain_id, record.transaction_hash)
             .await
         {
-            Ok(Some(address)) => Some(format!("{:?}", address)),
+            Ok(Some(address)) => Some(canonical_evm_address(&address)),
             _ => None,
         };
     }
@@ -281,7 +281,7 @@ pub(crate) async fn upsert_kc_chain_metadata_record(
     source: &str,
     record: &KcChainMetadataRecord,
 ) -> Result<(), RepositoryError> {
-    let contract_address_str = format!("{:?}", record.contract_address);
+    let contract_address_str = canonical_evm_address(&record.contract_address);
     let transaction_hash_str = format!("{:#x}", record.transaction_hash);
 
     repository

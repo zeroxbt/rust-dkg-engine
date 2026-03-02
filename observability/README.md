@@ -72,15 +72,15 @@ bind_address = "127.0.0.1:9464"
 - Pending outbound request gauges and response-send success/failure rates
 
 `sync-v2.json`:
-- KCs with synced metadata totals from SQL (`node_sync_metadata_kcs_total` and source-filtered `node_sync_metadata_backfill_kcs_total`)
+- KCs with synced metadata totals from SQL (`node_sync_metadata_kcs_total` and source-filtered `node_sync_metadata_discovery_kcs_total`)
 - KCs estimated fully synced (`clamp_min(node_sync_metadata_kcs_total - node_sync_queue_total, 0)`)
 - Sync queue snapshot: due (`node_sync_queue_due`), retrying (`node_sync_queue_retrying`), failed estimate (`clamp_min(node_sync_queue_total - node_sync_queue_due - node_sync_queue_retrying, 0)`)
 - Fetch batch duration p50/p95/p99 for successful batches (`node_sync_fetch_batch_duration_seconds{status="success",quantile=...}`)
 - KA/KC count per fetch batch averages (`sum(rate(node_sync_fetch_batch_assets_sum[5m])) / sum(rate(node_sync_fetch_batch_assets_count[5m]))` and `sum(rate(node_sync_fetch_batch_kcs_sum[5m])) / sum(rate(node_sync_fetch_batch_kcs_count[5m]))`)
 - Insert batch duration p50/p95/p99 for successful batches (`node_sync_insert_batch_duration_seconds{status="success",quantile=...}`)
 - KC/KA count per insert batch averages (`sum(rate(node_sync_insert_batch_kcs_sum[5m])) / sum(rate(node_sync_insert_batch_kcs_count[5m]))` and `sum(rate(node_sync_insert_batch_assets_sum[5m])) / sum(rate(node_sync_insert_batch_assets_count[5m]))`)
-- Metadata backfill batch fetch vs processing p50/p95/p99 (`node_sync_metadata_backfill_batch_fetch_duration_seconds` and `node_sync_metadata_backfill_batch_processing_duration_seconds`)
-- Metadata backfill batch averages: blocks scanned and events found (`node_sync_metadata_backfill_batch_blocks` and `node_sync_metadata_backfill_batch_events`)
+- Metadata discovery batch fetch vs processing p50/p95/p99 (`node_sync_metadata_discovery_batch_fetch_duration_seconds` and `node_sync_metadata_discovery_batch_processing_duration_seconds`)
+- Metadata discovery batch averages: blocks scanned and events found (`node_sync_metadata_discovery_batch_blocks` and `node_sync_metadata_discovery_batch_events`)
 
 `memory.json`:
 - Process-level memory (RSS/virtual) and file descriptor usage

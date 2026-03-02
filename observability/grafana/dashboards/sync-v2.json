@@ -262,9 +262,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(node_sync_metadata_backfill_kcs_total)",
+          "expr": "sum(node_sync_metadata_discovery_kcs_total)",
           "instant": false,
-          "legendFormat": "metadata_backfill_kcs",
+          "legendFormat": "metadata_discovery_kcs",
           "range": true,
           "refId": "B"
         }
@@ -446,7 +446,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_backfill_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.5\"}",
+          "expr": "node_sync_metadata_discovery_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.5\"}",
           "instant": false,
           "legendFormat": "fetch p50",
           "range": true,
@@ -458,7 +458,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_backfill_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.95\"}",
+          "expr": "node_sync_metadata_discovery_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.95\"}",
           "instant": false,
           "legendFormat": "fetch p95",
           "range": true,
@@ -470,7 +470,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_backfill_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.99\"}",
+          "expr": "node_sync_metadata_discovery_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.99\"}",
           "instant": false,
           "legendFormat": "fetch p99",
           "range": true,
@@ -482,7 +482,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_backfill_batch_processing_duration_seconds{status=\"success\",quantile=\"0.5\"}",
+          "expr": "node_sync_metadata_discovery_batch_processing_duration_seconds{status=\"success\",quantile=\"0.5\"}",
           "instant": false,
           "legendFormat": "processing p50",
           "range": true,
@@ -494,7 +494,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_backfill_batch_processing_duration_seconds{status=\"success\",quantile=\"0.95\"}",
+          "expr": "node_sync_metadata_discovery_batch_processing_duration_seconds{status=\"success\",quantile=\"0.95\"}",
           "instant": false,
           "legendFormat": "processing p95",
           "range": true,
@@ -506,7 +506,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_backfill_batch_processing_duration_seconds{status=\"success\",quantile=\"0.99\"}",
+          "expr": "node_sync_metadata_discovery_batch_processing_duration_seconds{status=\"success\",quantile=\"0.99\"}",
           "instant": false,
           "legendFormat": "processing p99",
           "range": true,
@@ -555,7 +555,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(node_sync_metadata_backfill_batch_blocks_sum{status=\"success\"}[5m])) / clamp_min(sum(rate(node_sync_metadata_backfill_batch_blocks_count{status=\"success\"}[5m])), 1e-9)",
+          "expr": "sum(rate(node_sync_metadata_discovery_batch_blocks_sum{status=\"success\"}[5m])) / clamp_min(sum(rate(node_sync_metadata_discovery_batch_blocks_count{status=\"success\"}[5m])), 1e-9)",
           "instant": false,
           "legendFormat": "avg_blocks_per_batch",
           "range": true,
@@ -567,7 +567,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(node_sync_metadata_backfill_batch_events_sum{status=\"success\"}[5m])) / clamp_min(sum(rate(node_sync_metadata_backfill_batch_events_count{status=\"success\"}[5m])), 1e-9)",
+          "expr": "sum(rate(node_sync_metadata_discovery_batch_events_sum{status=\"success\"}[5m])) / clamp_min(sum(rate(node_sync_metadata_discovery_batch_events_count{status=\"success\"}[5m])), 1e-9)",
           "instant": false,
           "legendFormat": "avg_events_found_per_batch",
           "range": true,
@@ -616,7 +616,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_metadata_backfill_batch_fetch_duration_seconds_count{status=\"error\"}[5m])) or on() vector(0)",
+          "expr": "sum(increase(node_sync_metadata_discovery_batch_fetch_duration_seconds_count{status=\"error\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "fetch_errors_5m",
           "range": true,
@@ -628,7 +628,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_metadata_backfill_batch_processing_duration_seconds_count{status=\"error\"}[5m])) or on() vector(0)",
+          "expr": "sum(increase(node_sync_metadata_discovery_batch_processing_duration_seconds_count{status=\"error\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "processing_errors_5m",
           "range": true,
@@ -640,7 +640,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(increase(node_sync_metadata_backfill_batch_fetch_duration_seconds_count{status=\"error\"}[5m])) + sum(increase(node_sync_metadata_backfill_batch_processing_duration_seconds_count{status=\"error\"}[5m]))) or on() vector(0)",
+          "expr": "(sum(increase(node_sync_metadata_discovery_batch_fetch_duration_seconds_count{status=\"error\"}[5m])) + sum(increase(node_sync_metadata_discovery_batch_processing_duration_seconds_count{status=\"error\"}[5m]))) or on() vector(0)",
           "instant": false,
           "legendFormat": "total_errors_5m",
           "range": true,

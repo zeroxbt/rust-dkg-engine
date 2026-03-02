@@ -14,9 +14,11 @@ use tracing::instrument;
 
 use dkg_observability as observability;
 
-use super::types::{KcToSync, QueueKcKey, QueueKcWorkItem, QueueOutcome};
 use crate::application::TripleStoreAssertions;
 use crate::application::state_metadata::{BurnedMode, decode_burned_ids};
+use crate::tasks::dkg_sync::pipeline::types::{
+    KcToSync, QueueKcKey, QueueKcWorkItem, QueueOutcome,
+};
 
 #[allow(clippy::too_many_arguments)]
 #[instrument(

@@ -30,6 +30,7 @@ use crate::{
     logger::{LogFormat, LoggerConfig, TelemetryConfig, TelemetryMetricsConfig},
     managers::ManagersConfigRaw,
     tasks::{
+        dkg_sync::{DkgSyncConfig, DkgSyncDiscoveryConfig, DkgSyncQueueProcessorConfig},
         periodic::{
             PeriodicTasksConfig,
             tasks::{
@@ -42,7 +43,6 @@ use crate::{
                 proving::ProvingConfig,
             },
         },
-        sync_backfill::SyncConfig,
     },
 };
 
@@ -109,25 +109,27 @@ fn proving() -> ProvingConfig {
     ProvingConfig { enabled: true }
 }
 
-fn sync() -> SyncConfig {
-    SyncConfig {
-        enabled: true,
-        head_safety_blocks: 2,
-        // Replenisher
-        metadata_backfill_block_batch_size: 100,
-        metadata_state_batch_size: 50,
-        metadata_error_retry_interval_secs: 30,
-        queue_high_watermark: 500,
-        queue_low_watermark: 200,
-        // Pipeline / dispatch
-        pipeline_capacity: 128,
-        stage_channel_buffer: 4,
-        filter_batch_size: 64,
-        max_assets_per_fetch_batch: 16_384,
-        insert_batch_concurrency: 8,
-        // Retry
-        dispatch_idle_poll_secs: 5,
-        max_retry_attempts: 3,
+fn dkg_sync() -> DkgSyncConfig {
+    DkgSyncConfig {
+        discovery: DkgSyncDiscoveryConfig {
+            enabled: true,
+            head_safety_blocks: 2,
+            max_contract_concurrency: 128,
+            metadata_discovery_block_batch_size: 100,
+            metadata_state_batch_size: 50,
+            metadata_error_retry_interval_secs: 30,
+            queue_high_watermark: 500,
+            queue_low_watermark: 200,
+        },
+        queue_processor: DkgSyncQueueProcessorConfig {
+            pipeline_capacity: 128,
+            pipeline_channel_buffer: 4,
+            filter_batch_size: 64,
+            max_assets_per_fetch_batch: 16_384,
+            insert_batch_concurrency: 8,
+            dispatch_idle_poll_secs: 5,
+            max_retry_attempts: 3,
+        },
     }
 }
 
@@ -168,7 +170,7 @@ fn controllers() -> ControllersConfig {
 fn periodic_tasks() -> PeriodicTasksConfig {
     PeriodicTasksConfig {
         cleanup: cleanup(),
-        sync_backfill: sync(),
+        dkg_sync: dkg_sync(),
         kc_reconciliation: kc_reconciliation(),
         paranet_sync: paranet_sync(),
         proving: proving(),

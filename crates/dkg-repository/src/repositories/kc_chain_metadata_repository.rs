@@ -158,7 +158,7 @@ impl KcChainMetadataRepository {
         .await
     }
 
-    /// Upsert canonical KC core metadata sourced from chain events or backfill.
+    /// Upsert canonical KC core metadata sourced from chain events or discovery.
     #[allow(clippy::too_many_arguments)]
     pub async fn upsert_core_metadata(
         &self,

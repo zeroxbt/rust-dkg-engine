@@ -7,7 +7,9 @@ use std::{
 
 use chrono::Utc;
 use dkg_blockchain::{BlockchainManager, U256};
-use dkg_domain::{Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, derive_ual};
+use dkg_domain::{
+    Assertion, BlockchainId, ParsedUal, TokenIds, Visibility, canonical_evm_address, derive_ual,
+};
 use dkg_network::{GetRequestData, NetworkManager, PeerId, STREAM_PROTOCOL_GET};
 use dkg_observability as observability;
 use dkg_repository::{ChallengeState, ProofChallengeRepository};
@@ -100,7 +102,7 @@ impl ProvingTask {
         // Build request data
         let request_data = GetRequestData::new(
             parsed_ual.blockchain.clone(),
-            format!("{:?}", &parsed_ual.contract),
+            canonical_evm_address(&parsed_ual.contract),
             parsed_ual.knowledge_collection_id,
             parsed_ual.knowledge_asset_id,
             parsed_ual.to_ual_string(),
@@ -374,7 +376,7 @@ impl ProvingTask {
         let kc_id = node_challenge.knowledge_collection_id.as_limbs()[0] as u128;
         let chunk_index = node_challenge.chunk_id.as_limbs()[0] as usize;
         let contract_addr =
-            format!("{:?}", node_challenge.knowledge_collection_storage_contract).to_lowercase();
+            canonical_evm_address(&node_challenge.knowledge_collection_storage_contract);
 
         // Store challenge in database if new
         let db_challenge = self

@@ -3,7 +3,9 @@ use std::{collections::HashMap, sync::Arc};
 pub(crate) mod build_assets;
 mod metadata;
 
-use dkg_domain::{Assertion, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility};
+use dkg_domain::{
+    Assertion, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility, canonical_evm_address,
+};
 use dkg_repository::KcChainMetadataRepository;
 use dkg_triple_store::{GraphVisibility, TripleStoreManager, error::TripleStoreError};
 use futures::{StreamExt, stream};
@@ -253,7 +255,7 @@ impl TripleStoreAssertions {
         };
 
         let blockchain_id = parsed_ual.blockchain.as_str();
-        let contract_address = format!("{:?}", parsed_ual.contract);
+        let contract_address = canonical_evm_address(&parsed_ual.contract);
         let entry = match self
             .kc_chain_metadata_repository
             .get_complete(blockchain_id, &contract_address, kc_id)
@@ -452,6 +454,18 @@ impl TripleStoreAssertions {
                 std::collections::HashSet::new()
             }
         }
+    }
+
+    /// Strict variant of KC UAL existence check.
+    ///
+    /// Returns backend errors instead of swallowing them and returning an empty set.
+    pub(crate) async fn try_knowledge_collections_exist_by_uals(
+        &self,
+        kc_uals: &[String],
+    ) -> Result<std::collections::HashSet<String>, TripleStoreError> {
+        self.triple_store_manager
+            .knowledge_collections_exist_by_uals(kc_uals)
+            .await
     }
 }
 

@@ -33,57 +33,57 @@ pub fn record_sync_metadata_total_snapshot(blockchain_id: &str, metadata_kcs_tot
     .set(metadata_kcs_total as f64);
 }
 
-pub fn record_sync_metadata_backfill_total_snapshot(
+pub fn record_sync_metadata_discovery_total_snapshot(
     blockchain_id: &str,
-    metadata_backfill_kcs_total: u64,
+    metadata_discovery_kcs_total: u64,
 ) {
     gauge!(
-        "node_sync_metadata_backfill_kcs_total",
+        "node_sync_metadata_discovery_kcs_total",
         "blockchain_id" => blockchain_id.to_string()
     )
-    .set(metadata_backfill_kcs_total as f64);
+    .set(metadata_discovery_kcs_total as f64);
 }
 
-pub fn record_sync_metadata_backfill_batch(
+pub fn record_sync_metadata_discovery_batch(
     blockchain_id: &str,
     status: &str,
     blocks_scanned: u64,
     events_found: usize,
 ) {
     histogram!(
-        "node_sync_metadata_backfill_batch_blocks",
+        "node_sync_metadata_discovery_batch_blocks",
         "blockchain_id" => blockchain_id.to_string(),
         "status" => status.to_string()
     )
     .record(blocks_scanned as f64);
     histogram!(
-        "node_sync_metadata_backfill_batch_events",
+        "node_sync_metadata_discovery_batch_events",
         "blockchain_id" => blockchain_id.to_string(),
         "status" => status.to_string()
     )
     .record(events_found as f64);
 }
 
-pub fn record_sync_metadata_backfill_batch_fetch_duration(
+pub fn record_sync_metadata_discovery_batch_fetch_duration(
     blockchain_id: &str,
     status: &str,
     duration: Duration,
 ) {
     histogram!(
-        "node_sync_metadata_backfill_batch_fetch_duration_seconds",
+        "node_sync_metadata_discovery_batch_fetch_duration_seconds",
         "blockchain_id" => blockchain_id.to_string(),
         "status" => status.to_string()
     )
     .record(duration.as_secs_f64());
 }
 
-pub fn record_sync_metadata_backfill_batch_processing_duration(
+pub fn record_sync_metadata_discovery_batch_processing_duration(
     blockchain_id: &str,
     status: &str,
     duration: Duration,
 ) {
     histogram!(
-        "node_sync_metadata_backfill_batch_processing_duration_seconds",
+        "node_sync_metadata_discovery_batch_processing_duration_seconds",
         "blockchain_id" => blockchain_id.to_string(),
         "status" => status.to_string()
     )

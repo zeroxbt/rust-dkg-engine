@@ -4,7 +4,9 @@ pub(crate) mod network_fetch;
 use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
-use dkg_domain::{Assertion, ParsedUal, TokenIds, UalParseError, Visibility, parse_ual};
+use dkg_domain::{
+    Assertion, ParsedUal, TokenIds, UalParseError, Visibility, canonical_evm_address, parse_ual,
+};
 use dkg_network::{GetRequestData, NetworkManager, PeerId, STREAM_PROTOCOL_GET};
 use thiserror::Error;
 use uuid::Uuid;
@@ -201,7 +203,7 @@ impl GetAssertionUseCase {
 
         let get_request_data = GetRequestData::new(
             parsed_ual.blockchain.clone(),
-            format!("{:?}", parsed_ual.contract),
+            canonical_evm_address(&parsed_ual.contract),
             parsed_ual.knowledge_collection_id,
             parsed_ual.knowledge_asset_id,
             request.ual.clone(),

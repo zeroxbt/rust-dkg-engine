@@ -150,9 +150,9 @@ impl StateSnapshotTask {
             }
         };
 
-        let metadata_backfill_kcs_total = match self
+        let metadata_discovery_kcs_total = match self
             .kc_chain_metadata_repository
-            .count_core_metadata_for_blockchain_by_source(blockchain_id, "sync_metadata_backfill")
+            .count_core_metadata_for_blockchain_by_source(blockchain_id, "sync_metadata_discovery")
             .await
         {
             Ok(v) => v,
@@ -160,16 +160,16 @@ impl StateSnapshotTask {
                 tracing::warn!(
                     blockchain_id,
                     error = %error,
-                    "Failed to count KC core metadata rows from sync_metadata_backfill source"
+                    "Failed to count KC core metadata rows from sync_metadata_discovery source"
                 );
                 0
             }
         };
 
         observability::record_sync_metadata_total_snapshot(blockchain_id, metadata_kcs_total);
-        observability::record_sync_metadata_backfill_total_snapshot(
+        observability::record_sync_metadata_discovery_total_snapshot(
             blockchain_id,
-            metadata_backfill_kcs_total,
+            metadata_discovery_kcs_total,
         );
     }
 

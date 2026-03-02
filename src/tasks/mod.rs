@@ -1,2 +1,2 @@
+pub(crate) mod dkg_sync;
 pub(crate) mod periodic;
-pub(crate) mod sync_backfill;

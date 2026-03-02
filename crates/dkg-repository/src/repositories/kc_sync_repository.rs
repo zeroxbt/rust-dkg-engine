@@ -120,7 +120,7 @@ impl KcSyncRepository {
         result
     }
 
-    /// Get metadata event backfill cursor for a contract.
+    /// Get metadata event discovery cursor for a contract.
     pub async fn get_metadata_progress(
         &self,
         blockchain_id: &str,
@@ -161,7 +161,7 @@ impl KcSyncRepository {
         result
     }
 
-    /// Upsert metadata event backfill cursor for a contract.
+    /// Upsert metadata event discovery cursor for a contract.
     pub async fn upsert_metadata_progress(
         &self,
         blockchain_id: &str,

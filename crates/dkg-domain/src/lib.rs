@@ -1,3 +1,4 @@
+mod address;
 mod assertion;
 mod blockchain_id;
 mod kc;
@@ -8,6 +9,7 @@ mod ual;
 mod validation;
 mod visibility;
 
+pub use address::canonical_evm_address;
 pub use assertion::Assertion;
 pub use blockchain_id::BlockchainId;
 pub use kc::{KnowledgeAsset, KnowledgeCollectionMetadata};

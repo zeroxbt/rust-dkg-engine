@@ -2,7 +2,8 @@ use std::{sync::Arc, time::Instant};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, sea_query::Expr,
+    ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, sea_query::Expr,
 };
 
 use crate::{
@@ -214,6 +215,81 @@ impl KcProjectionRepository {
                 record_repository_query(
                     "kc_projection",
                     "mark_failed",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
+    }
+
+    /// Return projection keys that should be reconciled against triple-store materialization.
+    ///
+    /// Includes rows with desired=Present and actual in {Unknown, Failed}.
+    pub async fn list_non_present_desired_keys(
+        &self,
+        blockchain_id: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, u64, KcProjectionActualState)>> {
+        let started = Instant::now();
+        if limit == 0 {
+            record_repository_query(
+                "kc_projection",
+                "list_non_present_desired_keys",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
+            return Ok(Vec::new());
+        }
+
+        let result = ProjectionEntity::find()
+            .filter(ProjectionColumn::BlockchainId.eq(blockchain_id))
+            .filter(ProjectionColumn::DesiredState.eq(KcProjectionDesiredState::Present.as_u8()))
+            .filter(ProjectionColumn::ActualState.is_in([
+                KcProjectionActualState::Unknown.as_u8(),
+                KcProjectionActualState::Failed.as_u8(),
+            ]))
+            .order_by_asc(ProjectionColumn::UpdatedAt)
+            .order_by_asc(ProjectionColumn::ContractAddress)
+            .order_by_asc(ProjectionColumn::KcId)
+            .limit(limit as u64)
+            .all(self.conn.as_ref())
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .filter_map(|row| {
+                        let actual_state = match row.actual_state {
+                            value if value == KcProjectionActualState::Unknown.as_u8() => {
+                                KcProjectionActualState::Unknown
+                            }
+                            value if value == KcProjectionActualState::Failed.as_u8() => {
+                                KcProjectionActualState::Failed
+                            }
+                            _ => return None,
+                        };
+                        Some((row.contract_address, row.kc_id, actual_state))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .map_err(Into::into);
+
+        match &result {
+            Ok(rows) => {
+                record_repository_query(
+                    "kc_projection",
+                    "list_non_present_desired_keys",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_projection",
+                    "list_non_present_desired_keys",
                     "error",
                     started.elapsed(),
                     None,

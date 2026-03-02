@@ -79,7 +79,7 @@ pub(crate) struct ProvingDeps {
 }
 
 #[derive(Clone)]
-pub(crate) struct SyncDeps {
+pub(crate) struct DkgSyncDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) kc_sync_repository: KcSyncRepository,
     pub(crate) kc_projection_repository: KcProjectionRepository,
@@ -123,7 +123,7 @@ pub(crate) struct PeriodicTasksDeps {
     pub(crate) blockchain_event_listener: BlockchainEventListenerDeps,
     pub(crate) claim_rewards: ClaimRewardsDeps,
     pub(crate) proving: ProvingDeps,
-    pub(crate) sync_backfill: SyncDeps,
+    pub(crate) dkg_sync: DkgSyncDeps,
     pub(crate) state_snapshot: StateSnapshotDeps,
     pub(crate) paranet_sync: ParanetSyncDeps,
     pub(crate) kc_reconciliation: KcReconciliationDeps,

@@ -1,7 +1,7 @@
 use alloy::primitives::Address;
 use thiserror::Error;
 
-use crate::BlockchainId;
+use crate::{BlockchainId, canonical_evm_address};
 
 #[derive(Debug, Error)]
 pub enum UalParseError {
@@ -34,9 +34,9 @@ impl ParsedUal {
     /// Example: `did:dkg:base:84532/0x1234.../123`
     pub fn knowledge_collection_ual(&self) -> String {
         format!(
-            "did:dkg:{}/{:?}/{}",
+            "did:dkg:{}/{}/{}",
             self.blockchain.as_str().to_lowercase(),
-            self.contract,
+            canonical_evm_address(&self.contract),
             self.knowledge_collection_id
         )
     }
@@ -68,9 +68,9 @@ pub fn derive_ual(
     knowledge_asset_id: Option<u128>,
 ) -> String {
     let base_ual = format!(
-        "did:dkg:{}/{:?}/{}",
+        "did:dkg:{}/{}/{}",
         blockchain.as_str().to_lowercase(),
-        contract,
+        canonical_evm_address(contract),
         knowledge_collection_id
     );
 

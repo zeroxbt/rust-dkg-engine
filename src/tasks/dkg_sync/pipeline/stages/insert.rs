@@ -10,8 +10,8 @@ use futures::{StreamExt, stream};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use super::types::{FetchedKc, QueueOutcome};
 use crate::application::KcMaterializationService;
+use crate::tasks::dkg_sync::pipeline::types::{FetchedKc, QueueOutcome};
 
 /// Insert stage: receives fetched KCs and inserts into triple store.
 ///

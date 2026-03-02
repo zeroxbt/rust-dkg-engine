@@ -9,7 +9,7 @@ use dkg_blockchain::{
     Address, BlockchainError, BlockchainId, BlockchainManager, ContractEvent, ContractName,
     decode_contract_event, monitored_contract_events, to_hex_string,
 };
-use dkg_domain::KnowledgeCollectionMetadata;
+use dkg_domain::{KnowledgeCollectionMetadata, canonical_evm_address};
 use dkg_observability as observability;
 use dkg_repository::{
     BlockchainRepository, KcChainMetadataRepository, KcProjectionRepository, KcSyncRepository,
@@ -136,7 +136,7 @@ impl BlockchainEventListenerTask {
             } else {
                 contract_addresses
                     .iter()
-                    .map(|addr| format!("{:?}", addr))
+                    .map(canonical_evm_address)
                     .collect()
             };
 
@@ -285,7 +285,7 @@ impl BlockchainEventListenerTask {
             } else {
                 contract_addresses
                     .iter()
-                    .map(|addr| format!("{:?}", addr))
+                    .map(canonical_evm_address)
                     .collect()
             };
 
@@ -628,7 +628,7 @@ impl BlockchainEventListenerTask {
             return;
         }
 
-        let contract_address_str = format!("{:?}", event.contract_address);
+        let contract_address_str = canonical_evm_address(&event.contract_address);
         if let Err(error) = self
             .kc_projection_repository
             .ensure_desired_present(

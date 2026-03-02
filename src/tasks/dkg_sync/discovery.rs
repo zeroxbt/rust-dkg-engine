@@ -8,28 +8,29 @@ use dkg_blockchain::{
     Address, BlockchainId, ContractEvent, ContractName, decode_contract_event,
     monitored_contract_events,
 };
+use dkg_domain::canonical_evm_address;
 use dkg_observability as observability;
 use dkg_repository::{SyncMetadataRecordInput, SyncMetadataStateInput};
 use thiserror::Error;
 
-use super::SyncConfig;
+use super::DkgSyncConfig;
 use crate::{
     application::kc_chain_metadata_sync::{
         BuildKcRecordError, build_kc_chain_metadata_record, hydrate_block_timestamps,
         hydrate_core_metadata_publishers, hydrate_kc_state_metadata,
     },
-    tasks::periodic::SyncDeps,
+    tasks::periodic::DkgSyncDeps,
 };
 
-pub(crate) struct MetadataReplenisher {
-    config: SyncConfig,
-    deps: SyncDeps,
+pub(crate) struct DiscoveryWorker {
+    config: DkgSyncConfig,
+    deps: DkgSyncDeps,
     active_range_by_contract: Mutex<HashMap<String, BlockRange>>,
     deployment_block_by_contract: Mutex<HashMap<String, Option<u64>>>,
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum MetadataReplenisherError {
+pub(crate) enum DiscoveryError {
     #[error("Failed to load metadata sync progress")]
     LoadMetadataProgress(#[source] dkg_repository::error::RepositoryError),
     #[error("Failed to fetch metadata events chunk")]
@@ -52,7 +53,7 @@ pub(crate) enum MetadataReplenisherError {
 }
 
 #[derive(Default)]
-pub(crate) struct ReplenishContractOutcome {
+pub(crate) struct DiscoverContractOutcome {
     pub(crate) chunk_processed: bool,
 }
 
@@ -63,8 +64,8 @@ struct BlockRange {
     end: u64,
 }
 
-impl MetadataReplenisher {
-    pub(crate) fn new(deps: SyncDeps, config: SyncConfig) -> Self {
+impl DiscoveryWorker {
+    pub(crate) fn new(deps: DkgSyncDeps, config: DkgSyncConfig) -> Self {
         Self {
             config,
             deps,
@@ -73,21 +74,21 @@ impl MetadataReplenisher {
         }
     }
 
-    pub(crate) async fn replenish_contract_once(
+    pub(crate) async fn discover_contract_once(
         &self,
         blockchain_id: &BlockchainId,
         contract_address: Address,
         target_tip: u64,
-    ) -> Result<ReplenishContractOutcome, MetadataReplenisherError> {
-        let contract_addr_str = format!("{:?}", contract_address);
-        let mut result = ReplenishContractOutcome::default();
+    ) -> Result<DiscoverContractOutcome, DiscoveryError> {
+        let contract_addr_str = canonical_evm_address(&contract_address);
+        let mut result = DiscoverContractOutcome::default();
 
         let cursor = self
             .deps
             .kc_sync_repository
             .get_metadata_progress(blockchain_id.as_str(), &contract_addr_str)
             .await
-            .map_err(MetadataReplenisherError::LoadMetadataProgress)?;
+            .map_err(DiscoveryError::LoadMetadataProgress)?;
 
         // Fast path: keep processing cached active range for this contract until exhausted.
         let mut active_range = self
@@ -129,7 +130,7 @@ impl MetadataReplenisher {
                     deployment_block,
                 )
                 .await
-                .map_err(MetadataReplenisherError::FindOldestGapRange)?;
+                .map_err(DiscoveryError::FindOldestGapRange)?;
 
             active_range = oldest_gap.map(|gap| BlockRange {
                 start: gap.start_block.max(cursor.saturating_add(1)),
@@ -153,7 +154,11 @@ impl MetadataReplenisher {
             .get(&ContractName::KnowledgeCollectionStorage)
             .cloned()
             .unwrap_or_default();
-        let chunk_size = self.config.metadata_backfill_block_batch_size.max(1);
+        let chunk_size = self
+            .config
+            .discovery
+            .metadata_discovery_block_batch_size
+            .max(1);
 
         let chunk_from = active_range.start;
         if chunk_from <= active_range.end {
@@ -177,7 +182,7 @@ impl MetadataReplenisher {
                 .await
             {
                 Ok(logs) => {
-                    observability::record_sync_metadata_backfill_batch_fetch_duration(
+                    observability::record_sync_metadata_discovery_batch_fetch_duration(
                         blockchain_id.as_str(),
                         "success",
                         fetch_started.elapsed(),
@@ -185,12 +190,12 @@ impl MetadataReplenisher {
                     logs
                 }
                 Err(error) => {
-                    observability::record_sync_metadata_backfill_batch_fetch_duration(
+                    observability::record_sync_metadata_discovery_batch_fetch_duration(
                         blockchain_id.as_str(),
                         "error",
                         fetch_started.elapsed(),
                     );
-                    return Err(MetadataReplenisherError::FetchMetadataChunk(error));
+                    return Err(DiscoveryError::FetchMetadataChunk(error));
                 }
             };
             let processing_started = Instant::now();
@@ -247,7 +252,7 @@ impl MetadataReplenisher {
                 self.deps.blockchain_manager.as_ref(),
                 blockchain_id,
                 &mut records,
-                self.config.metadata_state_batch_size.max(1),
+                self.config.discovery.metadata_state_batch_size.max(1),
             )
             .await;
 
@@ -259,18 +264,18 @@ impl MetadataReplenisher {
             });
             let dropped_not_ready = before_ready_filter.saturating_sub(records.len());
             if dropped_not_ready > 0 {
-                observability::record_sync_metadata_backfill_batch(
+                observability::record_sync_metadata_discovery_batch(
                     blockchain_id.as_str(),
                     "error",
                     chunk_blocks_scanned,
                     chunk_events_found,
                 );
-                observability::record_sync_metadata_backfill_batch_processing_duration(
+                observability::record_sync_metadata_discovery_batch_processing_duration(
                     blockchain_id.as_str(),
                     "error",
                     processing_started.elapsed(),
                 );
-                return Err(MetadataReplenisherError::IncompleteChunkHydration {
+                return Err(DiscoveryError::IncompleteChunkHydration {
                     contract: contract_addr_str.clone(),
                     chunk_from,
                     chunk_to,
@@ -296,7 +301,7 @@ impl MetadataReplenisher {
                     transaction_hash: format!("{:#x}", record.transaction_hash),
                     block_timestamp: record.block_timestamp,
                     publish_operation_id: record.publish_operation_id.clone(),
-                    source: "sync_metadata_backfill".to_string(),
+                    source: "sync_metadata_discovery".to_string(),
                     state: record
                         .kc_state_metadata
                         .as_ref()
@@ -335,7 +340,7 @@ impl MetadataReplenisher {
                     error = ?error,
                     "Failed to persist metadata chunk"
                 );
-                return Err(MetadataReplenisherError::UpsertCoreMetadata(error));
+                return Err(DiscoveryError::UpsertCoreMetadata(error));
             }
 
             if let Err(error) = self
@@ -359,13 +364,13 @@ impl MetadataReplenisher {
                 self.clear_cached_active_range(&contract_addr_str);
             }
 
-            observability::record_sync_metadata_backfill_batch(
+            observability::record_sync_metadata_discovery_batch(
                 blockchain_id.as_str(),
                 "success",
                 chunk_blocks_scanned,
                 chunk_events_found,
             );
-            observability::record_sync_metadata_backfill_batch_processing_duration(
+            observability::record_sync_metadata_discovery_batch_processing_duration(
                 blockchain_id.as_str(),
                 "success",
                 processing_started.elapsed(),
@@ -405,7 +410,7 @@ impl MetadataReplenisher {
         contract_address: Address,
         contract_address_str: &str,
         target_tip: u64,
-    ) -> Result<Option<u64>, MetadataReplenisherError> {
+    ) -> Result<Option<u64>, DiscoveryError> {
         if let Some(cached) = self
             .deployment_block_by_contract
             .lock()
@@ -421,7 +426,7 @@ impl MetadataReplenisher {
             .blockchain_manager
             .find_contract_deployment_block(blockchain_id, contract_address, target_tip)
             .await
-            .map_err(MetadataReplenisherError::FindDeploymentBlock)?;
+            .map_err(DiscoveryError::FindDeploymentBlock)?;
 
         self.deployment_block_by_contract
             .lock()

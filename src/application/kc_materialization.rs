@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dkg_domain::{Assertion, KnowledgeCollectionMetadata, parse_ual};
+use dkg_domain::{Assertion, KnowledgeCollectionMetadata, canonical_evm_address, parse_ual};
 use dkg_repository::{KcChainMetadataRepository, KcProjectionRepository};
 use dkg_triple_store::error::TripleStoreError;
 
@@ -140,7 +140,7 @@ impl KcMaterializationService {
 
         let knowledge_assets = build_knowledge_assets(knowledge_collection_ual, dataset)?;
         let private_graph_encoding = encode_private_graph_presence(&knowledge_assets);
-        let contract_address = format!("{:?}", parsed_ual.contract);
+        let contract_address = canonical_evm_address(&parsed_ual.contract);
 
         let persist_result = self
             .kc_chain_metadata_repository
@@ -179,7 +179,7 @@ fn projection_key_from_ual(ual: &str) -> Option<(String, String, u64)> {
     let kc_id = u64::try_from(parsed.knowledge_collection_id).ok()?;
     Some((
         parsed.blockchain.as_str().to_string(),
-        format!("{:?}", parsed.contract),
+        canonical_evm_address(&parsed.contract),
         kc_id,
     ))
 }
