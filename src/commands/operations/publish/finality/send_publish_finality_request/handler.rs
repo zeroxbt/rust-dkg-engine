@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use dkg_blockchain::{Address, B256, BlockchainId, U256};
-use dkg_domain::{KnowledgeCollectionMetadata, canonical_evm_address, derive_ual};
+use dkg_domain::{Assertion, KnowledgeCollectionMetadata, canonical_evm_address, derive_ual};
 use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_network::{FinalityRequestData, FinalityResponseData, NetworkManager, PeerId};
 use dkg_observability as observability;
@@ -34,6 +34,10 @@ pub(crate) struct SendPublishFinalityRequestCommandData {
     pub byte_size: u128,
     /// The merkle root (dataset root) of the knowledge collection
     pub dataset_root: B256,
+    /// Dataset to materialize (loaded from tmp store by the live listener).
+    pub dataset: Assertion,
+    /// Publisher peer id to notify with finality request when needed.
+    pub publisher_peer_id: String,
     /// Core chain metadata resolved by the listener.
     pub metadata: KnowledgeCollectionMetadata,
 }
@@ -46,6 +50,8 @@ impl SendPublishFinalityRequestCommandData {
         knowledge_collection_storage_address: Address,
         byte_size: u128,
         dataset_root: B256,
+        dataset: Assertion,
+        publisher_peer_id: String,
         metadata: KnowledgeCollectionMetadata,
     ) -> Self {
         Self {
@@ -55,6 +61,8 @@ impl SendPublishFinalityRequestCommandData {
             knowledge_collection_storage_address,
             byte_size,
             dataset_root,
+            dataset,
+            publisher_peer_id,
             metadata,
         }
     }
@@ -168,44 +176,22 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             return CommandOutcome::Completed;
         };
 
-        // Retrieve cached dataset from publish tmp dataset store
-        // This will fail if this node doesn't have the dataset locally
-        // (e.g., KC was published by another node, node was offline, or wasn't contacted during
-        // publish)
-        let pending_data = match self
-            .publish_tmp_dataset_store
-            .get(publish_operation_id)
-            .await
-        {
-            Ok(Some(data)) => data,
-            Ok(None) => {
-                tracing::debug!("Dataset not in publish tmp dataset store, skipping finality");
-                return CommandOutcome::Completed;
-            }
-            Err(e) => {
-                tracing::debug!(
-                    error = %e,
-                    "Failed to read publish tmp dataset store, skipping finality"
-                );
-                return CommandOutcome::Completed;
-            }
-        };
-
         // Validate merkle root matches
         let blockchain_merkle_root =
             format!("0x{}", dkg_blockchain::to_hex_string(data.dataset_root));
-        if blockchain_merkle_root != pending_data.dataset_root() {
+        let calculated_merkle_root = dkg_domain::calculate_merkle_root(&data.dataset.public);
+        if blockchain_merkle_root != calculated_merkle_root {
             tracing::error!(
                 operation_id = %operation_id,
                 blockchain_merkle_root = %blockchain_merkle_root,
-                cached_merkle_root = %pending_data.dataset_root(),
-                "Merkle root mismatch: blockchain value does not match cached value"
+                calculated_merkle_root = %calculated_merkle_root,
+                "Merkle root mismatch: blockchain value does not match command dataset"
             );
             return CommandOutcome::Completed;
         }
 
         // Validate byte size matches
-        let calculated_size = dkg_domain::calculate_assertion_size(&pending_data.dataset().public);
+        let calculated_size = dkg_domain::calculate_assertion_size(&data.dataset.public);
         if data.byte_size != calculated_size as u128 {
             tracing::error!(
                 operation_id = %operation_id,
@@ -228,7 +214,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
 
         let total_triples = match self
             .kc_materialization_service
-            .insert_knowledge_collection(&ual, pending_data.dataset(), &Some(metadata), None)
+            .insert_knowledge_collection(&ual, &data.dataset, &Some(metadata), None)
             .await
         {
             Ok(count) => {
@@ -318,12 +304,12 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             );
         }
 
-        let publisher_peer_id: PeerId = match pending_data.publisher_peer_id().parse() {
+        let publisher_peer_id: PeerId = match data.publisher_peer_id.parse() {
             Ok(peer_id) => peer_id,
             Err(e) => {
                 tracing::error!(
                     operation_id = %operation_id,
-                    publisher_peer_id = %pending_data.publisher_peer_id(),
+                    publisher_peer_id = %data.publisher_peer_id,
                     error = %e,
                     "Failed to parse publisher peer ID"
                 );

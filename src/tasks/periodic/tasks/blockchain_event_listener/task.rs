@@ -10,11 +10,13 @@ use dkg_blockchain::{
     decode_contract_event, monitored_contract_events, to_hex_string,
 };
 use dkg_domain::{KnowledgeCollectionMetadata, canonical_evm_address};
+use dkg_key_value_store::PublishTmpDatasetStore;
 use dkg_observability as observability;
 use dkg_repository::{
     BlockchainRepository, KcChainMetadataRepository, KcProjectionRepository, KcSyncRepository,
 };
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use crate::{
     application::kc_chain_metadata_sync::{
@@ -46,6 +48,7 @@ pub(crate) struct BlockchainEventListenerTask {
     kc_chain_metadata_repository: KcChainMetadataRepository,
     kc_projection_repository: KcProjectionRepository,
     kc_sync_repository: KcSyncRepository,
+    publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
     command_scheduler: CommandScheduler,
     /// Polling interval
     poll_interval: Duration,
@@ -81,6 +84,7 @@ impl BlockchainEventListenerTask {
             kc_chain_metadata_repository: deps.kc_chain_metadata_repository,
             kc_projection_repository: deps.kc_projection_repository,
             kc_sync_repository: deps.kc_sync_repository,
+            publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
             command_scheduler: deps.command_scheduler,
             poll_interval,
         }
@@ -647,24 +651,6 @@ impl BlockchainEventListenerTask {
             );
         }
 
-        if let Err(error) = self
-            .kc_sync_repository
-            .enqueue_kcs(
-                blockchain_id.as_str(),
-                &contract_address_str,
-                &[event.kc_id],
-            )
-            .await
-        {
-            tracing::warn!(
-                blockchain = %blockchain_id,
-                contract = %contract_address_str,
-                kc_id = event.kc_id,
-                error = %error,
-                "Failed to enqueue live KC in sync queue"
-            );
-        }
-
         let Some(publisher_address) = event.publisher_address.as_ref() else {
             return;
         };
@@ -676,6 +662,47 @@ impl BlockchainEventListenerTask {
             event.block_timestamp,
         );
 
+        let publish_operation_id = match Uuid::parse_str(&event.publish_operation_id) {
+            Ok(value) => value,
+            Err(error) => {
+                tracing::warn!(
+                    blockchain = %blockchain_id,
+                    contract = %contract_address_str,
+                    kc_id = event.kc_id,
+                    publish_operation_id = %event.publish_operation_id,
+                    error = %error,
+                    "Invalid publish operation id in live KC event"
+                );
+                return;
+            }
+        };
+
+        let pending_dataset = match self
+            .publish_tmp_dataset_store
+            .get(publish_operation_id)
+            .await
+        {
+            Ok(Some(data)) => data,
+            Ok(None) => {
+                self.enqueue_for_sync(blockchain_id, &contract_address_str, event.kc_id)
+                    .await;
+                return;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    blockchain = %blockchain_id,
+                    contract = %contract_address_str,
+                    kc_id = event.kc_id,
+                    publish_operation_id = %event.publish_operation_id,
+                    error = %error,
+                    "Failed to read publish tmp dataset for live KC event; falling back to sync queue"
+                );
+                self.enqueue_for_sync(blockchain_id, &contract_address_str, event.kc_id)
+                    .await;
+                return;
+            }
+        };
+
         self.schedule_finality_request(
             blockchain_id,
             event.publish_operation_id.clone(),
@@ -683,6 +710,8 @@ impl BlockchainEventListenerTask {
             event.contract_address,
             event.byte_size,
             event.merkle_root,
+            pending_dataset.dataset().clone(),
+            pending_dataset.publisher_peer_id().to_string(),
             metadata,
         )
         .await;
@@ -697,6 +726,8 @@ impl BlockchainEventListenerTask {
         contract_address: Address,
         byte_size: u128,
         merkle_root: dkg_blockchain::B256,
+        dataset: dkg_domain::Assertion,
+        publisher_peer_id: String,
         metadata: KnowledgeCollectionMetadata,
     ) {
         let command =
@@ -707,11 +738,29 @@ impl BlockchainEventListenerTask {
                 contract_address,
                 byte_size,
                 merkle_root,
+                dataset,
+                publisher_peer_id,
                 metadata,
             ));
 
         self.command_scheduler
             .schedule(CommandExecutionRequest::new(command))
             .await;
+    }
+
+    async fn enqueue_for_sync(&self, blockchain_id: &BlockchainId, contract: &str, kc_id: u64) {
+        if let Err(error) = self
+            .kc_sync_repository
+            .enqueue_kcs(blockchain_id.as_str(), contract, &[kc_id])
+            .await
+        {
+            tracing::warn!(
+                blockchain = %blockchain_id,
+                contract = %contract,
+                kc_id,
+                error = %error,
+                "Failed to enqueue live KC in sync queue"
+            );
+        }
     }
 }

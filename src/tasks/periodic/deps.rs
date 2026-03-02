@@ -65,6 +65,7 @@ pub(crate) struct BlockchainEventListenerDeps {
     pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
     pub(crate) kc_projection_repository: KcProjectionRepository,
     pub(crate) kc_sync_repository: KcSyncRepository,
+    pub(crate) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
     pub(crate) command_scheduler: CommandScheduler,
 }
 

@@ -12,7 +12,6 @@ pub(crate) const TABLE_NAME: &str = "publish_tmp_dataset";
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PublishTmpDataset {
-    dataset_root: String,
     dataset: Assertion,
     publisher_peer_id: String,
     #[serde(default = "default_stored_at")]
@@ -20,17 +19,12 @@ pub struct PublishTmpDataset {
 }
 
 impl PublishTmpDataset {
-    pub fn new(dataset_root: String, dataset: Assertion, publisher_peer_id: String) -> Self {
+    pub fn new(dataset: Assertion, publisher_peer_id: String) -> Self {
         Self {
-            dataset_root,
             dataset,
             publisher_peer_id,
             stored_at: Utc::now().timestamp_millis(),
         }
-    }
-
-    pub fn dataset_root(&self) -> &str {
-        &self.dataset_root
     }
 
     pub fn dataset(&self) -> &Assertion {

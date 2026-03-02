@@ -217,11 +217,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             }
         }
 
-        let pending = PublishTmpDataset::new(
-            dataset_root.to_owned(),
-            dataset.clone(),
-            my_peer_id.to_base58(),
-        );
+        let pending = PublishTmpDataset::new(dataset.clone(), my_peer_id.to_base58());
         if let Err(e) = self
             .publish_tmp_dataset_store
             .store(operation_id, pending)

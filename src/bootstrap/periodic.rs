@@ -61,6 +61,7 @@ pub(crate) fn build_periodic_tasks_deps(
             kc_chain_metadata_repository: kc_chain_metadata_repository.clone(),
             kc_projection_repository: kc_projection_repository.clone(),
             kc_sync_repository: kc_sync_repository.clone(),
+            publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
             command_scheduler: command_scheduler.clone(),
         },
         claim_rewards: ClaimRewardsDeps {
