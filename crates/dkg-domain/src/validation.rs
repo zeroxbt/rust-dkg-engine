@@ -1,7 +1,6 @@
-use alloy::{
-    primitives::{B256, U256, hex, keccak256},
-    sol_types::SolValue,
-};
+use alloy::primitives::{B256, U256, hex, keccak256};
+#[cfg(test)]
+use alloy::sol_types::SolValue;
 
 const CHUNK_SIZE: usize = 32;
 
@@ -36,34 +35,35 @@ pub fn calculate_merkle_proof(
     quads: &[String],
     chunk_index: usize,
 ) -> Result<MerkleProofResult, String> {
-    let chunks = split_into_chunks(quads);
-
-    if chunks.is_empty() {
+    let concatenated = concatenate_quads(quads);
+    let bytes = concatenated.as_bytes();
+    if bytes.is_empty() {
         return Err("No chunks to prove".to_string());
     }
 
-    if chunk_index >= chunks.len() {
+    let chunk_count = bytes.len().div_ceil(CHUNK_SIZE);
+    if chunk_index >= chunk_count {
         return Err(format!(
             "Chunk index {} out of range, only {} chunks exist",
-            chunk_index,
-            chunks.len()
+            chunk_index, chunk_count
         ));
     }
 
-    // Hash all leaves
-    let leaves: Vec<B256> = chunks
-        .iter()
-        .enumerate()
-        .map(|(i, c)| leaf_hash(c, i))
+    let leaves: Vec<B256> = (0..chunk_count)
+        .map(|idx| {
+            let start = idx * CHUNK_SIZE;
+            let end = (start + CHUNK_SIZE).min(bytes.len());
+            leaf_hash_from_chunk_bytes(&bytes[start..end], idx)
+        })
         .collect();
 
     // Build proof by walking up the tree
     let proof = build_merkle_proof(&leaves, chunk_index);
+    let chunk_start = chunk_index * CHUNK_SIZE;
+    let chunk_end = (chunk_start + CHUNK_SIZE).min(bytes.len());
+    let chunk = String::from_utf8_lossy(&bytes[chunk_start..chunk_end]).into_owned();
 
-    Ok(MerkleProofResult {
-        chunk: chunks[chunk_index].clone(),
-        proof,
-    })
+    Ok(MerkleProofResult { chunk, proof })
 }
 
 /// Build a Merkle proof for the given leaf index.
@@ -126,12 +126,16 @@ fn build_merkle_proof(leaves: &[B256], leaf_index: usize) -> Vec<B256> {
 }
 
 pub fn calculate_merkle_root<T: AsRef<str>>(quads: &[T]) -> String {
-    let chunks = split_into_chunks(quads);
+    let concatenated = concatenate_quads(quads);
+    let bytes = concatenated.as_bytes();
+    let chunk_count = bytes.len().div_ceil(CHUNK_SIZE);
 
-    let mut leaves: Vec<B256> = chunks
-        .iter()
-        .enumerate()
-        .map(|(i, c)| leaf_hash(c, i))
+    let mut leaves: Vec<B256> = (0..chunk_count)
+        .map(|idx| {
+            let start = idx * CHUNK_SIZE;
+            let end = (start + CHUNK_SIZE).min(bytes.len());
+            leaf_hash_from_chunk_bytes(&bytes[start..end], idx)
+        })
         .collect();
 
     if leaves.is_empty() {
@@ -171,17 +175,9 @@ pub fn calculate_merkle_root<T: AsRef<str>>(quads: &[T]) -> String {
     format!("0x{}", hex::encode(leaves[0].as_slice()))
 }
 
+#[cfg(test)]
 fn split_into_chunks<T: AsRef<str>>(quads: &[T]) -> Vec<String> {
-    let total_bytes =
-        quads.iter().map(|quad| quad.as_ref().len()).sum::<usize>() + quads.len().saturating_sub(1);
-    let mut concatenated = String::with_capacity(total_bytes);
-    for (idx, quad) in quads.iter().enumerate() {
-        if idx > 0 {
-            concatenated.push('\n');
-        }
-        concatenated.push_str(quad.as_ref());
-    }
-
+    let concatenated = concatenate_quads(quads);
     let bytes = concatenated.as_bytes();
 
     let mut chunks = Vec::new();
@@ -197,8 +193,28 @@ fn split_into_chunks<T: AsRef<str>>(quads: &[T]) -> Vec<String> {
 }
 
 fn leaf_hash(chunk: &str, index: usize) -> B256 {
-    let packed = (chunk.to_string(), U256::from(index)).abi_encode_packed();
+    let mut packed = Vec::with_capacity(chunk.len() + 32);
+    packed.extend_from_slice(chunk.as_bytes());
+    packed.extend_from_slice(&U256::from(index).to_be_bytes::<32>());
     keccak256(packed)
+}
+
+fn leaf_hash_from_chunk_bytes(chunk_bytes: &[u8], index: usize) -> B256 {
+    let chunk = String::from_utf8_lossy(chunk_bytes);
+    leaf_hash(chunk.as_ref(), index)
+}
+
+fn concatenate_quads<T: AsRef<str>>(quads: &[T]) -> String {
+    let total_bytes =
+        quads.iter().map(|quad| quad.as_ref().len()).sum::<usize>() + quads.len().saturating_sub(1);
+    let mut concatenated = String::with_capacity(total_bytes);
+    for (idx, quad) in quads.iter().enumerate() {
+        if idx > 0 {
+            concatenated.push('\n');
+        }
+        concatenated.push_str(quad.as_ref());
+    }
+    concatenated
 }
 
 #[cfg(test)]
