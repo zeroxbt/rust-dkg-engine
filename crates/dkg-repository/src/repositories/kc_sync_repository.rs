@@ -24,7 +24,10 @@ use crate::{
         },
     },
     observability::record_repository_query,
-    types::{KcSyncQueueEntry, SyncMetadataRecordInput},
+    types::{
+        KcProjectionActualState, KcProjectionDesiredState, KcSyncQueueEntry,
+        SyncMetadataRecordInput,
+    },
 };
 
 #[derive(Clone)]
@@ -616,6 +619,92 @@ impl KcSyncRepository {
                 record_repository_query(
                     "kc_sync",
                     "list_queue_keys_missing_projection",
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
+    }
+
+    /// Return queue keys whose projection row is already materialized (desired=Present, actual=Present).
+    pub async fn list_queue_keys_with_present_projection(
+        &self,
+        blockchain_id: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, u64)>> {
+        let started = Instant::now();
+        if limit == 0 {
+            record_repository_query(
+                "kc_sync",
+                "list_queue_keys_with_present_projection",
+                "ok",
+                started.elapsed(),
+                Some(0),
+            );
+            return Ok(Vec::new());
+        }
+
+        let db = self.conn.as_ref();
+        let limit_i64 = Self::u64_to_i64(limit as u64, "limit")?;
+        let sql = Statement::from_sql_and_values(
+            db.get_database_backend(),
+            r#"
+            SELECT q.contract_address, q.kc_id
+            FROM kc_sync_queue q
+            INNER JOIN kc_projection_state p
+                ON p.blockchain_id = q.blockchain_id
+               AND p.contract_address = q.contract_address
+               AND p.kc_id = q.kc_id
+            WHERE q.blockchain_id = ?
+              AND p.desired_state = ?
+              AND p.actual_state = ?
+            ORDER BY q.created_at ASC, q.contract_address ASC, q.kc_id ASC
+            LIMIT ?
+            "#,
+            [
+                Value::String(Some(Box::new(blockchain_id.to_string()))),
+                Value::TinyUnsigned(Some(KcProjectionDesiredState::Present.as_u8())),
+                Value::TinyUnsigned(Some(KcProjectionActualState::Present.as_u8())),
+                Value::BigInt(Some(limit_i64)),
+            ],
+        );
+
+        let result = async {
+            let rows = db
+                .query_all(sql)
+                .await
+                .map_err(crate::error::RepositoryError::Database)?;
+            let mut out = Vec::with_capacity(rows.len());
+            for row in rows {
+                let contract_address: String = row
+                    .try_get("", "contract_address")
+                    .map_err(crate::error::RepositoryError::Database)?;
+                let kc_id: u64 = row
+                    .try_get("", "kc_id")
+                    .map_err(crate::error::RepositoryError::Database)?;
+                out.push((contract_address, kc_id));
+            }
+            Ok(out)
+        }
+        .await;
+
+        match &result {
+            Ok(rows) => {
+                record_repository_query(
+                    "kc_sync",
+                    "list_queue_keys_with_present_projection",
+                    "ok",
+                    started.elapsed(),
+                    Some(rows.len()),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_sync",
+                    "list_queue_keys_with_present_projection",
                     "error",
                     started.elapsed(),
                     None,

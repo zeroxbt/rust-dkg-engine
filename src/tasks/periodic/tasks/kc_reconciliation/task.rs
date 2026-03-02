@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     KcReconciliationConfig,
-    phases::{hydrate_projection, reconcile_non_present, repair_orphans},
+    phases::{cleanup_stale_queue, hydrate_projection, reconcile_non_present, repair_orphans},
 };
 use crate::{
     application::TripleStoreAssertions, tasks::periodic::KcReconciliationDeps,
@@ -52,6 +52,7 @@ impl KcReconciliationTask {
 
         self.run_hydrate_projection_phase(blockchain_id).await;
         self.run_repair_orphans_phase(blockchain_id).await;
+        self.run_cleanup_stale_queue_phase(blockchain_id).await;
         self.run_reconcile_non_present_phase(blockchain_id).await;
 
         interval
@@ -184,6 +185,44 @@ impl KcReconciliationTask {
             reset_unknown = phase_outcome.reset_unknown,
             failed_projection_updates = phase_outcome.failed_projection_updates,
             "KC reconciliation orphan-repair phase completed"
+        );
+    }
+
+    async fn run_cleanup_stale_queue_phase(&self, blockchain_id: &BlockchainId) {
+        let batch_size = self.config.batch_size.max(1);
+        let phase_outcome =
+            match cleanup_stale_queue::run(blockchain_id, batch_size, &self.kc_sync_repository)
+                .await
+            {
+                Ok(outcome) => outcome,
+                Err(error) => {
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        batch_size,
+                        error = %error,
+                        "KC reconciliation stale-queue cleanup phase failed"
+                    );
+                    return;
+                }
+            };
+
+        if phase_outcome.stale_rows == 0 {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                batch_size,
+                "KC reconciliation stale-queue cleanup phase found no rows"
+            );
+            return;
+        }
+
+        tracing::info!(
+            blockchain_id = %blockchain_id,
+            batch_size,
+            stale_rows = phase_outcome.stale_rows,
+            removed_rows = phase_outcome.removed_rows,
+            failed_rows = phase_outcome.failed_rows,
+            failed_contracts = phase_outcome.failed_contracts,
+            "KC reconciliation stale-queue cleanup phase completed"
         );
     }
 }
