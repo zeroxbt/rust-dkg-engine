@@ -41,6 +41,20 @@ impl BatchGetRequestData {
         }
     }
 
+    pub fn new_with_shared_token_ids(
+        blockchain: String,
+        uals: Vec<String>,
+        token_ids: Arc<HashMap<String, TokenIds>>,
+        include_metadata: bool,
+    ) -> Self {
+        Self {
+            blockchain,
+            uals: Arc::new(uals),
+            token_ids,
+            include_metadata,
+        }
+    }
+
     /// Returns the list of UALs.
     pub fn uals(&self) -> &[String] {
         self.uals.as_slice()

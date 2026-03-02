@@ -316,22 +316,20 @@ impl TripleStoreAssertions {
             .collect();
 
         // Execute queries with bounded fan-out to avoid unbounded permit queuing.
-        let query_results = stream::iter(queries.into_iter())
+        let mut query_stream = stream::iter(queries.into_iter())
             .map(|(ual_string, parsed_ual, token_ids)| async move {
                 let result = self
                     .query_assertion(&parsed_ual, &token_ids, visibility, include_metadata)
                     .await;
                 (ual_string, result)
             })
-            .buffer_unordered(max_in_flight.max(1))
-            .collect::<Vec<_>>()
-            .await;
+            .buffer_unordered(max_in_flight.max(1));
 
         // Collect successful results with data
         let mut results_map = HashMap::new();
         let mut first_error: Option<TripleStoreError> = None;
 
-        for (ual_string, result) in query_results {
+        while let Some((ual_string, result)) = query_stream.next().await {
             match result {
                 Ok(Some(r)) if r.assertion.has_data() => {
                     results_map.insert(ual_string, r);

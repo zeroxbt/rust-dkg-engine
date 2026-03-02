@@ -373,32 +373,28 @@ async fn fetch_kc_batch_from_network(
     let ual_to_kc: HashMap<&str, &KcToSync> = kcs.iter().map(|kc| (kc.ual.as_str(), kc)).collect();
 
     // Parse UALs for validation
-    let parsed_uals: HashMap<String, ParsedUal> = kcs
+    let parsed_uals: HashMap<&str, ParsedUal> = kcs
         .iter()
         .filter_map(|kc| {
             parse_ual(&kc.ual)
                 .ok()
-                .map(|parsed| (kc.ual.clone(), parsed))
+                .map(|parsed| (kc.ual.as_str(), parsed))
         })
         .collect();
 
-    // Build token IDs map for the request
-    let token_ids_map: HashMap<String, TokenIds> = kcs
-        .iter()
-        .map(|kc| (kc.ual.clone(), kc.token_ids.clone()))
-        .collect();
+    // Build a shared token IDs map once and reuse it for peer requests.
+    let token_ids_map = Arc::new(
+        kcs.iter()
+            .map(|kc| (kc.ual.clone(), kc.token_ids.clone()))
+            .collect::<HashMap<String, TokenIds>>(),
+    );
 
     // Helper to build batch request for remaining UALs
     let build_request = |uals: &HashSet<String>| {
-        let filtered_token_ids: HashMap<String, TokenIds> = token_ids_map
-            .iter()
-            .filter(|(ual, _)| uals.contains(*ual))
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        BatchGetRequestData::new(
+        BatchGetRequestData::new_with_shared_token_ids(
             blockchain_id.to_string(),
             uals.iter().cloned().collect(),
-            filtered_token_ids,
+            Arc::clone(&token_ids_map),
             false, // include_metadata
         )
     };
@@ -454,7 +450,7 @@ async fn fetch_kc_batch_from_network(
                     }
 
                     if let (Some(parsed_ual), Some(kc)) =
-                        (parsed_uals.get(&ual), ual_to_kc.get(ual.as_str()))
+                        (parsed_uals.get(ual.as_str()), ual_to_kc.get(ual.as_str()))
                     {
                         // Use pre-fetched merkle root from filter stage (no RPC call needed)
                         let is_valid = assertion_validation.validate_response_with_root(
