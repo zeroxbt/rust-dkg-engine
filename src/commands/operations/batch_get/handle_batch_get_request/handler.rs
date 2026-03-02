@@ -210,7 +210,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         // Always query public visibility for remote requests
         let query_results = self
             .triple_store_assertions
-            .query_assertions_batch(&uals_with_token_ids, Visibility::Public, include_metadata)
+            .query_assertions_batch(uals_with_token_ids, Visibility::Public, include_metadata)
             .await;
 
         let query_results = match query_results {

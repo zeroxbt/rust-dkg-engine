@@ -299,25 +299,16 @@ impl TripleStoreAssertions {
     /// the semaphore in TripleStoreManager.
     pub(crate) async fn query_assertions_batch(
         &self,
-        uals_with_token_ids: &[(ParsedUal, TokenIds)],
+        uals_with_token_ids: Vec<(ParsedUal, TokenIds)>,
         visibility: Visibility,
         include_metadata: bool,
     ) -> Result<HashMap<String, AssertionQueryResult>, TripleStoreError> {
         let max_in_flight = self.triple_store_manager.max_concurrent_operations();
-        let queries: Vec<_> = uals_with_token_ids
-            .iter()
-            .map(|(parsed_ual, token_ids)| {
-                (
-                    parsed_ual.to_ual_string(),
-                    parsed_ual.clone(),
-                    token_ids.clone(),
-                )
-            })
-            .collect();
 
         // Execute queries with bounded fan-out to avoid unbounded permit queuing.
-        let mut query_stream = stream::iter(queries.into_iter())
-            .map(|(ual_string, parsed_ual, token_ids)| async move {
+        let mut query_stream = stream::iter(uals_with_token_ids.into_iter())
+            .map(|(parsed_ual, token_ids)| async move {
+                let ual_string = parsed_ual.to_ual_string();
                 let result = self
                     .query_assertion(&parsed_ual, &token_ids, visibility, include_metadata)
                     .await;
