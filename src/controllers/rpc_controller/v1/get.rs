@@ -49,10 +49,7 @@ impl GetRpcController {
 
         let command = Command::HandleGetRequest(HandleGetRequestCommandData::new(
             operation_id,
-            data.ual().to_string(),
-            data.token_ids().clone(),
-            data.include_metadata(),
-            data.paranet_ual().map(|s| s.to_string()),
+            data,
             remote_peer_id,
         ));
         store_channel_and_try_schedule(

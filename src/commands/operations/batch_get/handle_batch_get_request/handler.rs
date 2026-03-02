@@ -4,7 +4,7 @@ use std::{
 };
 
 use dkg_domain::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual};
-use dkg_network::{BatchGetAck, NetworkManager, PeerId, ResponseHandle};
+use dkg_network::{BatchGetAck, BatchGetRequestData, NetworkManager, PeerId, ResponseHandle};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -19,25 +19,19 @@ use crate::{
 #[derive(Clone)]
 pub(crate) struct HandleBatchGetRequestCommandData {
     pub operation_id: Uuid,
-    pub uals: Vec<String>,
-    pub token_ids: HashMap<String, TokenIds>,
-    pub include_metadata: bool,
+    pub request: BatchGetRequestData,
     pub remote_peer_id: PeerId,
 }
 
 impl HandleBatchGetRequestCommandData {
     pub(crate) fn new(
         operation_id: Uuid,
-        uals: Vec<String>,
-        token_ids: HashMap<String, TokenIds>,
-        include_metadata: bool,
+        request: BatchGetRequestData,
         remote_peer_id: PeerId,
     ) -> Self {
         Self {
             operation_id,
-            uals,
-            token_ids,
-            include_metadata,
+            request,
             remote_peer_id,
         }
     }
@@ -116,7 +110,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             protocol = "batch_get",
             direction = "recv",
             remote_peer = %data.remote_peer_id,
-            include_metadata = data.include_metadata,
+            include_metadata = data.request.include_metadata(),
             ual_count = tracing::field::Empty,
             valid_ual_count = tracing::field::Empty,
             invalid_ual_count = tracing::field::Empty,
@@ -124,6 +118,9 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
     )]
     async fn execute(&self, data: &HandleBatchGetRequestCommandData) -> CommandOutcome {
         let operation_id = data.operation_id;
+        let include_metadata = data.request.include_metadata();
+        let uals_source = data.request.uals_shared();
+        let token_ids_map = data.request.token_ids_shared();
         let remote_peer_id = &data.remote_peer_id;
 
         // Retrieve the response channel
@@ -140,7 +137,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         };
 
         // Apply UAL limit
-        let uals: Vec<String> = data.uals.iter().take(UAL_MAX_LIMIT).cloned().collect();
+        let uals: Vec<String> = uals_source.iter().take(UAL_MAX_LIMIT).cloned().collect();
         tracing::Span::current().record("ual_count", tracing::field::display(uals.len()));
 
         // Parse UALs and pair with token IDs
@@ -162,8 +159,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             };
 
             // Get token IDs from request or use default
-            let token_ids = data
-                .token_ids
+            let token_ids = token_ids_map
                 .get(ual)
                 .cloned()
                 .unwrap_or_else(|| TokenIds::single(1));
@@ -214,11 +210,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         // Always query public visibility for remote requests
         let query_results = self
             .triple_store_assertions
-            .query_assertions_batch(
-                &uals_with_token_ids,
-                Visibility::Public,
-                data.include_metadata,
-            )
+            .query_assertions_batch(&uals_with_token_ids, Visibility::Public, include_metadata)
             .await;
 
         let query_results = match query_results {
@@ -244,12 +236,10 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         let mut metadata: HashMap<String, Vec<String>> = HashMap::new();
 
         for (ual, result) in query_results {
-            let assertion = result.assertion.clone();
-            assertions.insert(ual.clone(), assertion);
-
             if let Some(meta) = result.metadata {
-                metadata.insert(ual, meta);
+                metadata.insert(ual.clone(), meta);
             }
+            assertions.insert(ual, result.assertion);
         }
 
         tracing::info!(

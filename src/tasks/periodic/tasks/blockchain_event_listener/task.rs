@@ -703,6 +703,8 @@ impl BlockchainEventListenerTask {
             }
         };
 
+        let (dataset, publisher_peer_id) = pending_dataset.into_parts();
+
         self.schedule_finality_request(
             blockchain_id,
             event.publish_operation_id.clone(),
@@ -710,8 +712,8 @@ impl BlockchainEventListenerTask {
             event.contract_address,
             event.byte_size,
             event.merkle_root,
-            pending_dataset.dataset().clone(),
-            pending_dataset.publisher_peer_id().to_string(),
+            dataset,
+            publisher_peer_id,
             metadata,
         )
         .await;

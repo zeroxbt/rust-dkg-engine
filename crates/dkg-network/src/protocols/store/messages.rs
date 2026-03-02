@@ -1,5 +1,7 @@
 //! Store protocol message types.
 
+use std::sync::Arc;
+
 use dkg_domain::{BlockchainId, SignatureComponents};
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +10,7 @@ use crate::message::ProtocolResponse;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreRequestData {
-    dataset: Vec<String>,
+    dataset: Arc<Vec<String>>,
     dataset_root: String,
     blockchain: BlockchainId,
 }
@@ -16,14 +18,14 @@ pub struct StoreRequestData {
 impl StoreRequestData {
     pub fn new(dataset: Vec<String>, dataset_root: String, blockchain: BlockchainId) -> Self {
         Self {
-            dataset,
+            dataset: Arc::new(dataset),
             dataset_root,
             blockchain,
         }
     }
 
-    pub fn dataset(&self) -> &Vec<String> {
-        &self.dataset
+    pub fn dataset(&self) -> &[String] {
+        self.dataset.as_slice()
     }
 
     pub fn dataset_root(&self) -> &str {

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
-use dkg_domain::{Assertion, TokenIds, parse_ual};
-use dkg_network::{GetAck, NetworkManager, PeerId, ResponseHandle};
+use dkg_domain::{Assertion, parse_ual};
+use dkg_network::{GetAck, GetRequestData, NetworkManager, PeerId, ResponseHandle};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -18,28 +18,15 @@ use crate::{
 #[derive(Clone)]
 pub(crate) struct HandleGetRequestCommandData {
     pub operation_id: Uuid,
-    pub ual: String,
-    pub token_ids: TokenIds,
-    pub include_metadata: bool,
-    pub paranet_ual: Option<String>,
+    pub request: GetRequestData,
     pub remote_peer_id: PeerId,
 }
 
 impl HandleGetRequestCommandData {
-    pub(crate) fn new(
-        operation_id: Uuid,
-        ual: String,
-        token_ids: TokenIds,
-        include_metadata: bool,
-        paranet_ual: Option<String>,
-        remote_peer_id: PeerId,
-    ) -> Self {
+    pub(crate) fn new(operation_id: Uuid, request: GetRequestData, remote_peer_id: PeerId) -> Self {
         Self {
             operation_id,
-            ual,
-            token_ids,
-            include_metadata,
-            paranet_ual,
+            request,
             remote_peer_id,
         }
     }
@@ -119,17 +106,25 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             operation_id = %data.operation_id,
             protocol = "get",
             direction = "recv",
-            ual = %data.ual,
+            ual = tracing::field::Empty,
             remote_peer = %data.remote_peer_id,
-            include_metadata = data.include_metadata,
-            paranet = ?data.paranet_ual,
+            include_metadata = data.request.include_metadata(),
+            paranet = tracing::field::Empty,
             effective_visibility = tracing::field::Empty,
         )
     )]
     async fn execute(&self, data: &HandleGetRequestCommandData) -> CommandOutcome {
         let operation_id = data.operation_id;
-        let ual = &data.ual;
+        let ual = data.request.ual().to_string();
+        let token_ids = data.request.token_ids_shared();
+        let include_metadata = data.request.include_metadata();
+        let paranet_ual = data.request.paranet_ual_shared();
         let remote_peer_id = &data.remote_peer_id;
+        tracing::Span::current().record("ual", tracing::field::display(&ual));
+        tracing::Span::current().record(
+            "paranet",
+            tracing::field::debug(&paranet_ual.as_deref().map(String::as_str)),
+        );
 
         // Retrieve the response channel
         let Some(channel) = self
@@ -145,7 +140,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
         };
 
         // Parse the UAL
-        let parsed_ual = match parse_ual(ual) {
+        let parsed_ual = match parse_ual(&ual) {
             Ok(parsed) => parsed,
             Err(e) => {
                 tracing::warn!(
@@ -184,7 +179,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
         let effective_visibility = paranet::determine_get_visibility_for_paranet(
             self.blockchain_manager.as_ref(),
             &parsed_ual,
-            data.paranet_ual.as_deref(),
+            paranet_ual.as_deref().map(String::as_str),
             local_peer_id,
             remote_peer_id,
         )
@@ -199,9 +194,9 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             .triple_store_assertions
             .query_assertion(
                 &parsed_ual,
-                &data.token_ids,
+                token_ids.as_ref(),
                 effective_visibility,
-                data.include_metadata,
+                include_metadata,
             )
             .await;
 

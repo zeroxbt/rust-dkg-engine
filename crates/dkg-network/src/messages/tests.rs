@@ -469,7 +469,7 @@ fn store_request_accepts_js_payload() {
 
     assert_eq!(request.header.operation_id(), sample_operation_id());
     assert_eq!(request.data.dataset_root(), "0xdeadbeef");
-    assert_eq!(request.data.dataset(), &vec!["<s> <p> <o> .".to_string()]);
+    assert_eq!(request.data.dataset(), ["<s> <p> <o> .".to_string()]);
     assert_eq!(request.data.blockchain().as_str(), "otp:2043");
 }
 

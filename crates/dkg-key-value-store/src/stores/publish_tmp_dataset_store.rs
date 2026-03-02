@@ -31,6 +31,10 @@ impl PublishTmpDataset {
         &self.dataset
     }
 
+    pub fn into_parts(self) -> (Assertion, String) {
+        (self.dataset, self.publisher_peer_id)
+    }
+
     pub fn publisher_peer_id(&self) -> &str {
         &self.publisher_peer_id
     }

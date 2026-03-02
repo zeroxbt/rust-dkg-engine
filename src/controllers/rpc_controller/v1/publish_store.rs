@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use dkg_domain::Assertion;
 use dkg_network::{InboundRequest, ResponseHandle, StoreAck, StoreRequestData};
 
 use super::inbound_request::store_channel_and_try_schedule;
@@ -48,19 +47,9 @@ impl PublishStoreRpcController {
             "Store request received"
         );
 
-        let dataset = Assertion {
-            public: data.dataset().to_owned(),
-            private: None,
-        };
-
-        let command =
-            Command::HandlePublishStoreRequest(HandlePublishStoreRequestCommandData::new(
-                data.blockchain().clone(),
-                operation_id,
-                data.dataset_root().to_owned(),
-                remote_peer_id,
-                dataset,
-            ));
+        let command = Command::HandlePublishStoreRequest(
+            HandlePublishStoreRequestCommandData::new(operation_id, data, remote_peer_id),
+        );
         store_channel_and_try_schedule(
             &self.response_channels,
             &self.command_scheduler,

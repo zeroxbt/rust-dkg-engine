@@ -151,7 +151,7 @@ pub fn build_swarm(
     // 2. Identify protocol
     let identify = identify::Behaviour::new(identify::Config::new(
         "/ipfs/id/1.0.0".to_string(),
-        public_key.clone(),
+        public_key,
     ));
 
     // 3. Application protocols (store, get, finality, batch_get)
@@ -205,7 +205,7 @@ pub fn build_swarm(
     // Use yamux as the preferred multiplexer (better flow control, no head-of-line blocking)
     // with mplex as fallback for compatibility with older JS libp2p nodes.
     // Protocol negotiation selects the best common option automatically.
-    let mut swarm = SwarmBuilder::with_existing_identity(key.clone())
+    let mut swarm = SwarmBuilder::with_existing_identity(key)
         .with_tokio()
         .with_tcp(
             tcp::Config::default(),

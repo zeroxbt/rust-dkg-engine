@@ -49,9 +49,7 @@ impl BatchGetRpcController {
 
         let command = Command::HandleBatchGetRequest(HandleBatchGetRequestCommandData::new(
             operation_id,
-            data.uals().to_vec(),
-            data.token_ids().clone(),
-            data.include_metadata(),
+            data,
             remote_peer_id,
         ));
         store_channel_and_try_schedule(

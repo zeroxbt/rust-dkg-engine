@@ -98,8 +98,8 @@ pub(crate) fn build_periodic_tasks_deps(
             get_assertion_use_case: Arc::clone(&application.get_assertion_use_case),
         },
         kc_reconciliation: KcReconciliationDeps {
-            kc_sync_repository: kc_sync_repository.clone(),
-            kc_projection_repository: kc_projection_repository.clone(),
+            kc_sync_repository,
+            kc_projection_repository,
             kc_chain_metadata_repository,
             triple_store_assertions: Arc::clone(&application.triple_store_assertions),
         },

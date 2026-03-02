@@ -48,12 +48,8 @@ impl PublishFinalityRpcController {
             "Finality request received"
         );
 
-        let command_data = HandlePublishFinalityRequestCommandData::new(
-            operation_id,
-            data.ual().to_string(),
-            data.publish_operation_id().to_string(),
-            remote_peer_id,
-        );
+        let command_data =
+            HandlePublishFinalityRequestCommandData::new(operation_id, data, remote_peer_id);
         store_channel_and_try_schedule(
             &self.response_channels,
             &self.command_scheduler,

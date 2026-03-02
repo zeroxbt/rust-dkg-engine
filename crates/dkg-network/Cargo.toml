@@ -22,7 +22,7 @@ libp2p = { version = "0.56.0", features = [
     "yamux",
 ] }
 libp2p-mplex = "0.43.1"
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive", "rc"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "fs", "io-util", "macros"] }

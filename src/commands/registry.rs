@@ -89,7 +89,7 @@ macro_rules! command_registry {
 }
 
 pub(crate) trait CommandHandler<D: Send + Sync + 'static>: Send + Sync {
-    async fn execute(&self, data: &D) -> CommandOutcome;
+    fn execute(&self, data: &D) -> impl std::future::Future<Output = CommandOutcome> + Send;
 }
 
 // Command registry: operation commands only.

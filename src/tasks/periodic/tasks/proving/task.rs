@@ -123,10 +123,7 @@ impl ProvingTask {
         .await
         {
             tracing::info!("Got valid assertion from network");
-            return Some(Assertion::new(
-                ack.assertion.public.clone(),
-                ack.assertion.private.clone(),
-            ));
+            return Some(ack.assertion);
         }
 
         tracing::warn!("Failed to fetch assertion from any peer");

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use dkg_blockchain::{BlockchainId, BlockchainManager};
 use dkg_domain::{Assertion, SignatureComponents};
 use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
-use dkg_network::{NetworkManager, PeerId, ResponseHandle, StoreAck};
+use dkg_network::{NetworkManager, PeerId, ResponseHandle, StoreAck, StoreRequestData};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -19,27 +19,21 @@ use crate::{
 /// Dataset is passed inline; channel is retrieved from session manager.
 #[derive(Clone)]
 pub(crate) struct HandlePublishStoreRequestCommandData {
-    pub blockchain: BlockchainId,
     pub operation_id: Uuid,
-    pub dataset_root: String,
+    pub request: StoreRequestData,
     pub remote_peer_id: PeerId,
-    pub dataset: Assertion,
 }
 
 impl HandlePublishStoreRequestCommandData {
     pub(crate) fn new(
-        blockchain: BlockchainId,
         operation_id: Uuid,
-        dataset_root: String,
+        request: StoreRequestData,
         remote_peer_id: PeerId,
-        dataset: Assertion,
     ) -> Self {
         Self {
-            blockchain,
             operation_id,
-            dataset_root,
+            request,
             remote_peer_id,
-            dataset,
         }
     }
 }
@@ -120,17 +114,19 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             operation_id = %data.operation_id,
             protocol = "publish_store",
             direction = "recv",
-            blockchain = %data.blockchain,
-            dataset_root = %data.dataset_root,
+            blockchain = tracing::field::Empty,
+            dataset_root = tracing::field::Empty,
             remote_peer = %data.remote_peer_id,
         )
     )]
     async fn execute(&self, data: &HandlePublishStoreRequestCommandData) -> CommandOutcome {
         let operation_id = data.operation_id;
-        let blockchain = &data.blockchain;
-        let dataset_root = &data.dataset_root;
+        let blockchain: BlockchainId = data.request.blockchain().clone();
+        let dataset_root = data.request.dataset_root().to_string();
+        let dataset_public = data.request.dataset().to_vec();
         let remote_peer_id = &data.remote_peer_id;
-        let dataset = &data.dataset;
+        tracing::Span::current().record("blockchain", tracing::field::display(&blockchain));
+        tracing::Span::current().record("dataset_root", tracing::field::display(&dataset_root));
 
         // Retrieve the response channel
         let Some(channel) = self
@@ -150,7 +146,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
         let local_peer_id = self.network_manager.peer_id();
         if !self
             .peer_registry
-            .is_peer_in_shard(blockchain, local_peer_id)
+            .is_peer_in_shard(&blockchain, local_peer_id)
         {
             tracing::warn!(
                 operation_id = %operation_id,
@@ -165,9 +161,9 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandOutcome::Completed;
         }
 
-        let computed_dataset_root = dkg_domain::calculate_merkle_root(&dataset.public);
+        let computed_dataset_root = dkg_domain::calculate_merkle_root(&dataset_public);
 
-        if *dataset_root != computed_dataset_root {
+        if dataset_root != computed_dataset_root {
             tracing::warn!(
                 operation_id = %operation_id,
                 received = %dataset_root,
@@ -187,7 +183,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             return CommandOutcome::Completed;
         }
 
-        let identity_id = self.blockchain_manager.identity_id(blockchain);
+        let identity_id = self.blockchain_manager.identity_id(&blockchain);
 
         let Some(dataset_root_hex) = dataset_root.strip_prefix("0x") else {
             tracing::warn!(
@@ -203,7 +199,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
 
         let signature = match signature::sign_dataset_root_hex(
             self.blockchain_manager.as_ref(),
-            blockchain,
+            &blockchain,
             dataset_root_hex,
         )
         .await
@@ -226,7 +222,11 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             }
         };
 
-        let pending = PublishTmpDataset::new(dataset.clone(), remote_peer_id.to_base58());
+        let pending_dataset = Assertion {
+            public: dataset_public,
+            private: None,
+        };
+        let pending = PublishTmpDataset::new(pending_dataset, remote_peer_id.to_base58());
         if let Err(e) = self
             .publish_tmp_dataset_store
             .store(operation_id, pending)

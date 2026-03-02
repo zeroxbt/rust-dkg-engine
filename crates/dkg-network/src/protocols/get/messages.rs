@@ -1,5 +1,7 @@
 //! Get protocol message types.
 
+use std::sync::Arc;
+
 use dkg_domain::{Assertion, BlockchainId, TokenIds};
 use serde::{Deserialize, Serialize};
 
@@ -9,16 +11,16 @@ use crate::message::ProtocolResponse;
 #[serde(rename_all = "camelCase")]
 pub struct GetRequestData {
     blockchain: BlockchainId,
-    contract: String,
+    contract: Arc<String>,
     knowledge_collection_id: u128,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     knowledge_asset_id: Option<u128>,
-    ual: String,
-    token_ids: TokenIds,
+    ual: Arc<String>,
+    token_ids: Arc<TokenIds>,
     #[serde(default)]
     include_metadata: bool,
     #[serde(rename = "paranetUAL")]
-    paranet_ual: Option<String>,
+    paranet_ual: Option<Arc<String>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -35,24 +37,29 @@ impl GetRequestData {
     ) -> Self {
         Self {
             blockchain,
-            contract,
+            contract: Arc::new(contract),
             knowledge_collection_id,
             knowledge_asset_id,
-            ual,
-            token_ids,
+            ual: Arc::new(ual),
+            token_ids: Arc::new(token_ids),
             include_metadata,
-            paranet_ual,
+            paranet_ual: paranet_ual.map(Arc::new),
         }
     }
 
     /// Returns the UAL.
     pub fn ual(&self) -> &str {
-        &self.ual
+        self.ual.as_str()
     }
 
     /// Returns the token IDs.
     pub fn token_ids(&self) -> &TokenIds {
-        &self.token_ids
+        self.token_ids.as_ref()
+    }
+
+    /// Returns a cheap shared clone of token IDs.
+    pub fn token_ids_shared(&self) -> Arc<TokenIds> {
+        Arc::clone(&self.token_ids)
     }
 
     /// Returns whether metadata should be included.
@@ -62,7 +69,12 @@ impl GetRequestData {
 
     /// Returns the paranet UAL, if any.
     pub fn paranet_ual(&self) -> Option<&str> {
-        self.paranet_ual.as_deref()
+        self.paranet_ual.as_deref().map(String::as_str)
+    }
+
+    /// Returns a cheap shared clone of paranet UAL, if any.
+    pub fn paranet_ual_shared(&self) -> Option<Arc<String>> {
+        self.paranet_ual.as_ref().map(Arc::clone)
     }
 }
 

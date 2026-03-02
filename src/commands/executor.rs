@@ -131,9 +131,9 @@ impl CommandExecutor {
 
     /// Execute a command.
     async fn execute(command_resolver: Arc<CommandResolver>, request: CommandExecutionRequest) {
-        let command_name = request.command().name();
-        let started_at = Instant::now();
         let execution_delay = request.execution_delay();
+        let started_at = Instant::now();
+        let command_name = request.command().name();
 
         // Check if command has expired
         if request.is_expired() {

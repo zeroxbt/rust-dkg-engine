@@ -175,11 +175,8 @@ impl GetAssertionUseCase {
         }
 
         Some(GetAssertionOutput {
-            assertion: Assertion::new(
-                result.assertion.public.clone(),
-                result.assertion.private.clone(),
-            ),
-            metadata: result.metadata.clone(),
+            assertion: result.assertion,
+            metadata: result.metadata,
             source: AssertionSource::Local,
         })
     }
@@ -224,11 +221,8 @@ impl GetAssertionUseCase {
         .await
         {
             return Ok(GetAssertionOutput {
-                assertion: Assertion::new(
-                    ack.assertion.public.clone(),
-                    ack.assertion.private.clone(),
-                ),
-                metadata: ack.metadata.clone(),
+                assertion: ack.assertion,
+                metadata: ack.metadata,
                 source: AssertionSource::Network,
             });
         }

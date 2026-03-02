@@ -1,6 +1,7 @@
 //! Batch get protocol message types.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use dkg_domain::{Assertion, TokenIds};
 use serde::{Deserialize, Serialize};
@@ -17,9 +18,9 @@ pub struct BatchGetRequestData {
     /// The blockchain network identifier.
     blockchain: String,
     /// List of UALs to retrieve.
-    uals: Vec<String>,
+    uals: Arc<Vec<String>>,
     /// Token IDs for each UAL (keyed by UAL string).
-    token_ids: HashMap<String, TokenIds>,
+    token_ids: Arc<HashMap<String, TokenIds>>,
     /// Whether to include metadata in the response.
     #[serde(default)]
     include_metadata: bool,
@@ -34,20 +35,30 @@ impl BatchGetRequestData {
     ) -> Self {
         Self {
             blockchain,
-            uals,
-            token_ids,
+            uals: Arc::new(uals),
+            token_ids: Arc::new(token_ids),
             include_metadata,
         }
     }
 
     /// Returns the list of UALs.
     pub fn uals(&self) -> &[String] {
-        &self.uals
+        self.uals.as_slice()
+    }
+
+    /// Returns a cheap shared clone of UALs.
+    pub fn uals_shared(&self) -> Arc<Vec<String>> {
+        Arc::clone(&self.uals)
     }
 
     /// Returns the token IDs map.
     pub fn token_ids(&self) -> &HashMap<String, TokenIds> {
-        &self.token_ids
+        self.token_ids.as_ref()
+    }
+
+    /// Returns a cheap shared clone of token IDs map.
+    pub fn token_ids_shared(&self) -> Arc<HashMap<String, TokenIds>> {
+        Arc::clone(&self.token_ids)
     }
 
     /// Returns whether metadata should be included.
