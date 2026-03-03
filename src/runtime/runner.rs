@@ -4,7 +4,7 @@ use dkg_network::{NetworkEventLoop, PeerEvent};
 use tokio::{select, signal::unix::SignalKind, sync::broadcast};
 use tokio_util::sync::CancellationToken;
 
-use super::{RuntimeDeps, shutdown};
+use super::{RuntimeConfig, RuntimeDeps, shutdown};
 use crate::{
     commands::executor::CommandExecutor,
     controllers::{
@@ -20,6 +20,7 @@ pub(crate) async fn run(
     network_event_loop: NetworkEventLoop,
     rpc_router: RpcRouter,
     http_router: Option<HttpApiRouter>,
+    runtime_config: RuntimeConfig,
     periodic_tasks_config: PeriodicTasksConfig,
     metrics_enabled: bool,
 ) {
@@ -72,6 +73,7 @@ pub(crate) async fn run(
     shutdown::graceful_shutdown(shutdown::ShutdownContext {
         command_scheduler,
         network_manager,
+        graceful_shutdown: runtime_config.graceful_shutdown,
         periodic_shutdown,
         periodic_handle,
         execute_commands_task,

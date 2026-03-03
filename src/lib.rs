@@ -88,6 +88,7 @@ pub async fn run() {
         network_event_loop,
         controllers.rpc_router,
         controllers.http_router,
+        config.runtime.clone(),
         config.periodic_tasks.clone(),
         config.telemetry.metrics.enabled,
     )

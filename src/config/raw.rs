@@ -7,6 +7,7 @@ use crate::{
     controllers::ControllersConfig,
     logger::{LoggerConfig, TelemetryConfig},
     managers::{ManagersConfig, ManagersConfigRaw},
+    runtime::RuntimeConfig,
     tasks::periodic::PeriodicTasksConfig,
 };
 
@@ -53,6 +54,7 @@ pub(crate) struct ConfigRaw {
     pub environment: String,
     pub app_data_path: PathBuf,
     pub managers: ManagersConfigRaw,
+    pub runtime: RuntimeConfig,
     pub controllers: ControllersConfig,
     pub periodic_tasks: PeriodicTasksConfig,
     pub logger: LoggerConfig,
@@ -63,6 +65,7 @@ pub(crate) struct ConfigRaw {
 pub(crate) struct Config {
     pub app_data_path: PathBuf,
     pub managers: ManagersConfig,
+    pub runtime: RuntimeConfig,
     pub controllers: ControllersConfig,
     pub periodic_tasks: PeriodicTasksConfig,
     pub logger: LoggerConfig,
@@ -74,6 +77,7 @@ impl ConfigRaw {
         Ok(Config {
             app_data_path: self.app_data_path,
             managers: self.managers.resolve()?,
+            runtime: self.runtime,
             controllers: self.controllers,
             periodic_tasks: self.periodic_tasks,
             logger: self.logger,

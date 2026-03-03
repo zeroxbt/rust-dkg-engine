@@ -29,6 +29,7 @@ use crate::{
     },
     logger::{LogFormat, LoggerConfig, TelemetryConfig, TelemetryMetricsConfig},
     managers::ManagersConfigRaw,
+    runtime::{GracefulShutdownConfig, RuntimeConfig},
     tasks::{
         dkg_sync::{DkgSyncConfig, DkgSyncDiscoveryConfig, DkgSyncQueueProcessorConfig},
         periodic::{
@@ -240,6 +241,18 @@ fn telemetry(metrics_enabled: bool) -> TelemetryConfig {
     }
 }
 
+fn runtime() -> RuntimeConfig {
+    RuntimeConfig {
+        graceful_shutdown: GracefulShutdownConfig {
+            periodic_tasks_timeout_secs: 90,
+            command_executor_timeout_secs: 90,
+            network_event_loop_timeout_secs: 10,
+            peer_registry_timeout_secs: 5,
+            http_server_timeout_secs: 10,
+        },
+    }
+}
+
 // ── Per-environment constructors ────────────────────────────────
 
 fn development() -> ConfigRaw {
@@ -251,6 +264,7 @@ fn development() -> ConfigRaw {
             format: LogFormat::Pretty,
         },
         telemetry: telemetry(true),
+        runtime: runtime(),
         controllers: controllers(),
         periodic_tasks: periodic_tasks(),
         managers: ManagersConfigRaw {
@@ -316,6 +330,7 @@ fn testnet() -> ConfigRaw {
             format: LogFormat::Pretty,
         },
         telemetry: telemetry(false),
+        runtime: runtime(),
         controllers: controllers(),
         periodic_tasks: periodic_tasks(),
         managers: ManagersConfigRaw {
@@ -401,6 +416,7 @@ fn mainnet() -> ConfigRaw {
             format: LogFormat::Pretty,
         },
         telemetry: telemetry(false),
+        runtime: runtime(),
         controllers: controllers(),
         periodic_tasks: periodic_tasks(),
         managers: ManagersConfigRaw {

@@ -3,17 +3,13 @@ use std::{sync::Arc, time::Duration};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use super::GracefulShutdownConfig;
 use crate::commands::scheduler::CommandScheduler;
-
-const PERIODIC_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
-const COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
-const NETWORK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
-const PEER_REGISTRY_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
-const HTTP_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(super) struct ShutdownContext {
     pub(super) command_scheduler: CommandScheduler,
     pub(super) network_manager: Arc<dkg_network::NetworkManager>,
+    pub(super) graceful_shutdown: GracefulShutdownConfig,
     pub(super) periodic_shutdown: CancellationToken,
     pub(super) periodic_handle: JoinHandle<()>,
     pub(super) execute_commands_task: JoinHandle<()>,
@@ -41,6 +37,7 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     let ShutdownContext {
         command_scheduler,
         network_manager,
+        graceful_shutdown,
         periodic_shutdown,
         mut periodic_handle,
         mut execute_commands_task,
@@ -50,7 +47,26 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
         mut handle_http_events_task,
     } = context;
 
+    let periodic_shutdown_timeout =
+        Duration::from_secs(graceful_shutdown.periodic_tasks_timeout_secs.max(1));
+    let command_executor_shutdown_timeout =
+        Duration::from_secs(graceful_shutdown.command_executor_timeout_secs.max(1));
+    let network_shutdown_timeout =
+        Duration::from_secs(graceful_shutdown.network_event_loop_timeout_secs.max(1));
+    let peer_registry_shutdown_timeout =
+        Duration::from_secs(graceful_shutdown.peer_registry_timeout_secs.max(1));
+    let http_shutdown_timeout =
+        Duration::from_secs(graceful_shutdown.http_server_timeout_secs.max(1));
+
     tracing::info!("Shutting down gracefully...");
+    tracing::info!(
+        periodic_tasks_timeout_secs = periodic_shutdown_timeout.as_secs(),
+        command_executor_timeout_secs = command_executor_shutdown_timeout.as_secs(),
+        network_event_loop_timeout_secs = network_shutdown_timeout.as_secs(),
+        peer_registry_timeout_secs = peer_registry_shutdown_timeout.as_secs(),
+        http_server_timeout_secs = http_shutdown_timeout.as_secs(),
+        "Graceful shutdown timeouts"
+    );
 
     // Step 1: Signal HTTP server to stop accepting new connections
     let _ = http_shutdown_tx.send(());
@@ -61,7 +77,7 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     // Step 3: Wait for periodic tasks to finish current iteration and exit
     wait_for_shutdown_task(
         "periodic_tasks",
-        PERIODIC_SHUTDOWN_TIMEOUT,
+        periodic_shutdown_timeout,
         &mut periodic_handle,
         true,
     )
@@ -73,7 +89,7 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     // Step 5: Wait for command executor to drain pending commands
     wait_for_shutdown_task(
         "command_executor",
-        COMMAND_EXECUTOR_SHUTDOWN_TIMEOUT,
+        command_executor_shutdown_timeout,
         &mut execute_commands_task,
         true,
     )
@@ -85,7 +101,7 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     // Step 7: Wait for network manager to exit
     wait_for_shutdown_task(
         "network_event_loop",
-        NETWORK_SHUTDOWN_TIMEOUT,
+        network_shutdown_timeout,
         &mut network_event_loop_task,
         true,
     )
@@ -96,7 +112,7 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     // against any edge case where the sender outlives the network task.
     wait_for_shutdown_task(
         "peer_registry_updater",
-        PEER_REGISTRY_SHUTDOWN_TIMEOUT,
+        peer_registry_shutdown_timeout,
         &mut peer_registry_task,
         true,
     )
@@ -105,7 +121,7 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     // Step 9: Wait for HTTP server to finish in-flight requests
     wait_for_shutdown_task(
         "http_server",
-        HTTP_SHUTDOWN_TIMEOUT,
+        http_shutdown_timeout,
         &mut handle_http_events_task,
         false,
     )
