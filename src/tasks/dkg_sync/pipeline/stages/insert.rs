@@ -30,21 +30,14 @@ pub(crate) async fn run_insert_stage(
     kc_materialization_service: Arc<KcMaterializationService>,
     outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
 ) {
-    let task_start = Instant::now();
-    let mut total_synced = 0usize;
-    let mut total_failed = 0usize;
-    let mut total_received = 0usize;
-
     while let Some(batch) = rx.recv().await {
         let batch_start = Instant::now();
         let batch_len = batch.len();
         let batch_assets: u64 = batch.iter().map(|kc| kc.estimated_assets).sum();
-        total_received += batch_len;
         tracing::debug!(
+            blockchain_id = %blockchain_id,
             batch_size = batch_len,
             assets_in_batch = batch_assets,
-            total_received,
-            elapsed_ms = task_start.elapsed().as_millis() as u64,
             "Insert: received batch"
         );
 
@@ -59,8 +52,6 @@ pub(crate) async fn run_insert_stage(
 
         let batch_synced_count = remove_outcomes.len();
         let batch_failed_count = retry_outcomes.len();
-        total_synced += batch_synced_count;
-        total_failed += batch_failed_count;
         observability::record_sync_kc_outcome(
             blockchain_id.as_str(),
             "insert",
@@ -88,29 +79,33 @@ pub(crate) async fn run_insert_stage(
             batch_assets,
         );
 
-        if !remove_outcomes.is_empty() && outcome_tx.send(remove_outcomes).await.is_err() {
+        let remove_count = remove_outcomes.len();
+        if remove_count > 0 && outcome_tx.send(remove_outcomes).await.is_err() {
+            tracing::warn!(
+                blockchain_id = %blockchain_id,
+                remove_count,
+                "Insert: queue outcome receiver dropped while sending remove outcomes"
+            );
             return;
         }
-        if !retry_outcomes.is_empty() && outcome_tx.send(retry_outcomes).await.is_err() {
+        let retry_count = retry_outcomes.len();
+        if retry_count > 0 && outcome_tx.send(retry_outcomes).await.is_err() {
+            tracing::warn!(
+                blockchain_id = %blockchain_id,
+                retry_count,
+                "Insert: queue outcome receiver dropped while sending retry outcomes"
+            );
             return;
         }
 
         tracing::debug!(
+            blockchain_id = %blockchain_id,
             batch_ms = batch_start.elapsed().as_millis() as u64,
             batch_synced = batch_synced_count,
             batch_failed = batch_failed_count,
-            total_synced,
-            total_failed,
             "Insert: batch completed"
         );
     }
-
-    tracing::debug!(
-        total_ms = task_start.elapsed().as_millis() as u64,
-        total_synced,
-        total_failed,
-        "Insert stage completed"
-    );
 }
 
 /// Insert KCs into the triple store in parallel.

@@ -89,7 +89,10 @@ pub(crate) async fn dispatch_due_fifo(
     let rollback_keys: Vec<QueueKcKey> = accepted.iter().map(|item| item.key.clone()).collect();
 
     if input_tx.send(accepted).await.is_err() {
-        tracing::warn!("Sync pipeline input channel closed");
+        tracing::warn!(
+            blockchain_id = %blockchain_id,
+            "Sync pipeline input channel closed"
+        );
         let mut inflight = inflight.lock().await;
         for key in rollback_keys {
             inflight.remove(&key);

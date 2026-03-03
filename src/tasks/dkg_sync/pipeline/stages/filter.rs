@@ -3,7 +3,6 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
-    time::Instant,
 };
 
 use dkg_blockchain::BlockchainId;
@@ -41,7 +40,6 @@ pub(crate) async fn run_filter_stage(
     tx: mpsc::Sender<Vec<KcToSync>>,
     outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
 ) {
-    let task_start = Instant::now();
     let filter_max_kc_per_chunk = filter_max_kc_per_chunk.max(1);
 
     while let Some(work_items) = rx.recv().await {
@@ -67,8 +65,13 @@ pub(crate) async fn run_filter_stage(
                 batch_result.retry_later.len(),
             );
 
-            if !batch_result.to_sync.is_empty() && tx.send(batch_result.to_sync).await.is_err() {
-                tracing::trace!("Filter: fetch stage receiver dropped, stopping");
+            let to_sync_count = batch_result.to_sync.len();
+            if to_sync_count > 0 && tx.send(batch_result.to_sync).await.is_err() {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    to_sync_count,
+                    "Filter: fetch stage receiver dropped, stopping"
+                );
                 return;
             }
 
@@ -87,17 +90,17 @@ pub(crate) async fn run_filter_stage(
                 }),
             );
 
-            if !outcomes.is_empty() && outcome_tx.send(outcomes).await.is_err() {
-                tracing::trace!("Filter: queue outcome receiver dropped, stopping");
+            let outcome_count = outcomes.len();
+            if outcome_count > 0 && outcome_tx.send(outcomes).await.is_err() {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    outcome_count,
+                    "Filter: queue outcome receiver dropped, stopping"
+                );
                 return;
             }
         }
     }
-
-    tracing::debug!(
-        total_ms = task_start.elapsed().as_millis() as u64,
-        "Filter stage completed"
-    );
 }
 
 struct FilterBatchResult {

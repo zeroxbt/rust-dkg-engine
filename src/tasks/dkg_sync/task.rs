@@ -154,7 +154,11 @@ impl DkgSyncTask {
         if let Some(discovery_handle) = discovery_handle
             && let Err(error) = discovery_handle.await
         {
-            tracing::error!(error = ?error, "DKG sync discovery panicked");
+            tracing::error!(
+                blockchain_id = %blockchain_id,
+                error = ?error,
+                "DKG sync discovery panicked"
+            );
         }
 
         observability::record_sync_pipeline_inflight(0);

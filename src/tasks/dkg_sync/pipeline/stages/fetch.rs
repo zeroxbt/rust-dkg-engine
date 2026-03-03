@@ -58,19 +58,14 @@ pub(crate) async fn run_fetch_stage(
     tx: mpsc::Sender<Vec<FetchedKc>>,
     outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
 ) {
-    let task_start = Instant::now();
     let fetch_max_kc_per_batch = fetch_max_kc_per_batch.max(1);
     let batch_get_fanout_concurrency = batch_get_fanout_concurrency.max(1);
     let fetch_max_ka_per_batch = fetch_max_ka_per_batch.max(1);
-    let mut total_failures = 0usize;
-    let mut total_fetched = 0usize;
-    let mut total_received = 0usize;
 
     // Accumulate KCs until we have enough for a network batch
     let mut accumulated: Vec<KcToSync> = Vec::new();
 
     while let Some(batch) = rx.recv().await {
-        total_received += batch.len();
         accumulated.extend(batch);
 
         // Process when we have enough KCs to start fetching, or when channel is empty
@@ -122,15 +117,19 @@ pub(crate) async fn run_fetch_stage(
                 assets_total,
             );
 
-            total_fetched += fetched.len();
-            total_failures += batch_failures.len();
             observability::record_sync_kc_outcome(
                 blockchain_id.as_str(),
                 "fetch",
                 "failed",
                 batch_failures.len(),
             );
-            if !batch_failures.is_empty() && outcome_tx.send(batch_failures).await.is_err() {
+            let failure_count = batch_failures.len();
+            if failure_count > 0 && outcome_tx.send(batch_failures).await.is_err() {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    failure_count,
+                    "Fetch: queue outcome receiver dropped while sending failed outcomes"
+                );
                 return;
             }
 
@@ -140,15 +139,16 @@ pub(crate) async fn run_fetch_stage(
                     batch_size = to_fetch.len(),
                     assets_in_batch = assets_total,
                     fetched_count = fetched.len(),
-                    total_failures,
+                    failed_count = failure_count,
                     fetch_ms = fetch_start.elapsed().as_millis() as u64,
-                    total_received,
-                    total_fetched,
-                    elapsed_ms = task_start.elapsed().as_millis() as u64,
                     "Fetch: sending batch to insert stage"
                 );
                 if tx.send(fetched).await.is_err() {
-                    tracing::trace!("Fetch: insert stage receiver dropped, stopping");
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        remaining_accumulated = accumulated.len(),
+                        "Fetch: insert stage receiver dropped, stopping"
+                    );
                     let remaining_outcomes: Vec<QueueOutcome> = accumulated
                         .drain(..)
                         .map(|kc| {
@@ -202,16 +202,19 @@ pub(crate) async fn run_fetch_stage(
             assets_total,
         );
 
-        total_fetched += fetched.len();
-        total_failures += batch_failures.len();
         observability::record_sync_kc_outcome(
             blockchain_id.as_str(),
             "fetch",
             "failed",
             batch_failures.len(),
         );
-        if !batch_failures.is_empty() {
-            let _ = outcome_tx.send(batch_failures).await;
+        let failure_count = batch_failures.len();
+        if failure_count > 0 && outcome_tx.send(batch_failures).await.is_err() {
+            tracing::warn!(
+                blockchain_id = %blockchain_id,
+                failure_count,
+                "Fetch: queue outcome receiver dropped while flushing failed outcomes"
+            );
         }
 
         if !fetched.is_empty() {
@@ -219,20 +222,18 @@ pub(crate) async fn run_fetch_stage(
                 remaining = accumulated.len(),
                 assets_in_batch = assets_total,
                 fetched_count = fetched.len(),
-                total_failures,
+                failed_count = failure_count,
                 fetch_ms = fetch_start.elapsed().as_millis() as u64,
                 "Fetch: flushing remaining KCs"
             );
-            let _ = tx.send(fetched).await;
+            if tx.send(fetched).await.is_err() {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    "Fetch: insert stage receiver dropped while flushing fetched KCs"
+                );
+            }
         }
     }
-
-    tracing::debug!(
-        total_ms = task_start.elapsed().as_millis() as u64,
-        total_fetched,
-        failures = total_failures,
-        "Fetch stage completed"
-    );
 }
 
 fn estimate_asset_count(token_ids: &TokenIds) -> u64 {
