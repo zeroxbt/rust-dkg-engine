@@ -20,9 +20,11 @@ pub(crate) async fn dispatch_due_fifo(
     input_tx: &mpsc::Sender<Vec<QueueKcWorkItem>>,
     blockchain_id: &BlockchainId,
 ) -> bool {
+    let dispatch_max_kc_per_attempt = config.queue_processor.dispatch_max_kc_per_attempt.max(1);
+
     let free_slots = config
         .queue_processor
-        .pipeline_capacity
+        .inflight_kc_limit
         .max(1)
         .saturating_sub(inflight.lock().await.len());
     if free_slots == 0 {
@@ -36,7 +38,7 @@ pub(crate) async fn dispatch_due_fifo(
             blockchain_id.as_str(),
             now_ts,
             config.queue_processor.max_retry_attempts,
-            free_slots as u64,
+            free_slots.min(dispatch_max_kc_per_attempt) as u64,
         )
         .await
     {

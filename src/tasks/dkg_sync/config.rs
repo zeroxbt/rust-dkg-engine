@@ -13,21 +13,27 @@ pub(crate) struct DkgSyncDiscoveryConfig {
     pub enabled: bool,
     pub head_safety_blocks: u64,
     pub max_contract_concurrency: usize,
-    pub metadata_discovery_block_batch_size: u64,
-    pub metadata_state_batch_size: usize,
+    pub metadata_discovery_max_blocks_per_chunk: u64,
+    pub metadata_state_max_kc_per_chunk: usize,
     pub metadata_error_retry_interval_secs: u64,
-    pub queue_high_watermark: u64,
-    pub queue_low_watermark: u64,
+    pub queue_high_kc_watermark: u64,
+    pub queue_low_kc_watermark: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DkgSyncQueueProcessorConfig {
-    pub pipeline_capacity: usize,
-    pub pipeline_channel_buffer: usize,
-    pub filter_batch_size: usize,
-    pub max_assets_per_fetch_batch: u64,
-    pub insert_batch_concurrency: usize,
+    /// Global cap for KCs simultaneously in-flight across all pipeline stages.
+    pub inflight_kc_limit: usize,
+    /// Max number of due queue rows dispatcher pulls in one dispatch attempt.
+    pub dispatch_max_kc_per_attempt: usize,
+    /// Per-channel message buffer between pipeline stages.
+    pub stage_channel_message_buffer: usize,
+    pub filter_max_kc_per_chunk: usize,
+    pub fetch_max_kc_per_batch: usize,
+    pub fetch_peer_fanout_concurrency: usize,
+    pub fetch_max_ka_per_batch: u64,
+    pub insert_kc_concurrency: usize,
 
     pub dispatch_idle_poll_secs: u64,
     pub max_retry_attempts: u32,

@@ -48,9 +48,9 @@ const FETCH_STAGE_FAILURE_REASON: &str = "fetch_stage_failure";
 )]
 pub(crate) async fn run_fetch_stage(
     mut rx: mpsc::Receiver<Vec<KcToSync>>,
-    network_fetch_batch_size: usize,
+    fetch_max_kc_per_batch: usize,
     batch_get_fanout_concurrency: usize,
-    max_assets_per_fetch_batch: u64,
+    fetch_max_ka_per_batch: u64,
     blockchain_id: BlockchainId,
     network_manager: Arc<NetworkManager>,
     assertion_validation: Arc<AssertionValidation>,
@@ -59,9 +59,9 @@ pub(crate) async fn run_fetch_stage(
     outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
 ) {
     let task_start = Instant::now();
-    let network_fetch_batch_size = network_fetch_batch_size.max(1);
+    let fetch_max_kc_per_batch = fetch_max_kc_per_batch.max(1);
     let batch_get_fanout_concurrency = batch_get_fanout_concurrency.max(1);
-    let max_assets_per_fetch_batch = max_assets_per_fetch_batch.max(1);
+    let fetch_max_ka_per_batch = fetch_max_ka_per_batch.max(1);
     let mut total_failures = 0usize;
     let mut total_fetched = 0usize;
     let mut total_received = 0usize;
@@ -74,7 +74,7 @@ pub(crate) async fn run_fetch_stage(
         accumulated.extend(batch);
 
         // Process when we have enough KCs to start fetching, or when channel is empty
-        while accumulated.len() >= network_fetch_batch_size
+        while accumulated.len() >= fetch_max_kc_per_batch
             || (!accumulated.is_empty() && rx.is_empty())
         {
             let mut assets_total = 0u64;
@@ -84,7 +84,7 @@ pub(crate) async fn run_fetch_stage(
                     break;
                 }
                 let kc_assets = estimate_asset_count(&kc.token_ids);
-                if take > 0 && assets_total.saturating_add(kc_assets) > max_assets_per_fetch_batch {
+                if take > 0 && assets_total.saturating_add(kc_assets) > fetch_max_ka_per_batch {
                     break;
                 }
                 assets_total = assets_total.saturating_add(kc_assets);

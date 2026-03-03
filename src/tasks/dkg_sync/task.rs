@@ -39,9 +39,18 @@ impl DkgSyncTask {
     }
 
     pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
+        let queue_cfg = &self.config.queue_processor;
         tracing::info!(
             blockchain_id = %blockchain_id,
             discovery_enabled = self.config.discovery.enabled,
+            inflight_kc_limit = queue_cfg.inflight_kc_limit,
+            dispatch_max_kc_per_attempt = queue_cfg.dispatch_max_kc_per_attempt,
+            stage_channel_message_buffer = queue_cfg.stage_channel_message_buffer,
+            filter_max_kc_per_chunk = queue_cfg.filter_max_kc_per_chunk,
+            fetch_max_kc_per_batch = queue_cfg.fetch_max_kc_per_batch,
+            fetch_peer_fanout_concurrency = queue_cfg.fetch_peer_fanout_concurrency,
+            fetch_max_ka_per_batch = queue_cfg.fetch_max_ka_per_batch,
+            insert_kc_concurrency = queue_cfg.insert_kc_concurrency,
             "Starting DKG sync queue processor"
         );
 
@@ -49,7 +58,11 @@ impl DkgSyncTask {
 
         let sync_pipeline = DkgSyncPipeline::new(self.deps.clone(), self.config.clone());
         let (outcome_tx, mut outcome_rx) = mpsc::channel::<Vec<QueueOutcome>>(
-            self.config.queue_processor.pipeline_channel_buffer.max(1) * 2,
+            self.config
+                .queue_processor
+                .stage_channel_message_buffer
+                .max(1)
+                * 2,
         );
         let pipeline_runtime = sync_pipeline.start(blockchain_id, outcome_tx);
 
@@ -234,8 +247,8 @@ impl DkgSyncTask {
         shutdown: CancellationToken,
     ) {
         let contract_scan_concurrency = config.discovery.max_contract_concurrency.max(1);
-        let high_watermark = config.discovery.queue_high_watermark.max(1);
-        let low_watermark = config.discovery.queue_low_watermark.max(1);
+        let high_watermark = config.discovery.queue_high_kc_watermark.max(1);
+        let low_watermark = config.discovery.queue_low_kc_watermark.max(1);
         let recheck_period =
             Duration::from_secs(config.discovery.metadata_error_retry_interval_secs.max(1));
 

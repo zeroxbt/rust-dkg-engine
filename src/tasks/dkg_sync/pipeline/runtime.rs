@@ -11,9 +11,6 @@ use super::{
 use crate::tasks::dkg_sync::DkgSyncConfig;
 use crate::tasks::periodic::DkgSyncDeps;
 
-// Keep peer fanout fixed to avoid overloading the network during discovery.
-const FETCH_FANOUT_CONCURRENCY: usize = 3;
-
 pub(crate) struct DkgSyncPipeline {
     config: DkgSyncConfig,
     deps: DkgSyncDeps,
@@ -63,15 +60,17 @@ impl DkgSyncPipeline {
         queue_outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
     ) -> DkgSyncPipelineRuntime {
         let queue_processor = &self.config.queue_processor;
-        let pipeline_capacity = queue_processor.pipeline_capacity.max(1);
-        let pipeline_channel_buffer = queue_processor.pipeline_channel_buffer.max(1);
-        let filter_batch_size = queue_processor.filter_batch_size.max(1);
-        let insert_batch_concurrency = queue_processor.insert_batch_concurrency.max(1);
-        let max_assets_per_fetch_batch = queue_processor.max_assets_per_fetch_batch.max(1);
+        let stage_channel_message_buffer = queue_processor.stage_channel_message_buffer.max(1);
+        let filter_max_kc_per_chunk = queue_processor.filter_max_kc_per_chunk.max(1);
+        let fetch_max_kc_per_batch = queue_processor.fetch_max_kc_per_batch.max(1);
+        let fetch_peer_fanout_concurrency = queue_processor.fetch_peer_fanout_concurrency.max(1);
+        let insert_kc_concurrency = queue_processor.insert_kc_concurrency.max(1);
+        let fetch_max_ka_per_batch = queue_processor.fetch_max_ka_per_batch.max(1);
 
-        let (input_tx, input_rx) = mpsc::channel::<Vec<QueueKcWorkItem>>(pipeline_channel_buffer);
-        let (filter_tx, filter_rx) = mpsc::channel::<Vec<KcToSync>>(pipeline_channel_buffer);
-        let (fetch_tx, fetch_rx) = mpsc::channel::<Vec<FetchedKc>>(pipeline_channel_buffer);
+        let (input_tx, input_rx) =
+            mpsc::channel::<Vec<QueueKcWorkItem>>(stage_channel_message_buffer);
+        let (filter_tx, filter_rx) = mpsc::channel::<Vec<KcToSync>>(stage_channel_message_buffer);
+        let (fetch_tx, fetch_rx) = mpsc::channel::<Vec<FetchedKc>>(stage_channel_message_buffer);
 
         let filter_handle = {
             let blockchain_id = blockchain_id.clone();
@@ -81,7 +80,7 @@ impl DkgSyncPipeline {
             tokio::spawn(async move {
                 run_filter_stage(
                     input_rx,
-                    filter_batch_size,
+                    filter_max_kc_per_chunk,
                     blockchain_id,
                     kc_chain_metadata_repository,
                     triple_store_assertions,
@@ -101,9 +100,9 @@ impl DkgSyncPipeline {
             tokio::spawn(async move {
                 run_fetch_stage(
                     filter_rx,
-                    pipeline_capacity,
-                    FETCH_FANOUT_CONCURRENCY,
-                    max_assets_per_fetch_batch,
+                    fetch_max_kc_per_batch,
+                    fetch_peer_fanout_concurrency,
+                    fetch_max_ka_per_batch,
                     blockchain_id,
                     network_manager,
                     assertion_validation,
@@ -122,7 +121,7 @@ impl DkgSyncPipeline {
                 run_insert_stage(
                     fetch_rx,
                     blockchain_id,
-                    insert_batch_concurrency,
+                    insert_kc_concurrency,
                     kc_materialization_service,
                     queue_outcome_tx,
                 )

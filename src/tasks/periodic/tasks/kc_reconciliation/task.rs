@@ -59,7 +59,7 @@ impl KcReconciliationTask {
     }
 
     async fn run_hydrate_projection_phase(&self, blockchain_id: &BlockchainId) {
-        let batch_size = self.config.batch_size.max(1);
+        let batch_size = self.config.max_kc_rows_per_phase.max(1);
         let phase_outcome = match hydrate_projection::run(
             blockchain_id,
             batch_size,
@@ -101,7 +101,7 @@ impl KcReconciliationTask {
     }
 
     async fn run_reconcile_non_present_phase(&self, blockchain_id: &BlockchainId) {
-        let batch_size = self.config.batch_size.max(1);
+        let batch_size = self.config.max_kc_rows_per_phase.max(1);
         let phase_outcome = match reconcile_non_present::run(
             blockchain_id,
             batch_size,
@@ -146,7 +146,7 @@ impl KcReconciliationTask {
     }
 
     async fn run_repair_orphans_phase(&self, blockchain_id: &BlockchainId) {
-        let batch_size = self.config.batch_size.max(1);
+        let batch_size = self.config.max_kc_rows_per_phase.max(1);
         let phase_outcome = match repair_orphans::run(
             blockchain_id,
             batch_size,
@@ -189,7 +189,7 @@ impl KcReconciliationTask {
     }
 
     async fn run_cleanup_stale_queue_phase(&self, blockchain_id: &BlockchainId) {
-        let batch_size = self.config.batch_size.max(1);
+        let batch_size = self.config.max_kc_rows_per_phase.max(1);
         let phase_outcome =
             match cleanup_stale_queue::run(blockchain_id, batch_size, &self.kc_sync_repository)
                 .await

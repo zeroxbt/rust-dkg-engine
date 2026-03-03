@@ -157,7 +157,7 @@ impl DiscoveryWorker {
         let chunk_size = self
             .config
             .discovery
-            .metadata_discovery_block_batch_size
+            .metadata_discovery_max_blocks_per_chunk
             .max(1);
 
         let chunk_from = active_range.start;
@@ -252,7 +252,7 @@ impl DiscoveryWorker {
                 self.deps.blockchain_manager.as_ref(),
                 blockchain_id,
                 &mut records,
-                self.config.discovery.metadata_state_batch_size.max(1),
+                self.config.discovery.metadata_state_max_kc_per_chunk.max(1),
             )
             .await;
 

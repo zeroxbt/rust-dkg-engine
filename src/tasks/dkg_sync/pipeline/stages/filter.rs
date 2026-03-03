@@ -34,7 +34,7 @@ use crate::tasks::dkg_sync::pipeline::types::{
 )]
 pub(crate) async fn run_filter_stage(
     mut rx: mpsc::Receiver<Vec<QueueKcWorkItem>>,
-    filter_batch_size: usize,
+    filter_max_kc_per_chunk: usize,
     blockchain_id: BlockchainId,
     kc_chain_metadata_repository: KcChainMetadataRepository,
     triple_store_assertions: Arc<TripleStoreAssertions>,
@@ -42,10 +42,10 @@ pub(crate) async fn run_filter_stage(
     outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
 ) {
     let task_start = Instant::now();
-    let filter_batch_size = filter_batch_size.max(1);
+    let filter_max_kc_per_chunk = filter_max_kc_per_chunk.max(1);
 
     while let Some(work_items) = rx.recv().await {
-        for chunk in work_items.chunks(filter_batch_size) {
+        for chunk in work_items.chunks(filter_max_kc_per_chunk) {
             let batch_result = process_filter_batch(
                 chunk,
                 &blockchain_id,

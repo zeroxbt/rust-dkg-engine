@@ -5,5 +5,5 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct KcReconciliationConfig {
     pub enabled: bool,
     pub interval_secs: u64,
-    pub batch_size: usize,
+    pub max_kc_rows_per_phase: usize,
 }

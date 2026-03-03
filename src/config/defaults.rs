@@ -89,7 +89,7 @@ fn paranet_sync() -> ParanetSyncConfig {
     ParanetSyncConfig {
         enabled: false,
         interval_secs: 60,
-        batch_size: 50,
+        batch_size: 64,
         max_in_flight: 3,
         retries_limit: 3,
         retry_delay_secs: 60,
@@ -101,7 +101,7 @@ fn kc_reconciliation() -> KcReconciliationConfig {
     KcReconciliationConfig {
         enabled: false,
         interval_secs: 300,
-        batch_size: 500,
+        max_kc_rows_per_phase: 512,
     }
 }
 
@@ -115,18 +115,21 @@ fn dkg_sync() -> DkgSyncConfig {
             enabled: true,
             head_safety_blocks: 2,
             max_contract_concurrency: 128,
-            metadata_discovery_block_batch_size: 100,
-            metadata_state_batch_size: 50,
+            metadata_discovery_max_blocks_per_chunk: 128,
+            metadata_state_max_kc_per_chunk: 64,
             metadata_error_retry_interval_secs: 30,
-            queue_high_watermark: 500,
-            queue_low_watermark: 200,
+            queue_high_kc_watermark: 2048,
+            queue_low_kc_watermark: 512,
         },
         queue_processor: DkgSyncQueueProcessorConfig {
-            pipeline_capacity: 128,
-            pipeline_channel_buffer: 4,
-            filter_batch_size: 64,
-            max_assets_per_fetch_batch: 16_384,
-            insert_batch_concurrency: 8,
+            inflight_kc_limit: 512,
+            dispatch_max_kc_per_attempt: 256,
+            stage_channel_message_buffer: 4,
+            filter_max_kc_per_chunk: 64,
+            fetch_max_kc_per_batch: 128,
+            fetch_peer_fanout_concurrency: 3,
+            fetch_max_ka_per_batch: 16_384,
+            insert_kc_concurrency: 8,
             dispatch_idle_poll_secs: 5,
             max_retry_attempts: 3,
         },

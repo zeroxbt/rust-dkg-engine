@@ -26,7 +26,7 @@ const INSERT_STAGE_FAILURE_REASON: &str = "insert_stage_failure";
 pub(crate) async fn run_insert_stage(
     mut rx: mpsc::Receiver<Vec<FetchedKc>>,
     blockchain_id: BlockchainId,
-    insert_batch_concurrency: usize,
+    insert_kc_concurrency: usize,
     kc_materialization_service: Arc<KcMaterializationService>,
     outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
 ) {
@@ -53,7 +53,7 @@ pub(crate) async fn run_insert_stage(
             batch,
             Arc::clone(&kc_materialization_service),
             blockchain_id.clone(),
-            insert_batch_concurrency,
+            insert_kc_concurrency,
         )
         .await;
 
@@ -119,7 +119,7 @@ async fn insert_kcs_to_store(
     kcs: Vec<FetchedKc>,
     kc_materialization_service: Arc<KcMaterializationService>,
     blockchain_id: BlockchainId,
-    insert_batch_concurrency: usize,
+    insert_kc_concurrency: usize,
 ) -> (Vec<QueueOutcome>, Vec<QueueOutcome>) {
     let mut remove_outcomes = Vec::new();
     let mut retry_outcomes = Vec::new();
@@ -139,7 +139,7 @@ async fn insert_kcs_to_store(
                 (key, ual, result)
             }
         })
-        .buffer_unordered(insert_batch_concurrency.max(1))
+        .buffer_unordered(insert_kc_concurrency.max(1))
         .fuse();
 
     while let Some((key, ual, result)) = insert_results.next().await {
