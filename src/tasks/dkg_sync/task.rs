@@ -11,7 +11,7 @@ use super::{
     pipeline::{DkgSyncPipeline, types::QueueOutcome},
     queue,
 };
-use crate::tasks::periodic::DkgSyncDeps;
+use crate::tasks::dkg_sync::DkgSyncDeps;
 
 pub(crate) struct DkgSyncTask {
     config: DkgSyncConfig,

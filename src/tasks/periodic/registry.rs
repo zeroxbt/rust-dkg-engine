@@ -24,6 +24,18 @@ pub(crate) trait BlockchainPeriodicTask: Send + 'static {
     ) -> impl Future<Output = ()> + Send;
 }
 
+pub(crate) trait ConfiguredBlockchainPeriodicTask: Send + 'static {
+    type Config: Send + 'static;
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self;
+
+    fn run_task(
+        self,
+        blockchain_id: &BlockchainId,
+        shutdown: CancellationToken,
+    ) -> impl Future<Output = ()> + Send;
+}
+
 pub(crate) fn spawn_global_task<T: GlobalPeriodicTask>(
     set: &mut JoinSet<()>,
     deps: &Arc<PeriodicTasksDeps>,
@@ -48,5 +60,22 @@ pub(crate) fn spawn_blockchain_task<T: BlockchainPeriodicTask>(
     let blockchain_id = blockchain_id.clone();
     set.spawn(async move {
         T::from_deps(deps).run_task(&blockchain_id, shutdown).await;
+    });
+}
+
+pub(crate) fn spawn_configured_blockchain_task<T: ConfiguredBlockchainPeriodicTask>(
+    set: &mut JoinSet<()>,
+    deps: &Arc<PeriodicTasksDeps>,
+    shutdown: &CancellationToken,
+    blockchain_id: &BlockchainId,
+    config: T::Config,
+) {
+    let deps = Arc::clone(deps);
+    let shutdown = shutdown.clone();
+    let blockchain_id = blockchain_id.clone();
+    set.spawn(async move {
+        T::from_deps(deps, config)
+            .run_task(&blockchain_id, shutdown)
+            .await;
     });
 }

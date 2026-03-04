@@ -8,10 +8,9 @@ use tokio_util::sync::CancellationToken;
 use super::{dispatcher, outcomes};
 use crate::tasks::{
     dkg_sync::{
-        DkgSyncConfig,
+        DkgSyncConfig, DkgSyncDeps,
         pipeline::types::{QueueKcKey, QueueKcWorkItem, QueueOutcome},
     },
-    periodic::DkgSyncDeps,
 };
 
 const SYNC_RETRY_DELAY_SECS: i64 = 60;

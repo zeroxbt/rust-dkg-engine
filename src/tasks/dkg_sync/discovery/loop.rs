@@ -8,7 +8,7 @@ use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use super::DiscoveryWorker;
-use crate::tasks::{dkg_sync::DkgSyncConfig, periodic::DkgSyncDeps};
+use crate::tasks::dkg_sync::{DkgSyncConfig, DkgSyncDeps};
 
 #[derive(Default)]
 struct GapPassOutcome {

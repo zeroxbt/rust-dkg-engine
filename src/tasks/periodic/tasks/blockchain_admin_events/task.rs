@@ -15,11 +15,11 @@ use dkg_repository::BlockchainRepository;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    error::NodeError, tasks::periodic::BlockchainAdminEventsDeps,
+    error::NodeError, tasks::periodic::PeriodicTasksDeps, tasks::periodic::registry::ConfiguredBlockchainPeriodicTask,
     tasks::periodic::runner::run_with_shutdown,
 };
 
-use super::BlockchainAdminEventsConfig;
+use super::{BlockchainAdminEventsConfig, BlockchainAdminEventsDeps};
 
 const MINIMUM_REQUIRED_SIGNATURES_PARAMETER: &str = "minimumRequiredSignatures";
 
@@ -476,5 +476,26 @@ impl BlockchainAdminEventsTask {
             )
             .await?;
         Ok(())
+    }
+}
+
+impl ConfiguredBlockchainPeriodicTask for BlockchainAdminEventsTask {
+    type Config = (BlockchainAdminEventsConfig, u64);
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
+        let (task_config, reorg_buffer_blocks) = config;
+        Self::new(
+            deps.blockchain_admin_events.clone(),
+            task_config,
+            reorg_buffer_blocks,
+        )
+    }
+
+    fn run_task(
+        self,
+        blockchain_id: &BlockchainId,
+        shutdown: CancellationToken,
+    ) -> impl std::future::Future<Output = ()> + Send {
+        Self::run(self, blockchain_id, shutdown)
     }
 }

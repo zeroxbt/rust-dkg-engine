@@ -7,10 +7,9 @@ use tokio::sync::mpsc;
 
 use crate::tasks::{
     dkg_sync::{
-        DkgSyncConfig,
+        DkgSyncConfig, DkgSyncDeps,
         pipeline::types::{QueueKcKey, QueueKcWorkItem},
     },
-    periodic::DkgSyncDeps,
 };
 
 pub(crate) async fn dispatch_due_fifo(

@@ -25,7 +25,7 @@ use crate::{
         operations::publish::finality::send_publish_finality_request::SendPublishFinalityRequestCommandData,
         registry::Command,
     },
-    tasks::periodic::DkgSyncDeps,
+    tasks::dkg_sync::DkgSyncDeps,
 };
 
 #[path = "loop.rs"]

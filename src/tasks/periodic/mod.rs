@@ -4,15 +4,23 @@ mod runner;
 pub(crate) mod tasks;
 use std::sync::Arc;
 
-use crate::tasks::dkg_sync::{DkgSyncConfig, DkgSyncTask};
-pub(crate) use deps::{
-    BlockchainAdminEventsDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, DkgSyncDeps,
-    KcReconciliationDeps, ParanetSyncDeps, PeriodicTasksDeps, ProvingDeps, SavePeerAddressesDeps,
-    ShardingTableCheckDeps, StateSnapshotDeps,
-};
+use crate::tasks::dkg_sync::DkgSyncConfig;
+pub(crate) use deps::PeriodicTasksDeps;
 use dkg_blockchain::BlockchainId;
 use serde::{Deserialize, Serialize};
 pub(crate) use tasks::sharding_table_check::seed_sharding_tables;
+pub(crate) use tasks::{
+    blockchain_admin_events::BlockchainAdminEventsDeps,
+    claim_rewards::ClaimRewardsDeps,
+    cleanup::CleanupDeps,
+    dial_peers::DialPeersDeps,
+    kc_reconciliation::KcReconciliationDeps,
+    paranet_sync::ParanetSyncDeps,
+    proving::ProvingDeps,
+    save_peer_addresses::SavePeerAddressesDeps,
+    sharding_table_check::ShardingTableCheckDeps,
+    state_snapshot::StateSnapshotDeps,
+};
 use tasks::{
     blockchain_admin_events::{BlockchainAdminEventsConfig, BlockchainAdminEventsTask},
     claim_rewards::ClaimRewardsTask,
@@ -28,7 +36,7 @@ use tasks::{
 use tokio_util::sync::CancellationToken;
 
 use self::registry::{
-    BlockchainPeriodicTask, GlobalPeriodicTask, spawn_blockchain_task, spawn_global_task,
+    spawn_blockchain_task, spawn_configured_blockchain_task, spawn_global_task,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,82 +49,6 @@ pub(crate) struct PeriodicTasksConfig {
     pub kc_reconciliation: KcReconciliationConfig,
     pub paranet_sync: ParanetSyncConfig,
     pub proving: ProvingConfig,
-}
-
-impl GlobalPeriodicTask for DialPeersTask {
-    type Config = ();
-
-    fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
-        Self::new(deps.dial_peers.clone())
-    }
-
-    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
-        Self::run(self, shutdown)
-    }
-}
-
-impl GlobalPeriodicTask for CleanupTask {
-    type Config = CleanupConfig;
-
-    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
-        Self::new(deps.cleanup.clone(), config)
-    }
-
-    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
-        Self::run(self, shutdown)
-    }
-}
-
-impl GlobalPeriodicTask for SavePeerAddressesTask {
-    type Config = ();
-
-    fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
-        Self::new(deps.save_peer_addresses.clone())
-    }
-
-    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
-        Self::run(self, shutdown)
-    }
-}
-
-impl GlobalPeriodicTask for StateSnapshotTask {
-    type Config = StateSnapshotConfig;
-
-    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
-        Self::new(deps.state_snapshot.clone(), config)
-    }
-
-    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
-        Self::run(self, shutdown)
-    }
-}
-
-impl BlockchainPeriodicTask for ShardingTableCheckTask {
-    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
-        Self::new(deps.sharding_table_check.clone())
-    }
-
-    fn run_task(
-        self,
-        blockchain_id: &BlockchainId,
-        shutdown: CancellationToken,
-    ) -> impl std::future::Future<Output = ()> + Send {
-        Self::run(self, blockchain_id, shutdown)
-    }
-}
-
-impl BlockchainPeriodicTask for ClaimRewardsTask {
-    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
-        Self::new(deps.claim_rewards.clone())
-    }
-
-    fn run_task(
-        self,
-        blockchain_id: &BlockchainId,
-        shutdown: CancellationToken,
-    ) -> impl std::future::Future<Output = ()> + Send {
-        Self::run(self, blockchain_id, shutdown)
-    }
 }
 
 macro_rules! spawn_registered_global_tasks {
@@ -192,59 +124,35 @@ pub(crate) async fn run(
 
     // Per-blockchain tasks/workloads
     for blockchain_id in blockchain_ids {
-        let sync_deps = Arc::clone(&deps);
-        let sync_shutdown = shutdown.clone();
-        let sync_blockchain_id = blockchain_id.clone();
-        let config = dkg_sync_config.clone();
         let reorg_buffer_blocks = reorg_buffer_blocks.max(1);
-        set.spawn(async move {
-            DkgSyncTask::new(sync_deps.dkg_sync.clone(), config, reorg_buffer_blocks)
-                .run(&sync_blockchain_id, sync_shutdown)
-                .await;
-        });
 
-        // Per-blockchain paranet sync task has dedicated config and does not fit
-        // the generic BlockchainPeriodicTask registry helper.
         if paranet_sync_enabled {
-            let deps = Arc::clone(&deps);
-            let shutdown = shutdown.clone();
-            let blockchain_id = blockchain_id.clone();
-            let config = paranet_sync_config.clone();
-            set.spawn(async move {
-                ParanetSyncTask::new(deps.paranet_sync.clone(), config)
-                    .run(&blockchain_id, shutdown)
-                    .await;
-            });
+            spawn_configured_blockchain_task::<ParanetSyncTask>(
+                &mut set,
+                &deps,
+                &shutdown,
+                &blockchain_id,
+                paranet_sync_config.clone(),
+            );
         }
 
         if kc_reconciliation_enabled {
-            let deps = Arc::clone(&deps);
-            let shutdown = shutdown.clone();
-            let blockchain_id = blockchain_id.clone();
-            let config = kc_reconciliation_config.clone();
-            set.spawn(async move {
-                KcReconciliationTask::new(deps.kc_reconciliation.clone(), config)
-                    .run(&blockchain_id, shutdown)
-                    .await;
-            });
+            spawn_configured_blockchain_task::<KcReconciliationTask>(
+                &mut set,
+                &deps,
+                &shutdown,
+                &blockchain_id,
+                kc_reconciliation_config.clone(),
+            );
         }
 
-        {
-            let deps = Arc::clone(&deps);
-            let shutdown = shutdown.clone();
-            let blockchain_id = blockchain_id.clone();
-            let config = blockchain_admin_events_config.clone();
-            let reorg_buffer_blocks = reorg_buffer_blocks.max(1);
-            set.spawn(async move {
-                BlockchainAdminEventsTask::new(
-                    deps.blockchain_admin_events.clone(),
-                    config,
-                    reorg_buffer_blocks,
-                )
-                    .run(&blockchain_id, shutdown)
-                    .await;
-            });
-        }
+        spawn_configured_blockchain_task::<BlockchainAdminEventsTask>(
+            &mut set,
+            &deps,
+            &shutdown,
+            &blockchain_id,
+            (blockchain_admin_events_config.clone(), reorg_buffer_blocks),
+        );
 
         spawn_registered_blockchain_tasks!(
             &mut set,
@@ -256,14 +164,7 @@ pub(crate) async fn run(
         );
 
         if proving_config.enabled {
-            let deps = Arc::clone(&deps);
-            let shutdown = shutdown.clone();
-            let blockchain_id = blockchain_id.clone();
-            set.spawn(async move {
-                ProvingTask::new(deps.proving.clone())
-                    .run(&blockchain_id, shutdown)
-                    .await
-            });
+            spawn_blockchain_task::<ProvingTask>(&mut set, &deps, &shutdown, &blockchain_id);
         }
     }
 

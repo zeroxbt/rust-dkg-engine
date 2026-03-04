@@ -5,8 +5,9 @@ use crate::{
     commands::scheduler::CommandScheduler,
     managers::Managers,
     node_state::NodeState,
+    tasks::dkg_sync::DkgSyncDeps,
     tasks::periodic::{
-        self, BlockchainAdminEventsDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, DkgSyncDeps,
+        self, BlockchainAdminEventsDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
         KcReconciliationDeps, ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps,
         ShardingTableCheckDeps, StateSnapshotDeps,
     },

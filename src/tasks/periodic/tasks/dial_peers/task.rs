@@ -9,12 +9,16 @@ use dkg_observability as observability;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    node_state::PeerRegistry, tasks::periodic::DialPeersDeps,
+    node_state::PeerRegistry,
+    tasks::periodic::PeriodicTasksDeps,
+    tasks::periodic::registry::GlobalPeriodicTask,
     tasks::periodic::runner::run_with_shutdown,
 };
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
 const CONCURRENT_PEER_DIALS: usize = 20;
+
+use super::DialPeersDeps;
 
 pub(crate) struct DialPeersTask {
     network_manager: Arc<NetworkManager>,
@@ -182,5 +186,17 @@ impl DialPeersTask {
         }
 
         repeat()
+    }
+}
+
+impl GlobalPeriodicTask for DialPeersTask {
+    type Config = ();
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
+        Self::new(deps.dial_peers.clone())
+    }
+
+    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
+        Self::run(self, shutdown)
     }
 }

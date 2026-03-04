@@ -25,9 +25,12 @@ use crate::{
         group_and_sort_public_triples,
     },
     node_state::PeerRegistry,
-    tasks::periodic::ProvingDeps,
+    tasks::periodic::PeriodicTasksDeps,
+    tasks::periodic::registry::BlockchainPeriodicTask,
     tasks::periodic::runner::run_with_shutdown,
 };
+
+use super::ProvingDeps;
 
 pub(crate) struct ProvingTask {
     blockchain_manager: Arc<BlockchainManager>,
@@ -603,5 +606,19 @@ impl ProvingTask {
         observability::record_proving_outcome(blockchain_label, "submitted");
 
         PROVING_PERIOD
+    }
+}
+
+impl BlockchainPeriodicTask for ProvingTask {
+    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
+        Self::new(deps.proving.clone())
+    }
+
+    fn run_task(
+        self,
+        blockchain_id: &BlockchainId,
+        shutdown: CancellationToken,
+    ) -> impl std::future::Future<Output = ()> + Send {
+        Self::run(self, blockchain_id, shutdown)
     }
 }

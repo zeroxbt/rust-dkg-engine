@@ -5,11 +5,14 @@ use dkg_repository::{KcChainMetadataRepository, KcProjectionRepository, KcSyncRe
 use tokio_util::sync::CancellationToken;
 
 use super::{
+    KcReconciliationDeps,
     KcReconciliationConfig,
     phases::{cleanup_stale_queue, hydrate_projection, reconcile_non_present, repair_orphans},
 };
 use crate::{
-    application::TripleStoreAssertions, tasks::periodic::KcReconciliationDeps,
+    application::TripleStoreAssertions,
+    tasks::periodic::PeriodicTasksDeps,
+    tasks::periodic::registry::ConfiguredBlockchainPeriodicTask,
     tasks::periodic::runner::run_with_shutdown,
 };
 
@@ -224,5 +227,21 @@ impl KcReconciliationTask {
             failed_contracts = phase_outcome.failed_contracts,
             "KC reconciliation stale-queue cleanup phase completed"
         );
+    }
+}
+
+impl ConfiguredBlockchainPeriodicTask for KcReconciliationTask {
+    type Config = KcReconciliationConfig;
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
+        Self::new(deps.kc_reconciliation.clone(), config)
+    }
+
+    fn run_task(
+        self,
+        blockchain_id: &BlockchainId,
+        shutdown: CancellationToken,
+    ) -> impl std::future::Future<Output = ()> + Send {
+        Self::run(self, blockchain_id, shutdown)
     }
 }

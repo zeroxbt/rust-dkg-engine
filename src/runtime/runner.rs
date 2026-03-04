@@ -11,7 +11,10 @@ use crate::{
         http_api_controller::router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
     },
     node_state::PeerRegistry,
-    tasks::periodic::{self, PeriodicTasksConfig},
+    tasks::{
+        dkg_sync,
+        periodic::{self, PeriodicTasksConfig},
+    },
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -41,6 +44,15 @@ pub(crate) async fn run(
     let execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
 
     let periodic_shutdown = CancellationToken::new();
+    let dkg_sync_shutdown = CancellationToken::new();
+    let dkg_sync_handle = tokio::task::spawn(dkg_sync::run(
+        deps.periodic_tasks_deps.dkg_sync.clone(),
+        deps.blockchain_ids.clone(),
+        periodic_tasks_config.dkg_sync.clone(),
+        periodic_tasks_config.reorg_buffer_blocks.max(1),
+        dkg_sync_shutdown.clone(),
+    ));
+
     let periodic_handle = tokio::task::spawn(periodic::run(
         Arc::clone(&deps.periodic_tasks_deps),
         deps.blockchain_ids.clone(),
@@ -75,6 +87,8 @@ pub(crate) async fn run(
         command_scheduler,
         network_manager,
         graceful_shutdown: runtime_config.graceful_shutdown,
+        dkg_sync_shutdown,
+        dkg_sync_handle,
         periodic_shutdown,
         periodic_handle,
         execute_commands_task,

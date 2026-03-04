@@ -10,6 +10,8 @@ pub(super) struct ShutdownContext {
     pub(super) command_scheduler: CommandScheduler,
     pub(super) network_manager: Arc<dkg_network::NetworkManager>,
     pub(super) graceful_shutdown: GracefulShutdownConfig,
+    pub(super) dkg_sync_shutdown: CancellationToken,
+    pub(super) dkg_sync_handle: JoinHandle<()>,
     pub(super) periodic_shutdown: CancellationToken,
     pub(super) periodic_handle: JoinHandle<()>,
     pub(super) execute_commands_task: JoinHandle<()>,
@@ -38,6 +40,8 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
         command_scheduler,
         network_manager,
         graceful_shutdown,
+        dkg_sync_shutdown,
+        mut dkg_sync_handle,
         periodic_shutdown,
         mut periodic_handle,
         mut execute_commands_task,
@@ -71,10 +75,19 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     // Step 1: Signal HTTP server to stop accepting new connections
     let _ = http_shutdown_tx.send(());
 
-    // Step 2: Cancel periodic tasks (they check CancellationToken between iterations)
+    // Step 2: Cancel periodic and DKG sync workloads (they check CancellationToken between iterations)
+    dkg_sync_shutdown.cancel();
     periodic_shutdown.cancel();
 
-    // Step 3: Wait for periodic tasks to finish current iteration and exit
+    // Step 3: Wait for DKG sync and periodic tasks to finish current iteration and exit
+    wait_for_shutdown_task(
+        "dkg_sync",
+        periodic_shutdown_timeout,
+        &mut dkg_sync_handle,
+        true,
+    )
+    .await;
+
     wait_for_shutdown_task(
         "periodic_tasks",
         periodic_shutdown_timeout,

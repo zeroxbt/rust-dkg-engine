@@ -9,7 +9,7 @@ use super::{
     types::{FetchedKc, KcToSync, QueueKcWorkItem, QueueOutcome},
 };
 use crate::tasks::dkg_sync::DkgSyncConfig;
-use crate::tasks::periodic::DkgSyncDeps;
+use crate::tasks::dkg_sync::DkgSyncDeps;
 
 pub(crate) struct DkgSyncPipeline {
     config: DkgSyncConfig,

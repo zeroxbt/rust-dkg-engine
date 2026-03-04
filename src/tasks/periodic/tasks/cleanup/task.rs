@@ -13,9 +13,12 @@ use crate::{
     application::OperationTracking,
     node_state::ResponseChannels,
     operations::{GetOperation, PublishStoreOperation},
-    tasks::periodic::CleanupDeps,
+    tasks::periodic::PeriodicTasksDeps,
+    tasks::periodic::registry::GlobalPeriodicTask,
     tasks::periodic::runner::run_with_shutdown,
 };
+
+use super::CleanupDeps;
 
 pub(crate) struct CleanupTask {
     operation_repository: OperationRepository,
@@ -147,5 +150,17 @@ impl CleanupTask {
             + self.get_response_channels.cleanup_expired()
             + self.finality_response_channels.cleanup_expired()
             + self.batch_get_response_channels.cleanup_expired()
+    }
+}
+
+impl GlobalPeriodicTask for CleanupTask {
+    type Config = CleanupConfig;
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
+        Self::new(deps.cleanup.clone(), config)
+    }
+
+    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
+        Self::run(self, shutdown)
     }
 }

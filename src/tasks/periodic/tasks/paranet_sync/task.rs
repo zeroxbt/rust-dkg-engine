@@ -11,9 +11,12 @@ use uuid::Uuid;
 use super::ParanetSyncConfig;
 use crate::{
     application::{AssertionSource, GetAssertionInput},
-    tasks::periodic::ParanetSyncDeps,
+    tasks::periodic::PeriodicTasksDeps,
+    tasks::periodic::registry::ConfiguredBlockchainPeriodicTask,
     tasks::periodic::runner::run_with_shutdown,
 };
+
+use super::ParanetSyncDeps;
 
 pub(crate) struct ParanetSyncTask {
     config: ParanetSyncConfig,
@@ -480,6 +483,22 @@ impl ParanetSyncTask {
         }
 
         (synced, failed, retry_exhausted, local_hits, network_hits)
+    }
+}
+
+impl ConfiguredBlockchainPeriodicTask for ParanetSyncTask {
+    type Config = ParanetSyncConfig;
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
+        Self::new(deps.paranet_sync.clone(), config)
+    }
+
+    fn run_task(
+        self,
+        blockchain_id: &BlockchainId,
+        shutdown: CancellationToken,
+    ) -> impl std::future::Future<Output = ()> + Send {
+        Self::run(self, blockchain_id, shutdown)
     }
 }
 

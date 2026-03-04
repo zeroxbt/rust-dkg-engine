@@ -9,9 +9,11 @@ use dkg_observability as observability;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    error::NodeError, node_state::PeerRegistry, tasks::periodic::ShardingTableCheckDeps,
+    error::NodeError, node_state::PeerRegistry, tasks::periodic::PeriodicTasksDeps, tasks::periodic::registry::BlockchainPeriodicTask,
     tasks::periodic::runner::run_with_shutdown,
 };
+
+use super::ShardingTableCheckDeps;
 
 /// Interval between sharding table synchronization checks (10 seconds)
 const SHARDING_TABLE_CHECK_PERIOD: Duration = Duration::from_secs(10);
@@ -385,5 +387,19 @@ impl ShardingTableCheckTask {
         self.reconcile_kad_allowed_peers().await;
 
         SHARDING_TABLE_CHECK_PERIOD
+    }
+}
+
+impl BlockchainPeriodicTask for ShardingTableCheckTask {
+    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
+        Self::new(deps.sharding_table_check.clone())
+    }
+
+    fn run_task(
+        self,
+        blockchain_id: &BlockchainId,
+        shutdown: CancellationToken,
+    ) -> impl std::future::Future<Output = ()> + Send {
+        Self::run(self, blockchain_id, shutdown)
     }
 }

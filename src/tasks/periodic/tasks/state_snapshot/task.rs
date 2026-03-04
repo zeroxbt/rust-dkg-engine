@@ -12,16 +12,12 @@ use dkg_repository::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    node_state::PeerRegistry, tasks::periodic::StateSnapshotDeps,
+    node_state::PeerRegistry, tasks::periodic::PeriodicTasksDeps,
+    tasks::periodic::registry::GlobalPeriodicTask,
     tasks::periodic::runner::run_with_shutdown,
 };
 
-#[derive(Debug, Clone)]
-pub(crate) struct StateSnapshotConfig {
-    pub interval_secs: u64,
-    pub blockchain_ids: Vec<BlockchainId>,
-    pub max_retry_attempts: u32,
-}
+use super::{StateSnapshotConfig, StateSnapshotDeps};
 
 pub(crate) struct StateSnapshotTask {
     config: StateSnapshotConfig,
@@ -282,6 +278,18 @@ impl StateSnapshotTask {
             PROTOCOL_NAME_GET,
             get_capable,
         );
+    }
+}
+
+impl GlobalPeriodicTask for StateSnapshotTask {
+    type Config = StateSnapshotConfig;
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
+        Self::new(deps.state_snapshot.clone(), config)
+    }
+
+    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
+        Self::run(self, shutdown)
     }
 }
 

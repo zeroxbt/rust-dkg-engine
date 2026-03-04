@@ -1,117 +1,17 @@
-use std::sync::Arc;
+use crate::tasks::dkg_sync::DkgSyncDeps;
 
-use dkg_blockchain::BlockchainManager;
-use dkg_key_value_store::{PeerAddressStore, PublishTmpDatasetStore};
-use dkg_network::{BatchGetAck, FinalityAck, GetAck, NetworkManager, StoreAck};
-use dkg_repository::{
-    BlockchainRepository, FinalityStatusRepository, KcChainMetadataRepository,
-    KcProjectionRepository, KcSyncRepository, OperationRepository, ParanetKcSyncRepository,
-    ProofChallengeRepository,
+use super::tasks::{
+    blockchain_admin_events::BlockchainAdminEventsDeps,
+    claim_rewards::ClaimRewardsDeps,
+    cleanup::CleanupDeps,
+    dial_peers::DialPeersDeps,
+    kc_reconciliation::KcReconciliationDeps,
+    paranet_sync::ParanetSyncDeps,
+    proving::ProvingDeps,
+    save_peer_addresses::SavePeerAddressesDeps,
+    sharding_table_check::ShardingTableCheckDeps,
+    state_snapshot::StateSnapshotDeps,
 };
-
-use crate::{
-    application::{
-        AssertionValidation, GetAssertionUseCase, KcMaterializationService, OperationTracking,
-        TripleStoreAssertions,
-    },
-    commands::scheduler::CommandScheduler,
-    node_state::PeerRegistry,
-    node_state::ResponseChannels,
-    operations::{GetOperation, PublishStoreOperation},
-};
-
-#[derive(Clone)]
-pub(crate) struct DialPeersDeps {
-    pub(crate) network_manager: Arc<NetworkManager>,
-    pub(crate) peer_registry: Arc<PeerRegistry>,
-}
-
-#[derive(Clone)]
-pub(crate) struct SavePeerAddressesDeps {
-    pub(crate) peer_registry: Arc<PeerRegistry>,
-    pub(crate) peer_address_store: Arc<PeerAddressStore>,
-}
-
-#[derive(Clone)]
-pub(crate) struct ClaimRewardsDeps {
-    pub(crate) blockchain_manager: Arc<BlockchainManager>,
-}
-
-#[derive(Clone)]
-pub(crate) struct CleanupDeps {
-    pub(crate) operation_repository: OperationRepository,
-    pub(crate) finality_status_repository: FinalityStatusRepository,
-    pub(crate) proof_challenge_repository: ProofChallengeRepository,
-    pub(crate) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
-    pub(crate) publish_operation_tracking: Arc<OperationTracking<PublishStoreOperation>>,
-    pub(crate) get_operation_tracking: Arc<OperationTracking<GetOperation>>,
-    pub(crate) store_response_channels: Arc<ResponseChannels<StoreAck>>,
-    pub(crate) get_response_channels: Arc<ResponseChannels<GetAck>>,
-    pub(crate) finality_response_channels: Arc<ResponseChannels<FinalityAck>>,
-    pub(crate) batch_get_response_channels: Arc<ResponseChannels<BatchGetAck>>,
-}
-
-#[derive(Clone)]
-pub(crate) struct ShardingTableCheckDeps {
-    pub(crate) blockchain_manager: Arc<BlockchainManager>,
-    pub(crate) network_manager: Arc<NetworkManager>,
-    pub(crate) peer_registry: Arc<PeerRegistry>,
-}
-
-#[derive(Clone)]
-pub(crate) struct BlockchainAdminEventsDeps {
-    pub(crate) blockchain_manager: Arc<BlockchainManager>,
-    pub(crate) blockchain_repository: BlockchainRepository,
-}
-
-#[derive(Clone)]
-pub(crate) struct ProvingDeps {
-    pub(crate) blockchain_manager: Arc<BlockchainManager>,
-    pub(crate) proof_challenge_repository: ProofChallengeRepository,
-    pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
-    pub(crate) network_manager: Arc<NetworkManager>,
-    pub(crate) assertion_validation: Arc<AssertionValidation>,
-    pub(crate) peer_registry: Arc<PeerRegistry>,
-}
-
-#[derive(Clone)]
-pub(crate) struct DkgSyncDeps {
-    pub(crate) blockchain_manager: Arc<BlockchainManager>,
-    pub(crate) kc_sync_repository: KcSyncRepository,
-    pub(crate) kc_projection_repository: KcProjectionRepository,
-    pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
-    pub(crate) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
-    pub(crate) command_scheduler: CommandScheduler,
-    pub(crate) kc_materialization_service: Arc<KcMaterializationService>,
-    pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
-    pub(crate) network_manager: Arc<NetworkManager>,
-    pub(crate) assertion_validation: Arc<AssertionValidation>,
-    pub(crate) peer_registry: Arc<PeerRegistry>,
-}
-
-#[derive(Clone)]
-pub(crate) struct StateSnapshotDeps {
-    pub(crate) kc_sync_repository: KcSyncRepository,
-    pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
-    pub(crate) kc_projection_repository: KcProjectionRepository,
-    pub(crate) peer_registry: Arc<PeerRegistry>,
-}
-
-#[derive(Clone)]
-pub(crate) struct ParanetSyncDeps {
-    pub(crate) blockchain_manager: Arc<BlockchainManager>,
-    pub(crate) paranet_kc_sync_repository: ParanetKcSyncRepository,
-    pub(crate) kc_materialization_service: Arc<KcMaterializationService>,
-    pub(crate) get_assertion_use_case: Arc<GetAssertionUseCase>,
-}
-
-#[derive(Clone)]
-pub(crate) struct KcReconciliationDeps {
-    pub(crate) kc_sync_repository: KcSyncRepository,
-    pub(crate) kc_projection_repository: KcProjectionRepository,
-    pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
-    pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
-}
 
 #[derive(Clone)]
 pub(crate) struct PeriodicTasksDeps {

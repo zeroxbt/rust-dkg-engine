@@ -4,9 +4,13 @@ use dkg_key_value_store::PeerAddressStore;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    node_state::PeerRegistry, tasks::periodic::SavePeerAddressesDeps,
+    node_state::PeerRegistry,
+    tasks::periodic::PeriodicTasksDeps,
+    tasks::periodic::registry::GlobalPeriodicTask,
     tasks::periodic::runner::run_with_shutdown,
 };
+
+use super::SavePeerAddressesDeps;
 
 const SAVE_PEER_ADDRESSES_PERIOD: Duration = Duration::from_secs(60);
 
@@ -53,5 +57,17 @@ impl SavePeerAddressesTask {
         }
 
         SAVE_PEER_ADDRESSES_PERIOD
+    }
+}
+
+impl GlobalPeriodicTask for SavePeerAddressesTask {
+    type Config = ();
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
+        Self::new(deps.save_peer_addresses.clone())
+    }
+
+    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
+        Self::run(self, shutdown)
     }
 }

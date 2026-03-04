@@ -5,10 +5,12 @@ use dkg_observability as observability;
 use tokio::sync::Notify;
 
 use crate::tasks::{
-    dkg_sync::pipeline::types::{
+    dkg_sync::{
+        DkgSyncDeps,
+        pipeline::types::{
         ProjectionWriteAction, QueueKcKey, QueueOutcome, QueueWriteAction,
+        },
     },
-    periodic::DkgSyncDeps,
 };
 
 const MAX_RETRY_EXCEEDED_REASON: &str = "max_retry_exceeded";
