@@ -42,7 +42,10 @@ impl BlockchainManager {
             blockchains.insert(blockchain_id, evm_chain);
         }
 
-        Ok(Self { blockchains })
+        Ok(Self {
+            blockchains,
+            parameter_cache: super::cache::ParameterCache::default(),
+        })
     }
 
     pub fn get_blockchain_ids(&self) -> Vec<&BlockchainId> {

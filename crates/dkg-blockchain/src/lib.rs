@@ -10,10 +10,7 @@ mod rpc_executor;
 mod rpc_rate_limiter;
 mod substrate;
 mod utils;
-
-use std::collections::HashMap;
-
-use chains::evm::EvmChain;
+pub use alloy::primitives::{Address, B256, U256};
 pub use chains::evm::{ContractLog, ContractName, NodeInfo, ShardingTableNode};
 pub use config::{
     BlockchainConfig, BlockchainConfigKey, BlockchainConfigRaw, BlockchainManagerConfig,
@@ -24,23 +21,8 @@ pub use contract_events::{
     AdminContractEvent, KcStorageEvent, decode_admin_event, decode_kc_storage_event,
     kc_storage_event_signatures, monitored_admin_events,
 };
+pub use dkg_domain::BlockchainId;
 pub use error::BlockchainError;
+pub use manager::BlockchainManager;
 pub use multicall::{MulticallBatch, MulticallRequest, MulticallResult, encoders};
 pub use utils::{keccak256_encode_packed, parse_ether_to_u128, sha256_hex, to_hex_string};
-
-pub use alloy::primitives::{Address, B256, U256};
-// Re-export shared domain types from crate::types
-pub use dkg_domain::BlockchainId;
-
-/// Manages multiple blockchain connections.
-///
-/// All EVM chains share the same implementation (`EvmChain`) with chain-specific
-/// behavior determined by the `Blockchain` enum. This keeps the code simple while
-/// still supporting chain-specific differences like:
-/// - Native token decimals (NeuroWeb uses 12, others use 18)
-/// - Native token ticker symbols
-/// - Development chain flag
-/// - EVM account mapping requirements (NeuroWeb)
-pub struct BlockchainManager {
-    blockchains: HashMap<BlockchainId, EvmChain>,
-}

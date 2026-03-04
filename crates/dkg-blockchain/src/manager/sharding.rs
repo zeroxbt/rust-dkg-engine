@@ -15,8 +15,36 @@ impl BlockchainManager {
         &self,
         blockchain: &BlockchainId,
     ) -> Result<u64, BlockchainError> {
+        if let Some(cached) = self
+            .parameter_cache
+            .get_minimum_required_signatures(blockchain)
+            .await
+        {
+            return Ok(cached);
+        }
+
         let blockchain_impl = self.chain(blockchain)?;
-        blockchain_impl.get_minimum_required_signatures().await
+        let value = blockchain_impl.get_minimum_required_signatures().await?;
+        self.parameter_cache
+            .set_minimum_required_signatures(blockchain, value)
+            .await;
+        Ok(value)
+    }
+
+    pub async fn set_cached_minimum_required_signatures(
+        &self,
+        blockchain: &BlockchainId,
+        value: u64,
+    ) {
+        self.parameter_cache
+            .set_minimum_required_signatures(blockchain, value)
+            .await;
+    }
+
+    pub async fn invalidate_cached_minimum_required_signatures(&self, blockchain: &BlockchainId) {
+        self.parameter_cache
+            .invalidate_minimum_required_signatures(blockchain)
+            .await;
     }
 
     pub async fn get_sharding_table_length(

@@ -21,6 +21,8 @@ use crate::{
 
 use super::BlockchainAdminEventsConfig;
 
+const MINIMUM_REQUIRED_SIGNATURES_PARAMETER: &str = "minimumRequiredSignatures";
+
 pub(crate) struct BlockchainAdminEventsTask {
     blockchain_manager: Arc<BlockchainManager>,
     blockchain_repository: BlockchainRepository,
@@ -374,13 +376,29 @@ impl BlockchainAdminEventsTask {
     ) -> Result<(), BlockchainError> {
         match event {
             AdminContractEvent::ParameterChanged(event) => {
+                let parameter_name = event.parameterName.as_str();
+                let parameter_value = event.parameterValue;
                 tracing::debug!(
                     blockchain = %blockchain_id,
-                    parameter = %event.parameterName,
-                    value = %event.parameterValue,
+                    parameter = %parameter_name,
+                    value = %parameter_value,
                     "Parameter changed"
                 );
-                // TODO: Update contract call cache with new parameter values
+
+                if parameter_name == MINIMUM_REQUIRED_SIGNATURES_PARAMETER {
+                    let minimum_required_signatures = parameter_value.to::<u64>();
+                    self.blockchain_manager
+                        .set_cached_minimum_required_signatures(
+                            blockchain_id,
+                            minimum_required_signatures,
+                        )
+                        .await;
+                    tracing::info!(
+                        blockchain = %blockchain_id,
+                        minimum_required_signatures,
+                        "Updated minimumRequiredSignatures cache from ParameterChanged event"
+                    );
+                }
                 Ok(())
             }
             AdminContractEvent::NewContract(event) => {
@@ -436,9 +454,19 @@ impl BlockchainAdminEventsTask {
             "{log_message}"
         );
 
-        let Ok(_) = contract_name.parse::<ContractName>() else {
+        let Ok(contract_name_enum) = contract_name.parse::<ContractName>() else {
             return Ok(());
         };
+
+        if contract_name_enum == ContractName::ParametersStorage {
+            self.blockchain_manager
+                .invalidate_cached_minimum_required_signatures(blockchain_id)
+                .await;
+            tracing::info!(
+                blockchain = %blockchain_id,
+                "Invalidated minimumRequiredSignatures cache due to ParametersStorage contract update"
+            );
+        }
 
         self.blockchain_manager
             .re_initialize_contract(
