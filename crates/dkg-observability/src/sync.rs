@@ -44,6 +44,35 @@ pub fn record_sync_metadata_discovery_total_snapshot(
     .set(metadata_discovery_kcs_total as f64);
 }
 
+pub fn record_sync_projection_snapshot(
+    blockchain_id: &str,
+    present_total: u64,
+    pending_total: u64,
+    unknown_total: u64,
+    failed_total: u64,
+) {
+    gauge!(
+        "node_sync_projection_present_total",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(present_total as f64);
+    gauge!(
+        "node_sync_projection_pending_total",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(pending_total as f64);
+    gauge!(
+        "node_sync_projection_unknown_total",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(unknown_total as f64);
+    gauge!(
+        "node_sync_projection_failed_total",
+        "blockchain_id" => blockchain_id.to_string()
+    )
+    .set(failed_total as f64);
+}
+
 pub fn record_sync_metadata_discovery_batch(
     blockchain_id: &str,
     status: &str,

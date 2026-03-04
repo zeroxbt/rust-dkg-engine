@@ -88,7 +88,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"synced\"}[5m]))",
+          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"synced\",blockchain_id=~\"$blockchain_id\"}[5m]))",
           "instant": false,
           "legendFormat": "synced",
           "range": true,
@@ -100,7 +100,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"already_synced\"}[5m]))",
+          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"already_synced\",blockchain_id=~\"$blockchain_id\"}[5m]))",
           "instant": false,
           "legendFormat": "already_synced",
           "range": true,
@@ -112,7 +112,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"retry_later\"}[5m]))",
+          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"retry_later\",blockchain_id=~\"$blockchain_id\"}[5m]))",
           "instant": false,
           "legendFormat": "retry_later",
           "range": true,
@@ -124,7 +124,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"failed\"}[5m]))",
+          "expr": "sum(increase(node_sync_kc_outcome_total{outcome=\"failed\",blockchain_id=~\"$blockchain_id\"}[5m]))",
           "instant": false,
           "legendFormat": "pipeline_failed",
           "range": true,
@@ -238,9 +238,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(node_sync_metadata_kcs_total)",
+          "expr": "sum(node_sync_metadata_kcs_total{blockchain_id=~\"$blockchain_id\"})",
           "instant": false,
-          "legendFormat": "metadata_synced_kcs",
+          "legendFormat": "metadata_indexed_kcs",
           "range": true,
           "refId": "A"
         },
@@ -250,7 +250,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(node_sync_metadata_discovery_kcs_total)",
+          "expr": "sum(node_sync_metadata_discovery_kcs_total{blockchain_id=~\"$blockchain_id\"})",
           "instant": false,
           "legendFormat": "metadata_discovery_kcs",
           "range": true,
@@ -299,14 +299,26 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "clamp_min(sum(node_sync_metadata_kcs_total) - sum(node_sync_queue_total), 0)",
+          "expr": "sum(node_sync_projection_present_total{blockchain_id=~\"$blockchain_id\"})",
           "instant": false,
-          "legendFormat": "estimated_fully_synced_kcs",
+          "legendFormat": "synced_present_kcs",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(node_sync_projection_pending_total{blockchain_id=~\"$blockchain_id\"}) + sum(node_sync_projection_unknown_total{blockchain_id=~\"$blockchain_id\"})",
+          "instant": false,
+          "legendFormat": "backlog_non_present_kcs",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "Estimated Synced KCs",
+      "title": "Synced KCs (Projection)",
       "type": "timeseries"
     },
     {
@@ -348,7 +360,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(node_sync_queue_due)",
+          "expr": "sum(node_sync_queue_due{blockchain_id=~\"$blockchain_id\"})",
           "instant": false,
           "legendFormat": "queue_due",
           "range": true,
@@ -360,7 +372,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(node_sync_queue_retrying)",
+          "expr": "sum(node_sync_queue_retrying{blockchain_id=~\"$blockchain_id\"})",
           "instant": false,
           "legendFormat": "queue_retrying",
           "range": true,
@@ -372,14 +384,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "clamp_min(sum(node_sync_queue_total) - sum(node_sync_queue_due) - sum(node_sync_queue_retrying), 0)",
+          "expr": "sum(node_sync_projection_failed_total{blockchain_id=~\"$blockchain_id\"})",
           "instant": false,
-          "legendFormat": "queue_failed",
+          "legendFormat": "projection_failed",
           "range": true,
           "refId": "C"
         }
       ],
-      "title": "Sync Queue",
+      "title": "Sync Queue / Projection Failed",
       "type": "timeseries"
     },
     {
@@ -434,7 +446,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_discovery_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.5\"}",
+          "expr": "node_sync_metadata_discovery_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.5\",blockchain_id=~\"$blockchain_id\"}",
           "instant": false,
           "legendFormat": "fetch p50",
           "range": true,
@@ -446,7 +458,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_discovery_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.95\"}",
+          "expr": "node_sync_metadata_discovery_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.95\",blockchain_id=~\"$blockchain_id\"}",
           "instant": false,
           "legendFormat": "fetch p95",
           "range": true,
@@ -458,7 +470,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_discovery_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.99\"}",
+          "expr": "node_sync_metadata_discovery_batch_fetch_duration_seconds{status=\"success\",quantile=\"0.99\",blockchain_id=~\"$blockchain_id\"}",
           "instant": false,
           "legendFormat": "fetch p99",
           "range": true,
@@ -470,7 +482,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_discovery_batch_processing_duration_seconds{status=\"success\",quantile=\"0.5\"}",
+          "expr": "node_sync_metadata_discovery_batch_processing_duration_seconds{status=\"success\",quantile=\"0.5\",blockchain_id=~\"$blockchain_id\"}",
           "instant": false,
           "legendFormat": "processing p50",
           "range": true,
@@ -482,7 +494,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_discovery_batch_processing_duration_seconds{status=\"success\",quantile=\"0.95\"}",
+          "expr": "node_sync_metadata_discovery_batch_processing_duration_seconds{status=\"success\",quantile=\"0.95\",blockchain_id=~\"$blockchain_id\"}",
           "instant": false,
           "legendFormat": "processing p95",
           "range": true,
@@ -494,7 +506,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "node_sync_metadata_discovery_batch_processing_duration_seconds{status=\"success\",quantile=\"0.99\"}",
+          "expr": "node_sync_metadata_discovery_batch_processing_duration_seconds{status=\"success\",quantile=\"0.99\",blockchain_id=~\"$blockchain_id\"}",
           "instant": false,
           "legendFormat": "processing p99",
           "range": true,
@@ -543,7 +555,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(node_sync_metadata_discovery_batch_blocks_sum{status=\"success\"}[5m])) / clamp_min(sum(rate(node_sync_metadata_discovery_batch_blocks_count{status=\"success\"}[5m])), 1e-9)",
+          "expr": "sum(rate(node_sync_metadata_discovery_batch_blocks_sum{status=\"success\",blockchain_id=~\"$blockchain_id\"}[5m])) / clamp_min(sum(rate(node_sync_metadata_discovery_batch_blocks_count{status=\"success\",blockchain_id=~\"$blockchain_id\"}[5m])), 1e-9)",
           "instant": false,
           "legendFormat": "avg_blocks_per_batch",
           "range": true,
@@ -555,7 +567,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(node_sync_metadata_discovery_batch_events_sum{status=\"success\"}[5m])) / clamp_min(sum(rate(node_sync_metadata_discovery_batch_events_count{status=\"success\"}[5m])), 1e-9)",
+          "expr": "sum(rate(node_sync_metadata_discovery_batch_events_sum{status=\"success\",blockchain_id=~\"$blockchain_id\"}[5m])) / clamp_min(sum(rate(node_sync_metadata_discovery_batch_events_count{status=\"success\",blockchain_id=~\"$blockchain_id\"}[5m])), 1e-9)",
           "instant": false,
           "legendFormat": "avg_events_found_per_batch",
           "range": true,
@@ -604,7 +616,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_metadata_discovery_batch_fetch_duration_seconds_count{status=\"error\"}[5m])) or on() vector(0)",
+          "expr": "sum(increase(node_sync_metadata_discovery_batch_fetch_duration_seconds_count{status=\"error\",blockchain_id=~\"$blockchain_id\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "fetch_errors_5m",
           "range": true,
@@ -616,7 +628,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(node_sync_metadata_discovery_batch_processing_duration_seconds_count{status=\"error\"}[5m])) or on() vector(0)",
+          "expr": "sum(increase(node_sync_metadata_discovery_batch_processing_duration_seconds_count{status=\"error\",blockchain_id=~\"$blockchain_id\"}[5m])) or on() vector(0)",
           "instant": false,
           "legendFormat": "processing_errors_5m",
           "range": true,
@@ -628,7 +640,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(increase(node_sync_metadata_discovery_batch_fetch_duration_seconds_count{status=\"error\"}[5m])) + sum(increase(node_sync_metadata_discovery_batch_processing_duration_seconds_count{status=\"error\"}[5m]))) or on() vector(0)",
+          "expr": "(sum(increase(node_sync_metadata_discovery_batch_fetch_duration_seconds_count{status=\"error\",blockchain_id=~\"$blockchain_id\"}[5m])) + sum(increase(node_sync_metadata_discovery_batch_processing_duration_seconds_count{status=\"error\",blockchain_id=~\"$blockchain_id\"}[5m]))) or on() vector(0)",
           "instant": false,
           "legendFormat": "total_errors_5m",
           "range": true,
@@ -1088,7 +1100,37 @@
     "v2"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(node_sync_metadata_kcs_total, blockchain_id)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Blockchain",
+        "multi": true,
+        "name": "blockchain_id",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(node_sync_metadata_kcs_total, blockchain_id)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-6h",

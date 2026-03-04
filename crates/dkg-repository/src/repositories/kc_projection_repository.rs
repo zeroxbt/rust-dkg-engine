@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Instant};
 use chrono::Utc;
 use sea_orm::{
     ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Statement, Value, sea_query::Expr,
+    PaginatorTrait, QueryOrder, QuerySelect, Statement, Value, sea_query::Expr,
 };
 
 use crate::{
@@ -353,6 +353,17 @@ impl KcProjectionRepository {
         result
     }
 
+    /// Count projection rows for a blockchain where desired state is Present and actual state
+    /// matches `actual_state`.
+    pub async fn count_desired_present_by_actual_state_for_blockchain(
+        &self,
+        blockchain_id: &str,
+        actual_state: KcProjectionActualState,
+    ) -> Result<u64> {
+        self.count_desired_present_filtered(blockchain_id, actual_state)
+            .await
+    }
+
     /// Return projection keys that should be reconciled against triple-store materialization.
     ///
     /// Includes rows with desired=Present and actual=Unknown.
@@ -503,5 +514,44 @@ impl KcProjectionRepository {
         i64::try_from(value).map_err(|_| {
             RepositoryError::SyncMetadata(format!("{field} value {value} exceeds i64 range"))
         })
+    }
+
+    async fn count_desired_present_filtered(
+        &self,
+        blockchain_id: &str,
+        actual_state: KcProjectionActualState,
+    ) -> Result<u64> {
+        let started = Instant::now();
+        let query_name = "count_desired_present_by_actual_state_for_blockchain";
+
+        let query = ProjectionEntity::find()
+            .filter(ProjectionColumn::BlockchainId.eq(blockchain_id))
+            .filter(ProjectionColumn::DesiredState.eq(KcProjectionDesiredState::Present.as_u8()))
+            .filter(ProjectionColumn::ActualState.eq(actual_state.as_u8()));
+
+        let result = query.count(self.conn.as_ref()).await.map_err(Into::into);
+
+        match &result {
+            Ok(count) => {
+                record_repository_query(
+                    "kc_projection",
+                    query_name,
+                    "ok",
+                    started.elapsed(),
+                    Some(*count as usize),
+                );
+            }
+            Err(_) => {
+                record_repository_query(
+                    "kc_projection",
+                    query_name,
+                    "error",
+                    started.elapsed(),
+                    None,
+                );
+            }
+        }
+
+        result
     }
 }

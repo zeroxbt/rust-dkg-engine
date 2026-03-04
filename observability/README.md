@@ -72,9 +72,10 @@ bind_address = "127.0.0.1:9464"
 - Pending outbound request gauges and response-send success/failure rates
 
 `sync-v2.json`:
-- KCs with synced metadata totals from SQL (`node_sync_metadata_kcs_total` and source-filtered `node_sync_metadata_discovery_kcs_total`)
-- KCs estimated fully synced (`clamp_min(node_sync_metadata_kcs_total - node_sync_queue_total, 0)`)
-- Sync queue snapshot: due (`node_sync_queue_due`), retrying (`node_sync_queue_retrying`), failed estimate (`clamp_min(node_sync_queue_total - node_sync_queue_due - node_sync_queue_retrying, 0)`)
+- Optional `blockchain_id` dashboard filter (multi-select, defaults to all)
+- KCs with indexed metadata totals from SQL (`node_sync_metadata_kcs_total` and source-filtered `node_sync_metadata_discovery_kcs_total`)
+- Projection-based sync state (`node_sync_projection_present_total`, `node_sync_projection_pending_total`, `node_sync_projection_unknown_total`, `node_sync_projection_failed_total`)
+- Sync queue snapshot: due (`node_sync_queue_due`) and retrying (`node_sync_queue_retrying`)
 - Fetch batch duration p50/p95/p99 for successful batches (`node_sync_fetch_batch_duration_seconds{status="success",quantile=...}`)
 - KA/KC count per fetch batch averages (`sum(rate(node_sync_fetch_batch_assets_sum[5m])) / sum(rate(node_sync_fetch_batch_assets_count[5m]))` and `sum(rate(node_sync_fetch_batch_kcs_sum[5m])) / sum(rate(node_sync_fetch_batch_kcs_count[5m]))`)
 - Insert batch duration p50/p95/p99 for successful batches (`node_sync_insert_batch_duration_seconds{status="success",quantile=...}`)

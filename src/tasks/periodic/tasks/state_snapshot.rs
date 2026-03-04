@@ -6,7 +6,9 @@ use dkg_network::{
     PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_GET, STREAM_PROTOCOL_BATCH_GET, STREAM_PROTOCOL_GET,
 };
 use dkg_observability as observability;
-use dkg_repository::{KcChainMetadataRepository, KcSyncRepository};
+use dkg_repository::{
+    KcChainMetadataRepository, KcProjectionActualState, KcProjectionRepository, KcSyncRepository,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -25,6 +27,7 @@ pub(crate) struct StateSnapshotTask {
     config: StateSnapshotConfig,
     kc_sync_repository: KcSyncRepository,
     kc_chain_metadata_repository: KcChainMetadataRepository,
+    kc_projection_repository: KcProjectionRepository,
     peer_registry: Arc<PeerRegistry>,
 }
 
@@ -34,6 +37,7 @@ impl StateSnapshotTask {
             config,
             kc_sync_repository: deps.kc_sync_repository,
             kc_chain_metadata_repository: deps.kc_chain_metadata_repository,
+            kc_projection_repository: deps.kc_projection_repository,
             peer_registry: deps.peer_registry,
         }
     }
@@ -167,6 +171,87 @@ impl StateSnapshotTask {
         observability::record_sync_metadata_discovery_total_snapshot(
             blockchain_id,
             metadata_discovery_kcs_total,
+        );
+
+        let projection_present_total = match self
+            .kc_projection_repository
+            .count_desired_present_by_actual_state_for_blockchain(
+                blockchain_id,
+                KcProjectionActualState::Present,
+            )
+            .await
+        {
+            Ok(v) => v,
+            Err(error) => {
+                tracing::warn!(
+                    blockchain_id,
+                    error = %error,
+                    "Failed to count KC projection rows in present state"
+                );
+                0
+            }
+        };
+        let projection_pending_total = match self
+            .kc_projection_repository
+            .count_desired_present_by_actual_state_for_blockchain(
+                blockchain_id,
+                KcProjectionActualState::Pending,
+            )
+            .await
+        {
+            Ok(v) => v,
+            Err(error) => {
+                tracing::warn!(
+                    blockchain_id,
+                    error = %error,
+                    "Failed to count KC projection rows in pending state"
+                );
+                0
+            }
+        };
+        let projection_unknown_total = match self
+            .kc_projection_repository
+            .count_desired_present_by_actual_state_for_blockchain(
+                blockchain_id,
+                KcProjectionActualState::Unknown,
+            )
+            .await
+        {
+            Ok(v) => v,
+            Err(error) => {
+                tracing::warn!(
+                    blockchain_id,
+                    error = %error,
+                    "Failed to count KC projection rows in unknown state"
+                );
+                0
+            }
+        };
+        let projection_failed_total = match self
+            .kc_projection_repository
+            .count_desired_present_by_actual_state_for_blockchain(
+                blockchain_id,
+                KcProjectionActualState::Failed,
+            )
+            .await
+        {
+            Ok(v) => v,
+            Err(error) => {
+                tracing::warn!(
+                    blockchain_id,
+                    error = %error,
+                    "Failed to count KC projection rows in failed state"
+                );
+                0
+            }
+        };
+
+        observability::record_sync_projection_snapshot(
+            blockchain_id,
+            projection_present_total,
+            projection_pending_total,
+            projection_unknown_total,
+            projection_failed_total,
         );
     }
 
