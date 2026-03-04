@@ -10,8 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{TripleStoreAssertions, UAL_MAX_LIMIT},
-    commands::HandleBatchGetRequestDeps,
-    commands::{executor::CommandOutcome, registry::CommandHandler},
+    commands::{HandleBatchGetRequestDeps, executor::CommandOutcome, registry::CommandHandler},
     node_state::{PeerRegistry, ResponseChannels},
 };
 

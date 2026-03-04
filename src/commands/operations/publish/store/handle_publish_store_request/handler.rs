@@ -9,10 +9,8 @@ use uuid::Uuid;
 
 use crate::{
     application::signature,
-    commands::HandlePublishStoreRequestDeps,
-    commands::{executor::CommandOutcome, registry::CommandHandler},
-    node_state::PeerRegistry,
-    node_state::ResponseChannels,
+    commands::{HandlePublishStoreRequestDeps, executor::CommandOutcome, registry::CommandHandler},
+    node_state::{PeerRegistry, ResponseChannels},
 };
 
 /// Command data for handling incoming publish store requests.

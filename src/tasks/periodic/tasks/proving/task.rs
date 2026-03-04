@@ -16,7 +16,7 @@ use dkg_repository::{ChallengeState, ProofChallengeRepository};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use super::{PROVING_PERIOD, REORG_BUFFER};
+use super::{PROVING_PERIOD, ProvingDeps, REORG_BUFFER};
 use crate::{
     application::{
         AssertionValidation, TokenRangeResolutionPolicy, TripleStoreAssertions,
@@ -25,12 +25,10 @@ use crate::{
         group_and_sort_public_triples,
     },
     node_state::PeerRegistry,
-    tasks::periodic::PeriodicTasksDeps,
-    tasks::periodic::registry::BlockchainPeriodicTask,
-    tasks::periodic::runner::run_with_shutdown,
+    tasks::periodic::{
+        PeriodicTasksDeps, registry::BlockchainPeriodicTask, runner::run_with_shutdown,
+    },
 };
-
-use super::ProvingDeps;
 
 pub(crate) struct ProvingTask {
     blockchain_manager: Arc<BlockchainManager>,

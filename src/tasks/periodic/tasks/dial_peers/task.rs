@@ -10,9 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     node_state::PeerRegistry,
-    tasks::periodic::PeriodicTasksDeps,
-    tasks::periodic::registry::GlobalPeriodicTask,
-    tasks::periodic::runner::run_with_shutdown,
+    tasks::periodic::{PeriodicTasksDeps, registry::GlobalPeriodicTask, runner::run_with_shutdown},
 };
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);

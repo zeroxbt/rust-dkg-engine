@@ -7,7 +7,6 @@ use dkg_network::{
     BatchGetAck, FinalityAck, GetAck, PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_FINALITY,
     PROTOCOL_NAME_GET, PROTOCOL_NAME_STORE, StoreAck,
 };
-
 pub(crate) use peer_registry::PeerRegistry;
 pub(crate) use response_channels::ResponseChannels;
 

@@ -13,8 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{OperationTracking as GenericOperationService, signature},
-    commands::SendPublishStoreRequestsDeps,
-    commands::{executor::CommandOutcome, registry::CommandHandler},
+    commands::{SendPublishStoreRequestsDeps, executor::CommandOutcome, registry::CommandHandler},
     node_state::PeerRegistry,
     operations::PublishStoreOperation,
 };

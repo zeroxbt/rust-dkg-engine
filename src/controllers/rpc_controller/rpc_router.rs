@@ -8,8 +8,7 @@ use dkg_network::{
 };
 use dkg_observability as observability;
 
-use super::deps::RpcRouterDeps;
-use super::{PeerRateLimiter, RpcConfig};
+use super::{PeerRateLimiter, RpcConfig, deps::RpcRouterDeps};
 use crate::controllers::rpc_controller::v1::{
     batch_get::BatchGetRpcController, get::GetRpcController,
     publish_finality::PublishFinalityRpcController, publish_store::PublishStoreRpcController,

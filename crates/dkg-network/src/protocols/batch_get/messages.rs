@@ -1,7 +1,6 @@
 //! Batch get protocol message types.
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use dkg_domain::{Assertion, TokenIds};
 use serde::{Deserialize, Serialize};

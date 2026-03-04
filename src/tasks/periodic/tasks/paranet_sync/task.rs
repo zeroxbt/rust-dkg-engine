@@ -8,15 +8,13 @@ use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use super::ParanetSyncConfig;
+use super::{ParanetSyncConfig, ParanetSyncDeps};
 use crate::{
     application::{AssertionSource, GetAssertionInput},
-    tasks::periodic::PeriodicTasksDeps,
-    tasks::periodic::registry::ConfiguredBlockchainPeriodicTask,
-    tasks::periodic::runner::run_with_shutdown,
+    tasks::periodic::{
+        PeriodicTasksDeps, registry::ConfiguredBlockchainPeriodicTask, runner::run_with_shutdown,
+    },
 };
-
-use super::ParanetSyncDeps;
 
 pub(crate) struct ParanetSyncTask {
     config: ParanetSyncConfig,

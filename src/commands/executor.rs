@@ -6,10 +6,10 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::scheduler::CommandScheduler;
 use super::{
     constants::{COMMAND_CONCURRENT_LIMIT, COMMAND_QUEUE_SIZE, MAX_COMMAND_LIFETIME},
     registry::{Command, CommandResolver},
+    scheduler::CommandScheduler,
 };
 
 /// Outcome of a command execution.

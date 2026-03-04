@@ -1,17 +1,11 @@
-use crate::tasks::dkg_sync::DkgSyncDeps;
-
 use super::tasks::{
-    blockchain_admin_events::BlockchainAdminEventsDeps,
-    claim_rewards::ClaimRewardsDeps,
-    cleanup::CleanupDeps,
-    dial_peers::DialPeersDeps,
-    kc_reconciliation::KcReconciliationDeps,
-    paranet_sync::ParanetSyncDeps,
-    proving::ProvingDeps,
-    save_peer_addresses::SavePeerAddressesDeps,
-    sharding_table_check::ShardingTableCheckDeps,
+    blockchain_admin_events::BlockchainAdminEventsDeps, claim_rewards::ClaimRewardsDeps,
+    cleanup::CleanupDeps, dial_peers::DialPeersDeps, kc_reconciliation::KcReconciliationDeps,
+    paranet_sync::ParanetSyncDeps, proving::ProvingDeps,
+    save_peer_addresses::SavePeerAddressesDeps, sharding_table_check::ShardingTableCheckDeps,
     state_snapshot::StateSnapshotDeps,
 };
+use crate::tasks::dkg_sync::DkgSyncDeps;
 
 #[derive(Clone)]
 pub(crate) struct PeriodicTasksDeps {

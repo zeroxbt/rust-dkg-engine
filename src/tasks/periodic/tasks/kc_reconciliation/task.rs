@@ -5,15 +5,14 @@ use dkg_repository::{KcChainMetadataRepository, KcProjectionRepository, KcSyncRe
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    KcReconciliationDeps,
-    KcReconciliationConfig,
+    KcReconciliationConfig, KcReconciliationDeps,
     phases::{cleanup_stale_queue, hydrate_projection, reconcile_non_present, repair_orphans},
 };
 use crate::{
     application::TripleStoreAssertions,
-    tasks::periodic::PeriodicTasksDeps,
-    tasks::periodic::registry::ConfiguredBlockchainPeriodicTask,
-    tasks::periodic::runner::run_with_shutdown,
+    tasks::periodic::{
+        PeriodicTasksDeps, registry::ConfiguredBlockchainPeriodicTask, runner::run_with_shutdown,
+    },
 };
 
 pub(crate) struct KcReconciliationTask {

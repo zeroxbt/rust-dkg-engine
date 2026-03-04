@@ -62,8 +62,8 @@ pub(crate) async fn run(
             break;
         }
 
-        let Some(live_target_tip) = read_target_tip(&deps, &blockchain_id, reorg_buffer_blocks)
-            .await
+        let Some(live_target_tip) =
+            read_target_tip(&deps, &blockchain_id, reorg_buffer_blocks).await
         else {
             tokio::select! {
             _ = shutdown.cancelled() => break,

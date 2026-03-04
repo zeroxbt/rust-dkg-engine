@@ -4,13 +4,9 @@ use dkg_blockchain::BlockchainId;
 use dkg_observability as observability;
 use tokio::sync::Notify;
 
-use crate::tasks::{
-    dkg_sync::{
-        DkgSyncDeps,
-        pipeline::types::{
-        ProjectionWriteAction, QueueKcKey, QueueOutcome, QueueWriteAction,
-        },
-    },
+use crate::tasks::dkg_sync::{
+    DkgSyncDeps,
+    pipeline::types::{ProjectionWriteAction, QueueKcKey, QueueOutcome, QueueWriteAction},
 };
 
 const MAX_RETRY_EXCEEDED_REASON: &str = "max_retry_exceeded";

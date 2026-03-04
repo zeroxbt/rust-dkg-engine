@@ -8,10 +8,8 @@ use uuid::Uuid;
 
 use crate::{
     application::{TripleStoreAssertions, paranet},
-    commands::HandleGetRequestDeps,
-    commands::{executor::CommandOutcome, registry::CommandHandler},
-    node_state::PeerRegistry,
-    node_state::ResponseChannels,
+    commands::{HandleGetRequestDeps, executor::CommandOutcome, registry::CommandHandler},
+    node_state::{PeerRegistry, ResponseChannels},
 };
 
 /// Command data for handling incoming get requests.

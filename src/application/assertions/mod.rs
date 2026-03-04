@@ -7,6 +7,8 @@ use dkg_domain::{
     Assertion, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility, canonical_evm_address,
 };
 use dkg_repository::KcChainMetadataRepository;
+#[cfg(test)]
+use dkg_triple_store::PRIVATE_HASH_SUBJECT_PREFIX;
 use dkg_triple_store::{GraphVisibility, TripleStoreManager, error::TripleStoreError};
 use futures::{StreamExt, stream};
 use tracing::instrument;
@@ -15,9 +17,6 @@ use self::{build_assets::build_knowledge_assets, metadata::reconstruct_metadata_
 use crate::application::state_metadata::{PrivateGraphMode, PrivateGraphPresence};
 #[cfg(test)]
 use crate::application::state_metadata::{decode_sparse_ids, encode_bitmap, encode_sparse_ids};
-
-#[cfg(test)]
-use dkg_triple_store::PRIVATE_HASH_SUBJECT_PREFIX;
 
 /// Result of querying assertion data from the triple store.
 #[derive(Debug, Clone)]

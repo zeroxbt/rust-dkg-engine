@@ -14,8 +14,9 @@ use uuid::Uuid;
 
 use crate::{
     application::KcMaterializationService,
-    commands::SendPublishFinalityRequestDeps,
-    commands::{executor::CommandOutcome, registry::CommandHandler},
+    commands::{
+        SendPublishFinalityRequestDeps, executor::CommandOutcome, registry::CommandHandler,
+    },
 };
 
 /// Raw event data from KnowledgeCollectionCreated event.
@@ -235,7 +236,8 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             }
         };
 
-        // Publish finality insert path bypasses sync queue outcomes, so mark projection present here.
+        // Publish finality insert path bypasses sync queue outcomes, so mark projection present
+        // here.
         let contract_address = canonical_evm_address(&data.knowledge_collection_storage_address);
         if let Ok(kc_id) = u64::try_from(knowledge_collection_id) {
             if let Err(error) = self

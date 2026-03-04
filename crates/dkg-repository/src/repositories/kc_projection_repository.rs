@@ -2,8 +2,8 @@ use std::{sync::Arc, time::Instant};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    PaginatorTrait, QueryOrder, QuerySelect, Statement, Value, sea_query::Expr,
+    ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, Statement, Value, sea_query::Expr,
 };
 
 use crate::{

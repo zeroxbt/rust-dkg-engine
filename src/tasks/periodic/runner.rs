@@ -3,10 +3,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+use dkg_observability as observability;
 use futures::FutureExt;
 use tokio_util::sync::CancellationToken;
-
-use dkg_observability as observability;
 
 pub(crate) async fn run_with_shutdown<F, Fut>(
     task_name: &'static str,

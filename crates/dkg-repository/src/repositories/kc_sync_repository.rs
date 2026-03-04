@@ -1,10 +1,9 @@
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use chrono::Utc;
-use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait, Value,
+    QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait, Value, sea_query::Expr,
 };
 
 use crate::{
@@ -645,7 +644,8 @@ impl KcSyncRepository {
         result
     }
 
-    /// Return queue keys whose projection row is already materialized (desired=Present, actual=Present).
+    /// Return queue keys whose projection row is already materialized (desired=Present,
+    /// actual=Present).
     pub async fn list_queue_keys_with_present_projection(
         &self,
         blockchain_id: &str,

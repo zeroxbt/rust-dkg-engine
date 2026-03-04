@@ -11,13 +11,11 @@ use dkg_repository::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    node_state::PeerRegistry, tasks::periodic::PeriodicTasksDeps,
-    tasks::periodic::registry::GlobalPeriodicTask,
-    tasks::periodic::runner::run_with_shutdown,
-};
-
 use super::{StateSnapshotConfig, StateSnapshotDeps};
+use crate::{
+    node_state::PeerRegistry,
+    tasks::periodic::{PeriodicTasksDeps, registry::GlobalPeriodicTask, runner::run_with_shutdown},
+};
 
 pub(crate) struct StateSnapshotTask {
     config: StateSnapshotConfig,

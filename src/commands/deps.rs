@@ -12,8 +12,7 @@ use crate::{
     application::{
         GetAssertionUseCase, KcMaterializationService, OperationTracking, TripleStoreAssertions,
     },
-    node_state::PeerRegistry,
-    node_state::ResponseChannels,
+    node_state::{PeerRegistry, ResponseChannels},
     operations::{GetOperation, PublishStoreOperation},
 };
 

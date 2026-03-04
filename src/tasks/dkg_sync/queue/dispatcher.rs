@@ -5,11 +5,9 @@ use dkg_blockchain::{Address, BlockchainId};
 use dkg_observability as observability;
 use tokio::sync::mpsc;
 
-use crate::tasks::{
-    dkg_sync::{
-        DkgSyncConfig, DkgSyncDeps,
-        pipeline::types::{QueueKcKey, QueueKcWorkItem},
-    },
+use crate::tasks::dkg_sync::{
+    DkgSyncConfig, DkgSyncDeps,
+    pipeline::types::{QueueKcKey, QueueKcWorkItem},
 };
 
 pub(crate) async fn dispatch_due_fifo(

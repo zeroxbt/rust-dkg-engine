@@ -9,8 +9,9 @@ mod paranet;
 mod random_sampling;
 mod sharding;
 mod staking;
-use dkg_domain::BlockchainId;
 use std::collections::HashMap;
+
+use dkg_domain::BlockchainId;
 
 use crate::{chains::evm::EvmChain, manager::cache::ParameterCache};
 /// Manages multiple blockchain connections.

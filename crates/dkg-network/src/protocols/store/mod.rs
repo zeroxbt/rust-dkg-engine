@@ -7,8 +7,9 @@ mod messages;
 
 use std::time::Duration;
 
-use super::ProtocolSpec;
 pub use messages::{StoreAck, StoreRequestData, StoreResponseData};
+
+use super::ProtocolSpec;
 
 /// Store protocol marker type.
 pub struct StoreProtocol;

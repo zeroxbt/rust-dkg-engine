@@ -6,8 +6,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{GetAssertionInput, OperationTracking as GenericOperationService},
-    commands::SendGetRequestsDeps,
-    commands::{executor::CommandOutcome, registry::CommandHandler},
+    commands::{SendGetRequestsDeps, executor::CommandOutcome, registry::CommandHandler},
     operations::{GetOperation, GetOperationResult},
 };
 

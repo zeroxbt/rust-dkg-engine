@@ -8,10 +8,14 @@ use dkg_repository::OperationStatus;
 use uuid::Uuid;
 
 use crate::{
-    controllers::http_api_controller::OperationResultHttpApiControllerDeps,
-    controllers::http_api_controller::v1::dto::{
-        get::GetOperationResultResponse,
-        operation_result::{OperationResultErrorResponse, OperationResultResponse, SignatureData},
+    controllers::http_api_controller::{
+        OperationResultHttpApiControllerDeps,
+        v1::dto::{
+            get::GetOperationResultResponse,
+            operation_result::{
+                OperationResultErrorResponse, OperationResultResponse, SignatureData,
+            },
+        },
     },
     operations::{GetOperation, OperationKind, PublishStoreOperation, PublishStoreOperationResult},
 };

@@ -2,7 +2,8 @@ pub(crate) mod assertion_validation;
 pub(crate) mod state_metadata;
 
 /// Maximum number of UALs accepted in a single batch GET request.
-/// Enforced server-side (receiver truncates) and respected client-side (sync caps outgoing batches).
+/// Enforced server-side (receiver truncates) and respected client-side (sync caps outgoing
+/// batches).
 pub(crate) const UAL_MAX_LIMIT: usize = 1000;
 pub(crate) mod assertions;
 pub(crate) mod get_assertion;

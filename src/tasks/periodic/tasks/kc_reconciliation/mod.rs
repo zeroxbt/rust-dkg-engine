@@ -1,5 +1,5 @@
-mod deps;
 mod config;
+mod deps;
 mod phases;
 mod task;
 

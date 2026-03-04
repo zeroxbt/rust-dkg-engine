@@ -1,9 +1,10 @@
+use std::time::Instant;
+
 use alloy::{
     primitives::{Address, B256},
     providers::Provider,
     rpc::types::Filter,
 };
-use std::time::Instant;
 
 use crate::{
     ContractLog, ContractName,

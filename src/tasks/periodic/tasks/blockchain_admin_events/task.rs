@@ -14,12 +14,13 @@ use dkg_observability as observability;
 use dkg_repository::BlockchainRepository;
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    error::NodeError, tasks::periodic::PeriodicTasksDeps, tasks::periodic::registry::ConfiguredBlockchainPeriodicTask,
-    tasks::periodic::runner::run_with_shutdown,
-};
-
 use super::{BlockchainAdminEventsConfig, BlockchainAdminEventsDeps};
+use crate::{
+    error::NodeError,
+    tasks::periodic::{
+        PeriodicTasksDeps, registry::ConfiguredBlockchainPeriodicTask, runner::run_with_shutdown,
+    },
+};
 
 const MINIMUM_REQUIRED_SIGNATURES_PARAMETER: &str = "minimumRequiredSignatures";
 

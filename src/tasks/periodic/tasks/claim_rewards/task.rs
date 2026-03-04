@@ -10,13 +10,10 @@ use dkg_observability as observability;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    tasks::periodic::PeriodicTasksDeps,
-    tasks::periodic::registry::BlockchainPeriodicTask,
-    tasks::periodic::runner::run_with_shutdown,
-};
-
 use super::ClaimRewardsDeps;
+use crate::tasks::periodic::{
+    PeriodicTasksDeps, registry::BlockchainPeriodicTask, runner::run_with_shutdown,
+};
 
 /// Interval between claim rewards cycles (1 hour).
 pub(crate) const CLAIM_REWARDS_INTERVAL: Duration = Duration::from_secs(60 * 60);

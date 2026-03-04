@@ -1,15 +1,13 @@
 //! Long-lived data pipeline for sync discovery.
 
-use tokio::{sync::mpsc, task::JoinHandle};
-
 use dkg_blockchain::BlockchainId;
+use tokio::{sync::mpsc, task::JoinHandle};
 
 use super::{
     stages::{fetch::run_fetch_stage, filter::run_filter_stage, insert::run_insert_stage},
     types::{FetchedKc, KcToSync, QueueKcWorkItem, QueueOutcome},
 };
-use crate::tasks::dkg_sync::DkgSyncConfig;
-use crate::tasks::dkg_sync::DkgSyncDeps;
+use crate::tasks::dkg_sync::{DkgSyncConfig, DkgSyncDeps};
 
 pub(crate) struct DkgSyncPipeline {
     config: DkgSyncConfig,

@@ -8,8 +8,8 @@
 //! 4. Calculate Merkle proof for the challenged chunk
 //! 5. Submit proof to blockchain
 
-mod deps;
 mod config;
+mod deps;
 mod task;
 
 use std::time::Duration;

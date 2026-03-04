@@ -7,16 +7,17 @@ use std::{
 
 use dkg_blockchain::BlockchainId;
 use dkg_domain::{KnowledgeCollectionMetadata, TokenIds, derive_ual};
+use dkg_observability as observability;
 use dkg_repository::{KcChainMetadataRepository, KcChainReadyKcStateMetadataEntry};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use dkg_observability as observability;
-
-use crate::application::TripleStoreAssertions;
-use crate::application::state_metadata::{BurnedMode, decode_burned_ids};
-use crate::tasks::dkg_sync::pipeline::types::{
-    KcToSync, QueueKcKey, QueueKcWorkItem, QueueOutcome,
+use crate::{
+    application::{
+        TripleStoreAssertions,
+        state_metadata::{BurnedMode, decode_burned_ids},
+    },
+    tasks::dkg_sync::pipeline::types::{KcToSync, QueueKcKey, QueueKcWorkItem, QueueOutcome},
 };
 
 #[allow(clippy::too_many_arguments)]

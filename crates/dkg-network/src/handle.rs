@@ -12,10 +12,6 @@ use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::{
-    PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_FINALITY, PROTOCOL_NAME_GET, PROTOCOL_NAME_STORE,
-};
-
 use super::{
     NetworkError, NetworkManagerConfig, ResponseHandle,
     actions::{NetworkControlAction, NetworkDataAction},
@@ -26,6 +22,9 @@ use super::{
         FinalityResponseData, GetAck, GetRequestData, GetResponseData, StoreAck, StoreRequestData,
         StoreResponseData,
     },
+};
+use crate::{
+    PROTOCOL_NAME_BATCH_GET, PROTOCOL_NAME_FINALITY, PROTOCOL_NAME_GET, PROTOCOL_NAME_STORE,
 };
 
 pub(super) const ACTION_CHANNEL_CAPACITY: usize = 128;

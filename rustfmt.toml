@@ -1,3 +1,18 @@
 # Imports
 reorder_imports = true
-max_width = 100
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+
+# Docs/comments
+wrap_comments = true
+comment_width = 100
+normalize_comments = true
+normalize_doc_attributes = true
+format_code_in_doc_comments = true
+format_macro_matchers = true
+
+# Style
+newline_style = "Unix"
+use_field_init_shorthand = true
+use_try_shorthand = true
+force_explicit_abi = true

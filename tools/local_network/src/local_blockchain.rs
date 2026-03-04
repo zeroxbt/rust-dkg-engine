@@ -10,10 +10,10 @@ use alloy::{
     sol,
 };
 
-use crate::constants::{
-    PRIVATE_KEYS_PATH, resolve_repo_relative_candidates, resolve_repo_relative_path,
+use crate::{
+    constants::{PRIVATE_KEYS_PATH, resolve_repo_relative_candidates, resolve_repo_relative_path},
+    launch::open_terminal_with_command,
 };
-use crate::launch::open_terminal_with_command;
 
 const HUB_CONTRACT_ADDRESS: &str = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const MULTICALL3_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";

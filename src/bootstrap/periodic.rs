@@ -5,11 +5,13 @@ use crate::{
     commands::scheduler::CommandScheduler,
     managers::Managers,
     node_state::NodeState,
-    tasks::dkg_sync::DkgSyncDeps,
-    tasks::periodic::{
-        self, BlockchainAdminEventsDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
-        KcReconciliationDeps, ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps,
-        ShardingTableCheckDeps, StateSnapshotDeps,
+    tasks::{
+        dkg_sync::DkgSyncDeps,
+        periodic::{
+            self, BlockchainAdminEventsDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
+            KcReconciliationDeps, ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps,
+            ShardingTableCheckDeps, StateSnapshotDeps,
+        },
     },
 };
 

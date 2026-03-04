@@ -8,8 +8,9 @@ mod messages;
 
 use std::time::Duration;
 
-use super::ProtocolSpec;
 pub use messages::{BatchGetAck, BatchGetRequestData, BatchGetResponseData};
+
+use super::ProtocolSpec;
 
 /// Batch get protocol marker type.
 pub struct BatchGetProtocol;

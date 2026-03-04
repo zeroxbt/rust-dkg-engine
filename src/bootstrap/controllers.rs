@@ -5,12 +5,12 @@ use crate::{
     commands::scheduler::CommandScheduler,
     config::Config,
     controllers::{
-        self,
         http_api_controller::HttpApiDeps,
         rpc_controller::{
             BatchGetRpcControllerDeps, GetRpcControllerDeps, PublishFinalityRpcControllerDeps,
             PublishStoreRpcControllerDeps, RpcRouterDeps,
         },
+        {self},
     },
     managers::Managers,
     node_state::NodeState,

@@ -6,11 +6,9 @@ use tokio::sync::{Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use super::{dispatcher, outcomes};
-use crate::tasks::{
-    dkg_sync::{
-        DkgSyncConfig, DkgSyncDeps,
-        pipeline::types::{QueueKcKey, QueueKcWorkItem, QueueOutcome},
-    },
+use crate::tasks::dkg_sync::{
+    DkgSyncConfig, DkgSyncDeps,
+    pipeline::types::{QueueKcKey, QueueKcWorkItem, QueueOutcome},
 };
 
 const SYNC_RETRY_DELAY_SECS: i64 = 60;

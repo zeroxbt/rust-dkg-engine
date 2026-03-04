@@ -8,12 +8,14 @@ use dkg_network::{NetworkManager, PeerId};
 use dkg_observability as observability;
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    error::NodeError, node_state::PeerRegistry, tasks::periodic::PeriodicTasksDeps, tasks::periodic::registry::BlockchainPeriodicTask,
-    tasks::periodic::runner::run_with_shutdown,
-};
-
 use super::ShardingTableCheckDeps;
+use crate::{
+    error::NodeError,
+    node_state::PeerRegistry,
+    tasks::periodic::{
+        PeriodicTasksDeps, registry::BlockchainPeriodicTask, runner::run_with_shutdown,
+    },
+};
 
 /// Interval between sharding table synchronization checks (10 seconds)
 const SHARDING_TABLE_CHECK_PERIOD: Duration = Duration::from_secs(10);

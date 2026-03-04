@@ -75,7 +75,8 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     // Step 1: Signal HTTP server to stop accepting new connections
     let _ = http_shutdown_tx.send(());
 
-    // Step 2: Cancel periodic and DKG sync workloads (they check CancellationToken between iterations)
+    // Step 2: Cancel periodic and DKG sync workloads (they check CancellationToken between
+    // iterations)
     dkg_sync_shutdown.cancel();
     periodic_shutdown.cancel();
 

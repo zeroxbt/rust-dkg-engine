@@ -10,8 +10,10 @@ use futures::{StreamExt, stream};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use crate::application::KcMaterializationService;
-use crate::tasks::dkg_sync::pipeline::types::{FetchedKc, QueueOutcome};
+use crate::{
+    application::KcMaterializationService,
+    tasks::dkg_sync::pipeline::types::{FetchedKc, QueueOutcome},
+};
 
 const INSERT_STAGE_FAILURE_REASON: &str = "insert_stage_failure";
 

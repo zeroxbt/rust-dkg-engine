@@ -7,8 +7,9 @@ mod messages;
 
 use std::time::Duration;
 
-use super::ProtocolSpec;
 pub use messages::{FinalityAck, FinalityRequestData, FinalityResponseData};
+
+use super::ProtocolSpec;
 
 /// Finality protocol marker type.
 pub struct FinalityProtocol;

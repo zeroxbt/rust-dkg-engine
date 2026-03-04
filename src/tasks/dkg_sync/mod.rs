@@ -11,14 +11,13 @@ mod pipeline;
 mod queue;
 mod task;
 
-use dkg_blockchain::BlockchainId;
-use tokio::task::JoinSet;
-use tokio_util::sync::CancellationToken;
-
 // Re-export public types
 pub(crate) use config::{DkgSyncConfig, DkgSyncDiscoveryConfig, DkgSyncQueueProcessorConfig};
 pub(crate) use deps::DkgSyncDeps;
+use dkg_blockchain::BlockchainId;
 pub(crate) use task::DkgSyncTask;
+use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 
 pub(crate) async fn run(
     deps: DkgSyncDeps,

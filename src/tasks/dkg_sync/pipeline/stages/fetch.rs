@@ -21,10 +21,10 @@ use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-use crate::tasks::dkg_sync::pipeline::types::{FetchedKc, KcToSync, QueueOutcome};
 use crate::{
     application::{AssertionValidation, UAL_MAX_LIMIT},
     node_state::PeerRegistry,
+    tasks::dkg_sync::pipeline::types::{FetchedKc, KcToSync, QueueOutcome},
 };
 
 /// Maximum number of in-flight peer requests for this operation.

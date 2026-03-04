@@ -15,5 +15,6 @@ pub(crate) struct RuntimeDeps {
     pub(crate) periodic_tasks_deps: Arc<periodic::PeriodicTasksDeps>,
     pub(crate) blockchain_ids: Vec<BlockchainId>,
 }
-pub(crate) use self::config::{GracefulShutdownConfig, RuntimeConfig};
 pub(crate) use runner::run;
+
+pub(crate) use self::config::{GracefulShutdownConfig, RuntimeConfig};

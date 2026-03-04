@@ -1,5 +1,5 @@
-mod deps;
 mod config;
+mod deps;
 mod finality_acks;
 mod operations;
 mod proof_challenges;

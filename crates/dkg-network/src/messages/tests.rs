@@ -4,10 +4,10 @@ use dkg_domain::{Assertion, BlockchainId, SignatureComponents, TokenIds};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::message::{MessageHeader, ProtocolResponse, RequestMessage, ResponseMessage};
 use crate::{
     BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
     StoreAck, StoreRequestData,
+    message::{MessageHeader, ProtocolResponse, RequestMessage, ResponseMessage},
 };
 
 fn parse_json(input: &str) -> Value {

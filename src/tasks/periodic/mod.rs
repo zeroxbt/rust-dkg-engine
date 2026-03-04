@@ -4,11 +4,9 @@ mod runner;
 pub(crate) mod tasks;
 use std::sync::Arc;
 
-use crate::tasks::dkg_sync::DkgSyncConfig;
 pub(crate) use deps::PeriodicTasksDeps;
 use dkg_blockchain::BlockchainId;
 use serde::{Deserialize, Serialize};
-pub(crate) use tasks::sharding_table_check::seed_sharding_tables;
 pub(crate) use tasks::{
     blockchain_admin_events::BlockchainAdminEventsDeps,
     claim_rewards::ClaimRewardsDeps,
@@ -18,7 +16,7 @@ pub(crate) use tasks::{
     paranet_sync::ParanetSyncDeps,
     proving::ProvingDeps,
     save_peer_addresses::SavePeerAddressesDeps,
-    sharding_table_check::ShardingTableCheckDeps,
+    sharding_table_check::{ShardingTableCheckDeps, seed_sharding_tables},
     state_snapshot::StateSnapshotDeps,
 };
 use tasks::{
@@ -35,9 +33,8 @@ use tasks::{
 };
 use tokio_util::sync::CancellationToken;
 
-use self::registry::{
-    spawn_blockchain_task, spawn_configured_blockchain_task, spawn_global_task,
-};
+use self::registry::{spawn_blockchain_task, spawn_configured_blockchain_task, spawn_global_task};
+use crate::tasks::dkg_sync::DkgSyncConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

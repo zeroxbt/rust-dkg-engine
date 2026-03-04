@@ -6,19 +6,16 @@ use dkg_repository::{FinalityStatusRepository, OperationRepository, ProofChallen
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    CleanupConfig, finality_acks::cleanup_finality_acks, operations::cleanup_operations,
-    proof_challenges::cleanup_proof_challenges, publish_tmp_dataset::cleanup_publish_tmp_datasets,
+    CleanupConfig, CleanupDeps, finality_acks::cleanup_finality_acks,
+    operations::cleanup_operations, proof_challenges::cleanup_proof_challenges,
+    publish_tmp_dataset::cleanup_publish_tmp_datasets,
 };
 use crate::{
     application::OperationTracking,
     node_state::ResponseChannels,
     operations::{GetOperation, PublishStoreOperation},
-    tasks::periodic::PeriodicTasksDeps,
-    tasks::periodic::registry::GlobalPeriodicTask,
-    tasks::periodic::runner::run_with_shutdown,
+    tasks::periodic::{PeriodicTasksDeps, registry::GlobalPeriodicTask, runner::run_with_shutdown},
 };
-
-use super::CleanupDeps;
 
 pub(crate) struct CleanupTask {
     operation_repository: OperationRepository,

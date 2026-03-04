@@ -2,8 +2,8 @@
 //!
 //! Polls blockchain networks for non-KC admin/configuration events and dispatches them to handlers.
 
-mod deps;
 mod config;
+mod deps;
 mod task;
 
 pub(crate) use config::BlockchainAdminEventsConfig;
