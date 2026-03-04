@@ -1,4 +1,3 @@
-pub mod blockchain;
 pub mod finality_status;
 pub mod kc_chain_core_metadata;
 pub mod kc_chain_state_metadata;

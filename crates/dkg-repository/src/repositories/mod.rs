@@ -1,4 +1,3 @@
-pub mod blockchain_repository;
 pub mod finality_status_repository;
 pub mod kc_chain_metadata_repository;
 pub mod kc_projection_repository;

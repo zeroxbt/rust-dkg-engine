@@ -2,6 +2,7 @@
 
 use std::{
     sync::Arc,
+    sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant},
 };
 
@@ -11,7 +12,6 @@ use dkg_blockchain::{
 };
 use dkg_domain::canonical_evm_address;
 use dkg_observability as observability;
-use dkg_repository::BlockchainRepository;
 use tokio_util::sync::CancellationToken;
 
 use super::{BlockchainAdminEventsConfig, BlockchainAdminEventsDeps};
@@ -23,14 +23,15 @@ use crate::{
 };
 
 const MINIMUM_REQUIRED_SIGNATURES_PARAMETER: &str = "minimumRequiredSignatures";
+const UNINITIALIZED_CURSOR: u64 = u64::MAX;
 
 pub(crate) struct BlockchainAdminEventsTask {
     blockchain_manager: Arc<BlockchainManager>,
-    blockchain_repository: BlockchainRepository,
     /// Polling interval
     poll_interval: Duration,
     /// Number of tip blocks to skip to reduce short-range reorg risk.
     reorg_buffer_blocks: u64,
+    listener_cursor: AtomicU64,
 }
 
 #[derive(Default)]
@@ -51,9 +52,9 @@ impl BlockchainAdminEventsTask {
 
         Self {
             blockchain_manager: deps.blockchain_manager,
-            blockchain_repository: deps.blockchain_repository,
             poll_interval,
             reorg_buffer_blocks: reorg_buffer_blocks.max(1),
+            listener_cursor: AtomicU64::new(UNINITIALIZED_CURSOR),
         }
     }
 
@@ -84,6 +85,7 @@ impl BlockchainAdminEventsTask {
         };
 
         let monitored = monitored_admin_events();
+        let mut stream_count = 0usize;
         for contract_name in monitored.keys() {
             let contract_addresses = match self
                 .blockchain_manager
@@ -111,64 +113,17 @@ impl BlockchainAdminEventsTask {
                     .collect()
             };
 
-            for contract_address_str in addresses_to_check {
-                let last_checked_block = match self
-                    .blockchain_repository
-                    .get_last_checked_block(
-                        blockchain_id.as_str(),
-                        contract_name.as_str(),
-                        &contract_address_str,
-                    )
-                    .await
-                {
-                    Ok(block) => block,
-                    Err(error) => {
-                        tracing::warn!(
-                            blockchain_id = %blockchain_id,
-                            contract = %contract_name.as_str(),
-                            address = %contract_address_str,
-                            error = %error,
-                            "Failed to read listener cursor during bootstrap"
-                        );
-                        continue;
-                    }
-                };
-
-                let target_cursor = current_block;
-                if target_cursor == last_checked_block {
-                    continue;
-                }
-
-                if let Err(error) = self
-                    .blockchain_repository
-                    .update_last_checked_block(
-                        blockchain_id.as_str(),
-                        contract_name.as_str(),
-                        &contract_address_str,
-                        target_cursor,
-                        chrono::Utc::now(),
-                    )
-                    .await
-                {
-                    tracing::warn!(
-                        blockchain_id = %blockchain_id,
-                        contract = %contract_name.as_str(),
-                        address = %contract_address_str,
-                        error = %error,
-                        "Failed to update listener cursor during bootstrap"
-                    );
-                } else {
-                    tracing::debug!(
-                        blockchain_id = %blockchain_id,
-                        contract = %contract_name.as_str(),
-                        address = %contract_address_str,
-                        from = last_checked_block,
-                        to = target_cursor,
-                        "Rebased snapshot stream cursor to tip at startup"
-                    );
-                }
-            }
+            stream_count = stream_count.saturating_add(addresses_to_check.len());
         }
+
+        self.listener_cursor.store(current_block, Ordering::Relaxed);
+
+        tracing::info!(
+            blockchain_id = %blockchain_id,
+            start_block = current_block,
+            contract_streams = stream_count,
+            "Initialized in-memory admin event listener cursor"
+        );
     }
 
     #[tracing::instrument(
@@ -235,10 +190,17 @@ impl BlockchainAdminEventsTask {
             .get_block_number(blockchain_id)
             .await?
             .saturating_sub(self.reorg_buffer_blocks);
+        let last_checked_block = self.read_or_init_cursor(current_block);
+        let from_block = last_checked_block.saturating_add(1);
 
         let mut all_events = Vec::new();
-        let mut contracts_to_update: Vec<(ContractName, String)> = Vec::new();
+        let mut scanned_streams = 0usize;
         let monitored = monitored_admin_events();
+
+        if from_block > current_block {
+            stats.skipped_ranges = 1;
+            return Ok(stats);
+        }
 
         for (contract_name, events_to_filter) in &monitored {
             let contract_addresses = self
@@ -256,19 +218,7 @@ impl BlockchainAdminEventsTask {
             };
 
             for contract_address_str in addresses_to_check {
-                let last_checked_block = self
-                    .blockchain_repository
-                    .get_last_checked_block(
-                        blockchain_id.as_str(),
-                        contract_name.as_str(),
-                        &contract_address_str,
-                    )
-                    .await?;
-                let from_block = last_checked_block + 1;
-
-                if from_block > current_block {
-                    continue;
-                }
+                scanned_streams = scanned_streams.saturating_add(1);
 
                 let events = if contract_address_str.is_empty() {
                     self.blockchain_manager
@@ -301,7 +251,6 @@ impl BlockchainAdminEventsTask {
 
                 stats.fetched_events += events.len();
                 all_events.extend(events);
-                contracts_to_update.push((contract_name.clone(), contract_address_str));
             }
         }
 
@@ -354,18 +303,8 @@ impl BlockchainAdminEventsTask {
             }
         }
 
-        stats.contracts_updated = contracts_to_update.len();
-        for (contract_name, contract_address_str) in contracts_to_update {
-            self.blockchain_repository
-                .update_last_checked_block(
-                    blockchain_id.as_str(),
-                    contract_name.as_str(),
-                    &contract_address_str,
-                    current_block,
-                    chrono::Utc::now(),
-                )
-                .await?;
-        }
+        stats.contracts_updated = scanned_streams;
+        self.set_cursor(current_block);
 
         Ok(stats)
     }
@@ -477,6 +416,45 @@ impl BlockchainAdminEventsTask {
             )
             .await?;
         Ok(())
+    }
+
+    fn read_or_init_cursor(&self, fallback: u64) -> u64 {
+        let current = self.listener_cursor.load(Ordering::Relaxed);
+        if current != UNINITIALIZED_CURSOR {
+            return current;
+        }
+
+        match self.listener_cursor.compare_exchange(
+            UNINITIALIZED_CURSOR,
+            fallback,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => fallback,
+            Err(existing) if existing == UNINITIALIZED_CURSOR => fallback,
+            Err(existing) => existing,
+        }
+    }
+
+    fn set_cursor(&self, cursor: u64) {
+        let mut current = self.listener_cursor.load(Ordering::Relaxed);
+        loop {
+            let next = if current == UNINITIALIZED_CURSOR {
+                cursor
+            } else {
+                current.max(cursor)
+            };
+
+            match self.listener_cursor.compare_exchange_weak(
+                current,
+                next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(observed) => current = observed,
+            }
+        }
     }
 }
 

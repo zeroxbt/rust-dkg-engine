@@ -1,7 +1,6 @@
 use sea_orm_migration::{MigrationTrait, MigratorTrait, async_trait::async_trait};
 
 mod m002_create_shard;
-mod m003_create_blockchain;
 mod m004_create_operations;
 mod m007_create_finality_status;
 mod m008_create_triples_insert_count;
@@ -13,6 +12,7 @@ mod m017_create_kc_chain_core_metadata;
 mod m018_create_kc_chain_state_metadata;
 mod m019_create_kc_sync_metadata_cursor;
 mod m020_create_kc_projection_state;
+mod m021_drop_blockchain;
 
 pub struct Migrator;
 
@@ -21,7 +21,6 @@ impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         vec![
             Box::new(m002_create_shard::Migration),
-            Box::new(m003_create_blockchain::Migration),
             Box::new(m004_create_operations::Migration),
             Box::new(m007_create_finality_status::Migration),
             Box::new(m008_create_triples_insert_count::Migration),
@@ -33,6 +32,7 @@ impl MigratorTrait for Migrator {
             Box::new(m018_create_kc_chain_state_metadata::Migration),
             Box::new(m019_create_kc_sync_metadata_cursor::Migration),
             Box::new(m020_create_kc_projection_state::Migration),
+            Box::new(m021_drop_blockchain::Migration),
         ]
     }
 }

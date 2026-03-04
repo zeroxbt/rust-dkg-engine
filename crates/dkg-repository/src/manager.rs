@@ -8,7 +8,6 @@ use crate::{
     error::RepositoryError,
     migrations::Migrator,
     repositories::{
-        blockchain_repository::BlockchainRepository,
         finality_status_repository::FinalityStatusRepository,
         kc_chain_metadata_repository::KcChainMetadataRepository,
         kc_projection_repository::KcProjectionRepository, kc_sync_repository::KcSyncRepository,
@@ -20,7 +19,6 @@ use crate::{
 };
 
 pub struct RepositoryManager {
-    blockchain_repository: BlockchainRepository,
     operation_repository: OperationRepository,
     finality_status_repository: FinalityStatusRepository,
     triples_insert_count_repository: TriplesInsertCountRepository,
@@ -53,7 +51,6 @@ impl RepositoryManager {
         Migrator::up(conn.as_ref(), None).await?;
 
         Ok(RepositoryManager {
-            blockchain_repository: BlockchainRepository::new(Arc::clone(&conn)),
             operation_repository: OperationRepository::new(Arc::clone(&conn)),
             finality_status_repository: FinalityStatusRepository::new(Arc::clone(&conn)),
             triples_insert_count_repository: TriplesInsertCountRepository::new(Arc::clone(&conn)),
@@ -63,10 +60,6 @@ impl RepositoryManager {
             paranet_kc_sync_repository: ParanetKcSyncRepository::new(Arc::clone(&conn)),
             proof_challenge_repository: ProofChallengeRepository::new(Arc::clone(&conn)),
         })
-    }
-
-    pub fn blockchain_repository(&self) -> BlockchainRepository {
-        self.blockchain_repository.clone()
     }
 
     pub fn operation_repository(&self) -> OperationRepository {

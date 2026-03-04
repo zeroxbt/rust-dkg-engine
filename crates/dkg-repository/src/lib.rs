@@ -12,7 +12,6 @@ pub use config::{RepositoryManagerConfig, RepositoryManagerConfigRaw};
 pub use config_error::ConfigError;
 pub use manager::RepositoryManager;
 pub use repositories::{
-    blockchain_repository::BlockchainRepository,
     finality_status_repository::FinalityStatusRepository,
     kc_chain_metadata_repository::{GapBoundaries, GapRange, KcChainMetadataRepository},
     kc_projection_repository::KcProjectionRepository,
