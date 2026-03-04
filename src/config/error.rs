@@ -3,7 +3,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub(crate) enum ConfigError {
     #[error("Configuration loading failed: {0}")]
-    LoadError(#[from] figment::Error),
+    LoadError(#[source] Box<figment::Error>),
 
     #[error("Missing required secret: {0}")]
     MissingSecret(String),
@@ -19,6 +19,12 @@ pub(crate) enum ConfigError {
 
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
+}
+
+impl From<figment::Error> for ConfigError {
+    fn from(value: figment::Error) -> Self {
+        Self::LoadError(Box::new(value))
+    }
 }
 
 impl From<dkg_blockchain::ConfigError> for ConfigError {
