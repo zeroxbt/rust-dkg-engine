@@ -225,7 +225,7 @@ impl KcSyncRepository {
     /// 1. Upsert KC core metadata.
     /// 2. Upsert KC state metadata (if present).
     /// 3. Enqueue discovered KC IDs (deduplicated by PK).
-    /// 4. Upsert metadata cursor.
+    /// 4. Optionally upsert metadata cursor.
     #[allow(clippy::too_many_arguments)]
     pub async fn persist_metadata_chunk_and_enqueue(
         &self,
@@ -234,6 +234,7 @@ impl KcSyncRepository {
         metadata_last_checked_block: u64,
         records: &[SyncMetadataRecordInput],
         discovered_kc_ids: &[u64],
+        update_cursor: bool,
     ) -> Result<()> {
         let started = Instant::now();
         let now = Utc::now().timestamp();
@@ -369,23 +370,38 @@ impl KcSyncRepository {
                         .await?;
                 }
 
-                let cursor_model = CursorActiveModel {
-                    blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
-                    contract_address: ActiveValue::Set(contract_address.to_string()),
-                    last_checked_block: ActiveValue::Set(metadata_last_checked_block),
-                    updated_at: ActiveValue::Set(now),
-                };
-                CursorEntity::insert(cursor_model)
-                    .on_conflict(
-                        sea_orm::sea_query::OnConflict::columns([
-                            CursorColumn::BlockchainId,
-                            CursorColumn::ContractAddress,
-                        ])
-                        .update_columns([CursorColumn::LastCheckedBlock, CursorColumn::UpdatedAt])
-                        .to_owned(),
-                    )
-                    .exec(&txn)
-                    .await?;
+                if update_cursor {
+                    let current_cursor = CursorEntity::find_by_id((
+                        blockchain_id.to_string(),
+                        contract_address.to_string(),
+                    ))
+                    .one(&txn)
+                    .await?
+                    .map(|row| row.last_checked_block)
+                    .unwrap_or(0);
+                    let next_cursor = current_cursor.max(metadata_last_checked_block);
+
+                    let cursor_model = CursorActiveModel {
+                        blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
+                        contract_address: ActiveValue::Set(contract_address.to_string()),
+                        last_checked_block: ActiveValue::Set(next_cursor),
+                        updated_at: ActiveValue::Set(now),
+                    };
+                    CursorEntity::insert(cursor_model)
+                        .on_conflict(
+                            sea_orm::sea_query::OnConflict::columns([
+                                CursorColumn::BlockchainId,
+                                CursorColumn::ContractAddress,
+                            ])
+                            .update_columns([
+                                CursorColumn::LastCheckedBlock,
+                                CursorColumn::UpdatedAt,
+                            ])
+                            .to_owned(),
+                        )
+                        .exec(&txn)
+                        .await?;
+                }
 
                 Ok(())
             }

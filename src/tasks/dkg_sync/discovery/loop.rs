@@ -11,9 +11,9 @@ use super::DiscoveryWorker;
 use crate::tasks::{dkg_sync::DkgSyncConfig, periodic::DkgSyncDeps};
 
 #[derive(Default)]
-struct DiscoveryPassOutcome {
+struct GapPassOutcome {
     any_chunk_processed: bool,
-    gap_candidates: Vec<Address>,
+    had_errors: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -33,13 +33,35 @@ pub(crate) async fn run(
         Duration::from_secs(config.discovery.metadata_error_retry_interval_secs.max(1));
     let live_poll_period = Duration::from_secs(config.discovery.live_poll_interval_secs.max(1));
     let mut gap_paused_by_backpressure = false;
+    let mut historical_complete = false;
+
+    let pinned_tip = loop {
+        if shutdown.is_cancelled() {
+            return;
+        }
+
+        if let Some(tip) = read_target_tip(&deps, &config, &blockchain_id).await {
+            break tip;
+        }
+
+        tokio::select! {
+            _ = shutdown.cancelled() => return,
+            _ = tokio::time::sleep(error_retry_period) => {}
+        }
+    };
+    tracing::info!(
+        blockchain_id = %blockchain_id,
+        pinned_tip,
+        contracts = contract_addresses.len(),
+        "DKG sync discovery initialized with pinned historical tip"
+    );
 
     loop {
         if shutdown.is_cancelled() {
             break;
         }
 
-        let Some(target_tip) = read_target_tip(&deps, &config, &blockchain_id).await else {
+        let Some(live_target_tip) = read_target_tip(&deps, &config, &blockchain_id).await else {
             tokio::select! {
             _ = shutdown.cancelled() => break,
             _ = tokio::time::sleep(error_retry_period) => {}
@@ -47,15 +69,16 @@ pub(crate) async fn run(
             continue;
         };
 
-        let mut pass_outcome = run_live_pass(
+        let mut any_chunk_processed = run_live_pass(
             &discovery_worker,
             &blockchain_id,
             &contract_addresses,
             contract_scan_concurrency,
-            target_tip,
+            pinned_tip,
+            live_target_tip,
         )
         .await;
-        if pass_outcome.any_chunk_processed {
+        if any_chunk_processed {
             notify.notify_waiters();
         }
 
@@ -73,22 +96,29 @@ pub(crate) async fn run(
             &mut gap_paused_by_backpressure,
         );
 
-        if gap_allowed
-            && !pass_outcome.gap_candidates.is_empty()
-            && run_gap_pass(
+        if !historical_complete && gap_allowed {
+            let gap_outcome = run_gap_pass(
                 &discovery_worker,
                 &blockchain_id,
-                pass_outcome.gap_candidates,
+                &contract_addresses,
                 contract_scan_concurrency,
-                target_tip,
+                pinned_tip,
             )
-            .await
-        {
-            pass_outcome.any_chunk_processed = true;
-            notify.notify_waiters();
+            .await;
+            if gap_outcome.any_chunk_processed {
+                any_chunk_processed = true;
+                notify.notify_waiters();
+            } else if !gap_outcome.had_errors {
+                historical_complete = true;
+                tracing::info!(
+                    blockchain_id = %blockchain_id,
+                    pinned_tip,
+                    "DKG sync historical discovery reached pinned tip; stopping backfill lane"
+                );
+            }
         }
 
-        if !pass_outcome.any_chunk_processed {
+        if !any_chunk_processed {
             tokio::select! {
                 _ = shutdown.cancelled() => break,
                 _ = tokio::time::sleep(live_poll_period) => {}
@@ -124,16 +154,17 @@ async fn run_live_pass(
     blockchain_id: &BlockchainId,
     contract_addresses: &[Address],
     contract_scan_concurrency: usize,
+    pinned_tip: u64,
     target_tip: u64,
-) -> DiscoveryPassOutcome {
-    let mut outcome = DiscoveryPassOutcome::default();
+) -> bool {
+    let mut any_chunk_processed = false;
     let live_results: Vec<(Address, Result<_, _>)> =
         futures::stream::iter(contract_addresses.iter().copied().map(
             |contract_address| async move {
                 (
                     contract_address,
                     discovery_worker
-                        .discover_live_once(blockchain_id, contract_address, target_tip)
+                        .discover_live_once(blockchain_id, contract_address, pinned_tip, target_tip)
                         .await,
                 )
             },
@@ -147,9 +178,7 @@ async fn run_live_pass(
         match result {
             Ok(discovery_result) => {
                 if discovery_result.chunk_processed {
-                    outcome.any_chunk_processed = true;
-                } else {
-                    outcome.gap_candidates.push(contract_address);
+                    any_chunk_processed = true;
                 }
             }
             Err(error) => {
@@ -163,42 +192,42 @@ async fn run_live_pass(
         }
     }
 
-    outcome
+    any_chunk_processed
 }
 
 async fn run_gap_pass(
     discovery_worker: &DiscoveryWorker,
     blockchain_id: &BlockchainId,
-    gap_candidates: Vec<Address>,
+    contract_addresses: &[Address],
     contract_scan_concurrency: usize,
     target_tip: u64,
-) -> bool {
-    let mut any_chunk_processed = false;
-    let gap_results: Vec<(Address, Result<_, _>)> = futures::stream::iter(
-        gap_candidates
-            .into_iter()
-            .map(|contract_address| async move {
+) -> GapPassOutcome {
+    let mut outcome = GapPassOutcome::default();
+    let gap_results: Vec<(Address, Result<_, _>)> =
+        futures::stream::iter(contract_addresses.iter().copied().map(
+            |contract_address| async move {
                 (
                     contract_address,
                     discovery_worker
                         .discover_contract_once(blockchain_id, contract_address, target_tip)
                         .await,
                 )
-            }),
-    )
-    .buffer_unordered(contract_scan_concurrency)
-    .collect()
-    .await;
+            },
+        ))
+        .buffer_unordered(contract_scan_concurrency)
+        .collect()
+        .await;
 
     for (contract_address, result) in gap_results {
         let contract_addr_str = canonical_evm_address(&contract_address);
         match result {
             Ok(discovery_result) => {
                 if discovery_result.chunk_processed {
-                    any_chunk_processed = true;
+                    outcome.any_chunk_processed = true;
                 }
             }
             Err(error) => {
+                outcome.had_errors = true;
                 tracing::error!(
                     blockchain_id = %blockchain_id,
                     contract = %contract_addr_str,
@@ -209,7 +238,7 @@ async fn run_gap_pass(
         }
     }
 
-    any_chunk_processed
+    outcome
 }
 
 fn should_run_gap_pass(

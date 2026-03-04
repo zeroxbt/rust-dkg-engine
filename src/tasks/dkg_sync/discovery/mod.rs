@@ -34,6 +34,7 @@ pub(crate) mod discovery_loop;
 pub(crate) struct DiscoveryWorker {
     config: DkgSyncConfig,
     deps: DkgSyncDeps,
+    live_cursor_by_contract: Mutex<HashMap<String, u64>>,
     active_range_by_contract: Mutex<HashMap<String, BlockRange>>,
     deployment_block_by_contract: Mutex<HashMap<String, Option<u64>>>,
 }
@@ -78,6 +79,7 @@ impl DiscoveryWorker {
         Self {
             config,
             deps,
+            live_cursor_by_contract: Mutex::new(HashMap::new()),
             active_range_by_contract: Mutex::new(HashMap::new()),
             deployment_block_by_contract: Mutex::new(HashMap::new()),
         }
@@ -87,32 +89,45 @@ impl DiscoveryWorker {
         &self,
         blockchain_id: &BlockchainId,
         contract_address: Address,
+        pinned_tip: u64,
         target_tip: u64,
     ) -> Result<DiscoverContractOutcome, DiscoveryError> {
         let contract_addr_str = canonical_evm_address(&contract_address);
-        let cursor = self
-            .deps
-            .kc_sync_repository
-            .get_metadata_progress(blockchain_id.as_str(), &contract_addr_str)
-            .await
-            .map_err(DiscoveryError::LoadMetadataProgress)?;
+        let cursor = self.cached_live_cursor(&contract_addr_str, pinned_tip);
 
         let live_start = cursor.saturating_add(1);
         if live_start > target_tip {
             return Ok(DiscoverContractOutcome::default());
         }
 
-        self.process_range_chunk(
-            blockchain_id,
-            contract_address,
-            &contract_addr_str,
-            BlockRange {
-                start: live_start,
-                end: target_tip,
-            },
-            false,
-        )
-        .await
+        let chunk_to = Self::chunk_end(
+            live_start,
+            target_tip,
+            self.config
+                .discovery
+                .metadata_discovery_max_blocks_per_chunk
+                .max(1),
+        );
+
+        let outcome = self
+            .process_range_chunk(
+                blockchain_id,
+                contract_address,
+                &contract_addr_str,
+                BlockRange {
+                    start: live_start,
+                    end: chunk_to,
+                },
+                false,
+                false,
+            )
+            .await?;
+
+        if outcome.chunk_processed {
+            self.set_live_cursor(&contract_addr_str, chunk_to);
+        }
+
+        Ok(outcome)
     }
 
     pub(crate) async fn discover_contract_once(
@@ -196,6 +211,7 @@ impl DiscoveryWorker {
             &contract_addr_str,
             active_range,
             true,
+            true,
         )
         .await
     }
@@ -207,6 +223,7 @@ impl DiscoveryWorker {
         contract_addr_str: &str,
         active_range: BlockRange,
         clear_cached_when_exhausted: bool,
+        persist_cursor: bool,
     ) -> Result<DiscoverContractOutcome, DiscoveryError> {
         let mut result = DiscoverContractOutcome::default();
         let event_signatures = kc_storage_event_signatures();
@@ -221,9 +238,7 @@ impl DiscoveryWorker {
             return Ok(result);
         }
 
-        let chunk_to = active_range
-            .end
-            .min(chunk_from.saturating_add(chunk_size.saturating_sub(1)));
+        let chunk_to = Self::chunk_end(chunk_from, active_range.end, chunk_size);
         let chunk_blocks_scanned = chunk_to.saturating_sub(chunk_from).saturating_add(1);
 
         let fetch_started = Instant::now();
@@ -470,6 +485,7 @@ impl DiscoveryWorker {
                 chunk_to,
                 &metadata_inputs,
                 &enqueue_ids,
+                persist_cursor,
             )
             .await
         {
@@ -531,6 +547,31 @@ impl DiscoveryWorker {
         );
         result.chunk_processed = true;
         Ok(result)
+    }
+
+    fn chunk_end(start: u64, end: u64, chunk_size: u64) -> u64 {
+        end.min(start.saturating_add(chunk_size.saturating_sub(1)))
+    }
+
+    fn cached_live_cursor(&self, contract_address: &str, pinned_tip: u64) -> u64 {
+        let mut cursors = self
+            .live_cursor_by_contract
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *cursors
+            .entry(contract_address.to_string())
+            .or_insert(pinned_tip)
+    }
+
+    fn set_live_cursor(&self, contract_address: &str, cursor: u64) {
+        let mut cursors = self
+            .live_cursor_by_contract
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let entry = cursors
+            .entry(contract_address.to_string())
+            .or_insert(cursor);
+        *entry = (*entry).max(cursor);
     }
 
     fn cached_active_range(&self, contract_address: &str) -> Option<BlockRange> {
