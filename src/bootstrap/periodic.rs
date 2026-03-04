@@ -6,8 +6,8 @@ use crate::{
     managers::Managers,
     node_state::NodeState,
     tasks::periodic::{
-        self, BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps,
-        DkgSyncDeps, KcReconciliationDeps, ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps,
+        self, BlockchainAdminEventsDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, DkgSyncDeps,
+        KcReconciliationDeps, ParanetSyncDeps, ProvingDeps, SavePeerAddressesDeps,
         ShardingTableCheckDeps, StateSnapshotDeps,
     },
 };
@@ -55,14 +55,9 @@ pub(crate) fn build_periodic_tasks_deps(
             network_manager: Arc::clone(&managers.network),
             peer_registry: Arc::clone(&node_state.peer_registry),
         },
-        blockchain_event_listener: BlockchainEventListenerDeps {
+        blockchain_admin_events: BlockchainAdminEventsDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
             blockchain_repository,
-            kc_chain_metadata_repository: kc_chain_metadata_repository.clone(),
-            kc_projection_repository: kc_projection_repository.clone(),
-            kc_sync_repository: kc_sync_repository.clone(),
-            publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
-            command_scheduler: command_scheduler.clone(),
         },
         claim_rewards: ClaimRewardsDeps {
             blockchain_manager: Arc::clone(&managers.blockchain),
@@ -80,6 +75,8 @@ pub(crate) fn build_periodic_tasks_deps(
             kc_sync_repository: kc_sync_repository.clone(),
             kc_projection_repository: kc_projection_repository.clone(),
             kc_chain_metadata_repository: kc_chain_metadata_repository.clone(),
+            publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
+            command_scheduler: command_scheduler.clone(),
             kc_materialization_service: Arc::clone(&application.kc_materialization_service),
             triple_store_assertions: Arc::clone(&application.triple_store_assertions),
             network_manager: Arc::clone(&managers.network),

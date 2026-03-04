@@ -1,11 +1,8 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
 use dkg_blockchain::BlockchainId;
 use dkg_observability as observability;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Notify;
 
 use crate::tasks::{
     dkg_sync::pipeline::types::{
@@ -18,7 +15,7 @@ const MAX_RETRY_EXCEEDED_REASON: &str = "max_retry_exceeded";
 
 pub(crate) async fn apply_queue_outcomes(
     deps: &DkgSyncDeps,
-    inflight: &Arc<Mutex<HashSet<QueueKcKey>>>,
+    inflight: &mut HashSet<QueueKcKey>,
     notify: &Notify,
     blockchain_id: &BlockchainId,
     outcomes: Vec<QueueOutcome>,
@@ -77,6 +74,7 @@ pub(crate) async fn apply_queue_outcomes(
         }
     }
 
+    // `0` means "do not retry" but the first processing attempt is still allowed.
     let max_retry_attempts = max_retry_attempts.max(1);
     for ((reason, contract), mut kc_ids) in retry_by_reason_and_contract {
         kc_ids.sort_unstable();
@@ -193,13 +191,10 @@ pub(crate) async fn apply_queue_outcomes(
         }
     }
 
-    {
-        let mut inflight = inflight.lock().await;
-        for outcome in outcomes {
-            inflight.remove(&outcome.key);
-        }
-        observability::record_sync_pipeline_inflight(inflight.len());
+    for outcome in outcomes {
+        inflight.remove(&outcome.key);
     }
+    observability::record_sync_pipeline_inflight(inflight.len());
 
     notify.notify_waiters();
 }

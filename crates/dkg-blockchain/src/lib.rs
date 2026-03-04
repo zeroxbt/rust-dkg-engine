@@ -20,7 +20,10 @@ pub use config::{
     BlockchainManagerConfigRaw,
 };
 pub use config_error::ConfigError;
-pub use contract_events::{ContractEvent, decode_contract_event, monitored_contract_events};
+pub use contract_events::{
+    AdminContractEvent, KcStorageEvent, decode_admin_event, decode_kc_storage_event,
+    kc_storage_event_signatures, monitored_admin_events,
+};
 pub use error::BlockchainError;
 pub use multicall::{MulticallBatch, MulticallRequest, MulticallResult, encoders};
 pub use utils::{keccak256_encode_packed, parse_ether_to_u128, sha256_hex, to_hex_string};

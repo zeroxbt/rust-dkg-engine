@@ -1,0 +1,448 @@
+//! Blockchain admin events periodic task implementation.
+
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use dkg_blockchain::{
+    Address, AdminContractEvent, BlockchainError, BlockchainId, BlockchainManager, ContractName,
+    decode_admin_event, monitored_admin_events,
+};
+use dkg_domain::canonical_evm_address;
+use dkg_observability as observability;
+use dkg_repository::BlockchainRepository;
+use tokio_util::sync::CancellationToken;
+
+use crate::{
+    error::NodeError, tasks::periodic::BlockchainAdminEventsDeps,
+    tasks::periodic::runner::run_with_shutdown,
+};
+
+use super::BlockchainAdminEventsConfig;
+
+pub(crate) struct BlockchainAdminEventsTask {
+    blockchain_manager: Arc<BlockchainManager>,
+    blockchain_repository: BlockchainRepository,
+    /// Polling interval
+    poll_interval: Duration,
+}
+
+#[derive(Default)]
+struct ContractEventsStats {
+    fetched_events: usize,
+    processed_events: usize,
+    skipped_ranges: usize,
+    contracts_updated: usize,
+}
+
+impl BlockchainAdminEventsTask {
+    pub(crate) fn new(
+        deps: BlockchainAdminEventsDeps,
+        task_config: BlockchainAdminEventsConfig,
+    ) -> Self {
+        let poll_interval = Duration::from_secs(task_config.poll_interval_secs.max(1));
+
+        Self {
+            blockchain_manager: deps.blockchain_manager,
+            blockchain_repository: deps.blockchain_repository,
+            poll_interval,
+        }
+    }
+
+    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
+        self.bootstrap_listener_cursors(blockchain_id).await;
+        run_with_shutdown("blockchain_admin_events", shutdown, || {
+            self.execute(blockchain_id)
+        })
+        .await;
+    }
+
+    /// Initialize listener cursors at process start.
+    async fn bootstrap_listener_cursors(&self, blockchain_id: &BlockchainId) {
+        let current_block = match self
+            .blockchain_manager
+            .get_block_number(blockchain_id)
+            .await
+        {
+            Ok(block) => block.saturating_sub(2),
+            Err(error) => {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    error = %error,
+                    "Failed to bootstrap listener cursors: cannot fetch tip block"
+                );
+                return;
+            }
+        };
+
+        let monitored = monitored_admin_events();
+        for contract_name in monitored.keys() {
+            let contract_addresses = match self
+                .blockchain_manager
+                .get_all_contract_addresses(blockchain_id, contract_name)
+                .await
+            {
+                Ok(addresses) => addresses,
+                Err(error) => {
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        contract = %contract_name.as_str(),
+                        error = %error,
+                        "Failed to list contract addresses during listener cursor bootstrap"
+                    );
+                    continue;
+                }
+            };
+
+            let addresses_to_check: Vec<String> = if contract_addresses.is_empty() {
+                vec![String::new()]
+            } else {
+                contract_addresses
+                    .iter()
+                    .map(canonical_evm_address)
+                    .collect()
+            };
+
+            for contract_address_str in addresses_to_check {
+                let last_checked_block = match self
+                    .blockchain_repository
+                    .get_last_checked_block(
+                        blockchain_id.as_str(),
+                        contract_name.as_str(),
+                        &contract_address_str,
+                    )
+                    .await
+                {
+                    Ok(block) => block,
+                    Err(error) => {
+                        tracing::warn!(
+                            blockchain_id = %blockchain_id,
+                            contract = %contract_name.as_str(),
+                            address = %contract_address_str,
+                            error = %error,
+                            "Failed to read listener cursor during bootstrap"
+                        );
+                        continue;
+                    }
+                };
+
+                let target_cursor = current_block;
+                if target_cursor == last_checked_block {
+                    continue;
+                }
+
+                if let Err(error) = self
+                    .blockchain_repository
+                    .update_last_checked_block(
+                        blockchain_id.as_str(),
+                        contract_name.as_str(),
+                        &contract_address_str,
+                        target_cursor,
+                        chrono::Utc::now(),
+                    )
+                    .await
+                {
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        contract = %contract_name.as_str(),
+                        address = %contract_address_str,
+                        error = %error,
+                        "Failed to update listener cursor during bootstrap"
+                    );
+                } else {
+                    tracing::debug!(
+                        blockchain_id = %blockchain_id,
+                        contract = %contract_name.as_str(),
+                        address = %contract_address_str,
+                        from = last_checked_block,
+                        to = target_cursor,
+                        "Rebased snapshot stream cursor to tip at startup"
+                    );
+                }
+            }
+        }
+    }
+
+    #[tracing::instrument(
+        name = "periodic_tasks.blockchain_admin_events",
+        skip(self),
+        fields(
+            blockchain_id = %blockchain_id,
+            poll_interval_ms = tracing::field::Empty,
+        )
+    )]
+    async fn execute(&self, blockchain_id: &BlockchainId) -> Duration {
+        let started = Instant::now();
+        tracing::Span::current().record(
+            "poll_interval_ms",
+            tracing::field::display(self.poll_interval.as_millis()),
+        );
+
+        tracing::trace!(
+            poll_interval_ms = self.poll_interval.as_millis(),
+            "Running blockchain admin events task"
+        );
+
+        match self.fetch_and_handle_admin_events(blockchain_id).await {
+            Ok(stats) => observability::record_blockchain_event_listener_cycle(
+                blockchain_id.as_str(),
+                "ok",
+                started.elapsed(),
+                stats.fetched_events,
+                stats.processed_events,
+                stats.skipped_ranges,
+                stats.contracts_updated,
+            ),
+            Err(error) => {
+                observability::record_blockchain_event_listener_cycle(
+                    blockchain_id.as_str(),
+                    "error",
+                    started.elapsed(),
+                    0,
+                    0,
+                    0,
+                    0,
+                );
+                tracing::error!(
+                    blockchain_id = %blockchain_id,
+                    error = %error,
+                    "Error fetching/processing blockchain events"
+                );
+            }
+        }
+
+        self.poll_interval
+    }
+
+    /// Fetch and handle admin events for a single blockchain.
+    async fn fetch_and_handle_admin_events(
+        &self,
+        blockchain_id: &BlockchainId,
+    ) -> Result<ContractEventsStats, NodeError> {
+        let mut stats = ContractEventsStats::default();
+
+        // Get current block (use -2 for finality safety)
+        let current_block = self
+            .blockchain_manager
+            .get_block_number(blockchain_id)
+            .await?
+            .saturating_sub(2);
+
+        let mut all_events = Vec::new();
+        let mut contracts_to_update: Vec<(ContractName, String)> = Vec::new();
+        let monitored = monitored_admin_events();
+
+        for (contract_name, events_to_filter) in &monitored {
+            let contract_addresses = self
+                .blockchain_manager
+                .get_all_contract_addresses(blockchain_id, contract_name)
+                .await?;
+
+            let addresses_to_check: Vec<String> = if contract_addresses.is_empty() {
+                vec![String::new()]
+            } else {
+                contract_addresses
+                    .iter()
+                    .map(canonical_evm_address)
+                    .collect()
+            };
+
+            for contract_address_str in addresses_to_check {
+                let last_checked_block = self
+                    .blockchain_repository
+                    .get_last_checked_block(
+                        blockchain_id.as_str(),
+                        contract_name.as_str(),
+                        &contract_address_str,
+                    )
+                    .await?;
+                let from_block = last_checked_block + 1;
+
+                if from_block > current_block {
+                    continue;
+                }
+
+                let events = if contract_address_str.is_empty() {
+                    self.blockchain_manager
+                        .get_event_logs(
+                            blockchain_id,
+                            contract_name,
+                            events_to_filter,
+                            from_block,
+                            current_block,
+                        )
+                        .await?
+                } else {
+                    let contract_address: Address = contract_address_str.parse().map_err(|_| {
+                        BlockchainError::Custom(format!(
+                            "Invalid contract address: {}",
+                            contract_address_str
+                        ))
+                    })?;
+                    self.blockchain_manager
+                        .get_event_logs_for_address(
+                            blockchain_id,
+                            contract_name.clone(),
+                            contract_address,
+                            events_to_filter,
+                            from_block,
+                            current_block,
+                        )
+                        .await?
+                };
+
+                stats.fetched_events += events.len();
+                all_events.extend(events);
+                contracts_to_update.push((contract_name.clone(), contract_address_str));
+            }
+        }
+
+        if !all_events.is_empty() {
+            tracing::debug!(
+                blockchain = %blockchain_id,
+                event_count = all_events.len(),
+                "Fetched blockchain events"
+            );
+
+            all_events.sort_by(|a, b| {
+                let a_log = a.log();
+                let b_log = b.log();
+
+                let a_block = a_log.block_number.unwrap_or_default();
+                let b_block = b_log.block_number.unwrap_or_default();
+                if a_block != b_block {
+                    return a_block.cmp(&b_block);
+                }
+
+                let a_tx_index = a_log.transaction_index.unwrap_or_default();
+                let b_tx_index = b_log.transaction_index.unwrap_or_default();
+                if a_tx_index != b_tx_index {
+                    return a_tx_index.cmp(&b_tx_index);
+                }
+
+                let a_log_index = a_log.log_index.unwrap_or_default();
+                let b_log_index = b_log.log_index.unwrap_or_default();
+                a_log_index.cmp(&b_log_index)
+            });
+
+            for event in all_events {
+                let block_number = event.log().block_number.unwrap_or_default();
+                tracing::trace!(
+                    contract = %event.contract_name().as_str(),
+                    block_number,
+                    "Processing event"
+                );
+
+                match decode_admin_event(event.contract_name(), event.log()) {
+                    Some(decoded) => {
+                        self.handle_admin_event(blockchain_id, decoded).await?;
+                    }
+                    None => tracing::warn!(
+                        contract = %event.contract_name().as_str(),
+                        "Failed to decode admin contract event"
+                    ),
+                }
+                stats.processed_events += 1;
+            }
+        }
+
+        stats.contracts_updated = contracts_to_update.len();
+        for (contract_name, contract_address_str) in contracts_to_update {
+            self.blockchain_repository
+                .update_last_checked_block(
+                    blockchain_id.as_str(),
+                    contract_name.as_str(),
+                    &contract_address_str,
+                    current_block,
+                    chrono::Utc::now(),
+                )
+                .await?;
+        }
+
+        Ok(stats)
+    }
+
+    async fn handle_admin_event(
+        &self,
+        blockchain_id: &BlockchainId,
+        event: AdminContractEvent,
+    ) -> Result<(), BlockchainError> {
+        match event {
+            AdminContractEvent::ParameterChanged(event) => {
+                tracing::debug!(
+                    blockchain = %blockchain_id,
+                    parameter = %event.parameterName,
+                    value = %event.parameterValue,
+                    "Parameter changed"
+                );
+                // TODO: Update contract call cache with new parameter values
+                Ok(())
+            }
+            AdminContractEvent::NewContract(event) => {
+                self.handle_contract_address_update(
+                    blockchain_id,
+                    &event.contractName,
+                    event.newContractAddress,
+                    "New contract deployed",
+                )
+                .await
+            }
+            AdminContractEvent::ContractChanged(event) => {
+                self.handle_contract_address_update(
+                    blockchain_id,
+                    &event.contractName,
+                    event.newContractAddress,
+                    "Contract changed",
+                )
+                .await
+            }
+            AdminContractEvent::NewAssetStorage(event) => {
+                self.handle_contract_address_update(
+                    blockchain_id,
+                    &event.contractName,
+                    event.newContractAddress,
+                    "New asset storage deployed",
+                )
+                .await
+            }
+            AdminContractEvent::AssetStorageChanged(event) => {
+                self.handle_contract_address_update(
+                    blockchain_id,
+                    &event.contractName,
+                    event.newContractAddress,
+                    "Asset storage changed",
+                )
+                .await
+            }
+        }
+    }
+
+    async fn handle_contract_address_update(
+        &self,
+        blockchain_id: &BlockchainId,
+        contract_name: &str,
+        new_contract_address: Address,
+        log_message: &str,
+    ) -> Result<(), BlockchainError> {
+        tracing::info!(
+            blockchain = %blockchain_id,
+            contract = %contract_name,
+            address = ?new_contract_address,
+            "{log_message}"
+        );
+
+        let Ok(_) = contract_name.parse::<ContractName>() else {
+            return Ok(());
+        };
+
+        self.blockchain_manager
+            .re_initialize_contract(
+                blockchain_id,
+                contract_name.to_string(),
+                new_contract_address,
+            )
+            .await?;
+        Ok(())
+    }
+}

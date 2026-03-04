@@ -59,14 +59,9 @@ pub(crate) struct ShardingTableCheckDeps {
 }
 
 #[derive(Clone)]
-pub(crate) struct BlockchainEventListenerDeps {
+pub(crate) struct BlockchainAdminEventsDeps {
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) blockchain_repository: BlockchainRepository,
-    pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
-    pub(crate) kc_projection_repository: KcProjectionRepository,
-    pub(crate) kc_sync_repository: KcSyncRepository,
-    pub(crate) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
-    pub(crate) command_scheduler: CommandScheduler,
 }
 
 #[derive(Clone)]
@@ -85,6 +80,8 @@ pub(crate) struct DkgSyncDeps {
     pub(crate) kc_sync_repository: KcSyncRepository,
     pub(crate) kc_projection_repository: KcProjectionRepository,
     pub(crate) kc_chain_metadata_repository: KcChainMetadataRepository,
+    pub(crate) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
+    pub(crate) command_scheduler: CommandScheduler,
     pub(crate) kc_materialization_service: Arc<KcMaterializationService>,
     pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
     pub(crate) network_manager: Arc<NetworkManager>,
@@ -121,7 +118,7 @@ pub(crate) struct PeriodicTasksDeps {
     pub(crate) cleanup: CleanupDeps,
     pub(crate) save_peer_addresses: SavePeerAddressesDeps,
     pub(crate) sharding_table_check: ShardingTableCheckDeps,
-    pub(crate) blockchain_event_listener: BlockchainEventListenerDeps,
+    pub(crate) blockchain_admin_events: BlockchainAdminEventsDeps,
     pub(crate) claim_rewards: ClaimRewardsDeps,
     pub(crate) proving: ProvingDeps,
     pub(crate) dkg_sync: DkgSyncDeps,

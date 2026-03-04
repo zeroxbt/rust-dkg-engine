@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::tasks::dkg_sync::{DkgSyncConfig, DkgSyncTask};
 pub(crate) use deps::{
-    BlockchainEventListenerDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, DkgSyncDeps,
+    BlockchainAdminEventsDeps, ClaimRewardsDeps, CleanupDeps, DialPeersDeps, DkgSyncDeps,
     KcReconciliationDeps, ParanetSyncDeps, PeriodicTasksDeps, ProvingDeps, SavePeerAddressesDeps,
     ShardingTableCheckDeps, StateSnapshotDeps,
 };
@@ -14,7 +14,7 @@ use dkg_blockchain::BlockchainId;
 use serde::{Deserialize, Serialize};
 pub(crate) use tasks::sharding_table_check::seed_sharding_tables;
 use tasks::{
-    blockchain_event_listener::BlockchainEventListenerTask,
+    blockchain_admin_events::{BlockchainAdminEventsConfig, BlockchainAdminEventsTask},
     claim_rewards::ClaimRewardsTask,
     cleanup::{CleanupConfig, CleanupTask},
     dial_peers::DialPeersTask,
@@ -35,6 +35,7 @@ use self::registry::{
 #[serde(deny_unknown_fields)]
 pub(crate) struct PeriodicTasksConfig {
     pub cleanup: CleanupConfig,
+    pub blockchain_admin_events: BlockchainAdminEventsConfig,
     pub dkg_sync: DkgSyncConfig,
     pub kc_reconciliation: KcReconciliationConfig,
     pub paranet_sync: ParanetSyncConfig,
@@ -103,20 +104,6 @@ impl BlockchainPeriodicTask for ShardingTableCheckTask {
     }
 }
 
-impl BlockchainPeriodicTask for BlockchainEventListenerTask {
-    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
-        Self::new(deps.blockchain_event_listener.clone())
-    }
-
-    fn run_task(
-        self,
-        blockchain_id: &BlockchainId,
-        shutdown: CancellationToken,
-    ) -> impl std::future::Future<Output = ()> + Send {
-        Self::run(self, blockchain_id, shutdown)
-    }
-}
-
 impl BlockchainPeriodicTask for ClaimRewardsTask {
     fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
         Self::new(deps.claim_rewards.clone())
@@ -163,6 +150,7 @@ pub(crate) async fn run(
 ) {
     let PeriodicTasksConfig {
         cleanup: cleanup_config,
+        blockchain_admin_events: blockchain_admin_events_config,
         dkg_sync: dkg_sync_config,
         kc_reconciliation: kc_reconciliation_config,
         paranet_sync: paranet_sync_config,
@@ -238,13 +226,24 @@ pub(crate) async fn run(
             });
         }
 
+        {
+            let deps = Arc::clone(&deps);
+            let shutdown = shutdown.clone();
+            let blockchain_id = blockchain_id.clone();
+            let config = blockchain_admin_events_config.clone();
+            set.spawn(async move {
+                BlockchainAdminEventsTask::new(deps.blockchain_admin_events.clone(), config)
+                    .run(&blockchain_id, shutdown)
+                    .await;
+            });
+        }
+
         spawn_registered_blockchain_tasks!(
             &mut set,
             &deps,
             &shutdown,
             &blockchain_id,
             ShardingTableCheckTask,
-            BlockchainEventListenerTask,
             ClaimRewardsTask,
         );
 

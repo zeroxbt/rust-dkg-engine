@@ -35,6 +35,7 @@ use crate::{
         periodic::{
             PeriodicTasksConfig,
             tasks::{
+                blockchain_admin_events::BlockchainAdminEventsConfig,
                 cleanup::{
                     CleanupConfig, FinalityAcksCleanupConfig, OperationsCleanupConfig,
                     ProofChallengesCleanupConfig, PublishTmpDatasetCleanupConfig,
@@ -110,15 +111,19 @@ fn proving() -> ProvingConfig {
     ProvingConfig { enabled: true }
 }
 
+fn blockchain_admin_events(poll_interval_secs: u64) -> BlockchainAdminEventsConfig {
+    BlockchainAdminEventsConfig { poll_interval_secs }
+}
+
 fn dkg_sync() -> DkgSyncConfig {
     DkgSyncConfig {
         discovery: DkgSyncDiscoveryConfig {
-            enabled: true,
             head_safety_blocks: 2,
             max_contract_concurrency: 128,
             metadata_discovery_max_blocks_per_chunk: 128,
             metadata_state_max_kc_per_chunk: 64,
             metadata_error_retry_interval_secs: 30,
+            live_poll_interval_secs: 5,
             queue_high_kc_watermark: 2048,
             queue_low_kc_watermark: 512,
         },
@@ -171,9 +176,12 @@ fn controllers() -> ControllersConfig {
     }
 }
 
-fn periodic_tasks() -> PeriodicTasksConfig {
+fn periodic_tasks(blockchain_admin_events_poll_interval_secs: u64) -> PeriodicTasksConfig {
     PeriodicTasksConfig {
         cleanup: cleanup(),
+        blockchain_admin_events: blockchain_admin_events(
+            blockchain_admin_events_poll_interval_secs,
+        ),
         dkg_sync: dkg_sync(),
         kc_reconciliation: kc_reconciliation(),
         paranet_sync: paranet_sync(),
@@ -266,7 +274,7 @@ fn development() -> ConfigRaw {
         telemetry: telemetry(true),
         runtime: runtime(),
         controllers: controllers(),
-        periodic_tasks: periodic_tasks(),
+        periodic_tasks: periodic_tasks(4),
         managers: ManagersConfigRaw {
             network: network(vec![
                 "/ip4/127.0.0.1/tcp/9102/p2p/12D3KooWF1nhFmNp4F1ni6aL3EHcayULrrEBAuutsgPLVr2poadQ"
@@ -332,7 +340,7 @@ fn testnet() -> ConfigRaw {
         telemetry: telemetry(false),
         runtime: runtime(),
         controllers: controllers(),
-        periodic_tasks: periodic_tasks(),
+        periodic_tasks: periodic_tasks(10),
         managers: ManagersConfigRaw {
             network: network(vec![]),
             repository: repository("root", 120),
@@ -418,7 +426,7 @@ fn mainnet() -> ConfigRaw {
         telemetry: telemetry(false),
         runtime: runtime(),
         controllers: controllers(),
-        periodic_tasks: periodic_tasks(),
+        periodic_tasks: periodic_tasks(10),
         managers: ManagersConfigRaw {
             network: network(vec![
                 "/ip4/157.230.96.194/tcp/9000/p2p/QmZFcns6eGUosD96beHyevKu1jGJ1bA56Reg2f1J4q59Jt"

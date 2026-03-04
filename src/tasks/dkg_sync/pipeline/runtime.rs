@@ -44,16 +44,6 @@ impl DkgSyncPipeline {
         Self { config, deps }
     }
 
-    pub(crate) fn enough_peers_for_fetch(&self, blockchain_id: &BlockchainId) -> bool {
-        let total_shard_peers = self.deps.peer_registry.shard_peer_count(blockchain_id);
-        let identified_peers = self
-            .deps
-            .peer_registry
-            .identified_shard_peer_count(blockchain_id);
-        let min_required = (total_shard_peers / 3).max(3);
-        identified_peers >= min_required
-    }
-
     pub(crate) fn start(
         &self,
         blockchain_id: &BlockchainId,

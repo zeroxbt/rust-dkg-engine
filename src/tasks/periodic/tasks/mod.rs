@@ -1,4 +1,4 @@
-pub(crate) mod blockchain_event_listener;
+pub(crate) mod blockchain_admin_events;
 pub(crate) mod claim_rewards;
 pub(crate) mod cleanup;
 pub(crate) mod dial_peers;

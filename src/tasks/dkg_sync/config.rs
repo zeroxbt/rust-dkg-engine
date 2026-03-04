@@ -10,12 +10,12 @@ pub(crate) struct DkgSyncConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DkgSyncDiscoveryConfig {
-    pub enabled: bool,
     pub head_safety_blocks: u64,
     pub max_contract_concurrency: usize,
     pub metadata_discovery_max_blocks_per_chunk: u64,
     pub metadata_state_max_kc_per_chunk: usize,
     pub metadata_error_retry_interval_secs: u64,
+    pub live_poll_interval_secs: u64,
     pub queue_high_kc_watermark: u64,
     pub queue_low_kc_watermark: u64,
 }

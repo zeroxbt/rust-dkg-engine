@@ -5,7 +5,6 @@ use dkg_blockchain::{
     encoders, to_hex_string,
 };
 use dkg_domain::{TokenIds, canonical_evm_address};
-use dkg_repository::{KcChainMetadataRepository, error::RepositoryError};
 use futures::{StreamExt, stream};
 
 use crate::application::state_metadata::encode_burned_ids;
@@ -273,48 +272,4 @@ pub(crate) async fn hydrate_kc_state_metadata(
             }
         }
     }
-}
-
-pub(crate) async fn upsert_kc_chain_metadata_record(
-    repository: &KcChainMetadataRepository,
-    blockchain_id: &str,
-    source: &str,
-    record: &KcChainMetadataRecord,
-) -> Result<(), RepositoryError> {
-    let contract_address_str = canonical_evm_address(&record.contract_address);
-    let transaction_hash_str = format!("{:#x}", record.transaction_hash);
-
-    repository
-        .upsert_core_metadata(
-            blockchain_id,
-            &contract_address_str,
-            record.kc_id,
-            record.publisher_address.as_deref(),
-            record.block_number,
-            &transaction_hash_str,
-            record.block_timestamp,
-            &record.publish_operation_id,
-            Some(source),
-        )
-        .await?;
-
-    if let Some(kc_state_metadata) = record.kc_state_metadata.as_ref() {
-        repository
-            .upsert_kc_state_metadata(
-                blockchain_id,
-                &contract_address_str,
-                record.kc_id,
-                kc_state_metadata.range_start_token_id,
-                kc_state_metadata.range_end_token_id,
-                kc_state_metadata.burned_mode,
-                kc_state_metadata.burned_payload.as_slice(),
-                kc_state_metadata.end_epoch,
-                &kc_state_metadata.latest_merkle_root,
-                record.block_number,
-                Some(source),
-            )
-            .await?;
-    }
-
-    Ok(())
 }

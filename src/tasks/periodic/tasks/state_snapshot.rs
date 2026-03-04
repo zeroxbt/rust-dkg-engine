@@ -73,6 +73,7 @@ impl StateSnapshotTask {
     }
 
     async fn collect_queue_snapshot(&self, blockchain_id: &str, now_ts: i64) {
+        let max_retry_attempts = self.config.max_retry_attempts.max(1);
         let queue_total = match self
             .kc_sync_repository
             .count_queue_total_for_blockchain(blockchain_id)
@@ -91,7 +92,7 @@ impl StateSnapshotTask {
 
         let queue_due = match self
             .kc_sync_repository
-            .count_queue_due_for_blockchain(blockchain_id, now_ts, self.config.max_retry_attempts)
+            .count_queue_due_for_blockchain(blockchain_id, now_ts, max_retry_attempts)
             .await
         {
             Ok(v) => v,
@@ -107,11 +108,7 @@ impl StateSnapshotTask {
 
         let queue_retrying = match self
             .kc_sync_repository
-            .count_queue_retrying_for_blockchain(
-                blockchain_id,
-                now_ts,
-                self.config.max_retry_attempts,
-            )
+            .count_queue_retrying_for_blockchain(blockchain_id, now_ts, max_retry_attempts)
             .await
         {
             Ok(v) => v,
