@@ -43,6 +43,7 @@ pub(crate) struct SendPublishFinalityRequestCommandData {
 }
 
 impl SendPublishFinalityRequestCommandData {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         blockchain: BlockchainId,
         publish_operation_id: String,

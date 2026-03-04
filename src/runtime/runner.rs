@@ -14,6 +14,7 @@ use crate::{
     tasks::periodic::{self, PeriodicTasksConfig},
 };
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
     deps: RuntimeDeps,
     command_executor: CommandExecutor,

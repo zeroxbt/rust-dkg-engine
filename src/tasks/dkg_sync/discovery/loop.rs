@@ -39,15 +39,12 @@ pub(crate) async fn run(
             break;
         }
 
-        let target_tip = match read_target_tip(&deps, &config, &blockchain_id).await {
-            Some(tip) => tip,
-            None => {
-                tokio::select! {
-                    _ = shutdown.cancelled() => break,
-                    _ = tokio::time::sleep(error_retry_period) => {}
-                }
-                continue;
+        let Some(target_tip) = read_target_tip(&deps, &config, &blockchain_id).await else {
+            tokio::select! {
+            _ = shutdown.cancelled() => break,
+            _ = tokio::time::sleep(error_retry_period) => {}
             }
+            continue;
         };
 
         let mut pass_outcome = run_live_pass(
@@ -131,18 +128,16 @@ async fn run_live_pass(
 ) -> DiscoveryPassOutcome {
     let mut outcome = DiscoveryPassOutcome::default();
     let live_results: Vec<(Address, Result<_, _>)> =
-        futures::stream::iter(contract_addresses.iter().copied().map(|contract_address| {
-            let discovery_worker = discovery_worker;
-            let blockchain_id = blockchain_id;
-            async move {
+        futures::stream::iter(contract_addresses.iter().copied().map(
+            |contract_address| async move {
                 (
                     contract_address,
                     discovery_worker
                         .discover_live_once(blockchain_id, contract_address, target_tip)
                         .await,
                 )
-            }
-        }))
+            },
+        ))
         .buffer_unordered(contract_scan_concurrency)
         .collect()
         .await;
@@ -179,22 +174,21 @@ async fn run_gap_pass(
     target_tip: u64,
 ) -> bool {
     let mut any_chunk_processed = false;
-    let gap_results: Vec<(Address, Result<_, _>)> =
-        futures::stream::iter(gap_candidates.into_iter().map(|contract_address| {
-            let discovery_worker = discovery_worker;
-            let blockchain_id = blockchain_id;
-            async move {
+    let gap_results: Vec<(Address, Result<_, _>)> = futures::stream::iter(
+        gap_candidates
+            .into_iter()
+            .map(|contract_address| async move {
                 (
                     contract_address,
                     discovery_worker
                         .discover_contract_once(blockchain_id, contract_address, target_tip)
                         .await,
                 )
-            }
-        }))
-        .buffer_unordered(contract_scan_concurrency)
-        .collect()
-        .await;
+            }),
+    )
+    .buffer_unordered(contract_scan_concurrency)
+    .collect()
+    .await;
 
     for (contract_address, result) in gap_results {
         let contract_addr_str = canonical_evm_address(&contract_address);
