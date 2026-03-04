@@ -26,6 +26,8 @@ pub(crate) struct BlockchainAdminEventsTask {
     blockchain_repository: BlockchainRepository,
     /// Polling interval
     poll_interval: Duration,
+    /// Number of tip blocks to skip to reduce short-range reorg risk.
+    reorg_buffer_blocks: u64,
 }
 
 #[derive(Default)]
@@ -40,6 +42,7 @@ impl BlockchainAdminEventsTask {
     pub(crate) fn new(
         deps: BlockchainAdminEventsDeps,
         task_config: BlockchainAdminEventsConfig,
+        reorg_buffer_blocks: u64,
     ) -> Self {
         let poll_interval = Duration::from_secs(task_config.poll_interval_secs.max(1));
 
@@ -47,6 +50,7 @@ impl BlockchainAdminEventsTask {
             blockchain_manager: deps.blockchain_manager,
             blockchain_repository: deps.blockchain_repository,
             poll_interval,
+            reorg_buffer_blocks: reorg_buffer_blocks.max(1),
         }
     }
 
@@ -65,7 +69,7 @@ impl BlockchainAdminEventsTask {
             .get_block_number(blockchain_id)
             .await
         {
-            Ok(block) => block.saturating_sub(2),
+            Ok(block) => block.saturating_sub(self.reorg_buffer_blocks),
             Err(error) => {
                 tracing::warn!(
                     blockchain_id = %blockchain_id,
@@ -222,12 +226,12 @@ impl BlockchainAdminEventsTask {
     ) -> Result<ContractEventsStats, NodeError> {
         let mut stats = ContractEventsStats::default();
 
-        // Get current block (use -2 for finality safety)
+        // Get current block with reorg safety buffer.
         let current_block = self
             .blockchain_manager
             .get_block_number(blockchain_id)
             .await?
-            .saturating_sub(2);
+            .saturating_sub(self.reorg_buffer_blocks);
 
         let mut all_events = Vec::new();
         let mut contracts_to_update: Vec<(ContractName, String)> = Vec::new();

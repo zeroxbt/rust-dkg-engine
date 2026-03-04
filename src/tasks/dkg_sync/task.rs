@@ -15,14 +15,16 @@ use crate::tasks::periodic::DkgSyncDeps;
 
 pub(crate) struct DkgSyncTask {
     config: DkgSyncConfig,
+    reorg_buffer_blocks: u64,
     deps: DkgSyncDeps,
     notify: Arc<Notify>,
 }
 
 impl DkgSyncTask {
-    pub(crate) fn new(deps: DkgSyncDeps, config: DkgSyncConfig) -> Self {
+    pub(crate) fn new(deps: DkgSyncDeps, config: DkgSyncConfig, reorg_buffer_blocks: u64) -> Self {
         Self {
             config,
+            reorg_buffer_blocks,
             deps,
             notify: Arc::new(Notify::new()),
         }
@@ -117,7 +119,7 @@ impl DkgSyncTask {
         tracing::info!(
             blockchain_id = %blockchain_id,
             contracts = contract_addresses.len(),
-            head_safety_blocks = self.config.discovery.head_safety_blocks,
+            reorg_buffer_blocks = self.reorg_buffer_blocks,
             "Starting DKG sync discovery"
         );
 
@@ -125,6 +127,7 @@ impl DkgSyncTask {
             DiscoveryWorker::new(self.deps.clone(), self.config.clone()),
             self.deps.clone(),
             self.config.clone(),
+            self.reorg_buffer_blocks,
             blockchain_id.clone(),
             contract_addresses,
             Arc::clone(&self.notify),

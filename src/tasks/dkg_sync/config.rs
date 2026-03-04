@@ -10,7 +10,6 @@ pub(crate) struct DkgSyncConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DkgSyncDiscoveryConfig {
-    pub head_safety_blocks: u64,
     pub max_contract_concurrency: usize,
     pub metadata_discovery_max_blocks_per_chunk: u64,
     pub metadata_state_max_kc_per_chunk: usize,

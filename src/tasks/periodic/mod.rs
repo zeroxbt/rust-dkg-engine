@@ -34,6 +34,7 @@ use self::registry::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PeriodicTasksConfig {
+    pub reorg_buffer_blocks: u64,
     pub cleanup: CleanupConfig,
     pub blockchain_admin_events: BlockchainAdminEventsConfig,
     pub dkg_sync: DkgSyncConfig,
@@ -149,6 +150,7 @@ pub(crate) async fn run(
     shutdown: CancellationToken,
 ) {
     let PeriodicTasksConfig {
+        reorg_buffer_blocks,
         cleanup: cleanup_config,
         blockchain_admin_events: blockchain_admin_events_config,
         dkg_sync: dkg_sync_config,
@@ -194,8 +196,9 @@ pub(crate) async fn run(
         let sync_shutdown = shutdown.clone();
         let sync_blockchain_id = blockchain_id.clone();
         let config = dkg_sync_config.clone();
+        let reorg_buffer_blocks = reorg_buffer_blocks.max(1);
         set.spawn(async move {
-            DkgSyncTask::new(sync_deps.dkg_sync.clone(), config)
+            DkgSyncTask::new(sync_deps.dkg_sync.clone(), config, reorg_buffer_blocks)
                 .run(&sync_blockchain_id, sync_shutdown)
                 .await;
         });
@@ -231,8 +234,13 @@ pub(crate) async fn run(
             let shutdown = shutdown.clone();
             let blockchain_id = blockchain_id.clone();
             let config = blockchain_admin_events_config.clone();
+            let reorg_buffer_blocks = reorg_buffer_blocks.max(1);
             set.spawn(async move {
-                BlockchainAdminEventsTask::new(deps.blockchain_admin_events.clone(), config)
+                BlockchainAdminEventsTask::new(
+                    deps.blockchain_admin_events.clone(),
+                    config,
+                    reorg_buffer_blocks,
+                )
                     .run(&blockchain_id, shutdown)
                     .await;
             });

@@ -21,6 +21,7 @@ pub(crate) async fn run(
     discovery_worker: DiscoveryWorker,
     deps: DkgSyncDeps,
     config: DkgSyncConfig,
+    reorg_buffer_blocks: u64,
     blockchain_id: BlockchainId,
     contract_addresses: Vec<Address>,
     notify: Arc<Notify>,
@@ -40,7 +41,7 @@ pub(crate) async fn run(
             return;
         }
 
-        if let Some(tip) = read_target_tip(&deps, &config, &blockchain_id).await {
+        if let Some(tip) = read_target_tip(&deps, &blockchain_id, reorg_buffer_blocks).await {
             break tip;
         }
 
@@ -61,7 +62,9 @@ pub(crate) async fn run(
             break;
         }
 
-        let Some(live_target_tip) = read_target_tip(&deps, &config, &blockchain_id).await else {
+        let Some(live_target_tip) = read_target_tip(&deps, &blockchain_id, reorg_buffer_blocks)
+            .await
+        else {
             tokio::select! {
             _ = shutdown.cancelled() => break,
             _ = tokio::time::sleep(error_retry_period) => {}
@@ -129,15 +132,15 @@ pub(crate) async fn run(
 
 async fn read_target_tip(
     deps: &DkgSyncDeps,
-    config: &DkgSyncConfig,
     blockchain_id: &BlockchainId,
+    reorg_buffer_blocks: u64,
 ) -> Option<u64> {
     match deps
         .blockchain_manager
         .get_block_number(blockchain_id)
         .await
     {
-        Ok(block) => Some(block.saturating_sub(config.discovery.head_safety_blocks)),
+        Ok(block) => Some(block.saturating_sub(reorg_buffer_blocks)),
         Err(error) => {
             tracing::error!(
                 blockchain_id = %blockchain_id,
