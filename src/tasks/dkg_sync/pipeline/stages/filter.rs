@@ -3,6 +3,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::Instant,
 };
 
 use dkg_blockchain::BlockchainId;
@@ -22,6 +23,7 @@ use crate::{
 
 const FILTER_STAGE_REJECTION_REASON: &str = "filter_stage_rejection";
 const FILTER_STAGE_DOWNSTREAM_CLOSED_REASON: &str = "filter_stage_downstream_closed";
+const FILTER_STAGE_FORWARDED_OUTCOME: &str = "forwarded";
 
 #[allow(clippy::too_many_arguments)]
 #[instrument(
@@ -48,6 +50,7 @@ pub(crate) async fn run_filter_stage(
 
     while let Some(work_items) = rx.recv().await {
         for chunk in work_items.chunks(filter_max_kc_per_chunk) {
+            let batch_start = Instant::now();
             let batch_result = process_filter_batch(
                 chunk,
                 &blockchain_id,
@@ -87,6 +90,34 @@ pub(crate) async fn run_filter_stage(
                     to_sync_send_failed = Some(send_error.0);
                 }
             }
+            let unsent_to_sync_count = to_sync_send_failed.as_ref().map_or(0, |unsent| unsent.len());
+            let forwarded_count = to_sync_count.saturating_sub(unsent_to_sync_count);
+            observability::record_sync_kc_outcome(
+                blockchain_id.as_str(),
+                "filter",
+                FILTER_STAGE_FORWARDED_OUTCOME,
+                forwarded_count,
+            );
+            observability::record_sync_kc_outcome(
+                blockchain_id.as_str(),
+                "filter",
+                "failed",
+                unsent_to_sync_count,
+            );
+            let batch_status = if unsent_to_sync_count == 0 {
+                "success"
+            } else if forwarded_count == 0 {
+                "failed"
+            } else {
+                "partial"
+            };
+            observability::record_sync_filter_batch(
+                batch_status,
+                batch_start.elapsed(),
+                chunk.len(),
+                forwarded_count,
+                retry_later.len(),
+            );
 
             let mut outcomes = Vec::with_capacity(
                 already_synced.len()

@@ -119,6 +119,35 @@ pub fn record_sync_metadata_discovery_batch_processing_duration(
     .record(duration.as_secs_f64());
 }
 
+pub fn record_sync_filter_batch(
+    status: &str,
+    duration: Duration,
+    batch_kcs: usize,
+    batch_forwarded: usize,
+    batch_retry_later: usize,
+) {
+    histogram!(
+        "node_sync_filter_batch_duration_seconds",
+        "status" => status.to_string()
+    )
+    .record(duration.as_secs_f64());
+    histogram!(
+        "node_sync_filter_batch_kcs",
+        "status" => status.to_string()
+    )
+    .record(batch_kcs as f64);
+    histogram!(
+        "node_sync_filter_batch_forwarded",
+        "status" => status.to_string()
+    )
+    .record(batch_forwarded as f64);
+    histogram!(
+        "node_sync_filter_batch_retry_later",
+        "status" => status.to_string()
+    )
+    .record(batch_retry_later as f64);
+}
+
 pub fn record_sync_fetch_batch(
     status: &str,
     duration: Duration,
