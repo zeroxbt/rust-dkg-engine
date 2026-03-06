@@ -27,9 +27,6 @@ use crate::{
     tasks::dkg_sync::pipeline::types::{FetchedKc, KcToSync, QueueOutcome},
 };
 
-/// Maximum number of in-flight peer requests for this operation.
-/// For very large KC batches, use a single in-flight peer request to reduce peak memory.
-const LARGE_BATCH_ASSET_THRESHOLD_FOR_SINGLE_PEER: u64 = 1_000;
 const FETCH_STAGE_FAILURE_REASON: &str = "fetch_stage_failure";
 
 /// Fetch stage: receives filtered KCs, fetches from network, sends to insert stage.
@@ -364,11 +361,7 @@ async fn fetch_kc_batch_from_network(
         .iter()
         .map(|kc| estimate_asset_count(&kc.token_ids))
         .sum();
-    let concurrent_peers = if estimated_assets >= LARGE_BATCH_ASSET_THRESHOLD_FOR_SINGLE_PEER {
-        1
-    } else {
-        batch_get_fanout_concurrency.max(1)
-    };
+    let concurrent_peers = batch_get_fanout_concurrency.max(1);
 
     // Build lookup maps
     let ual_to_kc: HashMap<&str, &KcToSync> = kcs.iter().map(|kc| (kc.ual.as_str(), kc)).collect();
