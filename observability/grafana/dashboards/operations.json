@@ -600,8 +600,7 @@
   "style": "dark",
   "tags": [
     "rust-dkg-engine",
-    "operations",
-    "v2"
+    "operations"
   ],
   "templating": {
     "list": []
@@ -612,8 +611,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Rust DKG Engine - Operations v2",
-  "uid": "rust-dkg-operations-v2",
+  "title": "Rust DKG Engine - Operations",
+  "uid": "rust-dkg-operations",
   "version": 1,
   "weekStart": ""
 }

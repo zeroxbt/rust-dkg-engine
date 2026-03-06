@@ -1096,8 +1096,7 @@
   "style": "dark",
   "tags": [
     "rust-dkg-engine",
-    "sync",
-    "v2"
+    "sync"
   ],
   "templating": {
     "list": [
@@ -1138,8 +1137,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Rust DKG Engine - Sync V2",
-  "uid": "rust-dkg-sync-v2",
+  "title": "Rust DKG Engine - Sync",
+  "uid": "rust-dkg-sync",
   "version": 1,
   "weekStart": ""
 }

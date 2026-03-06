@@ -358,8 +358,7 @@
   "style": "dark",
   "tags": [
     "rust-dkg-engine",
-    "tasks",
-    "v2"
+    "tasks"
   ],
   "templating": {
     "list": []
@@ -370,8 +369,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Rust DKG Engine - Tasks V2",
-  "uid": "rust-dkg-tasks-v2",
+  "title": "Rust DKG Engine - Tasks",
+  "uid": "rust-dkg-tasks",
   "version": 1,
   "weekStart": ""
 }

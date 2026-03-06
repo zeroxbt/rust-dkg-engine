@@ -567,8 +567,7 @@
   "style": "dark",
   "tags": [
     "rust-dkg-engine",
-    "commands",
-    "v2"
+    "commands"
   ],
   "templating": {
     "list": [
@@ -616,8 +615,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Rust DKG Engine - Commands V2",
-  "uid": "rust-dkg-commands-v2",
+  "title": "Rust DKG Engine - Commands",
+  "uid": "rust-dkg-commands",
   "version": 1,
   "weekStart": ""
 }
