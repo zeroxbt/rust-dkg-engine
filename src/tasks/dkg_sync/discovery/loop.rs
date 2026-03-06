@@ -267,7 +267,7 @@ fn should_run_gap_pass(
 
     if queue_total >= high_watermark {
         *gap_paused_by_backpressure = true;
-        tracing::warn!(
+        tracing::info!(
             blockchain_id = %blockchain_id,
             queue_total,
             high_watermark,
