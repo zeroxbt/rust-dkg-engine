@@ -862,9 +862,22 @@ impl KcChainMetadataRepository {
             let end_block: i64 = row
                 .try_get("", "gap_end_block")
                 .map_err(RepositoryError::Database)?;
-            let last_expected_kc_id: Option<i64> = row
-                .try_get("", "gap_last_expected_kc_id")
-                .map_err(RepositoryError::Database)?;
+            // MariaDB may decode this as BIGINT UNSIGNED while other backends decode as signed
+            // BIGINT. Try unsigned first, then fallback to signed.
+            let last_expected_kc_id_u64: Option<u64> =
+                row.try_get::<Option<u64>>("", "gap_last_expected_kc_id")
+                    .ok()
+                    .flatten();
+            let last_expected_kc_id_i64: Option<i64> = if last_expected_kc_id_u64.is_none() {
+                row.try_get::<Option<i64>>("", "gap_last_expected_kc_id")
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            };
+            let last_expected_kc_id = last_expected_kc_id_u64.or_else(|| {
+                last_expected_kc_id_i64.and_then(|value| u64::try_from(value).ok())
+            });
 
             let start_block = start_block.max(0) as u64;
             let end_block = end_block.max(0) as u64;
@@ -875,9 +888,7 @@ impl KcChainMetadataRepository {
             Ok(Some(GapRange {
                 start_block,
                 end_block,
-                last_expected_kc_id: last_expected_kc_id
-                    .and_then(|value| u64::try_from(value).ok())
-                    .filter(|value| *value > 0),
+                last_expected_kc_id: last_expected_kc_id.filter(|value| *value > 0),
             }))
         }
         .await;
