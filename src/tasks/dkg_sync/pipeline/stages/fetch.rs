@@ -140,32 +140,39 @@ pub(crate) async fn run_fetch_stage(
                     fetch_ms = fetch_start.elapsed().as_millis() as u64,
                     "Fetch: sending batch to insert stage"
                 );
-                if tx.send(fetched).await.is_err() {
-                    tracing::warn!(
-                        blockchain_id = %blockchain_id,
-                        remaining_accumulated = accumulated.len(),
-                        "Fetch: insert stage receiver dropped, stopping"
-                    );
-                    let remaining_outcomes: Vec<QueueOutcome> = accumulated
-                        .drain(..)
-                        .map(|kc| {
+                match tx.send(fetched).await {
+                    Ok(()) => {}
+                    Err(send_error) => {
+                        let unsent_fetched = send_error.0;
+                        tracing::warn!(
+                            blockchain_id = %blockchain_id,
+                            unsent_fetched = unsent_fetched.len(),
+                            remaining_accumulated = accumulated.len(),
+                            "Fetch: insert stage receiver dropped, requeueing unsent KCs"
+                        );
+                        let mut remaining_outcomes = Vec::with_capacity(
+                            unsent_fetched.len().saturating_add(accumulated.len()),
+                        );
+                        remaining_outcomes.extend(unsent_fetched.into_iter().map(|kc| {
                             QueueOutcome::retry_with_pending_error(
                                 kc.key,
                                 FETCH_STAGE_FAILURE_REASON,
                             )
-                        })
-                        .collect();
-                    if !remaining_outcomes.is_empty() {
-                        let _ = outcome_tx.send(remaining_outcomes).await;
+                        }));
+                        remaining_outcomes.extend(accumulated.drain(..).map(|kc| {
+                            QueueOutcome::retry_with_pending_error(
+                                kc.key,
+                                FETCH_STAGE_FAILURE_REASON,
+                            )
+                        }));
+                        if !remaining_outcomes.is_empty() {
+                            let _ = outcome_tx.send(remaining_outcomes).await;
+                        }
+                        return;
                     }
-                    return;
                 }
             }
 
-            // Break inner loop if channel is empty to avoid busy-waiting
-            if rx.is_empty() {
-                break;
-            }
         }
     }
 
@@ -223,11 +230,28 @@ pub(crate) async fn run_fetch_stage(
                 fetch_ms = fetch_start.elapsed().as_millis() as u64,
                 "Fetch: flushing remaining KCs"
             );
-            if tx.send(fetched).await.is_err() {
-                tracing::warn!(
-                    blockchain_id = %blockchain_id,
-                    "Fetch: insert stage receiver dropped while flushing fetched KCs"
-                );
+            match tx.send(fetched).await {
+                Ok(()) => {}
+                Err(send_error) => {
+                    let unsent_fetched = send_error.0;
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        unsent_fetched = unsent_fetched.len(),
+                        "Fetch: insert stage receiver dropped while flushing fetched KCs; requeueing unsent KCs"
+                    );
+                    let unsent_outcomes: Vec<QueueOutcome> = unsent_fetched
+                        .into_iter()
+                        .map(|kc| {
+                            QueueOutcome::retry_with_pending_error(
+                                kc.key,
+                                FETCH_STAGE_FAILURE_REASON,
+                            )
+                        })
+                        .collect();
+                    if !unsent_outcomes.is_empty() {
+                        let _ = outcome_tx.send(unsent_outcomes).await;
+                    }
+                }
             }
         }
     }

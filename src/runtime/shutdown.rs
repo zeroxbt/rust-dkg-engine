@@ -16,6 +16,7 @@ pub(super) struct ShutdownContext {
     pub(super) periodic_handle: JoinHandle<()>,
     pub(super) execute_commands_task: JoinHandle<()>,
     pub(super) network_event_loop_task: JoinHandle<()>,
+    pub(super) peer_registry_shutdown: CancellationToken,
     pub(super) peer_registry_task: JoinHandle<()>,
     pub(super) http_shutdown_tx: tokio::sync::oneshot::Sender<()>,
     pub(super) handle_http_events_task: JoinHandle<()>,
@@ -33,7 +34,7 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     // 5. Wait for command executor to drain
     // 6. Signal network loop to stop
     // 7. Wait for network loop to exit
-    // 8. Wait for peer registry updater to drain
+    // 8. Signal peer registry updater to stop and wait for it to exit
     // 9. Wait for HTTP to finish in-flight requests
     // 10. Shutdown complete
     let ShutdownContext {
@@ -46,6 +47,7 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
         mut periodic_handle,
         mut execute_commands_task,
         mut network_event_loop_task,
+        peer_registry_shutdown,
         mut peer_registry_task,
         http_shutdown_tx,
         mut handle_http_events_task,
@@ -121,9 +123,8 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     )
     .await;
 
-    // Step 8: Wait for peer registry updater to drain.
-    // Exits when the network broadcast sender is dropped (step 7). The timeout guards
-    // against any edge case where the sender outlives the network task.
+    // Step 8: Signal peer registry updater to stop and wait for it to exit.
+    peer_registry_shutdown.cancel();
     wait_for_shutdown_task(
         "peer_registry_updater",
         peer_registry_shutdown_timeout,

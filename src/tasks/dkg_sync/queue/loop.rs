@@ -2,6 +2,7 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use dkg_blockchain::BlockchainId;
 use dkg_observability as observability;
+use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::{Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 
@@ -12,6 +13,7 @@ use crate::tasks::dkg_sync::{
 };
 
 const SYNC_RETRY_DELAY_SECS: i64 = 60;
+const OUTCOME_CHANNEL_CLOSED_REASON: &str = "queue_outcome_channel_closed";
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
@@ -26,20 +28,30 @@ pub(crate) async fn run(
     let fallback_retry_poll =
         Duration::from_secs(config.queue_processor.dispatch_idle_poll_secs.max(1));
     let mut draining = false;
+    let mut outcome_channel_closed = false;
     let mut inflight: HashSet<QueueKcKey> = HashSet::new();
 
     loop {
-        while let Ok(outcomes) = outcome_rx.try_recv() {
-            outcomes::apply_queue_outcomes(
-                &deps,
-                &mut inflight,
-                notify.as_ref(),
-                &blockchain_id,
-                outcomes,
-                SYNC_RETRY_DELAY_SECS,
-                config.queue_processor.max_retry_attempts,
-            )
-            .await;
+        loop {
+            match outcome_rx.try_recv() {
+                Ok(outcomes) => {
+                    outcomes::apply_queue_outcomes(
+                        &deps,
+                        &mut inflight,
+                        notify.as_ref(),
+                        &blockchain_id,
+                        outcomes,
+                        SYNC_RETRY_DELAY_SECS,
+                        config.queue_processor.max_retry_attempts,
+                    )
+                    .await;
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    outcome_channel_closed = true;
+                    break;
+                }
+            }
         }
 
         if shutdown.is_cancelled() && !draining {
@@ -47,6 +59,13 @@ pub(crate) async fn run(
             tracing::info!(
                 blockchain_id = %blockchain_id,
                 "DKG sync queue processor entering draining mode"
+            );
+        }
+        if outcome_channel_closed && !draining {
+            draining = true;
+            tracing::warn!(
+                blockchain_id = %blockchain_id,
+                "DKG sync queue processor entering draining mode because outcome channel closed"
             );
         }
 
@@ -59,6 +78,31 @@ pub(crate) async fn run(
                 "DKG sync queue processor drained in-flight work"
             );
             break;
+        }
+        if draining && outcome_channel_closed && inflight_count > 0 {
+            tracing::warn!(
+                blockchain_id = %blockchain_id,
+                inflight = inflight_count,
+                "Outcome channel closed while inflight work remains; requeueing inflight KCs"
+            );
+            let fallback_outcomes: Vec<QueueOutcome> = inflight
+                .iter()
+                .cloned()
+                .map(|key| {
+                    QueueOutcome::retry_with_pending_error(key, OUTCOME_CHANNEL_CLOSED_REASON)
+                })
+                .collect();
+            outcomes::apply_queue_outcomes(
+                &deps,
+                &mut inflight,
+                notify.as_ref(),
+                &blockchain_id,
+                fallback_outcomes,
+                SYNC_RETRY_DELAY_SECS,
+                config.queue_processor.max_retry_attempts,
+            )
+            .await;
+            continue;
         }
 
         let mut dispatched = false;
@@ -91,6 +135,8 @@ pub(crate) async fn run(
                         config.queue_processor.max_retry_attempts,
                     )
                     .await;
+                } else {
+                    outcome_channel_closed = true;
                 }
             }
             _ = notify.notified() => {}

@@ -32,9 +32,11 @@ pub(crate) async fn run(
     let network_manager = Arc::clone(&deps.network_manager);
     // Spawn peer registry updater loop for network observations.
     let peer_event_rx = deps.network_manager.subscribe_peer_events();
+    let peer_registry_shutdown = CancellationToken::new();
     let peer_registry_task = tokio::task::spawn(run_peer_registry_updater(
         Arc::clone(&deps.peer_registry),
         peer_event_rx,
+        peer_registry_shutdown.clone(),
     ));
 
     // Create HTTP shutdown channel (oneshot for single signal)
@@ -93,6 +95,7 @@ pub(crate) async fn run(
         periodic_handle,
         execute_commands_task,
         network_event_loop_task,
+        peer_registry_shutdown,
         peer_registry_task,
         http_shutdown_tx,
         handle_http_events_task,
@@ -103,13 +106,22 @@ pub(crate) async fn run(
 async fn run_peer_registry_updater(
     peer_registry: Arc<PeerRegistry>,
     mut peer_event_rx: broadcast::Receiver<PeerEvent>,
+    shutdown: CancellationToken,
 ) {
     loop {
-        match peer_event_rx.recv().await {
-            Ok(event) => peer_registry.apply_peer_event(event),
-            Err(broadcast::error::RecvError::Closed) => break,
-            Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                tracing::warn!(skipped, "Peer registry updater lagged, events were dropped");
+        tokio::select! {
+            _ = shutdown.cancelled() => {
+                tracing::info!("Peer registry updater shutdown token cancelled, stopping loop");
+                break;
+            }
+            recv = peer_event_rx.recv() => {
+                match recv {
+                    Ok(event) => peer_registry.apply_peer_event(event),
+                    Err(broadcast::error::RecvError::Closed) => break,
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        tracing::warn!(skipped, "Peer registry updater lagged, events were dropped");
+                    }
+                }
             }
         }
     }

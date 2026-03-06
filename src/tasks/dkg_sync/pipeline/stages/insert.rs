@@ -81,21 +81,15 @@ pub(crate) async fn run_insert_stage(
             batch_assets,
         );
 
-        let remove_count = remove_outcomes.len();
-        if remove_count > 0 && outcome_tx.send(remove_outcomes).await.is_err() {
+        let mut outcomes = Vec::with_capacity(remove_outcomes.len() + retry_outcomes.len());
+        outcomes.extend(remove_outcomes);
+        outcomes.extend(retry_outcomes);
+        let outcome_count = outcomes.len();
+        if outcome_count > 0 && outcome_tx.send(outcomes).await.is_err() {
             tracing::warn!(
                 blockchain_id = %blockchain_id,
-                remove_count,
-                "Insert: queue outcome receiver dropped while sending remove outcomes"
-            );
-            return;
-        }
-        let retry_count = retry_outcomes.len();
-        if retry_count > 0 && outcome_tx.send(retry_outcomes).await.is_err() {
-            tracing::warn!(
-                blockchain_id = %blockchain_id,
-                retry_count,
-                "Insert: queue outcome receiver dropped while sending retry outcomes"
+                outcome_count,
+                "Insert: queue outcome receiver dropped while sending outcomes"
             );
             return;
         }

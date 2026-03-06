@@ -20,6 +20,9 @@ use crate::{
     tasks::dkg_sync::pipeline::types::{KcToSync, QueueKcKey, QueueKcWorkItem, QueueOutcome},
 };
 
+const FILTER_STAGE_REJECTION_REASON: &str = "filter_stage_rejection";
+const FILTER_STAGE_DOWNSTREAM_CLOSED_REASON: &str = "filter_stage_downstream_closed";
+
 #[allow(clippy::too_many_arguments)]
 #[instrument(
     name = "sync_filter",
@@ -66,30 +69,45 @@ pub(crate) async fn run_filter_stage(
                 batch_result.retry_later.len(),
             );
 
-            let to_sync_count = batch_result.to_sync.len();
-            if to_sync_count > 0 && tx.send(batch_result.to_sync).await.is_err() {
-                tracing::warn!(
-                    blockchain_id = %blockchain_id,
-                    to_sync_count,
-                    "Filter: fetch stage receiver dropped, stopping"
-                );
-                return;
+            let FilterBatchResult {
+                already_synced,
+                retry_later,
+                to_sync,
+            } = batch_result;
+
+            let to_sync_count = to_sync.len();
+            let mut to_sync_send_failed = None;
+            if to_sync_count > 0 {
+                if let Err(send_error) = tx.send(to_sync).await {
+                    tracing::warn!(
+                        blockchain_id = %blockchain_id,
+                        to_sync_count,
+                        "Filter: fetch stage receiver dropped, requeueing unsent KCs"
+                    );
+                    to_sync_send_failed = Some(send_error.0);
+                }
             }
 
             let mut outcomes = Vec::with_capacity(
-                batch_result.already_synced.len() + batch_result.retry_later.len(),
+                already_synced.len()
+                    + retry_later.len()
+                    + to_sync_send_failed.as_ref().map_or(0, |unsent| unsent.len()),
             );
+            outcomes.extend(already_synced.into_iter().map(QueueOutcome::remove_already_synced));
             outcomes.extend(
-                batch_result
-                    .already_synced
-                    .into_iter()
-                    .map(QueueOutcome::remove_already_synced),
-            );
-            outcomes.extend(
-                batch_result.retry_later.into_iter().map(|key| {
-                    QueueOutcome::retry_with_pending_error(key, "filter_stage_rejection")
+                retry_later.into_iter().map(|key| {
+                    QueueOutcome::retry_with_pending_error(key, FILTER_STAGE_REJECTION_REASON)
                 }),
             );
+            let had_to_sync_send_failure = to_sync_send_failed.is_some();
+            if let Some(unsent_to_sync) = to_sync_send_failed {
+                outcomes.extend(unsent_to_sync.into_iter().map(|kc| {
+                    QueueOutcome::retry_with_pending_error(
+                        kc.key,
+                        FILTER_STAGE_DOWNSTREAM_CLOSED_REASON,
+                    )
+                }));
+            }
 
             let outcome_count = outcomes.len();
             if outcome_count > 0 && outcome_tx.send(outcomes).await.is_err() {
@@ -98,6 +116,10 @@ pub(crate) async fn run_filter_stage(
                     outcome_count,
                     "Filter: queue outcome receiver dropped, stopping"
                 );
+                return;
+            }
+
+            if had_to_sync_send_failure {
                 return;
             }
         }
