@@ -18,13 +18,15 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 ///
 /// The `RUST_LOG` environment variable takes precedence over the config file setting.
 /// If it is not set, the config value is used.
-pub(crate) fn initialize(logger_config: &LoggerConfig, telemetry_config: &TelemetryConfig) {
+pub(crate) fn initialize(logger_config: &LoggerConfig) {
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&logger_config.level));
 
     initialize_logger(logger_config, filter);
+}
 
-    initialize_metrics(&telemetry_config.metrics);
+pub(crate) fn initialize_metrics(telemetry_config: &TelemetryConfig) {
+    initialize_metrics_exporter(&telemetry_config.metrics);
 }
 
 fn initialize_logger(logger_config: &LoggerConfig, filter: EnvFilter) {
@@ -52,7 +54,7 @@ fn initialize_logger(logger_config: &LoggerConfig, filter: EnvFilter) {
     }
 }
 
-fn initialize_metrics(metrics_config: &TelemetryMetricsConfig) {
+fn initialize_metrics_exporter(metrics_config: &TelemetryMetricsConfig) {
     if !metrics_config.enabled {
         return;
     }

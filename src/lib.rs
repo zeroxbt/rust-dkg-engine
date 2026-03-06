@@ -32,8 +32,6 @@ pub async fn run() {
         blockchain_ids,
     } = bootstrap::build_core().await;
 
-    display_rust_dkg_engine_ascii_art();
-
     // Start listening before spawning the network task
     if let Err(error) = network_event_loop.start_listening() {
         tracing::error!("Failed to start swarm listener: {}", error);
@@ -93,24 +91,6 @@ pub async fn run() {
         config.telemetry.metrics.enabled,
     )
     .await;
-}
-
-fn display_rust_dkg_engine_ascii_art() {
-    tracing::info!("██████╗ ██╗  ██╗ ██████╗     ██╗   ██╗ █████╗ ");
-    tracing::info!("██╔══██╗██║ ██╔╝██╔════╝     ██║   ██║██╔══██╗");
-    tracing::info!("██║  ██║█████╔╝ ██║  ███╗    ██║   ██║╚█████╔╝");
-    tracing::info!("██║  ██║██╔═██╗ ██║   ██║    ╚██╗ ██╔╝██╔══██╗");
-    tracing::info!("██████╔╝██║  ██╗╚██████╔╝     ╚████╔╝ ╚█████╔╝");
-    tracing::info!("╚═════╝ ╚═╝  ╚═╝ ╚═════╝       ╚═══╝   ╚════╝ ");
-
-    tracing::info!("======================================================");
-    tracing::info!(
-        "             Rust DKG Engine v{}",
-        env!("CARGO_PKG_VERSION")
-    );
-    tracing::info!("======================================================");
-    let environment = config::current_env();
-    tracing::info!("Node is running in {} environment", environment);
 }
 
 async fn initialize_dev_environment(blockchain_manager: &Arc<dkg_blockchain::BlockchainManager>) {

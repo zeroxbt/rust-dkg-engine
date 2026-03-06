@@ -25,7 +25,9 @@ pub(crate) struct CoreBootstrap {
 
 pub(crate) async fn build_core() -> CoreBootstrap {
     let config = Arc::new(config::initialize_configuration());
-    crate::logger::initialize(&config.logger, &config.telemetry);
+    crate::logger::initialize(&config.logger);
+    display_rust_dkg_engine_ascii_art();
+    crate::logger::initialize_metrics(&config.telemetry);
 
     let paths = AppPaths::from_root(&config.app_data_path);
     let network_key = KeyManager::load_or_generate(&paths.network_key)
@@ -55,6 +57,24 @@ pub(crate) async fn build_core() -> CoreBootstrap {
         network_event_loop,
         blockchain_ids,
     }
+}
+
+fn display_rust_dkg_engine_ascii_art() {
+    tracing::info!("██████╗ ██╗  ██╗ ██████╗     ██╗   ██╗ █████╗ ");
+    tracing::info!("██╔══██╗██║ ██╔╝██╔════╝     ██║   ██║██╔══██╗");
+    tracing::info!("██║  ██║█████╔╝ ██║  ███╗    ██║   ██║╚█████╔╝");
+    tracing::info!("██║  ██║██╔═██╗ ██║   ██║    ╚██╗ ██╔╝██╔══██╗");
+    tracing::info!("██████╔╝██║  ██╗╚██████╔╝     ╚████╔╝ ╚█████╔╝");
+    tracing::info!("╚═════╝ ╚═╝  ╚═╝ ╚═════╝       ╚═══╝   ╚════╝ ");
+
+    tracing::info!("======================================================");
+    tracing::info!(
+        "             Rust DKG Engine v{}",
+        env!("CARGO_PKG_VERSION")
+    );
+    tracing::info!("======================================================");
+    let environment = config::current_env();
+    tracing::info!("Node is running in {} environment", environment);
 }
 
 pub(crate) async fn hydrate_persisted_peer_addresses(
