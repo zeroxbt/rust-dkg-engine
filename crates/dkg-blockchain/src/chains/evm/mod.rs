@@ -1,4 +1,4 @@
-use std::{str::FromStr, time::Instant};
+use std::{collections::HashMap, str::FromStr, time::Instant};
 
 use alloy::{
     contract::{CallBuilder, CallDecoder, Error as ContractError},
@@ -39,7 +39,6 @@ pub use gas::{FeeQuote, GasConfig};
 pub use provider::initialize_provider_with_wallet;
 pub use rpc::random_sampling::{NodeChallenge, ProofPeriodStatus};
 
-const MAXIMUM_NUMBERS_OF_BLOCKS_TO_FETCH: u64 = 50;
 const GAS_ESTIMATE_MULTIPLIER: f64 = 1.2;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -122,6 +121,7 @@ pub struct EvmChain {
     rpc_rate_limiter: RpcRateLimiter,
     tx_mutex: Mutex<()>,
     provider_refresh_mutex: Mutex<()>,
+    event_logs_span_cache: Mutex<HashMap<String, u64>>,
     rpc_retry_policy: RetryPolicy,
     tx_retry_policy: RetryPolicy,
 }
@@ -203,6 +203,7 @@ impl EvmChain {
             rpc_rate_limiter,
             tx_mutex: Mutex::new(()),
             provider_refresh_mutex: Mutex::new(()),
+            event_logs_span_cache: Mutex::new(HashMap::new()),
             rpc_retry_policy: RetryPolicy::rpc_default(),
             tx_retry_policy: RetryPolicy::tx_default(),
         })
