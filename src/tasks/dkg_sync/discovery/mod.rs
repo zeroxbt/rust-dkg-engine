@@ -72,6 +72,7 @@ pub(crate) struct DiscoverContractOutcome {
 struct BlockRange {
     start: u64,
     end: u64,
+    last_expected_kc_id: Option<u64>,
 }
 
 impl DiscoveryWorker {
@@ -117,6 +118,7 @@ impl DiscoveryWorker {
                 BlockRange {
                     start: live_start,
                     end: chunk_to,
+                    last_expected_kc_id: None,
                 },
                 false,
                 false,
@@ -154,6 +156,7 @@ impl DiscoveryWorker {
                     Some(BlockRange {
                         start,
                         end: range.end,
+                        last_expected_kc_id: range.last_expected_kc_id,
                     })
                 } else {
                     None
@@ -190,6 +193,7 @@ impl DiscoveryWorker {
             active_range = oldest_gap.map(|gap| BlockRange {
                 start: gap.start_block.max(cursor.saturating_add(1)),
                 end: gap.end_block,
+                last_expected_kc_id: gap.last_expected_kc_id,
             });
 
             let Some(range) = active_range
@@ -309,14 +313,9 @@ impl DiscoveryWorker {
             records.push(record);
             chunk_events_found = chunk_events_found.saturating_add(1);
         }
+        let chunk_max_discovered_kc_id = discovered_ids.iter().copied().max();
 
         hydrate_block_timestamps(
-            self.deps.blockchain_manager.as_ref(),
-            blockchain_id,
-            &mut records,
-        )
-        .await;
-        hydrate_core_metadata_publishers(
             self.deps.blockchain_manager.as_ref(),
             blockchain_id,
             &mut records,
@@ -327,6 +326,12 @@ impl DiscoveryWorker {
             blockchain_id,
             &mut records,
             self.config.discovery.metadata_state_max_kc_per_chunk.max(1),
+        )
+        .await;
+        hydrate_core_metadata_publishers(
+            self.deps.blockchain_manager.as_ref(),
+            blockchain_id,
+            &mut records,
         )
         .await;
 
@@ -476,13 +481,34 @@ impl DiscoveryWorker {
         enqueue_ids.sort_unstable();
         enqueue_ids.dedup();
 
+        let reached_last_expected_kc = active_range
+            .last_expected_kc_id
+            .zip(chunk_max_discovered_kc_id)
+            .is_some_and(|(last_expected, discovered_max)| discovered_max >= last_expected);
+        if reached_last_expected_kc {
+            tracing::debug!(
+                blockchain_id = %blockchain_id,
+                contract = %contract_addr_str,
+                chunk_from,
+                chunk_to,
+                last_expected_kc_id = active_range.last_expected_kc_id,
+                discovered_max_kc_id = chunk_max_discovered_kc_id,
+                "Gap discovery reached last expected KC id; fast-forwarding cursor to gap end"
+            );
+        }
+        let cursor_to_persist = if reached_last_expected_kc {
+            active_range.end
+        } else {
+            chunk_to
+        };
+
         if let Err(error) = self
             .deps
             .kc_sync_repository
             .persist_metadata_chunk_and_enqueue(
                 blockchain_id.as_str(),
                 contract_addr_str,
-                chunk_to,
+                cursor_to_persist,
                 &metadata_inputs,
                 &enqueue_ids,
                 persist_cursor,
@@ -530,7 +556,7 @@ impl DiscoveryWorker {
                 .await;
         }
 
-        if clear_cached_when_exhausted && chunk_to >= active_range.end {
+        if clear_cached_when_exhausted && cursor_to_persist >= active_range.end {
             self.clear_cached_active_range(contract_addr_str);
         }
 

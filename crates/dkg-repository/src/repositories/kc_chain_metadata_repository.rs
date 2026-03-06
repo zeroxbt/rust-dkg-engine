@@ -45,6 +45,11 @@ pub struct GapBoundaries {
 pub struct GapRange {
     pub start_block: u64,
     pub end_block: u64,
+    /// Highest KC id expected inside this gap, when known.
+    ///
+    /// For internal gaps this is `next_known_kc_id - 1`.
+    /// Tail gaps do not have a DB-derived bound and return `None`.
+    pub last_expected_kc_id: Option<u64>,
 }
 
 #[derive(Clone)]
@@ -771,7 +776,7 @@ impl KcChainMetadataRepository {
         let sql = Statement::from_sql_and_values(
             db.get_database_backend(),
             r#"
-            SELECT g.gap_start_block, g.gap_end_block
+            SELECT g.gap_start_block, g.gap_end_block, g.gap_last_expected_kc_id
             FROM (
                 (
                     SELECT
@@ -788,6 +793,7 @@ impl KcChainMetadataRepository {
                             ?
                         ) AS gap_start_block,
                         t.block_number AS gap_end_block,
+                        t.kc_id - 1 AS gap_last_expected_kc_id,
                         0 AS priority_rank,
                         t.kc_id AS priority_order
                     FROM kc_chain_core_metadata t
@@ -822,6 +828,7 @@ impl KcChainMetadataRepository {
                         ?
                     ) AS gap_start_block,
                     ? AS gap_end_block,
+                    NULL AS gap_last_expected_kc_id,
                     1 AS priority_rank,
                     9223372036854775807 AS priority_order
             ) g
@@ -855,6 +862,9 @@ impl KcChainMetadataRepository {
             let end_block: i64 = row
                 .try_get("", "gap_end_block")
                 .map_err(RepositoryError::Database)?;
+            let last_expected_kc_id: Option<i64> = row
+                .try_get("", "gap_last_expected_kc_id")
+                .map_err(RepositoryError::Database)?;
 
             let start_block = start_block.max(0) as u64;
             let end_block = end_block.max(0) as u64;
@@ -865,6 +875,9 @@ impl KcChainMetadataRepository {
             Ok(Some(GapRange {
                 start_block,
                 end_block,
+                last_expected_kc_id: last_expected_kc_id
+                    .and_then(|value| u64::try_from(value).ok())
+                    .filter(|value| *value > 0),
             }))
         }
         .await;

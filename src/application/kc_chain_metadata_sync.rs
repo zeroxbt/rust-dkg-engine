@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use dkg_blockchain::{
     Address, B256, BlockchainId, BlockchainManager, MulticallBatch, MulticallRequest, U256,
@@ -10,6 +10,7 @@ use futures::{StreamExt, stream};
 use crate::application::state_metadata::encode_burned_ids;
 
 const BLOCK_TIMESTAMP_FETCH_CONCURRENCY: usize = 16;
+const TX_SENDER_FETCH_CONCURRENCY: usize = 16;
 
 #[derive(Debug, Clone)]
 pub(crate) struct KcHydratedStateMetadata {
@@ -79,14 +80,64 @@ pub(crate) async fn hydrate_core_metadata_publishers(
         return;
     }
 
-    for record in records.iter_mut() {
-        record.publisher_address = match blockchain_manager
-            .get_transaction_sender(blockchain_id, record.transaction_hash)
-            .await
-        {
-            Ok(Some(address)) => Some(canonical_evm_address(&address)),
-            _ => None,
-        };
+    let tx_hashes: Vec<B256> = records
+        .iter()
+        .filter(|record| record.publisher_address.is_none())
+        .map(|record| record.transaction_hash)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    if tx_hashes.is_empty() {
+        return;
+    }
+
+    let sender_results = stream::iter(tx_hashes.into_iter())
+        .map(|tx_hash| async move {
+            (
+                tx_hash,
+                blockchain_manager
+                    .get_transaction_sender(blockchain_id, tx_hash)
+                    .await,
+            )
+        })
+        .buffer_unordered(TX_SENDER_FETCH_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+
+    let mut publishers_by_tx = HashMap::new();
+    for (tx_hash, result) in sender_results {
+        match result {
+            Ok(Some(address)) => {
+                publishers_by_tx.insert(tx_hash, Some(canonical_evm_address(&address)));
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    blockchain = %blockchain_id,
+                    tx_hash = ?tx_hash,
+                    "Missing transaction sender while hydrating KC metadata publisher"
+                );
+                publishers_by_tx.insert(tx_hash, None);
+            }
+            Err(error) => {
+                tracing::warn!(
+                    blockchain = %blockchain_id,
+                    tx_hash = ?tx_hash,
+                    error = %error,
+                    "Failed to fetch transaction sender while hydrating KC metadata publisher"
+                );
+                publishers_by_tx.insert(tx_hash, None);
+            }
+        }
+    }
+
+    for record in records
+        .iter_mut()
+        .filter(|record| record.publisher_address.is_none())
+    {
+        if let Some(Some(publisher)) = publishers_by_tx.get(&record.transaction_hash) {
+            record.publisher_address = Some(publisher.clone());
+        }
     }
 }
 
@@ -164,7 +215,7 @@ pub(crate) async fn hydrate_kc_state_metadata(
     }
 
     for chunk in records.chunks_mut(chunk_size.max(1)) {
-        let mut state_calls = MulticallBatch::with_capacity(chunk.len() * 3);
+        let mut state_calls = MulticallBatch::with_capacity(chunk.len() * 4);
         for record in chunk.iter() {
             state_calls.add(MulticallRequest::new(
                 record.contract_address,
@@ -178,6 +229,10 @@ pub(crate) async fn hydrate_kc_state_metadata(
                 record.contract_address,
                 encoders::encode_get_merkle_root(record.kc_id as u128),
             ));
+            state_calls.add(MulticallRequest::new(
+                record.contract_address,
+                encoders::encode_get_latest_merkle_root_publisher(record.kc_id as u128),
+            ));
         }
 
         match blockchain_manager
@@ -185,7 +240,7 @@ pub(crate) async fn hydrate_kc_state_metadata(
             .await
         {
             Ok(results) => {
-                let expected = chunk.len() * 3;
+                let expected = chunk.len() * 4;
                 if results.len() != expected {
                     tracing::warn!(
                         blockchain = %blockchain_id,
@@ -198,10 +253,11 @@ pub(crate) async fn hydrate_kc_state_metadata(
                 }
 
                 for (index, record) in chunk.iter_mut().enumerate() {
-                    let base = index * 3;
+                    let base = index * 4;
                     let epoch_result = &results[base];
                     let range_result = &results[base + 1];
                     let merkle_result = &results[base + 2];
+                    let publisher_result = &results[base + 3];
 
                     let Some((global_start, global_end, global_burned)) =
                         range_result.as_knowledge_assets_range()
@@ -251,6 +307,12 @@ pub(crate) async fn hydrate_kc_state_metadata(
                         .as_bytes32_hex()
                         .unwrap_or_else(|| format!("0x{}", to_hex_string(record.merkle_root)));
                     let burned_encoding = encode_burned_ids(start, end, burned);
+
+                    if record.publisher_address.is_none()
+                        && let Some(publisher) = publisher_result.as_address()
+                    {
+                        record.publisher_address = Some(canonical_evm_address(&publisher));
+                    }
 
                     record.kc_state_metadata = Some(KcHydratedStateMetadata {
                         range_start_token_id: start,

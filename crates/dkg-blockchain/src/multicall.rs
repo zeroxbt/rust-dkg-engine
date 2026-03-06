@@ -90,6 +90,24 @@ impl MulticallResult {
         self.as_u256().and_then(|v| v.try_into().ok())
     }
 
+    /// Parse return data as an address.
+    ///
+    /// ABI encoding for address return values is 32 bytes, left-padded with zeros.
+    /// Returns None for failed calls, invalid payloads, or zero-address values.
+    pub fn as_address(&self) -> Option<Address> {
+        if !self.success || self.data().len() < 32 {
+            return None;
+        }
+
+        let bytes = &self.data()[0..32];
+        let address = Address::from_slice(&bytes[12..32]);
+        if address.is_zero() {
+            None
+        } else {
+            Some(address)
+        }
+    }
+
     /// Parse return data as a bytes32 hex string (0x-prefixed).
     pub fn as_bytes32_hex(&self) -> Option<String> {
         if !self.success || self.data().len() < 32 {
@@ -247,6 +265,9 @@ pub mod encoders {
     /// Selector for `getEndEpoch(uint256)` = 0x22dff80c
     pub const GET_END_EPOCH_SELECTOR: [u8; 4] = [0x22, 0xdf, 0xf8, 0x0c];
 
+    /// Selector for `getLatestMerkleRootPublisher(uint256)` = 0x87c5e7d4
+    pub const GET_LATEST_MERKLE_ROOT_PUBLISHER_SELECTOR: [u8; 4] = [0x87, 0xc5, 0xe7, 0xd4];
+
     /// Encode `getLatestMerkleRoot(uint256 knowledgeCollectionId)`
     pub fn encode_get_merkle_root(kc_id: u128) -> Bytes {
         encode_uint256_call(GET_MERKLE_ROOT_SELECTOR, kc_id)
@@ -260,6 +281,11 @@ pub mod encoders {
     /// Encode `getEndEpoch(uint256 knowledgeCollectionId)`
     pub fn encode_get_end_epoch(kc_id: u128) -> Bytes {
         encode_uint256_call(GET_END_EPOCH_SELECTOR, kc_id)
+    }
+
+    /// Encode `getLatestMerkleRootPublisher(uint256 knowledgeCollectionId)`
+    pub fn encode_get_latest_merkle_root_publisher(kc_id: u128) -> Bytes {
+        encode_uint256_call(GET_LATEST_MERKLE_ROOT_PUBLISHER_SELECTOR, kc_id)
     }
 }
 
