@@ -3,7 +3,8 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 use chrono::Utc;
 use sea_orm::{
     ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait, Value, sea_query::Expr,
+    QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    sea_query::{Alias, Expr, JoinType, Order, Query},
 };
 
 use dkg_observability::record_repository_query;
@@ -261,7 +262,7 @@ impl KcSyncRepository {
                         transaction_hash: ActiveValue::Set(record.transaction_hash.clone()),
                         block_timestamp: ActiveValue::Set(block_timestamp),
                         publish_operation_id: ActiveValue::Set(record.publish_operation_id.clone()),
-                        source: ActiveValue::Set(Some(record.source.clone())),
+                        source: ActiveValue::Set(record.source.clone()),
                         created_at: ActiveValue::Set(now),
                         updated_at: ActiveValue::Set(now),
                     };
@@ -581,40 +582,44 @@ impl KcSyncRepository {
         }
 
         let db = self.conn.as_ref();
-        let limit_i64 = Self::u64_to_i64(limit as u64, "limit")?;
-        let sql = Statement::from_sql_and_values(
-            db.get_database_backend(),
-            r#"
-            SELECT q.contract_address, q.kc_id
-            FROM kc_sync_queue q
-            LEFT JOIN kc_projection_state p
-                ON p.blockchain_id = q.blockchain_id
-               AND p.contract_address = q.contract_address
-               AND p.kc_id = q.kc_id
-            WHERE q.blockchain_id = ?
-              AND p.kc_id IS NULL
-            ORDER BY q.created_at ASC, q.contract_address ASC, q.kc_id ASC
-            LIMIT ?
-            "#,
-            [
-                Value::String(Some(Box::new(blockchain_id.to_string()))),
-                Value::BigInt(Some(limit_i64)),
-            ],
-        );
+        let q = Alias::new("q");
+        let p = Alias::new("p");
+        let blockchain = Alias::new("blockchain_id");
+        let contract = Alias::new("contract_address");
+        let kc_id = Alias::new("kc_id");
+        let created_at = Alias::new("created_at");
+
+        let mut query = Query::select();
+        query
+            .column((q.clone(), contract.clone()))
+            .column((q.clone(), kc_id.clone()))
+            .from_as(Alias::new("kc_sync_queue"), q.clone())
+            .join_as(
+                JoinType::LeftJoin,
+                Alias::new("kc_projection_state"),
+                p.clone(),
+                Expr::col((p.clone(), blockchain.clone()))
+                    .equals((q.clone(), blockchain.clone()))
+                    .and(
+                        Expr::col((p.clone(), contract.clone()))
+                            .equals((q.clone(), contract.clone())),
+                    )
+                    .and(Expr::col((p.clone(), kc_id.clone())).equals((q.clone(), kc_id.clone()))),
+            )
+            .and_where(Expr::col((q.clone(), blockchain)).eq(blockchain_id))
+            .and_where(Expr::col((p.clone(), kc_id.clone())).is_null())
+            .order_by((q.clone(), created_at), Order::Asc)
+            .order_by((q.clone(), contract), Order::Asc)
+            .order_by((q, kc_id), Order::Asc)
+            .limit(limit as u64);
+        let statement = db.get_database_backend().build(&query);
 
         let result = async {
-            let rows = db
-                .query_all(sql)
-                .await
-                .map_err(crate::error::RepositoryError::Database)?;
+            let rows = db.query_all(statement).await?;
             let mut out = Vec::with_capacity(rows.len());
             for row in rows {
-                let contract_address: String = row
-                    .try_get("", "contract_address")
-                    .map_err(crate::error::RepositoryError::Database)?;
-                let kc_id: u64 = row
-                    .try_get("", "kc_id")
-                    .map_err(crate::error::RepositoryError::Database)?;
+                let contract_address: String = row.try_get("", "contract_address")?;
+                let kc_id: u64 = row.try_get("", "kc_id")?;
                 out.push((contract_address, kc_id));
             }
             Ok(out)
@@ -665,43 +670,51 @@ impl KcSyncRepository {
         }
 
         let db = self.conn.as_ref();
-        let limit_i64 = Self::u64_to_i64(limit as u64, "limit")?;
-        let sql = Statement::from_sql_and_values(
-            db.get_database_backend(),
-            r#"
-            SELECT q.contract_address, q.kc_id
-            FROM kc_sync_queue q
-            INNER JOIN kc_projection_state p
-                ON p.blockchain_id = q.blockchain_id
-               AND p.contract_address = q.contract_address
-               AND p.kc_id = q.kc_id
-            WHERE q.blockchain_id = ?
-              AND p.desired_state = ?
-              AND p.actual_state = ?
-            ORDER BY q.created_at ASC, q.contract_address ASC, q.kc_id ASC
-            LIMIT ?
-            "#,
-            [
-                Value::String(Some(Box::new(blockchain_id.to_string()))),
-                Value::TinyUnsigned(Some(KcProjectionDesiredState::Present.as_u8())),
-                Value::TinyUnsigned(Some(KcProjectionActualState::Present.as_u8())),
-                Value::BigInt(Some(limit_i64)),
-            ],
-        );
+        let q = Alias::new("q");
+        let p = Alias::new("p");
+        let blockchain = Alias::new("blockchain_id");
+        let contract = Alias::new("contract_address");
+        let kc_id = Alias::new("kc_id");
+        let created_at = Alias::new("created_at");
+        let desired_state = Alias::new("desired_state");
+        let actual_state = Alias::new("actual_state");
+
+        let mut query = Query::select();
+        query
+            .column((q.clone(), contract.clone()))
+            .column((q.clone(), kc_id.clone()))
+            .from_as(Alias::new("kc_sync_queue"), q.clone())
+            .join_as(
+                JoinType::InnerJoin,
+                Alias::new("kc_projection_state"),
+                p.clone(),
+                Expr::col((p.clone(), blockchain.clone()))
+                    .equals((q.clone(), blockchain.clone()))
+                    .and(
+                        Expr::col((p.clone(), contract.clone()))
+                            .equals((q.clone(), contract.clone())),
+                    )
+                    .and(Expr::col((p.clone(), kc_id.clone())).equals((q.clone(), kc_id.clone()))),
+            )
+            .and_where(Expr::col((q.clone(), blockchain)).eq(blockchain_id))
+            .and_where(
+                Expr::col((p.clone(), desired_state)).eq(KcProjectionDesiredState::Present.as_u8()),
+            )
+            .and_where(
+                Expr::col((p.clone(), actual_state)).eq(KcProjectionActualState::Present.as_u8()),
+            )
+            .order_by((q.clone(), created_at), Order::Asc)
+            .order_by((q.clone(), contract), Order::Asc)
+            .order_by((q, kc_id), Order::Asc)
+            .limit(limit as u64);
+        let statement = db.get_database_backend().build(&query);
 
         let result = async {
-            let rows = db
-                .query_all(sql)
-                .await
-                .map_err(crate::error::RepositoryError::Database)?;
+            let rows = db.query_all(statement).await?;
             let mut out = Vec::with_capacity(rows.len());
             for row in rows {
-                let contract_address: String = row
-                    .try_get("", "contract_address")
-                    .map_err(crate::error::RepositoryError::Database)?;
-                let kc_id: u64 = row
-                    .try_get("", "kc_id")
-                    .map_err(crate::error::RepositoryError::Database)?;
+                let contract_address: String = row.try_get("", "contract_address")?;
+                let kc_id: u64 = row.try_get("", "kc_id")?;
                 out.push((contract_address, kc_id));
             }
             Ok(out)
@@ -1120,13 +1133,13 @@ impl KcSyncRepository {
             .filter(QueueColumn::BlockchainId.eq(blockchain_id))
             .filter(QueueColumn::ContractAddress.eq(contract_address))
             .filter(QueueColumn::KcId.is_in(kc_ids.to_vec()))
+            .select_only()
+            .column(QueueColumn::KcId)
+            .column(QueueColumn::RetryCount)
+            .into_tuple::<(u64, u32)>()
             .all(self.conn.as_ref())
             .await
-            .map(|rows| {
-                rows.into_iter()
-                    .map(|row| (row.kc_id, row.retry_count))
-                    .collect::<HashMap<_, _>>()
-            })
+            .map(|rows| rows.into_iter().collect::<HashMap<_, _>>())
             .map_err(Into::into);
 
         match &result {

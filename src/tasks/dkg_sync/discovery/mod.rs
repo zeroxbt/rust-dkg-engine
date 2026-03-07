@@ -377,7 +377,10 @@ impl DiscoveryWorker {
             .iter()
             .map(|record| SyncMetadataRecordInput {
                 kc_id: record.kc_id,
-                publisher_address: record.publisher_address.clone(),
+                publisher_address: record
+                    .publisher_address
+                    .clone()
+                    .expect("publisher address checked in ready filter"),
                 block_number: record.block_number,
                 transaction_hash: format!("{:#x}", record.transaction_hash),
                 block_timestamp: record.block_timestamp,
@@ -449,19 +452,11 @@ impl DiscoveryWorker {
                 continue;
             }
 
-            let Some(publisher_address) = record.publisher_address.clone() else {
-                tracing::warn!(
-                    blockchain_id = %blockchain_id,
-                    contract = %contract_addr_str,
-                    kc_id = record.kc_id,
-                    "Missing publisher address in hydrated metadata chunk; falling back to sync queue"
-                );
-                enqueue_ids.push(record.kc_id);
-                continue;
-            };
-
             let metadata = KnowledgeCollectionMetadata::new(
-                publisher_address,
+                record
+                    .publisher_address
+                    .clone()
+                    .expect("publisher address checked in ready filter"),
                 record.block_number,
                 format!("{:#x}", record.transaction_hash),
                 record.block_timestamp,

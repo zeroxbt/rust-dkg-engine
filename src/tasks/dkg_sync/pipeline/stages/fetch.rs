@@ -172,7 +172,6 @@ pub(crate) async fn run_fetch_stage(
                     }
                 }
             }
-
         }
     }
 

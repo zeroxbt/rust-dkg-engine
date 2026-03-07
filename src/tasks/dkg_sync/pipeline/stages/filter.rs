@@ -90,7 +90,9 @@ pub(crate) async fn run_filter_stage(
                     to_sync_send_failed = Some(send_error.0);
                 }
             }
-            let unsent_to_sync_count = to_sync_send_failed.as_ref().map_or(0, |unsent| unsent.len());
+            let unsent_to_sync_count = to_sync_send_failed
+                .as_ref()
+                .map_or(0, |unsent| unsent.len());
             let forwarded_count = to_sync_count.saturating_sub(unsent_to_sync_count);
             observability::record_sync_kc_outcome(
                 blockchain_id.as_str(),
@@ -122,14 +124,18 @@ pub(crate) async fn run_filter_stage(
             let mut outcomes = Vec::with_capacity(
                 already_synced.len()
                     + retry_later.len()
-                    + to_sync_send_failed.as_ref().map_or(0, |unsent| unsent.len()),
+                    + to_sync_send_failed
+                        .as_ref()
+                        .map_or(0, |unsent| unsent.len()),
             );
-            outcomes.extend(already_synced.into_iter().map(QueueOutcome::remove_already_synced));
             outcomes.extend(
-                retry_later.into_iter().map(|key| {
-                    QueueOutcome::retry_with_pending_error(key, FILTER_STAGE_REJECTION_REASON)
-                }),
+                already_synced
+                    .into_iter()
+                    .map(QueueOutcome::remove_already_synced),
             );
+            outcomes.extend(retry_later.into_iter().map(|key| {
+                QueueOutcome::retry_with_pending_error(key, FILTER_STAGE_REJECTION_REASON)
+            }));
             let had_to_sync_send_failure = to_sync_send_failed.is_some();
             if let Some(unsent_to_sync) = to_sync_send_failed {
                 outcomes.extend(unsent_to_sync.into_iter().map(|kc| {

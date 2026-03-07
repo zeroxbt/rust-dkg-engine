@@ -116,9 +116,12 @@ impl OperationRepository {
     ) -> Result<Option<i64>, RepositoryError> {
         let started = Instant::now();
         let result = Entity::find_by_id(operation_id.to_string())
+            .select_only()
+            .column(operations::Column::CreatedAt)
+            .into_tuple::<chrono::DateTime<chrono::Utc>>()
             .one(self.conn.as_ref())
             .await
-            .map(|record| record.map(|value| value.created_at.timestamp_millis()));
+            .map(|record| record.map(|value| value.timestamp_millis()));
 
         match &result {
             Ok(Some(_)) => {
@@ -237,16 +240,16 @@ impl OperationRepository {
             .filter(operations::Column::UpdatedAt.lt(cutoff))
             .order_by_asc(operations::Column::UpdatedAt)
             .limit(limit)
+            .select_only()
+            .column(operations::Column::OperationId)
+            .into_tuple::<String>()
             .all(self.conn.as_ref())
             .await
-            .map(|records| {
-                let mut ids = Vec::with_capacity(records.len());
-                for record in records {
-                    if let Ok(id) = Uuid::parse_str(&record.operation_id) {
-                        ids.push(id);
-                    }
-                }
-                ids
+            .map(|operation_ids| {
+                operation_ids
+                    .into_iter()
+                    .filter_map(|operation_id| Uuid::parse_str(&operation_id).ok())
+                    .collect::<Vec<_>>()
             });
 
         match &result {

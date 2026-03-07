@@ -10,7 +10,7 @@ use dkg_observability::record_repository_query;
 
 use crate::{
     error::Result,
-    models::paranet_kc_sync::{ActiveModel, Column, Entity, Model},
+    models::paranet_kc_sync::{ActiveModel, Column, Entity},
     types::ParanetKcSyncEntry,
 };
 
@@ -160,14 +160,19 @@ impl ParanetKcSyncRepository {
             .filter(Column::NextRetryAt.lte(now_ts))
             .order_by_asc(Column::KcUal)
             .limit(limit)
+            .select_only()
+            .column(Column::ParanetUal)
+            .column(Column::KcUal)
+            .column(Column::RetryCount)
+            .into_tuple::<(String, String, u32)>()
             .all(self.conn.as_ref())
             .await
             .map(|rows| {
                 rows.into_iter()
-                    .map(|row: Model| ParanetKcSyncEntry {
-                        paranet_ual: row.paranet_ual,
-                        kc_ual: row.kc_ual,
-                        retry_count: row.retry_count,
+                    .map(|(paranet_ual, kc_ual, retry_count)| ParanetKcSyncEntry {
+                        paranet_ual,
+                        kc_ual,
+                        retry_count,
                     })
                     .collect::<Vec<_>>()
             })

@@ -95,7 +95,6 @@ impl KcMaterializationService {
                 kc_id,
                 Some(private_graph_encoding.mode as u32),
                 private_graph_encoding.payload.as_deref(),
-                Some("triple_store_insert"),
             )
             .await;
 

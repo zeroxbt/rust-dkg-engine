@@ -14,12 +14,12 @@ pub struct Model {
     pub contract_address: String,
     #[sea_orm(primary_key)]
     pub kc_id: u64,
-    pub publisher_address: Option<String>,
+    pub publisher_address: String,
     pub block_number: i64,
     pub transaction_hash: String,
     pub block_timestamp: i64,
     pub publish_operation_id: String,
-    pub source: Option<String>,
+    pub source: String,
     pub created_at: i64,
     pub updated_at: i64,
 }

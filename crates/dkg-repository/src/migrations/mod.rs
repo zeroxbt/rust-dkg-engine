@@ -13,6 +13,7 @@ mod m018_create_kc_chain_state_metadata;
 mod m019_create_kc_sync_metadata_cursor;
 mod m020_create_kc_projection_state;
 mod m021_drop_blockchain;
+mod m022_enforce_kc_chain_core_metadata_non_null;
 
 pub struct Migrator;
 
@@ -33,6 +34,7 @@ impl MigratorTrait for Migrator {
             Box::new(m019_create_kc_sync_metadata_cursor::Migration),
             Box::new(m020_create_kc_projection_state::Migration),
             Box::new(m021_drop_blockchain::Migration),
+            Box::new(m022_enforce_kc_chain_core_metadata_non_null::Migration),
         ]
     }
 }

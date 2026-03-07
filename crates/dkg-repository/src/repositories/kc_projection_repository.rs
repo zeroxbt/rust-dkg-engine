@@ -3,13 +3,14 @@ use std::{sync::Arc, time::Instant};
 use chrono::Utc;
 use sea_orm::{
     ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Statement, Value, sea_query::Expr,
+    QueryFilter, QueryOrder, QuerySelect,
+    sea_query::{Alias, Expr, JoinType, Order, Query},
 };
 
 use dkg_observability::record_repository_query;
 
 use crate::{
-    error::{RepositoryError, Result},
+    error::Result,
     models::kc_projection_state::{
         ActiveModel as ProjectionActiveModel, Column as ProjectionColumn,
         Entity as ProjectionEntity,
@@ -61,7 +62,7 @@ impl KcProjectionRepository {
             })
             .collect();
 
-        let result = ProjectionEntity::insert_many(models)
+        let result: Result<()> = ProjectionEntity::insert_many(models)
             .on_conflict(
                 sea_orm::sea_query::OnConflict::columns([
                     ProjectionColumn::BlockchainId,
@@ -386,7 +387,7 @@ impl KcProjectionRepository {
             return Ok(Vec::new());
         }
 
-        let result = ProjectionEntity::find()
+        let result: Result<Vec<(String, u64)>> = ProjectionEntity::find()
             .filter(ProjectionColumn::BlockchainId.eq(blockchain_id))
             .filter(ProjectionColumn::DesiredState.eq(KcProjectionDesiredState::Present.as_u8()))
             .filter(ProjectionColumn::ActualState.eq(KcProjectionActualState::Unknown.as_u8()))
@@ -394,13 +395,12 @@ impl KcProjectionRepository {
             .order_by_asc(ProjectionColumn::ContractAddress)
             .order_by_asc(ProjectionColumn::KcId)
             .limit(limit as u64)
+            .select_only()
+            .column(ProjectionColumn::ContractAddress)
+            .column(ProjectionColumn::KcId)
+            .into_tuple::<(String, u64)>()
             .all(self.conn.as_ref())
             .await
-            .map(|rows| {
-                rows.into_iter()
-                    .map(|row| (row.contract_address, row.kc_id))
-                    .collect::<Vec<_>>()
-            })
             .map_err(Into::into);
 
         match &result {
@@ -446,41 +446,52 @@ impl KcProjectionRepository {
         }
 
         let db = self.conn.as_ref();
-        let limit_i64 = Self::u64_to_i64(limit as u64, "limit")?;
-        let sql = Statement::from_sql_and_values(
-            db.get_database_backend(),
-            r#"
-            SELECT p.contract_address, p.kc_id
-            FROM kc_projection_state p
-            LEFT JOIN kc_sync_queue q
-                ON q.blockchain_id = p.blockchain_id
-               AND q.contract_address = p.contract_address
-               AND q.kc_id = p.kc_id
-            WHERE p.blockchain_id = ?
-              AND p.desired_state = ?
-              AND p.actual_state = ?
-              AND q.kc_id IS NULL
-            ORDER BY p.updated_at ASC, p.contract_address ASC, p.kc_id ASC
-            LIMIT ?
-            "#,
-            [
-                Value::String(Some(Box::new(blockchain_id.to_string()))),
-                Value::TinyUnsigned(Some(KcProjectionDesiredState::Present.as_u8())),
-                Value::TinyUnsigned(Some(KcProjectionActualState::Pending.as_u8())),
-                Value::BigInt(Some(limit_i64)),
-            ],
-        );
+        let p = Alias::new("p");
+        let q = Alias::new("q");
+        let blockchain = Alias::new("blockchain_id");
+        let contract = Alias::new("contract_address");
+        let kc_id = Alias::new("kc_id");
+        let desired_state = Alias::new("desired_state");
+        let actual_state = Alias::new("actual_state");
+        let updated_at = Alias::new("updated_at");
+
+        let mut query = Query::select();
+        query
+            .column((p.clone(), contract.clone()))
+            .column((p.clone(), kc_id.clone()))
+            .from_as(Alias::new("kc_projection_state"), p.clone())
+            .join_as(
+                JoinType::LeftJoin,
+                Alias::new("kc_sync_queue"),
+                q.clone(),
+                Expr::col((q.clone(), blockchain.clone()))
+                    .equals((p.clone(), blockchain.clone()))
+                    .and(
+                        Expr::col((q.clone(), contract.clone()))
+                            .equals((p.clone(), contract.clone())),
+                    )
+                    .and(Expr::col((q.clone(), kc_id.clone())).equals((p.clone(), kc_id.clone()))),
+            )
+            .and_where(Expr::col((p.clone(), blockchain)).eq(blockchain_id))
+            .and_where(
+                Expr::col((p.clone(), desired_state)).eq(KcProjectionDesiredState::Present.as_u8()),
+            )
+            .and_where(
+                Expr::col((p.clone(), actual_state)).eq(KcProjectionActualState::Pending.as_u8()),
+            )
+            .and_where(Expr::col((q.clone(), kc_id.clone())).is_null())
+            .order_by((p.clone(), updated_at), Order::Asc)
+            .order_by((p.clone(), contract), Order::Asc)
+            .order_by((p, kc_id), Order::Asc)
+            .limit(limit as u64);
+        let statement = db.get_database_backend().build(&query);
 
         let result = async {
-            let rows = db.query_all(sql).await.map_err(RepositoryError::Database)?;
+            let rows = db.query_all(statement).await?;
             let mut out = Vec::with_capacity(rows.len());
             for row in rows {
-                let contract_address: String = row
-                    .try_get("", "contract_address")
-                    .map_err(RepositoryError::Database)?;
-                let kc_id: u64 = row
-                    .try_get("", "kc_id")
-                    .map_err(RepositoryError::Database)?;
+                let contract_address: String = row.try_get("", "contract_address")?;
+                let kc_id: u64 = row.try_get("", "kc_id")?;
                 out.push((contract_address, kc_id));
             }
             Ok(out)
@@ -509,12 +520,6 @@ impl KcProjectionRepository {
         }
 
         result
-    }
-
-    fn u64_to_i64(value: u64, field: &'static str) -> Result<i64> {
-        i64::try_from(value).map_err(|_| {
-            RepositoryError::SyncMetadata(format!("{field} value {value} exceeds i64 range"))
-        })
     }
 
     async fn count_desired_present_filtered(

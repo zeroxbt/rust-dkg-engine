@@ -100,7 +100,7 @@ pub struct KcChainMetadataEntry {
     pub private_graph_mode: Option<u32>,
     pub private_graph_payload: Option<Vec<u8>>,
     pub publish_operation_id: Option<String>,
-    pub source: Option<String>,
+    pub source: String,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -139,7 +139,7 @@ pub struct SyncMetadataStateInput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncMetadataRecordInput {
     pub kc_id: u64,
-    pub publisher_address: Option<String>,
+    pub publisher_address: String,
     pub block_number: u64,
     pub transaction_hash: String,
     pub block_timestamp: u64,

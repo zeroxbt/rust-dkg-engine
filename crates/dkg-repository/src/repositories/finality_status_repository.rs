@@ -35,47 +35,23 @@ impl FinalityStatusRepository {
         let started = Instant::now();
         let now = Utc::now();
 
-        let result = async {
-            // Check if record already exists
-            let existing = Entity::find()
-                .filter(Column::Ual.eq(ual))
-                .filter(Column::PeerId.eq(peer_id))
-                .one(self.conn.as_ref())
-                .await?;
-
-            if let Some(existing_model) = existing {
-                // Update the existing record
-                let active_model = finality_status::ActiveModel {
-                    id: Set(existing_model.id),
-                    operation_id: Set(operation_id.to_string()),
-                    ual: Set(ual.to_string()),
-                    peer_id: Set(peer_id.to_string()),
-                    created_at: Set(existing_model.created_at),
-                    updated_at: Set(now),
-                };
-
-                Entity::update(active_model)
-                    .exec(self.conn.as_ref())
-                    .await?;
-            } else {
-                // Insert new record
-                let active_model = finality_status::ActiveModel {
-                    id: Set(0), // Auto-increment
-                    operation_id: Set(operation_id.to_string()),
-                    ual: Set(ual.to_string()),
-                    peer_id: Set(peer_id.to_string()),
-                    created_at: Set(now),
-                    updated_at: Set(now),
-                };
-
-                Entity::insert(active_model)
-                    .exec_without_returning(self.conn.as_ref())
-                    .await?;
-            }
-
-            Ok(())
-        }
-        .await;
+        let active_model = finality_status::ActiveModel {
+            id: Set(0), // Auto-increment
+            operation_id: Set(operation_id.to_string()),
+            ual: Set(ual.to_string()),
+            peer_id: Set(peer_id.to_string()),
+            created_at: Set(now),
+            updated_at: Set(now),
+        };
+        let result = Entity::insert(active_model)
+            .on_conflict(
+                sea_orm::sea_query::OnConflict::columns([Column::Ual, Column::PeerId])
+                    .update_columns([Column::OperationId, Column::UpdatedAt])
+                    .to_owned(),
+            )
+            .exec(self.conn.as_ref())
+            .await
+            .map(|_| ());
 
         match &result {
             Ok(()) => {
@@ -98,7 +74,7 @@ impl FinalityStatusRepository {
             }
         }
 
-        result
+        result.map_err(Into::into)
     }
 
     /// Get the count of finality acks for a given UAL.
@@ -155,14 +131,11 @@ impl FinalityStatusRepository {
             .filter(Column::UpdatedAt.lt(cutoff))
             .order_by_asc(Column::UpdatedAt)
             .limit(limit)
+            .select_only()
+            .column(Column::Id)
+            .into_tuple::<i32>()
             .all(self.conn.as_ref())
-            .await
-            .map(|records| {
-                records
-                    .into_iter()
-                    .map(|record| record.id)
-                    .collect::<Vec<_>>()
-            });
+            .await;
 
         match &result {
             Ok(rows) => {

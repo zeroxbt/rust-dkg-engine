@@ -8,8 +8,8 @@ use chrono::Utc;
 use dkg_observability::record_repository_query;
 use sea_orm::{
     ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Statement,
-    sea_query::{Expr, Value},
+    QueryFilter, QueryOrder, QuerySelect,
+    sea_query::{Alias, Expr, JoinType, Order, Query},
 };
 
 use crate::{
@@ -67,7 +67,6 @@ impl KcChainMetadataRepository {
         let started = Instant::now();
         let result = CoreEntity::find()
             .filter(CoreColumn::BlockchainId.eq(blockchain_id))
-            .filter(CoreColumn::PublisherAddress.is_not_null())
             .count(self.conn.as_ref())
             .await
             .map_err(Into::into);
@@ -105,7 +104,6 @@ impl KcChainMetadataRepository {
         let started = Instant::now();
         let result = CoreEntity::find()
             .filter(CoreColumn::BlockchainId.eq(blockchain_id))
-            .filter(CoreColumn::PublisherAddress.is_not_null())
             .filter(CoreColumn::Source.eq(source))
             .count(self.conn.as_ref())
             .await
@@ -142,12 +140,12 @@ impl KcChainMetadataRepository {
         blockchain_id: &str,
         contract_address: &str,
         kc_id: u64,
-        publisher_address: Option<&str>,
+        publisher_address: &str,
         block_number: u64,
         transaction_hash: &str,
         block_timestamp: u64,
         publish_operation_id: &str,
-        source: Option<&str>,
+        source: &str,
     ) -> Result<()> {
         self.upsert_core_metadata(
             blockchain_id,
@@ -170,12 +168,12 @@ impl KcChainMetadataRepository {
         blockchain_id: &str,
         contract_address: &str,
         kc_id: u64,
-        publisher_address: Option<&str>,
+        publisher_address: &str,
         block_number: u64,
         transaction_hash: &str,
         block_timestamp: u64,
         publish_operation_id: &str,
-        source: Option<&str>,
+        source: &str,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
         let block_number = Self::u64_to_i64(block_number, "block_number")?;
@@ -185,12 +183,12 @@ impl KcChainMetadataRepository {
             blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
             contract_address: ActiveValue::Set(contract_address.to_string()),
             kc_id: ActiveValue::Set(kc_id),
-            publisher_address: ActiveValue::Set(publisher_address.map(ToString::to_string)),
+            publisher_address: ActiveValue::Set(publisher_address.to_string()),
             block_number: ActiveValue::Set(block_number),
             transaction_hash: ActiveValue::Set(transaction_hash.to_string()),
             block_timestamp: ActiveValue::Set(block_timestamp),
             publish_operation_id: ActiveValue::Set(publish_operation_id.to_string()),
-            source: ActiveValue::Set(source.map(ToString::to_string)),
+            source: ActiveValue::Set(source.to_string()),
             created_at: ActiveValue::Set(now),
             updated_at: ActiveValue::Set(now),
         };
@@ -233,7 +231,6 @@ impl KcChainMetadataRepository {
         end_epoch: u64,
         latest_merkle_root: &str,
         state_observed_block: u64,
-        _source: Option<&str>,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
         let range_start_token_id = Self::u64_to_u32(range_start_token_id, "range_start_token_id")?;
@@ -293,7 +290,6 @@ impl KcChainMetadataRepository {
         kc_id: u64,
         private_graph_mode: Option<u32>,
         private_graph_payload: Option<&[u8]>,
-        _source: Option<&str>,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
         let update_result = StateEntity::update_many()
@@ -358,7 +354,6 @@ impl KcChainMetadataRepository {
                 .filter(CoreColumn::BlockchainId.eq(blockchain_id))
                 .filter(CoreColumn::ContractAddress.eq(contract_address))
                 .filter(CoreColumn::KcId.is_in(kc_ids.to_vec()))
-                .filter(CoreColumn::PublisherAddress.is_not_null())
                 .all(self.conn.as_ref())
                 .await?;
 
@@ -443,7 +438,6 @@ impl KcChainMetadataRepository {
                 .filter(CoreColumn::BlockchainId.eq(blockchain_id))
                 .filter(CoreColumn::ContractAddress.eq(contract_address))
                 .filter(CoreColumn::KcId.is_in(kc_ids.to_vec()))
-                .filter(CoreColumn::PublisherAddress.is_not_null())
                 .all(self.conn.as_ref())
                 .await?;
             let core_by_id: HashMap<u64, CoreModel> =
@@ -453,13 +447,6 @@ impl KcChainMetadataRepository {
                 .filter(StateColumn::BlockchainId.eq(blockchain_id))
                 .filter(StateColumn::ContractAddress.eq(contract_address))
                 .filter(StateColumn::KcId.is_in(kc_ids.to_vec()))
-                .filter(StateColumn::RangeStartTokenId.is_not_null())
-                .filter(StateColumn::RangeEndTokenId.is_not_null())
-                .filter(StateColumn::BurnedMode.is_not_null())
-                .filter(StateColumn::BurnedPayload.is_not_null())
-                .filter(StateColumn::EndEpoch.is_not_null())
-                .filter(StateColumn::LatestMerkleRoot.is_not_null())
-                .filter(StateColumn::StateObservedBlock.is_not_null())
                 .all(self.conn.as_ref())
                 .await?;
 
@@ -532,7 +519,6 @@ impl KcChainMetadataRepository {
                 .filter(CoreColumn::BlockchainId.eq(blockchain_id))
                 .filter(CoreColumn::ContractAddress.is_in(contract_addresses.clone()))
                 .filter(CoreColumn::KcId.is_in(kc_ids.clone()))
-                .filter(CoreColumn::PublisherAddress.is_not_null())
                 .all(self.conn.as_ref())
                 .await?;
             let core_by_key: HashMap<(String, u64), CoreModel> = core_rows
@@ -547,13 +533,6 @@ impl KcChainMetadataRepository {
                 .filter(StateColumn::BlockchainId.eq(blockchain_id))
                 .filter(StateColumn::ContractAddress.is_in(contract_addresses))
                 .filter(StateColumn::KcId.is_in(kc_ids))
-                .filter(StateColumn::RangeStartTokenId.is_not_null())
-                .filter(StateColumn::RangeEndTokenId.is_not_null())
-                .filter(StateColumn::BurnedMode.is_not_null())
-                .filter(StateColumn::BurnedPayload.is_not_null())
-                .filter(StateColumn::EndEpoch.is_not_null())
-                .filter(StateColumn::LatestMerkleRoot.is_not_null())
-                .filter(StateColumn::StateObservedBlock.is_not_null())
                 .all(self.conn.as_ref())
                 .await?;
 
@@ -666,7 +645,7 @@ impl KcChainMetadataRepository {
     /// Return ready metadata keys that are missing projection rows.
     ///
     /// A key is considered ready when:
-    /// - core metadata row exists with non-null publisher address
+    /// - core metadata row exists
     /// - matching state metadata row exists
     /// - no row exists in `kc_projection_state`
     pub async fn list_ready_keys_missing_projection(
@@ -687,42 +666,55 @@ impl KcChainMetadataRepository {
         }
 
         let db = self.conn.as_ref();
-        let limit_i64 = Self::u64_to_i64(limit as u64, "limit")?;
-        let sql = Statement::from_sql_and_values(
-            db.get_database_backend(),
-            r#"
-            SELECT c.contract_address, c.kc_id
-            FROM kc_chain_core_metadata c
-            INNER JOIN kc_chain_state_metadata s
-                ON s.blockchain_id = c.blockchain_id
-               AND s.contract_address = c.contract_address
-               AND s.kc_id = c.kc_id
-            LEFT JOIN kc_projection_state p
-                ON p.blockchain_id = c.blockchain_id
-               AND p.contract_address = c.contract_address
-               AND p.kc_id = c.kc_id
-            WHERE c.blockchain_id = ?
-              AND c.publisher_address IS NOT NULL
-              AND p.kc_id IS NULL
-            ORDER BY c.contract_address ASC, c.kc_id ASC
-            LIMIT ?
-            "#,
-            [
-                Value::String(Some(Box::new(blockchain_id.to_string()))),
-                Value::BigInt(Some(limit_i64)),
-            ],
-        );
+        let c = Alias::new("c");
+        let s = Alias::new("s");
+        let p = Alias::new("p");
+        let blockchain = Alias::new("blockchain_id");
+        let contract = Alias::new("contract_address");
+        let kc_id = Alias::new("kc_id");
+
+        let mut query = Query::select();
+        query
+            .column((c.clone(), contract.clone()))
+            .column((c.clone(), kc_id.clone()))
+            .from_as(Alias::new("kc_chain_core_metadata"), c.clone())
+            .join_as(
+                JoinType::InnerJoin,
+                Alias::new("kc_chain_state_metadata"),
+                s.clone(),
+                Expr::col((s.clone(), blockchain.clone()))
+                    .equals((c.clone(), blockchain.clone()))
+                    .and(
+                        Expr::col((s.clone(), contract.clone()))
+                            .equals((c.clone(), contract.clone())),
+                    )
+                    .and(Expr::col((s.clone(), kc_id.clone())).equals((c.clone(), kc_id.clone()))),
+            )
+            .join_as(
+                JoinType::LeftJoin,
+                Alias::new("kc_projection_state"),
+                p.clone(),
+                Expr::col((p.clone(), blockchain.clone()))
+                    .equals((c.clone(), blockchain.clone()))
+                    .and(
+                        Expr::col((p.clone(), contract.clone()))
+                            .equals((c.clone(), contract.clone())),
+                    )
+                    .and(Expr::col((p.clone(), kc_id.clone())).equals((c.clone(), kc_id.clone()))),
+            )
+            .and_where(Expr::col((c.clone(), blockchain)).eq(blockchain_id))
+            .and_where(Expr::col((p.clone(), kc_id)).is_null())
+            .order_by((c.clone(), contract), Order::Asc)
+            .order_by((c, Alias::new("kc_id")), Order::Asc)
+            .limit(limit as u64);
+        let statement = db.get_database_backend().build(&query);
 
         let result = async {
-            let rows = db.query_all(sql).await.map_err(RepositoryError::Database)?;
+            let rows = db.query_all(statement).await?;
             let mut out = Vec::with_capacity(rows.len());
             for row in rows {
-                let contract_address: String = row
-                    .try_get("", "contract_address")
-                    .map_err(RepositoryError::Database)?;
-                let kc_id: u64 = row
-                    .try_get("", "kc_id")
-                    .map_err(RepositoryError::Database)?;
+                let contract_address: String = row.try_get("", "contract_address")?;
+                let kc_id: u64 = row.try_get("", "kc_id")?;
                 out.push((contract_address, kc_id));
             }
             Ok(out)
@@ -1058,7 +1050,7 @@ impl KcChainMetadataRepository {
             blockchain_id: core.blockchain_id,
             contract_address: core.contract_address,
             kc_id: core.kc_id,
-            publisher_address: core.publisher_address?,
+            publisher_address: core.publisher_address,
             block_number: u64::try_from(core.block_number).ok()?,
             transaction_hash: core.transaction_hash,
             block_timestamp: u64::try_from(core.block_timestamp).ok()?,
@@ -1087,7 +1079,7 @@ impl KcChainMetadataRepository {
             blockchain_id: core.blockchain_id.clone(),
             contract_address: core.contract_address.clone(),
             kc_id: core.kc_id,
-            publisher_address: core.publisher_address.clone()?,
+            publisher_address: core.publisher_address.clone(),
             block_number: u64::try_from(core.block_number).ok()?,
             transaction_hash: core.transaction_hash.clone(),
             block_timestamp: u64::try_from(core.block_timestamp).ok()?,
