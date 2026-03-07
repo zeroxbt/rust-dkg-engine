@@ -11,7 +11,6 @@ use crate::{ContractLog, ContractName, chains::evm::EvmChain, error::BlockchainE
 
 const EVENT_LOGS_MIN_SPAN: u64 = 1;
 const EVENT_LOGS_INITIAL_SPAN: u64 = 512;
-const EVENT_LOGS_EMPTY_VERIFY_THRESHOLD: u64 = 2048;
 
 fn should_split_get_logs_error(err: &RpcError<TransportErrorKind>) -> bool {
     let message = err.to_string().to_ascii_lowercase();
@@ -245,7 +244,7 @@ impl EvmChain {
             let to_block = std::cmp::min(block + span - 1, current_block);
             let attempted_span = to_block.saturating_sub(block).saturating_add(1);
 
-            let mut logs = match self
+            let logs = match self
                 .fetch_logs_batch(
                     &blockchain_id,
                     &contract_name,
@@ -266,62 +265,6 @@ impl EvmChain {
                     return Err(BlockchainError::get_logs(err));
                 }
             };
-
-            if logs.is_empty()
-                && attempted_span >= EVENT_LOGS_EMPTY_VERIFY_THRESHOLD
-                && block < to_block
-            {
-                let mid = block + (to_block - block) / 2;
-                let left = match self
-                    .fetch_logs_batch(
-                        &blockchain_id,
-                        &contract_name,
-                        contract_address,
-                        &topic_signatures,
-                        block,
-                        mid,
-                    )
-                    .await
-                {
-                    Ok(left) => left,
-                    Err(err) => {
-                        if should_split_get_logs_error(&err) {
-                            span = std::cmp::max(EVENT_LOGS_MIN_SPAN, attempted_span / 2);
-                            self.observe_failed_event_logs_span(&cache_key, span).await;
-                            continue;
-                        }
-                        return Err(BlockchainError::get_logs(err));
-                    }
-                };
-                let right = match self
-                    .fetch_logs_batch(
-                        &blockchain_id,
-                        &contract_name,
-                        contract_address,
-                        &topic_signatures,
-                        mid.saturating_add(1),
-                        to_block,
-                    )
-                    .await
-                {
-                    Ok(right) => right,
-                    Err(err) => {
-                        if should_split_get_logs_error(&err) {
-                            span = std::cmp::max(EVENT_LOGS_MIN_SPAN, attempted_span / 2);
-                            self.observe_failed_event_logs_span(&cache_key, span).await;
-                            continue;
-                        }
-                        return Err(BlockchainError::get_logs(err));
-                    }
-                };
-
-                if !left.is_empty() || !right.is_empty() {
-                    logs.extend(left);
-                    logs.extend(right);
-                    span = std::cmp::max(EVENT_LOGS_MIN_SPAN, attempted_span / 2);
-                    self.observe_failed_event_logs_span(&cache_key, span).await;
-                }
-            }
 
             for log in &logs {
                 if log.topic0().is_some() {
