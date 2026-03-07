@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use metrics::{counter, histogram};
 
-pub(crate) fn record_repository_query(
+pub fn record_repository_query(
     repository: &str,
     method: &str,
     status: &str,

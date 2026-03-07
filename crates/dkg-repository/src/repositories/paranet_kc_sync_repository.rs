@@ -6,10 +6,11 @@ use sea_orm::{
     QueryOrder, QuerySelect,
 };
 
+use dkg_observability::record_repository_query;
+
 use crate::{
     error::Result,
     models::paranet_kc_sync::{ActiveModel, Column, Entity, Model},
-    observability::record_repository_query,
     types::ParanetKcSyncEntry,
 };
 

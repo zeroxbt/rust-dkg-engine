@@ -7,10 +7,11 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use dkg_observability::record_repository_query;
+
 use crate::{
     error::RepositoryError,
     models::finality_status::{self, Column, Entity},
-    observability::record_repository_query,
 };
 
 #[derive(Clone)]

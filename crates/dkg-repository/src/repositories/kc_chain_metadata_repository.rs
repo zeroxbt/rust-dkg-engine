@@ -11,6 +11,8 @@ use sea_orm::{
     sea_query::{Expr, Value},
 };
 
+use dkg_observability::record_repository_query;
+
 use crate::{
     error::{RepositoryError, Result},
     models::{
@@ -23,7 +25,6 @@ use crate::{
             Model as StateModel,
         },
     },
-    observability::record_repository_query,
     types::{KcChainMetadataEntry, KcChainReadyKcStateMetadataEntry},
 };
 

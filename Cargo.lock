@@ -2434,7 +2434,7 @@ name = "dkg-repository"
 version = "0.2.7"
 dependencies = [
  "chrono",
- "metrics",
+ "dkg-observability",
  "sea-orm",
  "sea-orm-migration",
  "serde",

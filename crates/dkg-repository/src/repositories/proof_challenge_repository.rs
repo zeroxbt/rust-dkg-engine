@@ -6,10 +6,11 @@ use sea_orm::{
     QuerySelect,
 };
 
+use dkg_observability::record_repository_query;
+
 use crate::{
     error::Result,
     models::proof_challenge::{ActiveModel, Column, Entity, Model},
-    observability::record_repository_query,
     types::ProofChallengeEntry,
 };
 

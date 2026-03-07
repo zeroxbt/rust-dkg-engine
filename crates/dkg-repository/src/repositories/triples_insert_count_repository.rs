@@ -4,10 +4,11 @@ use sea_orm::{
     ActiveModelTrait, DatabaseConnection, EntityTrait, QuerySelect, Set, TransactionTrait,
 };
 
+use dkg_observability::record_repository_query;
+
 use crate::{
     error::RepositoryError,
     models::triples_insert_count::{self, Entity},
-    observability::record_repository_query,
 };
 
 #[derive(Clone)]

@@ -6,6 +6,8 @@ use sea_orm::{
     QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait, Value, sea_query::Expr,
 };
 
+use dkg_observability::record_repository_query;
+
 use crate::{
     error::Result,
     models::{
@@ -22,7 +24,6 @@ use crate::{
             ActiveModel as QueueActiveModel, Column as QueueColumn, Entity as QueueEntity,
         },
     },
-    observability::record_repository_query,
     types::{
         KcProjectionActualState, KcProjectionDesiredState, KcSyncQueueEntry,
         SyncMetadataRecordInput,

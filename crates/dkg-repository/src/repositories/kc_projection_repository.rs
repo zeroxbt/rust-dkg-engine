@@ -6,13 +6,14 @@ use sea_orm::{
     QueryFilter, QueryOrder, QuerySelect, Statement, Value, sea_query::Expr,
 };
 
+use dkg_observability::record_repository_query;
+
 use crate::{
     error::{RepositoryError, Result},
     models::kc_projection_state::{
         ActiveModel as ProjectionActiveModel, Column as ProjectionColumn,
         Entity as ProjectionEntity,
     },
-    observability::record_repository_query,
     types::{KcProjectionActualState, KcProjectionDesiredState},
 };
 
