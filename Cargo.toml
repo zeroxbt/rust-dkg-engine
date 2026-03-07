@@ -63,7 +63,7 @@ libp2p = { git = "https://github.com/zeroxbt/rust-libp2p.git", rev = "77a4cbfb3e
 libp2p-identity = { git = "https://github.com/zeroxbt/rust-libp2p.git", rev = "77a4cbfb3eab4c9d530fb0934c0cda29cbd6448d" }
 libp2p-mplex = { git = "https://github.com/zeroxbt/rust-libp2p.git", rev = "77a4cbfb3eab4c9d530fb0934c0cda29cbd6448d" }
 # Patch oxigraph with configurable store open options for file descriptor control
-oxigraph = { git = "https://github.com/zeroxbt/oxigraph.git", rev = "e154854b251ed5855e03bd0a6fe420ec582483ae" }
+oxigraph = { git = "https://github.com/zeroxbt/oxigraph.git", rev = "ea8ceca9871cf4ee55fe4035b08eaf6ee36eff41" }
 
 
 [lints]
