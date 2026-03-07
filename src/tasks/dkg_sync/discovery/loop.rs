@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use chrono::Utc;
 use dkg_blockchain::{Address, BlockchainId};
@@ -56,6 +56,33 @@ pub(crate) async fn run(
         contracts = contract_addresses.len(),
         "DKG sync discovery initialized with pinned historical tip"
     );
+    let pinned_latest_kc_id_by_contract = loop {
+        if shutdown.is_cancelled() {
+            return;
+        }
+
+        if let Some(pinned_kc_ids) = read_pinned_latest_kc_ids(
+            &deps,
+            &blockchain_id,
+            &contract_addresses,
+            contract_scan_concurrency,
+        )
+        .await
+        {
+            break pinned_kc_ids;
+        }
+
+        tokio::select! {
+            _ = shutdown.cancelled() => return,
+            _ = tokio::time::sleep(error_retry_period) => {}
+        }
+    };
+    tracing::info!(
+        blockchain_id = %blockchain_id,
+        contracts = contract_addresses.len(),
+        resolved_contracts = pinned_latest_kc_id_by_contract.len(),
+        "DKG sync discovery pinned latest KC ids for historical pass"
+    );
 
     loop {
         if shutdown.is_cancelled() {
@@ -106,6 +133,7 @@ pub(crate) async fn run(
                 &contract_addresses,
                 contract_scan_concurrency,
                 pinned_tip,
+                &pinned_latest_kc_id_by_contract,
             )
             .await;
             if gap_outcome.any_chunk_processed {
@@ -149,6 +177,60 @@ async fn read_target_tip(
             );
             None
         }
+    }
+}
+
+async fn read_pinned_latest_kc_ids(
+    deps: &DkgSyncDeps,
+    blockchain_id: &BlockchainId,
+    contract_addresses: &[Address],
+    contract_scan_concurrency: usize,
+) -> Option<HashMap<String, u64>> {
+    let results: Vec<(Address, Result<u64, dkg_blockchain::BlockchainError>)> =
+        futures::stream::iter(contract_addresses.iter().copied().map(
+            |contract_address| async move {
+                (
+                    contract_address,
+                    deps.blockchain_manager
+                        .get_latest_knowledge_collection_id(blockchain_id, contract_address)
+                        .await,
+                )
+            },
+        ))
+        .buffer_unordered(contract_scan_concurrency)
+        .collect()
+        .await;
+
+    let mut pinned_latest_kc_id_by_contract = HashMap::with_capacity(results.len());
+    let mut had_errors = false;
+    for (contract_address, result) in results {
+        let contract_addr_str = canonical_evm_address(&contract_address);
+        match result {
+            Ok(latest_kc_id) => {
+                pinned_latest_kc_id_by_contract.insert(contract_addr_str, latest_kc_id);
+            }
+            Err(error) => {
+                had_errors = true;
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    contract = %contract_addr_str,
+                    error = %error,
+                    "Failed to pin latest KC id for contract"
+                );
+            }
+        }
+    }
+
+    if had_errors {
+        tracing::warn!(
+            blockchain_id = %blockchain_id,
+            resolved_contracts = pinned_latest_kc_id_by_contract.len(),
+            expected_contracts = contract_addresses.len(),
+            "Failed to pin latest KC ids for all contracts; retrying startup pinning"
+        );
+        None
+    } else {
+        Some(pinned_latest_kc_id_by_contract)
     }
 }
 
@@ -204,19 +286,30 @@ async fn run_gap_pass(
     contract_addresses: &[Address],
     contract_scan_concurrency: usize,
     target_tip: u64,
+    pinned_latest_kc_id_by_contract: &HashMap<String, u64>,
 ) -> GapPassOutcome {
     let mut outcome = GapPassOutcome::default();
     let gap_results: Vec<(Address, Result<_, _>)> =
-        futures::stream::iter(contract_addresses.iter().copied().map(
-            |contract_address| async move {
+        futures::stream::iter(contract_addresses.iter().copied().map(|contract_address| {
+            let contract_addr_str = canonical_evm_address(&contract_address);
+            let pinned_latest_kc_id = pinned_latest_kc_id_by_contract
+                .get(&contract_addr_str)
+                .copied()
+                .expect("all contracts must have pinned latest KC id before discovery loop starts");
+            async move {
                 (
                     contract_address,
                     discovery_worker
-                        .discover_contract_once(blockchain_id, contract_address, target_tip)
+                        .discover_contract_once(
+                            blockchain_id,
+                            contract_address,
+                            target_tip,
+                            pinned_latest_kc_id,
+                        )
                         .await,
                 )
-            },
-        ))
+            }
+        }))
         .buffer_unordered(contract_scan_concurrency)
         .collect()
         .await;

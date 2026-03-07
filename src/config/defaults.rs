@@ -118,7 +118,7 @@ fn blockchain_admin_events(poll_interval_secs: u64) -> BlockchainAdminEventsConf
 fn dkg_sync() -> DkgSyncConfig {
     DkgSyncConfig {
         discovery: DkgSyncDiscoveryConfig {
-            max_contract_concurrency: 128,
+            max_contract_concurrency: 2,
             metadata_discovery_max_blocks_per_chunk: 128,
             metadata_state_max_kc_per_chunk: 64,
             metadata_error_retry_interval_secs: 30,

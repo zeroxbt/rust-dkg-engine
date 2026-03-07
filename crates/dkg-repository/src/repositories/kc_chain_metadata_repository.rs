@@ -5,13 +5,12 @@ use std::{
 };
 
 use chrono::Utc;
+use dkg_observability::record_repository_query;
 use sea_orm::{
     ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, Statement,
+    QueryFilter, QueryOrder, QuerySelect, Statement,
     sea_query::{Expr, Value},
 };
-
-use dkg_observability::record_repository_query;
 
 use crate::{
     error::{RepositoryError, Result},
@@ -756,141 +755,110 @@ impl KcChainMetadataRepository {
 
     /// Find the oldest unresolved gap range for a contract at/after the provided cursor.
     ///
-    /// Returns at most one range:
-    /// - leading/internal gap candidate from the next run start with missing predecessor
-    /// - otherwise tail gap candidate from last known KC block to pinned tip
+    /// Returns at most one range from the bounded historical KC-id domain
+    /// `[cursor_kc_id + 1, expected_max_kc_id]`.
     pub async fn find_oldest_gap_range(
         &self,
         blockchain_id: &str,
         contract_address: &str,
         cursor_block: u64,
+        expected_max_kc_id: u64,
         target_tip: u64,
         deployment_block: Option<u64>,
     ) -> Result<Option<GapRange>> {
         let started = Instant::now();
-        let db = self.conn.as_ref();
         let next_block = cursor_block.saturating_add(1);
-        let cursor_i64 = next_block.min(i64::MAX as u64) as i64;
-        let target_tip_i64 = target_tip.min(i64::MAX as u64) as i64;
-        let deployment_i64 = deployment_block.map(|v| v.min(i64::MAX as u64) as i64);
-
-        let sql = Statement::from_sql_and_values(
-            db.get_database_backend(),
-            r#"
-            SELECT g.gap_start_block, g.gap_end_block, g.gap_last_expected_kc_id
-            FROM (
-                (
-                    SELECT
-                        COALESCE(
-                            (
-                                SELECT p.block_number
-                                FROM kc_chain_core_metadata p
-                                WHERE p.blockchain_id = t.blockchain_id
-                                  AND p.contract_address = t.contract_address
-                                  AND p.kc_id < t.kc_id
-                                ORDER BY p.kc_id DESC
-                                LIMIT 1
-                            ),
-                            ?
-                        ) AS gap_start_block,
-                        t.block_number AS gap_end_block,
-                        t.kc_id - 1 AS gap_last_expected_kc_id,
-                        0 AS priority_rank,
-                        t.kc_id AS priority_order
-                    FROM kc_chain_core_metadata t
-                    WHERE t.blockchain_id = ?
-                      AND t.contract_address = ?
-                      AND t.kc_id > 1
-                      AND t.block_number >= ?
-                      AND NOT EXISTS (
-                        SELECT 1
-                        FROM kc_chain_core_metadata prev
-                        WHERE prev.blockchain_id = t.blockchain_id
-                          AND prev.contract_address = t.contract_address
-                          AND prev.kc_id = t.kc_id - 1
-                        LIMIT 1
-                      )
-                    ORDER BY t.kc_id ASC
-                    LIMIT 1
-                )
-
-                UNION ALL
-
-                SELECT
-                    COALESCE(
-                        (
-                            SELECT last.block_number
-                            FROM kc_chain_core_metadata last
-                            WHERE last.blockchain_id = ?
-                              AND last.contract_address = ?
-                            ORDER BY last.kc_id DESC
-                            LIMIT 1
-                        ),
-                        ?
-                    ) AS gap_start_block,
-                    ? AS gap_end_block,
-                    NULL AS gap_last_expected_kc_id,
-                    1 AS priority_rank,
-                    9223372036854775807 AS priority_order
-            ) g
-            WHERE g.gap_start_block IS NOT NULL
-              AND g.gap_start_block < g.gap_end_block
-              AND g.gap_end_block >= ?
-            ORDER BY g.priority_rank ASC, g.priority_order ASC
-            LIMIT 1
-            "#,
-            [
-                Value::BigInt(deployment_i64),
-                Value::String(Some(Box::new(blockchain_id.to_string()))),
-                Value::String(Some(Box::new(contract_address.to_string()))),
-                Value::BigInt(Some(cursor_i64)),
-                Value::String(Some(Box::new(blockchain_id.to_string()))),
-                Value::String(Some(Box::new(contract_address.to_string()))),
-                Value::BigInt(deployment_i64),
-                Value::BigInt(Some(target_tip_i64)),
-                Value::BigInt(Some(cursor_i64)),
-            ],
-        );
-
         let result = async {
-            let row = db.query_one(sql).await.map_err(RepositoryError::Database)?;
-            let Some(row) = row else {
-                return Ok(None);
-            };
-            let start_block: i64 = row
-                .try_get("", "gap_start_block")
-                .map_err(RepositoryError::Database)?;
-            let end_block: i64 = row
-                .try_get("", "gap_end_block")
-                .map_err(RepositoryError::Database)?;
-            // MariaDB may decode this as BIGINT UNSIGNED while other backends decode as signed
-            // BIGINT. Try unsigned first, then fallback to signed.
-            let last_expected_kc_id_u64: Option<u64> =
-                row.try_get::<Option<u64>>("", "gap_last_expected_kc_id")
-                    .ok()
-                    .flatten();
-            let last_expected_kc_id_i64: Option<i64> = if last_expected_kc_id_u64.is_none() {
-                row.try_get::<Option<i64>>("", "gap_last_expected_kc_id")
-                    .ok()
-                    .flatten()
-            } else {
-                None
-            };
-            let last_expected_kc_id = last_expected_kc_id_u64.or_else(|| {
-                last_expected_kc_id_i64.and_then(|value| u64::try_from(value).ok())
-            });
-
-            let start_block = start_block.max(0) as u64;
-            let end_block = end_block.max(0) as u64;
-            if start_block >= end_block {
+            if next_block > target_tip {
                 return Ok(None);
             }
 
-            Ok(Some(GapRange {
-                start_block,
-                end_block,
-                last_expected_kc_id: last_expected_kc_id.filter(|value| *value > 0),
-            }))
+            let cursor_kc_id = self
+                .max_kc_id_up_to_block(blockchain_id, contract_address, cursor_block)
+                .await?
+                .unwrap_or(0);
+
+            // Search KC-id gaps after the cursor KC id, using count-based
+            // binary search over the bounded expected domain.
+            let search_start_id = cursor_kc_id.saturating_add(1);
+            if search_start_id <= expected_max_kc_id
+                && self
+                    .kc_id_range_has_gap(
+                        blockchain_id,
+                        contract_address,
+                        search_start_id,
+                        expected_max_kc_id,
+                    )
+                    .await?
+            {
+                let missing_start_id = self
+                    .find_first_missing_kc_id(
+                        blockchain_id,
+                        contract_address,
+                        search_start_id,
+                        expected_max_kc_id,
+                    )
+                    .await?
+                    .expect("gap existence checked before binary search");
+
+                // First present KC after the missing run (inside bounded domain) determines:
+                // - gap end block (its block)
+                // - last expected missing KC id (its kc_id - 1)
+                if let Some((next_present_kc_id, gap_end_block)) = self
+                    .first_present_kc_id_at_or_after(
+                        blockchain_id,
+                        contract_address,
+                        missing_start_id.saturating_add(1),
+                        Some(expected_max_kc_id),
+                    )
+                    .await?
+                {
+                    let gap_start_block = self
+                        .latest_block_before_kc_id(
+                            blockchain_id,
+                            contract_address,
+                            next_present_kc_id,
+                        )
+                        .await?
+                        .or(deployment_block);
+
+                    if let Some(gap_start_block) = gap_start_block
+                        && gap_start_block < gap_end_block
+                        && gap_end_block >= next_block
+                    {
+                        return Ok(Some(GapRange {
+                            start_block: gap_start_block,
+                            end_block: gap_end_block,
+                            last_expected_kc_id: Some(next_present_kc_id.saturating_sub(1))
+                                .filter(|value| *value > 0),
+                        }));
+                    }
+                } else {
+                    // Missing run reaches the bounded expected max KC id. Keep block range
+                    // open until pinned tip, but preserve last_expected_kc_id for fast-forward.
+                    let gap_start_block = self
+                        .latest_block_before_kc_id(
+                            blockchain_id,
+                            contract_address,
+                            missing_start_id,
+                        )
+                        .await?
+                        .or(deployment_block);
+                    if let Some(gap_start_block) = gap_start_block
+                        && gap_start_block < target_tip
+                        && target_tip >= next_block
+                    {
+                        return Ok(Some(GapRange {
+                            start_block: gap_start_block,
+                            end_block: target_tip,
+                            last_expected_kc_id: Some(expected_max_kc_id)
+                                .filter(|value| *value > 0),
+                        }));
+                    }
+                }
+            }
+
+            Ok(None)
         }
         .await;
 
@@ -925,6 +893,161 @@ impl KcChainMetadataRepository {
         }
 
         result
+    }
+
+    async fn max_kc_id_up_to_block(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        cursor_block: u64,
+    ) -> Result<Option<u64>> {
+        let cursor_i64 = Self::u64_to_i64(cursor_block, "cursor_block")?;
+        let kc_id = CoreEntity::find()
+            .select_only()
+            .column(CoreColumn::KcId)
+            .filter(CoreColumn::BlockchainId.eq(blockchain_id))
+            .filter(CoreColumn::ContractAddress.eq(contract_address))
+            .filter(CoreColumn::BlockNumber.lte(cursor_i64))
+            .order_by_desc(CoreColumn::KcId)
+            .into_tuple::<u64>()
+            .one(self.conn.as_ref())
+            .await?;
+
+        Ok(kc_id)
+    }
+
+    async fn count_kc_ids_in_range(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        start_id: u64,
+        end_id: u64,
+    ) -> Result<u64> {
+        if start_id > end_id {
+            return Ok(0);
+        }
+
+        let count = CoreEntity::find()
+            .filter(CoreColumn::BlockchainId.eq(blockchain_id))
+            .filter(CoreColumn::ContractAddress.eq(contract_address))
+            .filter(CoreColumn::KcId.between(start_id, end_id))
+            .count(self.conn.as_ref())
+            .await?;
+        Ok(count)
+    }
+
+    async fn kc_id_range_has_gap(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        start_id: u64,
+        end_id: u64,
+    ) -> Result<bool> {
+        if start_id > end_id {
+            return Ok(false);
+        }
+        let expected = end_id.saturating_sub(start_id).saturating_add(1);
+        let actual = self
+            .count_kc_ids_in_range(blockchain_id, contract_address, start_id, end_id)
+            .await?;
+        Ok(actual < expected)
+    }
+
+    async fn find_first_missing_kc_id(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        start_id: u64,
+        end_id: u64,
+    ) -> Result<Option<u64>> {
+        if start_id > end_id {
+            return Ok(None);
+        }
+        if !self
+            .kc_id_range_has_gap(blockchain_id, contract_address, start_id, end_id)
+            .await?
+        {
+            return Ok(None);
+        }
+
+        let mut lo = start_id;
+        let mut hi = end_id;
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if self
+                .kc_id_range_has_gap(blockchain_id, contract_address, start_id, mid)
+                .await?
+            {
+                hi = mid;
+            } else {
+                lo = mid.saturating_add(1);
+            }
+        }
+
+        let present_count = self
+            .count_kc_ids_in_range(blockchain_id, contract_address, lo, lo)
+            .await?;
+        if present_count == 0 {
+            Ok(Some(lo))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn first_present_kc_id_at_or_after(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        start_id: u64,
+        end_id: Option<u64>,
+    ) -> Result<Option<(u64, u64)>> {
+        if let Some(end_id) = end_id
+            && start_id > end_id
+        {
+            return Ok(None);
+        }
+
+        let mut query = CoreEntity::find()
+            .filter(CoreColumn::BlockchainId.eq(blockchain_id))
+            .filter(CoreColumn::ContractAddress.eq(contract_address))
+            .filter(CoreColumn::KcId.gte(start_id));
+
+        if let Some(end_id) = end_id {
+            query = query.filter(CoreColumn::KcId.lte(end_id));
+        }
+
+        let row: Option<(u64, i64)> = query
+            .select_only()
+            .column(CoreColumn::KcId)
+            .column(CoreColumn::BlockNumber)
+            .order_by_asc(CoreColumn::KcId)
+            .into_tuple::<(u64, i64)>()
+            .one(self.conn.as_ref())
+            .await?;
+        Ok(row.map(|(kc_id, block_number)| (kc_id, block_number.max(0) as u64)))
+    }
+
+    async fn latest_block_before_kc_id(
+        &self,
+        blockchain_id: &str,
+        contract_address: &str,
+        upper_exclusive_kc_id: u64,
+    ) -> Result<Option<u64>> {
+        if upper_exclusive_kc_id == 0 {
+            return Ok(None);
+        }
+
+        let row: Option<i64> = CoreEntity::find()
+            .select_only()
+            .column(CoreColumn::BlockNumber)
+            .filter(CoreColumn::BlockchainId.eq(blockchain_id))
+            .filter(CoreColumn::ContractAddress.eq(contract_address))
+            .filter(CoreColumn::KcId.lt(upper_exclusive_kc_id))
+            .order_by_desc(CoreColumn::KcId)
+            .into_tuple::<i64>()
+            .one(self.conn.as_ref())
+            .await?;
+        Ok(row.map(|block_number| block_number.max(0) as u64))
     }
 
     fn to_complete_entry(

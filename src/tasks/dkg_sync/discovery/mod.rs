@@ -137,6 +137,7 @@ impl DiscoveryWorker {
         blockchain_id: &BlockchainId,
         contract_address: Address,
         target_tip: u64,
+        pinned_latest_kc_id: u64,
     ) -> Result<DiscoverContractOutcome, DiscoveryError> {
         let contract_addr_str = canonical_evm_address(&contract_address);
 
@@ -184,6 +185,7 @@ impl DiscoveryWorker {
                     blockchain_id.as_str(),
                     &contract_addr_str,
                     cursor,
+                    pinned_latest_kc_id,
                     target_tip,
                     deployment_block,
                 )
