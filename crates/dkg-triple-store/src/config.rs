@@ -67,6 +67,24 @@ pub struct OxigraphStoreConfig {
     ///
     /// Ignored when `max_open_files` is explicitly set.
     pub fd_reserve: Option<u32>,
+
+    /// Size of each RocksDB memtable (write buffer) per column family, in bytes.
+    ///
+    /// Oxigraph uses 12 column families. Lower values reduce memory usage at the
+    /// cost of more frequent disk flushes.
+    /// If `None`, RocksDB default applies (128 MB via `optimize_level_style_compaction`).
+    pub write_buffer_size: Option<usize>,
+
+    /// Maximum number of memtables per column family before writes stall.
+    ///
+    /// If `None`, RocksDB default applies (6 via `optimize_level_style_compaction`).
+    pub max_write_buffer_number: Option<i32>,
+
+    /// Capacity of the shared LRU block cache for reads, in bytes.
+    ///
+    /// A single cache is shared across all column families.
+    /// If `None`, RocksDB uses its per-CF default (8 MB each).
+    pub block_cache_capacity: Option<usize>,
 }
 
 /// Timeout configuration for different SPARQL operations

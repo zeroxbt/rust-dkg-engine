@@ -31,6 +31,15 @@ impl OxigraphBackend {
         if let Some(fd_reserve) = config.fd_reserve {
             options = options.with_fd_reserve(fd_reserve);
         }
+        if let Some(write_buffer_size) = config.write_buffer_size {
+            options = options.with_write_buffer_size(write_buffer_size);
+        }
+        if let Some(max_write_buffer_number) = config.max_write_buffer_number {
+            options = options.with_max_write_buffer_number(max_write_buffer_number);
+        }
+        if let Some(block_cache_capacity) = config.block_cache_capacity {
+            options = options.with_block_cache_capacity(block_cache_capacity);
+        }
 
         let store = Store::open_with_options(&path, options).map_err(|e| {
             TripleStoreError::Other(format!("Failed to open Oxigraph store: {}", e))
@@ -40,6 +49,9 @@ impl OxigraphBackend {
             path = %path.as_ref().display(),
             max_open_files = ?config.max_open_files,
             fd_reserve = ?config.fd_reserve,
+            write_buffer_size = ?config.write_buffer_size,
+            max_write_buffer_number = ?config.max_write_buffer_number,
+            block_cache_capacity = ?config.block_cache_capacity,
             "Opened Oxigraph persistent store"
         );
 

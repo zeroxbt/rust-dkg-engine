@@ -218,6 +218,9 @@ fn triple_store(url: &str) -> TripleStoreManagerConfig {
             // Keep RocksDB file handles bounded instead of scaling with high RLIMIT_NOFILE.
             max_open_files: Some(4096),
             fd_reserve: None,
+            write_buffer_size: None,
+            max_write_buffer_number: None,
+            block_cache_capacity: None,
         },
     }
 }
