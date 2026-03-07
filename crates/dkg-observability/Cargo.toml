@@ -1,6 +1,6 @@
 [package]
 name = "dkg-observability"
-version = "0.2.7"
+version.workspace = true
 rust-version = "1.92.0"
 edition = "2024"
 
