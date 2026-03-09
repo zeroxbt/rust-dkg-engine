@@ -84,7 +84,7 @@ members = [
 default-members = ["."]
 
 [workspace.package]
-version = "0.2.12"
+version = "0.2.13"
 
 [workspace.dependencies]
 alloy = { version = "1.6.1", default-features = false }
