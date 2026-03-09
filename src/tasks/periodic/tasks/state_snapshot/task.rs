@@ -17,6 +17,8 @@ use crate::{
     tasks::periodic::{PeriodicTasksDeps, registry::GlobalPeriodicTask, runner::run_with_shutdown},
 };
 
+const TOP_PEER_LATENCY_SNAPSHOT_LIMIT: usize = 20;
+
 pub(crate) struct StateSnapshotTask {
     config: StateSnapshotConfig,
     kc_sync_repository: KcSyncRepository,
@@ -276,6 +278,40 @@ impl StateSnapshotTask {
             PROTOCOL_NAME_GET,
             get_capable,
         );
+
+        let top_batch_get_peers = self.peer_registry.top_peers_by_latency(
+            blockchain_id,
+            STREAM_PROTOCOL_BATCH_GET,
+            None,
+            TOP_PEER_LATENCY_SNAPSHOT_LIMIT,
+        );
+        for rank in 1..=TOP_PEER_LATENCY_SNAPSHOT_LIMIT {
+            if let Some(peer) = top_batch_get_peers.get(rank - 1) {
+                observability::record_peer_registry_top_rank_latency(
+                    blockchain_label,
+                    PROTOCOL_NAME_BATCH_GET,
+                    rank,
+                    peer.average_latency_ms,
+                    peer.sample_count,
+                );
+                observability::record_peer_registry_top_peer_latency(
+                    blockchain_label,
+                    PROTOCOL_NAME_BATCH_GET,
+                    rank,
+                    &peer.peer_id.to_base58(),
+                    peer.average_latency_ms,
+                    peer.sample_count,
+                );
+            } else {
+                observability::record_peer_registry_top_rank_latency(
+                    blockchain_label,
+                    PROTOCOL_NAME_BATCH_GET,
+                    rank,
+                    0,
+                    0,
+                );
+            }
+        }
     }
 }
 

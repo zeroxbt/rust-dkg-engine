@@ -520,7 +520,10 @@ fn decode_burned_ids(mode: u32, payload: &[u8], start: u64, end: u64) -> Vec<u64
             out
         }
         other => {
-            eprintln!("Warning: unknown burned_mode {}, treating as no burns", other);
+            eprintln!(
+                "Warning: unknown burned_mode {}, treating as no burns",
+                other
+            );
             Vec::new()
         }
     }

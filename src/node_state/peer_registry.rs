@@ -63,6 +63,17 @@ impl PerformanceStats {
         let sum: u64 = self.latencies[..self.count].iter().sum();
         sum / self.count as u64
     }
+
+    fn sample_count(&self) -> usize {
+        self.count
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PeerLatencySnapshot {
+    pub peer_id: PeerId,
+    pub average_latency_ms: u64,
+    pub sample_count: usize,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -324,6 +335,51 @@ impl PeerRegistry {
             let latency_b = self.get_average_latency(b);
             latency_a.cmp(&latency_b)
         });
+    }
+
+    /// Returns up to `limit` peers for a shard+protocol, sorted by average latency (fastest first).
+    pub(crate) fn top_peers_by_latency(
+        &self,
+        blockchain_id: &BlockchainId,
+        protocol: &'static str,
+        exclude_peer: Option<&PeerId>,
+        limit: usize,
+    ) -> Vec<PeerLatencySnapshot> {
+        if limit == 0 {
+            return Vec::new();
+        }
+        let Some(protocol) = Self::parse_stream_protocol(protocol) else {
+            return Vec::new();
+        };
+
+        let mut peers: Vec<PeerLatencySnapshot> = self
+            .peers
+            .iter()
+            .filter(|entry| {
+                if !entry.shard_membership.contains(blockchain_id) {
+                    return false;
+                }
+                if let Some(exclude) = exclude_peer
+                    && entry.key() == exclude
+                {
+                    return false;
+                }
+                entry
+                    .identify
+                    .as_ref()
+                    .map(|id| id.protocols.contains(&protocol))
+                    .unwrap_or(false)
+            })
+            .map(|entry| PeerLatencySnapshot {
+                peer_id: *entry.key(),
+                average_latency_ms: entry.performance.average_latency(),
+                sample_count: entry.performance.sample_count(),
+            })
+            .collect();
+
+        peers.sort_by_key(|peer| peer.average_latency_ms);
+        peers.truncate(limit);
+        peers
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

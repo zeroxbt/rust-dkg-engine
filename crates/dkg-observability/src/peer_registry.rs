@@ -72,3 +72,52 @@ pub fn record_peer_registry_request_outcome(protocol: &str, outcome: &str, durat
     )
     .record(duration.as_secs_f64());
 }
+
+pub fn record_peer_registry_top_peer_latency(
+    blockchain_id: &str,
+    protocol: &str,
+    rank: usize,
+    peer_id: &str,
+    average_latency_ms: u64,
+    sample_count: usize,
+) {
+    gauge!(
+        "node_peer_registry_top_peer_avg_latency_ms",
+        "blockchain_id" => blockchain_id.to_string(),
+        "protocol" => protocol.to_string(),
+        "rank" => rank.to_string(),
+        "peer_id" => peer_id.to_string()
+    )
+    .set(average_latency_ms as f64);
+    gauge!(
+        "node_peer_registry_top_peer_latency_samples",
+        "blockchain_id" => blockchain_id.to_string(),
+        "protocol" => protocol.to_string(),
+        "rank" => rank.to_string(),
+        "peer_id" => peer_id.to_string()
+    )
+    .set(sample_count as f64);
+}
+
+pub fn record_peer_registry_top_rank_latency(
+    blockchain_id: &str,
+    protocol: &str,
+    rank: usize,
+    average_latency_ms: u64,
+    sample_count: usize,
+) {
+    gauge!(
+        "node_peer_registry_top_rank_avg_latency_ms",
+        "blockchain_id" => blockchain_id.to_string(),
+        "protocol" => protocol.to_string(),
+        "rank" => rank.to_string()
+    )
+    .set(average_latency_ms as f64);
+    gauge!(
+        "node_peer_registry_top_rank_latency_samples",
+        "blockchain_id" => blockchain_id.to_string(),
+        "protocol" => protocol.to_string(),
+        "rank" => rank.to_string()
+    )
+    .set(sample_count as f64);
+}
