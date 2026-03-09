@@ -1,5 +1,7 @@
 use std::{collections::HashSet, time::Instant};
 
+use futures::{StreamExt, stream};
+
 use crate::{
     TripleStoreManager,
     error::Result,
@@ -74,8 +76,8 @@ impl TripleStoreManager {
         burned: &[u64],
         visibility: GraphVisibility,
     ) -> Result<Vec<String>> {
-        // Matches JS MAX_TOKEN_ID_PER_GET_PAGE constant
-        const MAX_TOKEN_ID_PER_PAGE: u64 = 50;
+        let max_token_ids_per_page = self.config.collection_fetch_max_token_ids_per_page.max(1);
+        let page_concurrency = self.config.collection_fetch_page_concurrency.max(1);
 
         let suffix = visibility.as_suffix();
         let burned_set: HashSet<u64> = burned.iter().copied().collect();
@@ -96,49 +98,62 @@ impl TripleStoreManager {
 
         let result: Result<Vec<String>> = async {
             let mut all_triples = Vec::new();
+            let mut page_ranges = Vec::new();
             let mut page_start = start_token_id;
-
-            // Paginate through token IDs in chunks of MAX_TOKEN_ID_PER_PAGE
             while page_start <= end_token_id {
-                let page_end = (page_start + MAX_TOKEN_ID_PER_PAGE - 1).min(end_token_id);
+                let page_end = page_start
+                    .saturating_add(max_token_ids_per_page - 1)
+                    .min(end_token_id);
+                page_ranges.push((page_start, page_end));
+                page_start = page_end.saturating_add(1);
+            }
 
-                // Build list of named graphs for this page, excluding burned tokens
-                let named_graphs: Vec<String> = (page_start..=page_end)
-                    .filter(|id| !burned_set.contains(id))
-                    .map(|id| format!("<{}/{}/{}>", kc_ual, id, suffix))
-                    .collect();
+            let burned_set = &burned_set;
+            let mut page_results = stream::iter(page_ranges)
+                .map(|(page_start, page_end)| async move {
+                    // Build list of named graphs for this page, excluding burned tokens
+                    let named_graphs: Vec<String> = (page_start..=page_end)
+                        .filter(|id| !burned_set.contains(id))
+                        .map(|id| format!("<{}/{}/{}>", kc_ual, id, suffix))
+                        .collect();
 
-                if !named_graphs.is_empty() {
-                    // Use VALUES clause like JS implementation
-                    let query = format!(
-                        r#"PREFIX schema: <http://schema.org/>
-                        CONSTRUCT {{
-                            ?s ?p ?o .
-                        }}
-                        WHERE {{
-                            GRAPH ?g {{
+                    let page_lines = if named_graphs.is_empty() {
+                        Vec::new()
+                    } else {
+                        // Use VALUES clause like JS implementation
+                        let query = format!(
+                            r#"PREFIX schema: <http://schema.org/>
+                            CONSTRUCT {{
                                 ?s ?p ?o .
                             }}
-                            VALUES ?g {{
-                                {}
-                            }}
-                        }}"#,
-                        named_graphs.join("\n        ")
-                    );
+                            WHERE {{
+                                GRAPH ?g {{
+                                    ?s ?p ?o .
+                                }}
+                                VALUES ?g {{
+                                    {}
+                                }}
+                            }}"#,
+                            named_graphs.join("\n        ")
+                        );
 
-                    let rdf_lines = self
-                        .backend_construct(&query, self.config.timeouts.query_timeout())
-                        .await?;
+                        let rdf_lines = self
+                            .backend_construct(&query, self.config.timeouts.query_timeout())
+                            .await?;
 
-                    all_triples.extend(
                         rdf_lines
                             .lines()
                             .filter(|line| !line.trim().is_empty())
-                            .map(String::from),
-                    );
-                }
+                            .map(String::from)
+                            .collect::<Vec<_>>()
+                    };
 
-                page_start = page_end + 1;
+                    Ok::<Vec<String>, crate::error::TripleStoreError>(page_lines)
+                })
+                .buffered(page_concurrency);
+
+            while let Some(page_result) = page_results.next().await {
+                all_triples.extend(page_result?);
             }
 
             Ok(all_triples)

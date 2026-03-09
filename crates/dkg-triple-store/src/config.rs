@@ -46,6 +46,19 @@ pub struct TripleStoreManagerConfig {
     /// Useful to prevent overwhelming Blazegraph or causing resource contention.
     pub max_concurrent_operations: usize,
 
+    /// Maximum number of in-flight paged queries when fetching KC named graphs.
+    ///
+    /// This is a per-request fanout limit layered on top of the global
+    /// `max_concurrent_operations` semaphore.
+    #[serde(default = "default_collection_fetch_page_concurrency")]
+    pub collection_fetch_page_concurrency: usize,
+
+    /// Maximum number of token IDs included in each paged KC graph fetch query.
+    ///
+    /// Larger values reduce roundtrips but increase query size.
+    #[serde(default = "default_collection_fetch_max_token_ids_per_page")]
+    pub collection_fetch_max_token_ids_per_page: u64,
+
     /// Oxigraph-specific storage options.
     ///
     /// Ignored for Blazegraph backend.
@@ -85,6 +98,14 @@ pub struct OxigraphStoreConfig {
     /// A single cache is shared across all column families.
     /// If `None`, RocksDB uses its per-CF default (8 MB each).
     pub block_cache_capacity: Option<usize>,
+}
+
+fn default_collection_fetch_page_concurrency() -> usize {
+    2
+}
+
+fn default_collection_fetch_max_token_ids_per_page() -> u64 {
+    50
 }
 
 /// Timeout configuration for different SPARQL operations

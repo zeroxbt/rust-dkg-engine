@@ -588,6 +588,8 @@ url = "${triple_url_esc}"
 connect_max_retries = 10
 connect_retry_frequency_ms = 10000
 max_concurrent_operations = 25
+collection_fetch_page_concurrency = 2
+collection_fetch_max_token_ids_per_page = 50
 
 [managers.triple_store.timeouts]
 query_ms = 60000

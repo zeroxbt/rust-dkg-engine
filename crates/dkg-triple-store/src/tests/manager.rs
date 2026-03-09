@@ -69,6 +69,8 @@ fn test_config_for_backend(
             ask_ms: 10_000,
         },
         max_concurrent_operations,
+        collection_fetch_page_concurrency: 2,
+        collection_fetch_max_token_ids_per_page: 50,
         oxigraph: OxigraphStoreConfig::default(),
     }
 }

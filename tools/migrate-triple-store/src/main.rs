@@ -125,6 +125,8 @@ fn build_manager_config(
                     ask_ms: 30_000,
                 },
                 max_concurrent_operations: 1,
+                collection_fetch_page_concurrency: 1,
+                collection_fetch_max_token_ids_per_page: 50,
                 oxigraph: OxigraphStoreConfig::default(),
             };
             Ok((config, path.clone()))
@@ -146,6 +148,8 @@ fn build_manager_config(
                     ask_ms: 30_000,
                 },
                 max_concurrent_operations: 1,
+                collection_fetch_page_concurrency: 1,
+                collection_fetch_max_token_ids_per_page: 50,
                 oxigraph: OxigraphStoreConfig::default(),
             };
             Ok((config, String::new()))

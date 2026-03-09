@@ -9,6 +9,7 @@ async-trait = { workspace = true }
 chrono = { workspace = true }
 dkg-domain = { path = "../dkg-domain" }
 dkg-observability = { path = "../dkg-observability" }
+futures = { workspace = true }
 oxigraph = { version = "0.5.4" }
 reqwest = { workspace = true, features = ["json", "rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }

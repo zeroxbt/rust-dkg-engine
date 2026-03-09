@@ -215,6 +215,8 @@ fn triple_store(url: &str) -> TripleStoreManagerConfig {
             ask_ms: 10000,
         },
         max_concurrent_operations: 16,
+        collection_fetch_page_concurrency: 2,
+        collection_fetch_max_token_ids_per_page: 50,
         oxigraph: OxigraphStoreConfig {
             // Keep RocksDB file handles bounded instead of scaling with high RLIMIT_NOFILE.
             max_open_files: Some(4096),

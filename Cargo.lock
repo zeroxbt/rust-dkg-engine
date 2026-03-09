@@ -2451,6 +2451,7 @@ dependencies = [
  "chrono",
  "dkg-domain",
  "dkg-observability",
+ "futures",
  "oxigraph",
  "reqwest",
  "serde",

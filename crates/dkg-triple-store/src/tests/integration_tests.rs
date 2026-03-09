@@ -28,6 +28,8 @@ fn blazegraph_config() -> TripleStoreManagerConfig {
             ask_ms: 10000,
         },
         max_concurrent_operations: 16,
+        collection_fetch_page_concurrency: 2,
+        collection_fetch_max_token_ids_per_page: 50,
         oxigraph: OxigraphStoreConfig::default(),
     }
 }
