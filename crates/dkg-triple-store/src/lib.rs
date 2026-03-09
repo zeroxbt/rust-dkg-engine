@@ -223,7 +223,11 @@ impl TripleStoreManager {
     }
 
     /// Execute a SPARQL CONSTRUCT with concurrency limiting
-    pub(crate) async fn backend_construct(&self, query: &str, timeout: Duration) -> Result<String> {
+    pub(crate) async fn backend_construct(
+        &self,
+        query: &str,
+        timeout: Duration,
+    ) -> Result<Vec<String>> {
         let backend = self.backend.name();
         let op = "construct";
         let started = Instant::now();
@@ -241,8 +245,10 @@ impl TripleStoreManager {
         drop(permit);
         self.record_permit_snapshot(backend);
 
-        if let Ok(body) = &result {
-            metrics::record_backend_result_bytes_total(backend, op, body.len());
+        if let Ok(lines) = &result {
+            let bytes =
+                lines.iter().map(String::len).sum::<usize>() + lines.len().saturating_sub(1);
+            metrics::record_backend_result_bytes_total(backend, op, bytes);
         }
 
         metrics::record_backend_operation(backend, op, result.as_ref().err(), started.elapsed());

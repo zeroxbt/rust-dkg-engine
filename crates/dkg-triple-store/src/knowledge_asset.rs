@@ -37,14 +37,7 @@ impl TripleStoreManager {
 
         let result = self
             .backend_construct(&query, self.config.timeouts.query_timeout())
-            .await
-            .map(|rdf_lines| {
-                rdf_lines
-                    .lines()
-                    .filter(|line| !line.trim().is_empty())
-                    .map(String::from)
-                    .collect::<Vec<_>>()
-            });
+            .await;
 
         let result_bytes = result.as_ref().map_or(0, |lines| joined_lines_bytes(lines));
         let result_triples = result.as_ref().map_or(0, |lines| lines.len());
@@ -140,12 +133,7 @@ impl TripleStoreManager {
                         let rdf_lines = self
                             .backend_construct(&query, self.config.timeouts.query_timeout())
                             .await?;
-
                         rdf_lines
-                            .lines()
-                            .filter(|line| !line.trim().is_empty())
-                            .map(String::from)
-                            .collect::<Vec<_>>()
                     };
 
                     Ok::<Vec<String>, crate::error::TripleStoreError>(page_lines)
@@ -243,8 +231,8 @@ impl TripleStoreManager {
             .backend_construct(&query, self.config.timeouts.query_timeout())
             .await;
 
-        let result_bytes = result.as_ref().map_or(0, |rdf| rdf.len());
-        let result_triples = result.as_ref().map_or(0, |rdf| non_empty_lines_count(rdf));
+        let result_bytes = result.as_ref().map_or(0, |lines| joined_lines_bytes(lines));
+        let result_triples = result.as_ref().map_or(0, |lines| lines.len());
         metrics::record_query_operation(
             backend,
             "get_metadata",
@@ -257,7 +245,7 @@ impl TripleStoreManager {
             Some(1),
         );
 
-        result
+        result.map(|lines| lines.join("\n"))
     }
 }
 
@@ -266,10 +254,6 @@ fn joined_lines_bytes(lines: &[String]) -> usize {
         return 0;
     }
     lines.iter().map(String::len).sum::<usize>() + lines.len().saturating_sub(1)
-}
-
-fn non_empty_lines_count(text: &str) -> usize {
-    text.lines().filter(|line| !line.trim().is_empty()).count()
 }
 
 fn visibility_from_graph_ual(ual: &str) -> &'static str {

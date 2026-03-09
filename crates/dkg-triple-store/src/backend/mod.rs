@@ -39,7 +39,7 @@ pub trait TripleStoreBackend: Send + Sync {
     /// Execute a SPARQL CONSTRUCT query
     ///
     /// Returns RDF lines (N-Triples/N-Quads)
-    async fn construct(&self, query: &str, timeout: Duration) -> Result<String>;
+    async fn construct(&self, query: &str, timeout: Duration) -> Result<Vec<String>>;
 
     /// Execute a SPARQL ASK query
     ///

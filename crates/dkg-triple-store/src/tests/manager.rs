@@ -399,7 +399,11 @@ impl TripleStoreBackend for TimeoutBackend {
         Err(crate::error::TripleStoreError::ConnectionFailed { attempts: 1 })
     }
 
-    async fn construct(&self, _query: &str, _timeout: Duration) -> crate::error::Result<String> {
+    async fn construct(
+        &self,
+        _query: &str,
+        _timeout: Duration,
+    ) -> crate::error::Result<Vec<String>> {
         Err(crate::error::TripleStoreError::ConnectionFailed { attempts: 1 })
     }
 
@@ -581,8 +585,12 @@ impl TripleStoreBackend for TestBackend {
         Ok(())
     }
 
-    async fn construct(&self, _query: &str, _timeout: Duration) -> crate::error::Result<String> {
-        Ok(String::new())
+    async fn construct(
+        &self,
+        _query: &str,
+        _timeout: Duration,
+    ) -> crate::error::Result<Vec<String>> {
+        Ok(Vec::new())
     }
 
     async fn ask(&self, _query: &str, _timeout: Duration) -> crate::error::Result<bool> {
@@ -623,8 +631,12 @@ impl TripleStoreBackend for InvalidSelectBackend {
         Ok(())
     }
 
-    async fn construct(&self, _query: &str, _timeout: Duration) -> crate::error::Result<String> {
-        Ok(String::new())
+    async fn construct(
+        &self,
+        _query: &str,
+        _timeout: Duration,
+    ) -> crate::error::Result<Vec<String>> {
+        Ok(Vec::new())
     }
 
     async fn ask(&self, _query: &str, _timeout: Duration) -> crate::error::Result<bool> {

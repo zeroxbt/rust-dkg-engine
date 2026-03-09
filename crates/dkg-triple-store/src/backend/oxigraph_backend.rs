@@ -128,7 +128,7 @@ impl TripleStoreBackend for OxigraphBackend {
         Ok(())
     }
 
-    async fn construct(&self, query: &str, _timeout: Duration) -> Result<String> {
+    async fn construct(&self, query: &str, _timeout: Duration) -> Result<Vec<String>> {
         // Parse the query
         let prepared = SparqlEvaluator::new().parse_query(query).map_err(|e| {
             TripleStoreError::InvalidQuery {
@@ -158,7 +158,7 @@ impl TripleStoreBackend for OxigraphBackend {
                             triple.subject, triple.predicate, triple.object
                         ));
                     }
-                    Ok(output.join("\n"))
+                    Ok(output)
                 }
                 _ => Err(TripleStoreError::Other(
                     "Expected CONSTRUCT to return graph results".to_string(),

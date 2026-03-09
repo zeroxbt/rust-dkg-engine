@@ -211,7 +211,7 @@ impl TripleStoreBackend for BlazegraphBackend {
         }
     }
 
-    async fn construct(&self, query: &str, timeout: Duration) -> Result<String> {
+    async fn construct(&self, query: &str, timeout: Duration) -> Result<Vec<String>> {
         let url = self.config.sparql_endpoint();
         let timeout_ms = timeout.as_millis();
 
@@ -227,7 +227,11 @@ impl TripleStoreBackend for BlazegraphBackend {
 
         if response.status().is_success() {
             let body = response.text().await?;
-            Ok(Self::decode_unicode_escapes(&body))
+            Ok(Self::decode_unicode_escapes(&body)
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .map(String::from)
+                .collect())
         } else {
             let status = response.status().as_u16();
             let message = response

@@ -135,8 +135,17 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             return CommandOutcome::Completed;
         };
 
-        // Apply UAL limit
-        let uals: Vec<String> = uals_source.iter().take(UAL_MAX_LIMIT).cloned().collect();
+        // Apply UAL limit after deduplication
+        let mut seen_uals = HashSet::new();
+        let mut uals = Vec::new();
+        for ual in uals_source.iter() {
+            if seen_uals.insert(ual.clone()) {
+                uals.push(ual.clone());
+                if uals.len() >= UAL_MAX_LIMIT {
+                    break;
+                }
+            }
+        }
         tracing::Span::current().record("ual_count", tracing::field::display(uals.len()));
 
         // Parse UALs and pair with token IDs

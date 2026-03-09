@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 pub(crate) mod build_assets;
 mod metadata;
@@ -7,7 +10,7 @@ use dkg_domain::{
     Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility,
     canonical_evm_address,
 };
-use dkg_repository::KcChainMetadataRepository;
+use dkg_repository::{KcChainMetadataEntry, KcChainMetadataRepository};
 #[cfg(test)]
 use dkg_triple_store::PRIVATE_HASH_SUBJECT_PREFIX;
 use dkg_triple_store::{GraphVisibility, TripleStoreManager, error::TripleStoreError};
@@ -51,7 +54,7 @@ impl TripleStoreAssertions {
     ///
     /// Follows the same logic as JS tripleStoreService.getAssertion:
     /// - For single KA: query named graph directly
-    /// - For collection: check if first/last KA exists, then query all named graphs
+    /// - For collection: query all named graphs in requested token range
     ///
     /// Returns the query result with public, private, and metadata triples,
     /// or None if not found. Errors are propagated to the caller.
@@ -165,23 +168,6 @@ impl TripleStoreAssertions {
         token_ids: &TokenIds,
         visibility: Visibility,
     ) -> Result<Option<Assertion>, TripleStoreError> {
-        let exists = self
-            .knowledge_collection_exists(
-                kc_ual,
-                token_ids.start_token_id(),
-                token_ids.end_token_id(),
-                token_ids.burned(),
-            )
-            .await?;
-
-        if !exists {
-            tracing::debug!(
-                kc_ual = %kc_ual,
-                "Knowledge collection does not exist locally"
-            );
-            return Ok(None);
-        }
-
         let need_public = visibility == Visibility::Public || visibility == Visibility::All;
         let need_private = visibility == Visibility::Private || visibility == Visibility::All;
 
@@ -275,18 +261,7 @@ impl TripleStoreAssertions {
             }
         };
 
-        let mode = PrivateGraphMode::from_raw(entry.private_graph_mode?)?;
-        let private_presence = PrivateGraphPresence::from_mode_and_payload(
-            mode,
-            entry.private_graph_payload.as_deref(),
-        )?;
-
-        Some(reconstruct_metadata_triples(
-            parsed_ual,
-            token_ids,
-            &entry,
-            &private_presence,
-        ))
+        Self::reconstruct_metadata_from_entry(parsed_ual, token_ids, &entry)
     }
 
     /// Query assertion data for multiple UALs in batch.
@@ -303,6 +278,13 @@ impl TripleStoreAssertions {
         visibility: Visibility,
         include_metadata: bool,
     ) -> Result<HashMap<String, AssertionQueryResult>, TripleStoreError> {
+        let metadata_by_ual = if include_metadata {
+            self.query_batch_metadata_from_sql(&uals_with_token_ids)
+                .await
+        } else {
+            HashMap::new()
+        };
+
         let max_in_flight = self.triple_store_manager.max_concurrent_operations();
 
         // Execute queries with bounded fan-out to avoid unbounded permit queuing.
@@ -310,7 +292,7 @@ impl TripleStoreAssertions {
             .map(|(parsed_ual, token_ids)| async move {
                 let ual_string = parsed_ual.to_ual_string();
                 let result = self
-                    .query_assertion(&parsed_ual, &token_ids, visibility, include_metadata)
+                    .query_assertion_data(&parsed_ual, &token_ids, visibility)
                     .await;
                 (ual_string, result)
             })
@@ -322,8 +304,15 @@ impl TripleStoreAssertions {
 
         while let Some((ual_string, result)) = query_stream.next().await {
             match result {
-                Ok(Some(r)) if r.assertion.has_data() => {
-                    results_map.insert(ual_string, r);
+                Ok(Some(assertion)) if assertion.has_data() => {
+                    let metadata = metadata_by_ual.get(&ual_string).cloned();
+                    results_map.insert(
+                        ual_string,
+                        AssertionQueryResult {
+                            assertion,
+                            metadata,
+                        },
+                    );
                 }
                 Ok(_) => {}
                 Err(e) => {
@@ -364,49 +353,91 @@ impl TripleStoreAssertions {
             .await
     }
 
-    /// Check if a knowledge collection exists locally in the triple store.
-    ///
-    /// Checks if both the first and last knowledge assets exist, which indicates
-    /// the entire collection is present locally.
-    pub(crate) async fn knowledge_collection_exists(
+    fn reconstruct_metadata_from_entry(
+        parsed_ual: &ParsedUal,
+        token_ids: &TokenIds,
+        entry: &KcChainMetadataEntry,
+    ) -> Option<Vec<String>> {
+        let mode = PrivateGraphMode::from_raw(entry.private_graph_mode?)?;
+        let private_presence = PrivateGraphPresence::from_mode_and_payload(
+            mode,
+            entry.private_graph_payload.as_deref(),
+        )?;
+
+        Some(reconstruct_metadata_triples(
+            parsed_ual,
+            token_ids,
+            entry,
+            &private_presence,
+        ))
+    }
+
+    async fn query_batch_metadata_from_sql(
         &self,
-        kc_ual: &str,
-        start_token_id: u64,
-        end_token_id: u64,
-        burned: &[u64],
-    ) -> Result<bool, TripleStoreError> {
-        let burned_set: std::collections::HashSet<u64> = burned.iter().copied().collect();
-
-        let mut first = start_token_id;
-        while first <= end_token_id && burned_set.contains(&first) {
-            first += 1;
+        uals_with_token_ids: &[(ParsedUal, TokenIds)],
+    ) -> HashMap<String, Vec<String>> {
+        let mut grouped_kc_ids: HashMap<(String, String), HashSet<u64>> = HashMap::new();
+        for (parsed_ual, _) in uals_with_token_ids {
+            let Ok(kc_id) = u64::try_from(parsed_ual.knowledge_collection_id) else {
+                continue;
+            };
+            let blockchain_id = parsed_ual.blockchain.to_string();
+            let contract_address = canonical_evm_address(&parsed_ual.contract);
+            grouped_kc_ids
+                .entry((blockchain_id, contract_address))
+                .or_default()
+                .insert(kc_id);
         }
-        if first > end_token_id {
-            return Ok(false);
-        }
 
-        let mut last = end_token_id;
-        loop {
-            if !burned_set.contains(&last) {
-                break;
+        let mut entries_by_key: HashMap<(String, String, u64), KcChainMetadataEntry> =
+            HashMap::new();
+        for ((blockchain_id, contract_address), kc_ids) in grouped_kc_ids {
+            let kc_ids = kc_ids.into_iter().collect::<Vec<_>>();
+            match self
+                .kc_chain_metadata_repository
+                .get_many_complete(&blockchain_id, &contract_address, &kc_ids)
+                .await
+            {
+                Ok(entries) => {
+                    for (kc_id, entry) in entries {
+                        entries_by_key.insert(
+                            (blockchain_id.clone(), contract_address.clone(), kc_id),
+                            entry,
+                        );
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        blockchain_id = blockchain_id,
+                        contract_address = %contract_address,
+                        error = %error,
+                        "Failed to read batched KC metadata from repository"
+                    );
+                }
             }
-            if last == 0 || last <= first {
-                return Ok(false);
-            }
-            last -= 1;
         }
 
-        let first_ka_ual = format!("{}/{}/public", kc_ual, first);
-        let last_ka_ual = format!("{}/{}/public", kc_ual, last);
+        let mut metadata_by_ual = HashMap::new();
+        for (parsed_ual, token_ids) in uals_with_token_ids {
+            let Ok(kc_id) = u64::try_from(parsed_ual.knowledge_collection_id) else {
+                continue;
+            };
+            let blockchain_id = parsed_ual.blockchain.to_string();
+            let contract_address = canonical_evm_address(&parsed_ual.contract);
+            let key = (blockchain_id, contract_address, kc_id);
 
-        let (first_exists, last_exists) = tokio::join!(
-            self.triple_store_manager
-                .knowledge_asset_exists(&first_ka_ual),
-            self.triple_store_manager
-                .knowledge_asset_exists(&last_ka_ual)
-        );
+            let Some(entry) = entries_by_key.get(&key) else {
+                continue;
+            };
 
-        Ok(first_exists? && last_exists?)
+            if let Some(metadata) =
+                Self::reconstruct_metadata_from_entry(parsed_ual, token_ids, entry)
+            {
+                metadata_by_ual.insert(parsed_ual.to_ual_string(), metadata);
+            }
+        }
+
+        metadata_by_ual
     }
 
     /// Check which knowledge collections exist by UAL (batched).
