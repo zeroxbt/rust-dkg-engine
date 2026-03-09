@@ -72,6 +72,7 @@ workspace = true
 [workspace]
 members = [
     "tools/local_network",
+    "tools/migrate-triple-store",
     "crates/dkg-domain",
     "crates/dkg-network",
     "crates/dkg-blockchain",

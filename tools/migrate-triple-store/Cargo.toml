@@ -1,0 +1,17 @@
+[package]
+name = "migrate-triple-store"
+version.workspace = true
+rust-version = "1.92.0"
+edition = "2024"
+
+[dependencies]
+alloy = { workspace = true }
+dkg-domain = { path = "../../crates/dkg-domain" }
+dkg-repository = { path = "../../crates/dkg-repository" }
+dkg-triple-store = { path = "../../crates/dkg-triple-store" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+clap = { workspace = true, features = ["derive"] }
+anyhow = "1"
+
+[lints]
+workspace = true

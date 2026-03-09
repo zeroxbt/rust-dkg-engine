@@ -4577,6 +4577,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "migrate-triple-store"
+version = "0.2.10"
+dependencies = [
+ "alloy",
+ "anyhow",
+ "clap",
+ "dkg-domain",
+ "dkg-repository",
+ "dkg-triple-store",
+ "tokio",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"

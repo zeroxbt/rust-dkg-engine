@@ -33,6 +33,12 @@ pub use types::GraphVisibility;
 pub const PRIVATE_HASH_SUBJECT_PREFIX: &str = query::subjects::PRIVATE_HASH_SUBJECT_PREFIX;
 /// Predicate IRI used for private merkle root in public assertion graphs.
 pub const PRIVATE_MERKLE_ROOT: &str = query::predicates::PRIVATE_MERKLE_ROOT;
+/// Named graph for KC/KA metadata.
+pub const METADATA_GRAPH: &str = query::named_graphs::METADATA;
+/// Named graph tracking active named graphs.
+pub const CURRENT_GRAPH: &str = query::named_graphs::CURRENT;
+/// Predicate linking a KC to its named graphs.
+pub const HAS_NAMED_GRAPH: &str = query::predicates::HAS_NAMED_GRAPH;
 
 #[cfg(test)]
 mod tests;
@@ -188,7 +194,7 @@ impl TripleStoreManager {
     }
 
     /// Execute a SPARQL UPDATE with concurrency limiting
-    pub(crate) async fn backend_update(&self, query: &str, timeout: Duration) -> Result<()> {
+    pub async fn backend_update(&self, query: &str, timeout: Duration) -> Result<()> {
         let backend = self.backend.name();
         let op = "update";
         let started = Instant::now();
