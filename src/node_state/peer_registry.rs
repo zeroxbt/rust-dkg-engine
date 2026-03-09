@@ -337,17 +337,13 @@ impl PeerRegistry {
         });
     }
 
-    /// Returns up to `limit` peers for a shard+protocol, sorted by average latency (fastest first).
+    /// Returns peers for a shard+protocol, sorted by average latency (fastest first).
     pub(crate) fn top_peers_by_latency(
         &self,
         blockchain_id: &BlockchainId,
         protocol: &'static str,
         exclude_peer: Option<&PeerId>,
-        limit: usize,
     ) -> Vec<PeerLatencySnapshot> {
-        if limit == 0 {
-            return Vec::new();
-        }
         let Some(protocol) = Self::parse_stream_protocol(protocol) else {
             return Vec::new();
         };
@@ -378,7 +374,6 @@ impl PeerRegistry {
             .collect();
 
         peers.sort_by_key(|peer| peer.average_latency_ms);
-        peers.truncate(limit);
         peers
     }
 
