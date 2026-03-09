@@ -310,10 +310,12 @@ impl PeerRegistry {
     }
 
     /// Record a failed request (timeout, dial failure, etc.).
-    /// Failures are recorded as high latency to naturally sort failing peers last.
-    pub(crate) fn record_request_failure(&self, peer_id: PeerId) {
+    /// Failures are recorded using observed elapsed latency, clamped to a
+    /// penalty range so quick failures don't look "fast" and timeouts remain heavily penalized.
+    pub(crate) fn record_request_failure(&self, peer_id: PeerId, elapsed: Duration) {
+        let penalty_ms = failure_penalty_latency_ms(elapsed);
         if let Some(mut peer) = self.peers.get_mut(&peer_id) {
-            peer.performance.record(FAILURE_LATENCY_MS);
+            peer.performance.record(penalty_ms);
             peer.last_failure_at = Some(Instant::now());
         }
     }
@@ -471,7 +473,7 @@ impl PeerRegistry {
                                 elapsed_ms = outcome.elapsed.as_millis() as u64,
                                 "Peer request failed with response error"
                             );
-                            self.record_request_failure(outcome.peer_id);
+                            self.record_request_failure(outcome.peer_id, outcome.elapsed);
                         }
                         RequestOutcomeKind::Failure => {
                             tracing::warn!(
@@ -480,7 +482,7 @@ impl PeerRegistry {
                                 elapsed_ms = outcome.elapsed.as_millis() as u64,
                                 "Peer request failed (timeout/dial/network)"
                             );
-                            self.record_request_failure(outcome.peer_id);
+                            self.record_request_failure(outcome.peer_id, outcome.elapsed);
                         }
                     },
                     protocol if protocol == PROTOCOL_NAME_GET => {
@@ -491,7 +493,7 @@ impl PeerRegistry {
                                 elapsed_ms = outcome.elapsed.as_millis() as u64,
                                 "GET request to peer failed (timeout/dial/network)"
                             );
-                            self.record_request_failure(outcome.peer_id);
+                            self.record_request_failure(outcome.peer_id, outcome.elapsed);
                         }
                     }
                     _ => {}
@@ -551,6 +553,13 @@ impl Default for PeerRegistry {
     }
 }
 
+fn failure_penalty_latency_ms(elapsed: Duration) -> u64 {
+    // Clamp failure penalty into [default, timeout] window so failures are always penalized,
+    // while distinguishing quick dial failures from full request timeouts.
+    let elapsed_ms = elapsed.as_millis() as u64;
+    elapsed_ms.clamp(DEFAULT_LATENCY_MS, FAILURE_LATENCY_MS)
+}
+
 #[cfg(test)]
 mod tests {
     use dkg_network::{PROTOCOL_NAME_BATCH_GET, PeerEvent, RequestOutcome, RequestOutcomeKind};
@@ -601,7 +610,7 @@ mod tests {
         let peer = PeerId::random();
         register_peer(&registry, peer);
 
-        registry.record_request_failure(peer);
+        registry.record_request_failure(peer, Duration::from_millis(FAILURE_LATENCY_MS));
         assert_eq!(registry.get_average_latency(&peer), FAILURE_LATENCY_MS);
     }
 
@@ -612,8 +621,28 @@ mod tests {
         register_peer(&registry, peer);
 
         registry.record_latency(peer, Duration::from_millis(1000));
-        registry.record_request_failure(peer);
+        registry.record_request_failure(peer, Duration::from_millis(FAILURE_LATENCY_MS));
         assert_eq!(registry.get_average_latency(&peer), 8000);
+    }
+
+    #[test]
+    fn test_quick_failure_is_clamped_to_default_penalty() {
+        let registry = PeerRegistry::new();
+        let peer = PeerId::random();
+        register_peer(&registry, peer);
+
+        registry.record_request_failure(peer, Duration::from_millis(50));
+        assert_eq!(registry.get_average_latency(&peer), DEFAULT_LATENCY_MS);
+    }
+
+    #[test]
+    fn test_failure_penalty_uses_elapsed_when_in_range() {
+        let registry = PeerRegistry::new();
+        let peer = PeerId::random();
+        register_peer(&registry, peer);
+
+        registry.record_request_failure(peer, Duration::from_millis(8_000));
+        assert_eq!(registry.get_average_latency(&peer), 8_000);
     }
 
     #[test]
@@ -657,8 +686,8 @@ mod tests {
         registry.record_latency(slow_peer, Duration::from_millis(8000));
         registry.record_latency(slow_peer, Duration::from_millis(8000));
 
-        registry.record_request_failure(failing_peer);
-        registry.record_request_failure(failing_peer);
+        registry.record_request_failure(failing_peer, Duration::from_millis(FAILURE_LATENCY_MS));
+        registry.record_request_failure(failing_peer, Duration::from_millis(FAILURE_LATENCY_MS));
 
         let mut peers = vec![failing_peer, unknown_peer, slow_peer, fast_peer];
         registry.sort_by_latency(&mut peers);
