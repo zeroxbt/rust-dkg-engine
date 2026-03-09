@@ -119,8 +119,8 @@ fn dkg_sync() -> DkgSyncConfig {
     DkgSyncConfig {
         discovery: DkgSyncDiscoveryConfig {
             max_contract_concurrency: 2,
-            metadata_discovery_max_blocks_per_chunk: 128,
-            metadata_state_max_kc_per_chunk: 64,
+            metadata_discovery_max_blocks_per_chunk: 50,
+            metadata_state_max_kc_per_chunk: 32,
             metadata_error_retry_interval_secs: 30,
             live_poll_interval_secs: 5,
             queue_high_kc_watermark: 2048,
@@ -130,7 +130,7 @@ fn dkg_sync() -> DkgSyncConfig {
             inflight_kc_limit: 128,
             dispatch_max_kc_per_attempt: 64,
             stage_channel_message_buffer: 4,
-            filter_max_kc_per_chunk: 64,
+            filter_max_kc_per_chunk: 32,
             fetch_max_kc_per_batch: 128,
             fetch_peer_fanout_concurrency: 3,
             fetch_max_ka_per_batch: 16_384,
