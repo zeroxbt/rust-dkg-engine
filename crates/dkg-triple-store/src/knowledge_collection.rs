@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{collections::HashSet, time::Instant};
 
 use dkg_domain::{KnowledgeAsset, KnowledgeCollectionMetadata};
 
@@ -246,6 +246,46 @@ impl TripleStoreManager {
             existing.extend(selected);
         }
 
+        Ok(existing)
+    }
+
+    /// Check which knowledge collections have at least one triple in the given data graphs.
+    ///
+    /// `probes` contains pairs of `(kc_ual, data_graph_ual)` where `data_graph_ual` is
+    /// typically the first non-burned asset graph for that KC.
+    ///
+    /// This executes as a single SELECT query (no chunking) and returns the subset of KC UALs
+    /// whose probe graph has at least one triple.
+    pub async fn knowledge_collections_exist_by_data_graph_probes(
+        &self,
+        probes: &[(String, String)],
+    ) -> Result<HashSet<String>> {
+        let mut existing = HashSet::new();
+
+        if probes.is_empty() {
+            return Ok(existing);
+        }
+
+        let values: String = probes
+            .iter()
+            .map(|(kc_ual, graph_ual)| format!("(<{kc_ual}> <{graph_ual}>)"))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let query = format!(
+            r#"SELECT DISTINCT ?kc WHERE {{
+                VALUES (?kc ?g) {{ {values} }}
+                GRAPH ?g {{ ?s ?p ?o }}
+            }}"#,
+            values = values
+        );
+
+        let response = self
+            .backend_select(&query, self.config.timeouts.query_timeout())
+            .await?;
+
+        let selected = crate::sparql::parse_select_values(&response, "kc")?;
+        existing.extend(selected);
         Ok(existing)
     }
 }

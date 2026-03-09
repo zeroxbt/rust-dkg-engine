@@ -278,9 +278,15 @@ impl TripleStoreAssertions {
         visibility: Visibility,
         include_metadata: bool,
     ) -> Result<HashMap<String, AssertionQueryResult>, TripleStoreError> {
-        let metadata_by_ual = if include_metadata {
-            self.query_batch_metadata_from_sql(&uals_with_token_ids)
+        let candidates = if visibility == Visibility::Public {
+            self.prefilter_kcs_by_first_public_graph(&uals_with_token_ids)
                 .await
+        } else {
+            uals_with_token_ids
+        };
+
+        let metadata_by_ual = if include_metadata {
+            self.query_batch_metadata_from_sql(&candidates).await
         } else {
             HashMap::new()
         };
@@ -288,7 +294,7 @@ impl TripleStoreAssertions {
         let max_in_flight = self.triple_store_manager.max_concurrent_operations();
 
         // Execute queries with bounded fan-out to avoid unbounded permit queuing.
-        let mut query_stream = stream::iter(uals_with_token_ids.into_iter())
+        let mut query_stream = stream::iter(candidates.into_iter())
             .map(|(parsed_ual, token_ids)| async move {
                 let ual_string = parsed_ual.to_ual_string();
                 let result = self
@@ -438,6 +444,75 @@ impl TripleStoreAssertions {
         }
 
         metadata_by_ual
+    }
+
+    async fn prefilter_kcs_by_first_public_graph(
+        &self,
+        uals_with_token_ids: &[(ParsedUal, TokenIds)],
+    ) -> Vec<(ParsedUal, TokenIds)> {
+        let mut probes: Vec<(String, String)> = Vec::new();
+        let mut seen_kc_uals = HashSet::new();
+
+        for (parsed_ual, token_ids) in uals_with_token_ids {
+            if parsed_ual.knowledge_asset_id.is_some() {
+                continue;
+            }
+
+            let Some(first_token_id) = Self::first_non_burned_token_id(token_ids) else {
+                continue;
+            };
+            let kc_ual = parsed_ual.to_ual_string();
+
+            if seen_kc_uals.insert(kc_ual.clone()) {
+                let probe_graph = format!("{kc_ual}/{first_token_id}/public");
+                probes.push((kc_ual, probe_graph));
+            }
+        }
+
+        let existing_kcs = match self
+            .triple_store_manager
+            .knowledge_collections_exist_by_data_graph_probes(&probes)
+            .await
+        {
+            Ok(existing) => existing,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    probe_count = probes.len(),
+                    "Failed KC data-graph prefilter probe; falling back to unfiltered batch query"
+                );
+                return uals_with_token_ids.to_vec();
+            }
+        };
+
+        uals_with_token_ids
+            .iter()
+            .filter_map(|(parsed_ual, token_ids)| {
+                if parsed_ual.knowledge_asset_id.is_some() {
+                    return Some((parsed_ual.clone(), token_ids.clone()));
+                }
+
+                let Some(_) = Self::first_non_burned_token_id(token_ids) else {
+                    return None;
+                };
+                let kc_ual = parsed_ual.to_ual_string();
+                existing_kcs
+                    .contains(&kc_ual)
+                    .then_some((parsed_ual.clone(), token_ids.clone()))
+            })
+            .collect()
+    }
+
+    fn first_non_burned_token_id(token_ids: &TokenIds) -> Option<u64> {
+        let burned: HashSet<u64> = token_ids.burned().iter().copied().collect();
+        let mut token_id = token_ids.start_token_id();
+        while token_id <= token_ids.end_token_id() {
+            if !burned.contains(&token_id) {
+                return Some(token_id);
+            }
+            token_id = token_id.saturating_add(1);
+        }
+        None
     }
 
     /// Check which knowledge collections exist by UAL (batched).

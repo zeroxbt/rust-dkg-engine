@@ -193,6 +193,38 @@ async fn knowledge_collections_exist_empty_input() {
 }
 
 #[tokio::test]
+async fn knowledge_collections_exist_by_data_graph_probes_returns_existing_subset() {
+    let (manager, _temp_dir) = setup_manager().await;
+
+    let kc_ual = "did:dkg:kc/probe";
+    let ka = KnowledgeAsset::new(
+        format!("{}/1", kc_ual),
+        vec!["<http://example.org/s1> <http://example.org/p1> \"o1\" .".to_string()],
+    );
+
+    manager
+        .insert_knowledge_collection(kc_ual, &[ka], None, None)
+        .await
+        .unwrap();
+
+    let probes = vec![
+        (kc_ual.to_string(), format!("{}/1/public", kc_ual)),
+        (kc_ual.to_string(), format!("{}/999/public", kc_ual)),
+        (
+            "did:dkg:kc/missing".to_string(),
+            "did:dkg:kc/missing/1/public".to_string(),
+        ),
+    ];
+
+    let existing = manager
+        .knowledge_collections_exist_by_data_graph_probes(&probes)
+        .await
+        .unwrap();
+    let expected: HashSet<String> = [kc_ual.to_string()].into_iter().collect();
+    assert_eq!(existing, expected);
+}
+
+#[tokio::test]
 async fn knowledge_asset_missing_returns_false() {
     let (manager, _temp_dir) = setup_manager().await;
     let exists = manager
