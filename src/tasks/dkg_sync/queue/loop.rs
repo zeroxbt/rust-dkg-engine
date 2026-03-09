@@ -107,6 +107,37 @@ pub(crate) async fn run(
 
         let mut dispatched = false;
         if !draining && enough_peers_for_fetch(&deps, &blockchain_id) {
+            if let Some(coalesce_wait) = dispatch_coalesce_delay(&config, inflight.len()) {
+                tokio::select! {
+                    _ = shutdown.cancelled() => {
+                        draining = true;
+                        tracing::info!(
+                            blockchain_id = %blockchain_id,
+                            "DKG sync queue processor entering draining mode during dispatch coalescing wait"
+                        );
+                        continue;
+                    }
+                    maybe_outcomes = outcome_rx.recv() => {
+                        if let Some(outcomes) = maybe_outcomes {
+                            outcomes::apply_queue_outcomes(
+                                &deps,
+                                &mut inflight,
+                                notify.as_ref(),
+                                &blockchain_id,
+                                outcomes,
+                                SYNC_RETRY_DELAY_SECS,
+                                config.queue_processor.max_retry_attempts,
+                            )
+                            .await;
+                        } else {
+                            outcome_channel_closed = true;
+                        }
+                        continue;
+                    }
+                    _ = notify.notified() => {}
+                    _ = tokio::time::sleep(coalesce_wait) => {}
+                }
+            }
             dispatched = dispatcher::dispatch_due_fifo(
                 &config,
                 &deps,
@@ -152,4 +183,25 @@ fn enough_peers_for_fetch(deps: &DkgSyncDeps, blockchain_id: &BlockchainId) -> b
         .identified_shard_peer_count(blockchain_id);
     let min_required = (total_shard_peers / 3).max(3);
     identified_peers >= min_required
+}
+
+fn dispatch_coalesce_delay(config: &DkgSyncConfig, inflight_len: usize) -> Option<Duration> {
+    let inflight_limit = config.queue_processor.inflight_kc_limit.max(1);
+    let dispatch_max_kc_per_attempt = config.queue_processor.dispatch_max_kc_per_attempt.max(1);
+    let dispatch_target_kc_per_push = config
+        .queue_processor
+        .dispatch_target_kc_per_push
+        .filter(|value| *value > 1)?;
+    let dispatch_target_kc_per_push = dispatch_target_kc_per_push.min(dispatch_max_kc_per_attempt);
+    let dispatch_coalesce_wait_ms = config
+        .queue_processor
+        .dispatch_coalesce_wait_ms
+        .filter(|value| *value > 0)?;
+
+    let free_slots = inflight_limit.saturating_sub(inflight_len);
+    if free_slots == 0 || free_slots >= dispatch_target_kc_per_push {
+        return None;
+    }
+
+    Some(Duration::from_millis(dispatch_coalesce_wait_ms))
 }

@@ -26,6 +26,15 @@ pub(crate) struct DkgSyncQueueProcessorConfig {
     pub inflight_kc_limit: usize,
     /// Max number of due queue rows dispatcher pulls in one dispatch attempt.
     pub dispatch_max_kc_per_attempt: usize,
+    /// Optional target dispatch size used by dispatcher coalescing.
+    ///
+    /// When set, dispatcher may briefly wait for more free in-flight slots before
+    /// dispatching if current free slots are below this target.
+    pub dispatch_target_kc_per_push: Option<usize>,
+    /// Optional coalescing wait window in milliseconds.
+    ///
+    /// Effective only when `dispatch_target_kc_per_push` is set.
+    pub dispatch_coalesce_wait_ms: Option<u64>,
     /// Per-channel message buffer between pipeline stages.
     pub stage_channel_message_buffer: usize,
     pub filter_max_kc_per_chunk: usize,

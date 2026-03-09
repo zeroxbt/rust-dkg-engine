@@ -36,6 +36,8 @@ impl DkgSyncTask {
             blockchain_id = %blockchain_id,
             inflight_kc_limit = queue_cfg.inflight_kc_limit,
             dispatch_max_kc_per_attempt = queue_cfg.dispatch_max_kc_per_attempt,
+            dispatch_target_kc_per_push = ?queue_cfg.dispatch_target_kc_per_push,
+            dispatch_coalesce_wait_ms = ?queue_cfg.dispatch_coalesce_wait_ms,
             stage_channel_message_buffer = queue_cfg.stage_channel_message_buffer,
             filter_max_kc_per_chunk = queue_cfg.filter_max_kc_per_chunk,
             fetch_max_kc_per_batch = queue_cfg.fetch_max_kc_per_batch,

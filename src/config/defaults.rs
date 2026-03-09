@@ -129,6 +129,8 @@ fn dkg_sync() -> DkgSyncConfig {
         queue_processor: DkgSyncQueueProcessorConfig {
             inflight_kc_limit: 128,
             dispatch_max_kc_per_attempt: 64,
+            dispatch_target_kc_per_push: None,
+            dispatch_coalesce_wait_ms: None,
             stage_channel_message_buffer: 4,
             filter_max_kc_per_chunk: 32,
             fetch_max_kc_per_batch: 128,
