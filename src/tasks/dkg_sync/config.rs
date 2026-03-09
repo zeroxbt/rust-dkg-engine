@@ -35,6 +35,10 @@ pub(crate) struct DkgSyncQueueProcessorConfig {
     /// `1` preserves previous behavior (sequential fetch batches).
     pub fetch_batch_concurrency: usize,
     pub fetch_peer_fanout_concurrency: usize,
+    /// Optional hard cap on how many peers can be attempted for a single fetch batch.
+    ///
+    /// `None` means no cap (all eligible peers). `Some(n)` limits attempts to top `n` peers.
+    pub max_peer_attempts_per_batch: Option<usize>,
     pub fetch_max_ka_per_batch: u64,
     pub insert_kc_concurrency: usize,
 

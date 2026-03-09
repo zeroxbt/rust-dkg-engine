@@ -41,6 +41,7 @@ impl DkgSyncTask {
             fetch_max_kc_per_batch = queue_cfg.fetch_max_kc_per_batch,
             fetch_batch_concurrency = queue_cfg.fetch_batch_concurrency,
             fetch_peer_fanout_concurrency = queue_cfg.fetch_peer_fanout_concurrency,
+            max_peer_attempts_per_batch = ?queue_cfg.max_peer_attempts_per_batch,
             fetch_max_ka_per_batch = queue_cfg.fetch_max_ka_per_batch,
             insert_kc_concurrency = queue_cfg.insert_kc_concurrency,
             "Starting DKG sync queue processor"

@@ -48,6 +48,7 @@ pub(crate) async fn run_fetch_stage(
     fetch_max_kc_per_batch: usize,
     fetch_batch_concurrency: usize,
     batch_get_fanout_concurrency: usize,
+    max_peer_attempts_per_batch: Option<usize>,
     fetch_max_ka_per_batch: u64,
     blockchain_id: BlockchainId,
     network_manager: Arc<NetworkManager>,
@@ -59,6 +60,7 @@ pub(crate) async fn run_fetch_stage(
     let fetch_max_kc_per_batch = fetch_max_kc_per_batch.max(1);
     let fetch_batch_concurrency = fetch_batch_concurrency.max(1);
     let batch_get_fanout_concurrency = batch_get_fanout_concurrency.max(1);
+    let max_peer_attempts_per_batch = max_peer_attempts_per_batch.filter(|value| *value > 0);
     let fetch_max_ka_per_batch = fetch_max_ka_per_batch.max(1);
 
     let mut accumulated: Vec<KcToSync> = Vec::new();
@@ -94,6 +96,7 @@ pub(crate) async fn run_fetch_stage(
                     &blockchain_id_for_batch,
                     &to_fetch,
                     batch_get_fanout_concurrency,
+                    max_peer_attempts_per_batch,
                     &network_manager_for_batch,
                     assertion_validation_for_batch.as_ref(),
                     peer_registry_for_batch.as_ref(),
@@ -302,6 +305,7 @@ async fn fetch_kc_batch_with_live_peers(
     blockchain_id: &BlockchainId,
     kcs: &[KcToSync],
     batch_get_fanout_concurrency: usize,
+    max_peer_attempts_per_batch: Option<usize>,
     network_manager: &Arc<NetworkManager>,
     assertion_validation: &AssertionValidation,
     peer_registry: &PeerRegistry,
@@ -327,6 +331,19 @@ async fn fetch_kc_batch_with_live_peers(
     }
 
     peer_registry.sort_by_latency(&mut peers);
+    let available_peers = peers.len();
+    if let Some(max_peer_attempts_per_batch) = max_peer_attempts_per_batch
+        && available_peers > max_peer_attempts_per_batch
+    {
+        peers.truncate(max_peer_attempts_per_batch);
+        tracing::trace!(
+            blockchain_id = %blockchain_id,
+            batch_kcs = kcs.len(),
+            available_peers,
+            max_peer_attempts_per_batch,
+            "Fetch: limiting peer attempts for batch"
+        );
+    }
     fetch_kc_batch_from_network(
         blockchain_id,
         kcs,

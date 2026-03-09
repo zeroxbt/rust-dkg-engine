@@ -134,6 +134,7 @@ fn dkg_sync() -> DkgSyncConfig {
             fetch_max_kc_per_batch: 128,
             fetch_batch_concurrency: 1,
             fetch_peer_fanout_concurrency: 3,
+            max_peer_attempts_per_batch: Some(6),
             fetch_max_ka_per_batch: 16_384,
             insert_kc_concurrency: 8,
             dispatch_idle_poll_secs: 5,
