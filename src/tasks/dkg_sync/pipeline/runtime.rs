@@ -57,6 +57,15 @@ impl DkgSyncPipeline {
         let max_peer_attempts_per_batch = queue_processor
             .max_peer_attempts_per_batch
             .filter(|value| *value > 0);
+        let peer_exploration_rate = queue_processor
+            .peer_exploration_rate
+            .and_then(|rate| {
+                if !rate.is_finite() {
+                    return None;
+                }
+                Some(rate.clamp(0.0, 1.0))
+            })
+            .filter(|rate| *rate > 0.0);
         let insert_kc_concurrency = queue_processor.insert_kc_concurrency.max(1);
         let fetch_max_ka_per_batch = queue_processor.fetch_max_ka_per_batch.max(1);
 
@@ -97,6 +106,7 @@ impl DkgSyncPipeline {
                     fetch_batch_concurrency,
                     fetch_peer_fanout_concurrency,
                     max_peer_attempts_per_batch,
+                    peer_exploration_rate,
                     fetch_max_ka_per_batch,
                     blockchain_id,
                     network_manager,

@@ -49,6 +49,7 @@ pub(crate) async fn run_fetch_stage(
     fetch_batch_concurrency: usize,
     batch_get_fanout_concurrency: usize,
     max_peer_attempts_per_batch: Option<usize>,
+    peer_exploration_rate: Option<f64>,
     fetch_max_ka_per_batch: u64,
     blockchain_id: BlockchainId,
     network_manager: Arc<NetworkManager>,
@@ -61,6 +62,14 @@ pub(crate) async fn run_fetch_stage(
     let fetch_batch_concurrency = fetch_batch_concurrency.max(1);
     let batch_get_fanout_concurrency = batch_get_fanout_concurrency.max(1);
     let max_peer_attempts_per_batch = max_peer_attempts_per_batch.filter(|value| *value > 0);
+    let peer_exploration_rate = peer_exploration_rate
+        .and_then(|rate| {
+            if !rate.is_finite() {
+                return None;
+            }
+            Some(rate.clamp(0.0, 1.0))
+        })
+        .filter(|rate| *rate > 0.0);
     let fetch_max_ka_per_batch = fetch_max_ka_per_batch.max(1);
 
     let mut accumulated: Vec<KcToSync> = Vec::new();
@@ -97,6 +106,7 @@ pub(crate) async fn run_fetch_stage(
                     &to_fetch,
                     batch_get_fanout_concurrency,
                     max_peer_attempts_per_batch,
+                    peer_exploration_rate,
                     &network_manager_for_batch,
                     assertion_validation_for_batch.as_ref(),
                     peer_registry_for_batch.as_ref(),
@@ -306,6 +316,7 @@ async fn fetch_kc_batch_with_live_peers(
     kcs: &[KcToSync],
     batch_get_fanout_concurrency: usize,
     max_peer_attempts_per_batch: Option<usize>,
+    peer_exploration_rate: Option<f64>,
     network_manager: &Arc<NetworkManager>,
     assertion_validation: &AssertionValidation,
     peer_registry: &PeerRegistry,
@@ -331,19 +342,13 @@ async fn fetch_kc_batch_with_live_peers(
     }
 
     peer_registry.sort_by_latency(&mut peers);
-    let available_peers = peers.len();
-    if let Some(max_peer_attempts_per_batch) = max_peer_attempts_per_batch
-        && available_peers > max_peer_attempts_per_batch
-    {
-        peers.truncate(max_peer_attempts_per_batch);
-        tracing::trace!(
-            blockchain_id = %blockchain_id,
-            batch_kcs = kcs.len(),
-            available_peers,
-            max_peer_attempts_per_batch,
-            "Fetch: limiting peer attempts for batch"
-        );
-    }
+    let peers = apply_peer_attempt_cap(
+        peers,
+        max_peer_attempts_per_batch,
+        peer_exploration_rate,
+        blockchain_id,
+        kcs.len(),
+    );
     fetch_kc_batch_from_network(
         blockchain_id,
         kcs,
@@ -353,6 +358,65 @@ async fn fetch_kc_batch_with_live_peers(
         assertion_validation,
     )
     .await
+}
+
+fn apply_peer_attempt_cap(
+    mut peers: Vec<PeerId>,
+    max_peer_attempts_per_batch: Option<usize>,
+    peer_exploration_rate: Option<f64>,
+    blockchain_id: &BlockchainId,
+    batch_kcs: usize,
+) -> Vec<PeerId> {
+    let Some(max_peer_attempts_per_batch) = max_peer_attempts_per_batch else {
+        return peers;
+    };
+    if peers.len() <= max_peer_attempts_per_batch {
+        return peers;
+    }
+
+    let available_peers = peers.len();
+    let mut selected: Vec<PeerId> = peers.drain(..max_peer_attempts_per_batch).collect();
+    let tail_len = peers.len();
+
+    let mut exploration_used = false;
+    let mut exploration_peer_id = None;
+    if should_explore(peer_exploration_rate) && tail_len > 0 {
+        let tail_idx = random_below(tail_len);
+        let exploratory_peer = peers[tail_idx];
+        selected[max_peer_attempts_per_batch - 1] = exploratory_peer;
+        exploration_used = true;
+        exploration_peer_id = Some(exploratory_peer.to_base58());
+    }
+
+    tracing::trace!(
+        blockchain_id = %blockchain_id,
+        batch_kcs,
+        available_peers,
+        max_peer_attempts_per_batch,
+        exploration_used,
+        exploration_peer_id = ?exploration_peer_id,
+        "Fetch: limiting peer attempts for batch"
+    );
+
+    selected
+}
+
+fn should_explore(peer_exploration_rate: Option<f64>) -> bool {
+    let Some(rate) = peer_exploration_rate else {
+        return false;
+    };
+    if rate >= 1.0 {
+        return true;
+    }
+
+    let threshold = (rate * 10_000.0).round() as u128;
+    let draw = uuid::Uuid::new_v4().as_u128() % 10_000;
+    draw < threshold
+}
+
+fn random_below(bound: usize) -> usize {
+    debug_assert!(bound > 0);
+    (uuid::Uuid::new_v4().as_u128() % bound as u128) as usize
 }
 
 /// Get shard peers for the given blockchain, excluding self.

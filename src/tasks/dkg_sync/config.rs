@@ -39,6 +39,10 @@ pub(crate) struct DkgSyncQueueProcessorConfig {
     ///
     /// `None` means no cap (all eligible peers). `Some(n)` limits attempts to top `n` peers.
     pub max_peer_attempts_per_batch: Option<usize>,
+    /// Optional probability (0.0..=1.0) of replacing one capped top peer with a random tail peer.
+    ///
+    /// Enables occasional exploration so de-prioritized peers can recover.
+    pub peer_exploration_rate: Option<f64>,
     pub fetch_max_ka_per_batch: u64,
     pub insert_kc_concurrency: usize,
 
