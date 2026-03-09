@@ -198,9 +198,10 @@ pub fn build_swarm(
         batch_get,
     };
 
-    // Build the swarm with configurable idle connection timeout.
-    // Default libp2p timeout is 10 seconds, which causes connections to drop quickly.
-    // We use a configurable timeout (default 5 minutes) to maintain shard table connections.
+    // Build the swarm with configurable connection and idle timeouts.
+    // - connection timeout controls how long dialing/handshake can take.
+    // - idle timeout controls how long established but idle connections are kept alive.
+    let connection_timeout = config.connection_timeout();
     let idle_timeout = config.idle_connection_timeout();
     // Use yamux as the preferred multiplexer (better flow control, no head-of-line blocking)
     // with mplex as fallback for compatibility with older JS libp2p nodes.
@@ -218,6 +219,7 @@ pub fn build_swarm(
         .map_err(NetworkError::TransportCreation)?
         .with_behaviour(|_| behaviour)?
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(idle_timeout))
+        .with_connection_timeout(connection_timeout)
         .build();
 
     // Add external address for NAT traversal if configured.

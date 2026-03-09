@@ -51,6 +51,7 @@ impl DkgSyncPipeline {
         let stage_channel_message_buffer = queue_processor.stage_channel_message_buffer.max(1);
         let filter_max_kc_per_chunk = queue_processor.filter_max_kc_per_chunk.max(1);
         let fetch_max_kc_per_batch = queue_processor.fetch_max_kc_per_batch.max(1);
+        let fetch_batch_concurrency = queue_processor.fetch_batch_concurrency.max(1);
         let fetch_peer_fanout_concurrency = queue_processor.fetch_peer_fanout_concurrency.max(1);
         let insert_kc_concurrency = queue_processor.insert_kc_concurrency.max(1);
         let fetch_max_ka_per_batch = queue_processor.fetch_max_ka_per_batch.max(1);
@@ -89,6 +90,7 @@ impl DkgSyncPipeline {
                 run_fetch_stage(
                     filter_rx,
                     fetch_max_kc_per_batch,
+                    fetch_batch_concurrency,
                     fetch_peer_fanout_concurrency,
                     fetch_max_ka_per_batch,
                     blockchain_id,

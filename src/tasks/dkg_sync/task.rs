@@ -39,6 +39,7 @@ impl DkgSyncTask {
             stage_channel_message_buffer = queue_cfg.stage_channel_message_buffer,
             filter_max_kc_per_chunk = queue_cfg.filter_max_kc_per_chunk,
             fetch_max_kc_per_batch = queue_cfg.fetch_max_kc_per_batch,
+            fetch_batch_concurrency = queue_cfg.fetch_batch_concurrency,
             fetch_peer_fanout_concurrency = queue_cfg.fetch_peer_fanout_concurrency,
             fetch_max_ka_per_batch = queue_cfg.fetch_max_ka_per_batch,
             insert_kc_concurrency = queue_cfg.insert_kc_concurrency,

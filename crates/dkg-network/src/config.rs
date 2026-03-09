@@ -14,11 +14,18 @@ pub struct NetworkManagerConfig {
     /// If set, the node will advertise this address so peers behind NAT can be reached.
     /// Must be a valid public IPv4 address.
     pub external_ip: Option<String>,
+    /// Max time to establish a new outbound/inbound connection (in seconds).
+    pub connection_timeout_secs: u64,
     /// How long to keep idle connections open (in seconds).
     pub idle_connection_timeout_secs: u64,
 }
 
 impl NetworkManagerConfig {
+    /// Get connection establishment timeout as Duration
+    pub fn connection_timeout(&self) -> Duration {
+        Duration::from_secs(self.connection_timeout_secs)
+    }
+
     /// Get idle connection timeout as Duration
     pub fn idle_connection_timeout(&self) -> Duration {
         Duration::from_secs(self.idle_connection_timeout_secs)

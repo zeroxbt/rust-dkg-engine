@@ -4,7 +4,8 @@ pub(crate) mod build_assets;
 mod metadata;
 
 use dkg_domain::{
-    Assertion, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility, canonical_evm_address,
+    Assertion, KnowledgeAsset, KnowledgeCollectionMetadata, ParsedUal, TokenIds, Visibility,
+    canonical_evm_address,
 };
 use dkg_repository::KcChainMetadataRepository;
 #[cfg(test)]
@@ -13,7 +14,7 @@ use dkg_triple_store::{GraphVisibility, TripleStoreManager, error::TripleStoreEr
 use futures::{StreamExt, stream};
 use tracing::instrument;
 
-use self::{build_assets::build_knowledge_assets, metadata::reconstruct_metadata_triples};
+use self::metadata::reconstruct_metadata_triples;
 use crate::application::state_metadata::{PrivateGraphMode, PrivateGraphPresence};
 #[cfg(test)]
 use crate::application::state_metadata::{decode_sparse_ids, encode_bitmap, encode_sparse_ids};
@@ -340,35 +341,23 @@ impl TripleStoreAssertions {
         Ok(results_map)
     }
 
-    /// Insert a knowledge collection into the triple store.
-    ///
-    /// This function:
-    /// 1. Separates public triples into regular and private-hash triples
-    /// 2. Groups triples by subject to form knowledge assets
-    /// 3. Matches private triples to their corresponding public knowledge assets
-    /// 4. Delegates RDF serialization and SPARQL building to TripleStoreManager
-    ///
-    /// Returns the total number of triples inserted, or an error.
+    /// Insert a knowledge collection using pre-built knowledge assets.
     #[instrument(
         name = "triple_store_insert",
-        skip(self, dataset, metadata),
+        skip(self, knowledge_assets, metadata),
         fields(ual = %knowledge_collection_ual)
     )]
-    pub(crate) async fn insert_knowledge_collection(
+    pub(crate) async fn insert_knowledge_collection_assets(
         &self,
         knowledge_collection_ual: &str,
-        dataset: &Assertion,
+        knowledge_assets: &[KnowledgeAsset],
         metadata: Option<&KnowledgeCollectionMetadata>,
         paranet_ual: Option<&str>,
     ) -> Result<usize, TripleStoreError> {
-        // Build knowledge assets from the dataset
-        let knowledge_assets = build_knowledge_assets(knowledge_collection_ual, dataset)?;
-
-        // Delegate to the triple store manager for RDF serialization and insertion
         self.triple_store_manager
             .insert_knowledge_collection(
                 knowledge_collection_ual,
-                &knowledge_assets,
+                knowledge_assets,
                 metadata,
                 paranet_ual,
             )
@@ -464,6 +453,7 @@ mod tests {
     use dkg_blockchain as blockchain;
 
     use super::*;
+    use crate::application::assertions::build_assets::build_knowledge_assets;
 
     // Note: Tests for the business logic in build_knowledge_assets:
     // - Private-hash triple separation

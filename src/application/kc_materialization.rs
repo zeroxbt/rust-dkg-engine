@@ -5,8 +5,9 @@ use dkg_repository::KcChainMetadataRepository;
 use dkg_triple_store::error::TripleStoreError;
 
 use super::{
-    TripleStoreAssertions, assertions::build_assets::build_knowledge_assets,
-    state_metadata::encode_private_graph_presence,
+    TripleStoreAssertions,
+    assertions::build_assets::build_knowledge_assets,
+    state_metadata::{encode_private_graph_presence, private_graph::PrivateGraphEncoding},
 };
 
 pub(crate) struct KcMaterializationService {
@@ -32,9 +33,17 @@ impl KcMaterializationService {
         metadata: Option<&KnowledgeCollectionMetadata>,
         paranet_ual: Option<&str>,
     ) -> Result<usize, TripleStoreError> {
+        let knowledge_assets = build_knowledge_assets(knowledge_collection_ual, dataset)?;
+        let private_graph_encoding = encode_private_graph_presence(&knowledge_assets);
+
         let inserted = match self
             .triple_store_assertions
-            .insert_knowledge_collection(knowledge_collection_ual, dataset, metadata, paranet_ual)
+            .insert_knowledge_collection_assets(
+                knowledge_collection_ual,
+                &knowledge_assets,
+                metadata,
+                paranet_ual,
+            )
             .await
         {
             Ok(inserted) => inserted,
@@ -42,7 +51,11 @@ impl KcMaterializationService {
         };
 
         if let Err(error) = self
-            .persist_private_graph_encoding(knowledge_collection_ual, dataset, metadata)
+            .persist_private_graph_encoding(
+                knowledge_collection_ual,
+                &private_graph_encoding,
+                metadata,
+            )
             .await
         {
             tracing::warn!(
@@ -58,7 +71,7 @@ impl KcMaterializationService {
     async fn persist_private_graph_encoding(
         &self,
         knowledge_collection_ual: &str,
-        dataset: &Assertion,
+        private_graph_encoding: &PrivateGraphEncoding,
         metadata: Option<&KnowledgeCollectionMetadata>,
     ) -> Result<(), TripleStoreError> {
         let parsed_ual = match parse_ual(knowledge_collection_ual) {
@@ -83,8 +96,6 @@ impl KcMaterializationService {
             return Ok(());
         };
 
-        let knowledge_assets = build_knowledge_assets(knowledge_collection_ual, dataset)?;
-        let private_graph_encoding = encode_private_graph_presence(&knowledge_assets);
         let contract_address = canonical_evm_address(&parsed_ual.contract);
 
         let persist_result = self

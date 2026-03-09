@@ -17,7 +17,7 @@ use super::query::predicates;
 /// # Examples
 ///
 /// ```
-/// use triple_store::rdf::extract_subject;
+/// use dkg_triple_store::extract_subject;
 ///
 /// let triple = r#"<http://example.org/subject> <http://example.org/pred> "value" ."#;
 /// assert_eq!(
@@ -197,6 +197,8 @@ fn is_ascii_punctuation(code_unit: u16) -> bool {
 /// # Examples
 ///
 /// ```
+/// use dkg_triple_store::extract_quoted_string;
+///
 /// let triple = r#"<http://example.org/s> <http://example.org/p> "hello world" ."#;
 /// assert_eq!(
 ///     extract_quoted_string(triple),
@@ -224,6 +226,8 @@ pub fn extract_quoted_string(triple: &str) -> Option<String> {
 /// # Examples
 ///
 /// ```
+/// use dkg_triple_store::extract_quoted_integer;
+///
 /// let triple = r#"<http://example.org/s> <http://example.org/p> "12345" ."#;
 /// assert_eq!(extract_quoted_integer(triple), Some(12345));
 /// ```
@@ -238,8 +242,10 @@ pub fn extract_quoted_integer(triple: &str) -> Option<u64> {
 /// # Examples
 ///
 /// ```
+/// use dkg_triple_store::extract_datetime_as_unix;
+///
 /// let triple = r#"<http://example.org/s> <http://example.org/p> "2024-01-15T10:30:00Z"^^<http://www.w3.org/2001/XMLSchema#dateTime> ."#;
-/// assert_eq!(extract_datetime_as_unix(triple), Some(1705315800));
+/// assert_eq!(extract_datetime_as_unix(triple), Some(1705314600));
 /// ```
 pub fn extract_datetime_as_unix(triple: &str) -> Option<u64> {
     let datetime_str = extract_quoted_string(triple)?;

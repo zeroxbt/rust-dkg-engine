@@ -24,7 +24,7 @@ use tracing::instrument;
 use crate::{
     application::{AssertionValidation, UAL_MAX_LIMIT},
     node_state::PeerRegistry,
-    tasks::dkg_sync::pipeline::types::{FetchedKc, KcToSync, QueueOutcome},
+    tasks::dkg_sync::pipeline::types::{FetchedKc, KcToSync, QueueKcKey, QueueOutcome},
 };
 
 const FETCH_STAGE_FAILURE_REASON: &str = "fetch_stage_failure";
@@ -46,6 +46,7 @@ const FETCH_STAGE_FAILURE_REASON: &str = "fetch_stage_failure";
 pub(crate) async fn run_fetch_stage(
     mut rx: mpsc::Receiver<Vec<KcToSync>>,
     fetch_max_kc_per_batch: usize,
+    fetch_batch_concurrency: usize,
     batch_get_fanout_concurrency: usize,
     fetch_max_ka_per_batch: u64,
     blockchain_id: BlockchainId,
@@ -56,204 +57,237 @@ pub(crate) async fn run_fetch_stage(
     outcome_tx: mpsc::Sender<Vec<QueueOutcome>>,
 ) {
     let fetch_max_kc_per_batch = fetch_max_kc_per_batch.max(1);
+    let fetch_batch_concurrency = fetch_batch_concurrency.max(1);
     let batch_get_fanout_concurrency = batch_get_fanout_concurrency.max(1);
     let fetch_max_ka_per_batch = fetch_max_ka_per_batch.max(1);
 
-    // Accumulate KCs until we have enough for a network batch
     let mut accumulated: Vec<KcToSync> = Vec::new();
+    let mut rx_closed = false;
+    let mut next_batch_id = 0u64;
+    let mut in_flight = FuturesUnordered::new();
+    let mut in_flight_keys_by_batch: HashMap<u64, Vec<QueueKcKey>> = HashMap::new();
 
-    while let Some(batch) = rx.recv().await {
-        accumulated.extend(batch);
-
-        // Process when we have enough KCs to start fetching, or when channel is empty
-        while accumulated.len() >= fetch_max_kc_per_batch
-            || (!accumulated.is_empty() && rx.is_empty())
-        {
-            let mut assets_total = 0u64;
-            let mut take = 0usize;
-            for kc in &accumulated {
-                if take >= UAL_MAX_LIMIT {
-                    break;
-                }
-                let kc_assets = estimate_asset_count(&kc.token_ids);
-                if take > 0 && assets_total.saturating_add(kc_assets) > fetch_max_ka_per_batch {
-                    break;
-                }
-                assets_total = assets_total.saturating_add(kc_assets);
-                take += 1;
-            }
-
-            if take == 0 && !accumulated.is_empty() {
-                take = 1;
-                assets_total = estimate_asset_count(&accumulated[0].token_ids);
-            }
-
-            let to_fetch: Vec<KcToSync> = accumulated.drain(..take).collect();
-
-            let fetch_start = Instant::now();
-            let (fetched, batch_failures) = fetch_kc_batch_with_live_peers(
-                &blockchain_id,
-                &to_fetch,
-                batch_get_fanout_concurrency,
-                &network_manager,
-                &assertion_validation,
-                &peer_registry,
-            )
-            .await;
-            let batch_status = if batch_failures.is_empty() {
-                "success"
-            } else if fetched.is_empty() {
-                "failed"
-            } else {
-                "partial"
+    loop {
+        while in_flight.len() < fetch_batch_concurrency {
+            let allow_partial_batch = rx_closed || rx.is_empty();
+            let Some((to_fetch, assets_total)) = take_next_fetch_batch(
+                &mut accumulated,
+                fetch_max_kc_per_batch,
+                fetch_max_ka_per_batch,
+                allow_partial_batch,
+            ) else {
+                break;
             };
-            observability::record_sync_fetch_batch(
-                batch_status,
-                fetch_start.elapsed(),
-                to_fetch.len(),
-                assets_total,
-            );
 
-            observability::record_sync_kc_outcome(
-                blockchain_id.as_str(),
-                "fetch",
-                "failed",
-                batch_failures.len(),
-            );
-            let failure_count = batch_failures.len();
-            if failure_count > 0 && outcome_tx.send(batch_failures).await.is_err() {
-                tracing::warn!(
-                    blockchain_id = %blockchain_id,
-                    failure_count,
-                    "Fetch: queue outcome receiver dropped while sending failed outcomes"
-                );
-                return;
+            let batch_id = next_batch_id;
+            next_batch_id = next_batch_id.saturating_add(1);
+            in_flight_keys_by_batch
+                .insert(batch_id, to_fetch.iter().map(|kc| kc.key.clone()).collect());
+
+            let blockchain_id_for_batch = blockchain_id.clone();
+            let network_manager_for_batch = Arc::clone(&network_manager);
+            let assertion_validation_for_batch = Arc::clone(&assertion_validation);
+            let peer_registry_for_batch = Arc::clone(&peer_registry);
+            in_flight.push(async move {
+                let fetch_start = Instant::now();
+                let (fetched, failures) = fetch_kc_batch_with_live_peers(
+                    &blockchain_id_for_batch,
+                    &to_fetch,
+                    batch_get_fanout_concurrency,
+                    &network_manager_for_batch,
+                    assertion_validation_for_batch.as_ref(),
+                    peer_registry_for_batch.as_ref(),
+                )
+                .await;
+                FetchBatchOutput {
+                    batch_id,
+                    batch_size: to_fetch.len(),
+                    assets_total,
+                    duration: fetch_start.elapsed(),
+                    fetched,
+                    failures,
+                }
+            });
+        }
+
+        if rx_closed && in_flight.is_empty() && accumulated.is_empty() {
+            break;
+        }
+
+        tokio::select! {
+            maybe_batch = rx.recv(), if !rx_closed => {
+                match maybe_batch {
+                    Some(batch) => accumulated.extend(batch),
+                    None => rx_closed = true,
+                }
             }
-
-            // Send fetched KCs to insert stage
-            if !fetched.is_empty() {
-                tracing::trace!(
-                    batch_size = to_fetch.len(),
-                    assets_in_batch = assets_total,
-                    fetched_count = fetched.len(),
-                    failed_count = failure_count,
-                    fetch_ms = fetch_start.elapsed().as_millis() as u64,
-                    "Fetch: sending batch to insert stage"
-                );
-                match tx.send(fetched).await {
-                    Ok(()) => {}
-                    Err(send_error) => {
-                        let unsent_fetched = send_error.0;
-                        tracing::warn!(
-                            blockchain_id = %blockchain_id,
-                            unsent_fetched = unsent_fetched.len(),
-                            remaining_accumulated = accumulated.len(),
-                            "Fetch: insert stage receiver dropped, requeueing unsent KCs"
-                        );
-                        let mut remaining_outcomes = Vec::with_capacity(
-                            unsent_fetched.len().saturating_add(accumulated.len()),
-                        );
-                        remaining_outcomes.extend(unsent_fetched.into_iter().map(|kc| {
-                            QueueOutcome::retry_with_pending_error(
-                                kc.key,
-                                FETCH_STAGE_FAILURE_REASON,
-                            )
-                        }));
-                        remaining_outcomes.extend(accumulated.drain(..).map(|kc| {
-                            QueueOutcome::retry_with_pending_error(
-                                kc.key,
-                                FETCH_STAGE_FAILURE_REASON,
-                            )
-                        }));
-                        if !remaining_outcomes.is_empty() {
-                            let _ = outcome_tx.send(remaining_outcomes).await;
-                        }
-                        return;
-                    }
+            maybe_result = in_flight.next(), if !in_flight.is_empty() => {
+                let Some(result) = maybe_result else {
+                    continue;
+                };
+                in_flight_keys_by_batch.remove(&result.batch_id);
+                let continue_running = handle_fetch_batch_output(
+                    &blockchain_id,
+                    result,
+                    &tx,
+                    &outcome_tx,
+                    &mut accumulated,
+                    &in_flight_keys_by_batch,
+                )
+                .await;
+                if !continue_running {
+                    return;
                 }
             }
         }
     }
+}
 
-    // Flush any remaining accumulated KCs
-    if !accumulated.is_empty() {
-        let fetch_start = Instant::now();
-        let assets_total: u64 = accumulated
-            .iter()
-            .map(|kc| estimate_asset_count(&kc.token_ids))
-            .sum();
-        let (fetched, batch_failures) = fetch_kc_batch_with_live_peers(
-            &blockchain_id,
-            &accumulated,
-            batch_get_fanout_concurrency,
-            &network_manager,
-            &assertion_validation,
-            &peer_registry,
-        )
-        .await;
-        let batch_status = if batch_failures.is_empty() {
-            "success"
-        } else if fetched.is_empty() {
-            "failed"
-        } else {
-            "partial"
-        };
-        observability::record_sync_fetch_batch(
-            batch_status,
-            fetch_start.elapsed(),
-            accumulated.len(),
-            assets_total,
-        );
+struct FetchBatchOutput {
+    batch_id: u64,
+    batch_size: usize,
+    assets_total: u64,
+    duration: Duration,
+    fetched: Vec<FetchedKc>,
+    failures: Vec<QueueOutcome>,
+}
 
-        observability::record_sync_kc_outcome(
-            blockchain_id.as_str(),
-            "fetch",
-            "failed",
-            batch_failures.len(),
+fn take_next_fetch_batch(
+    accumulated: &mut Vec<KcToSync>,
+    fetch_max_kc_per_batch: usize,
+    fetch_max_ka_per_batch: u64,
+    allow_partial_batch: bool,
+) -> Option<(Vec<KcToSync>, u64)> {
+    if accumulated.is_empty()
+        || (!allow_partial_batch && accumulated.len() < fetch_max_kc_per_batch)
+    {
+        return None;
+    }
+
+    let mut assets_total = 0u64;
+    let mut take = 0usize;
+    for kc in accumulated.iter() {
+        if take >= UAL_MAX_LIMIT {
+            break;
+        }
+        let kc_assets = estimate_asset_count(&kc.token_ids);
+        if take > 0 && assets_total.saturating_add(kc_assets) > fetch_max_ka_per_batch {
+            break;
+        }
+        assets_total = assets_total.saturating_add(kc_assets);
+        take += 1;
+    }
+
+    if take == 0 {
+        take = 1;
+        assets_total = estimate_asset_count(&accumulated[0].token_ids);
+    }
+
+    Some((accumulated.drain(..take).collect(), assets_total))
+}
+
+async fn handle_fetch_batch_output(
+    blockchain_id: &BlockchainId,
+    result: FetchBatchOutput,
+    tx: &mpsc::Sender<Vec<FetchedKc>>,
+    outcome_tx: &mpsc::Sender<Vec<QueueOutcome>>,
+    accumulated: &mut Vec<KcToSync>,
+    in_flight_keys_by_batch: &HashMap<u64, Vec<QueueKcKey>>,
+) -> bool {
+    let batch_status = if result.failures.is_empty() {
+        "success"
+    } else if result.fetched.is_empty() {
+        "failed"
+    } else {
+        "partial"
+    };
+    observability::record_sync_fetch_batch(
+        batch_status,
+        result.duration,
+        result.batch_size,
+        result.assets_total,
+    );
+
+    observability::record_sync_kc_outcome(
+        blockchain_id.as_str(),
+        "fetch",
+        "failed",
+        result.failures.len(),
+    );
+    let failure_count = result.failures.len();
+    if failure_count > 0 && outcome_tx.send(result.failures).await.is_err() {
+        tracing::warn!(
+            blockchain_id = %blockchain_id,
+            failure_count,
+            "Fetch: queue outcome receiver dropped while sending failed outcomes"
         );
-        let failure_count = batch_failures.len();
-        if failure_count > 0 && outcome_tx.send(batch_failures).await.is_err() {
+        return false;
+    }
+
+    if result.fetched.is_empty() {
+        return true;
+    }
+
+    tracing::trace!(
+        batch_size = result.batch_size,
+        assets_in_batch = result.assets_total,
+        fetched_count = result.fetched.len(),
+        failed_count = failure_count,
+        fetch_ms = result.duration.as_millis() as u64,
+        "Fetch: sending batch to insert stage"
+    );
+
+    match tx.send(result.fetched).await {
+        Ok(()) => true,
+        Err(send_error) => {
+            let unsent_fetched = send_error.0;
             tracing::warn!(
                 blockchain_id = %blockchain_id,
-                failure_count,
-                "Fetch: queue outcome receiver dropped while flushing failed outcomes"
+                unsent_fetched = unsent_fetched.len(),
+                remaining_accumulated = accumulated.len(),
+                in_flight_batches = in_flight_keys_by_batch.len(),
+                "Fetch: insert stage receiver dropped, requeueing pending KCs"
             );
-        }
-
-        if !fetched.is_empty() {
-            tracing::trace!(
-                remaining = accumulated.len(),
-                assets_in_batch = assets_total,
-                fetched_count = fetched.len(),
-                failed_count = failure_count,
-                fetch_ms = fetch_start.elapsed().as_millis() as u64,
-                "Fetch: flushing remaining KCs"
+            let retry_outcomes = collect_pending_retry_outcomes(
+                unsent_fetched,
+                accumulated,
+                in_flight_keys_by_batch,
             );
-            match tx.send(fetched).await {
-                Ok(()) => {}
-                Err(send_error) => {
-                    let unsent_fetched = send_error.0;
-                    tracing::warn!(
-                        blockchain_id = %blockchain_id,
-                        unsent_fetched = unsent_fetched.len(),
-                        "Fetch: insert stage receiver dropped while flushing fetched KCs; requeueing unsent KCs"
-                    );
-                    let unsent_outcomes: Vec<QueueOutcome> = unsent_fetched
-                        .into_iter()
-                        .map(|kc| {
-                            QueueOutcome::retry_with_pending_error(
-                                kc.key,
-                                FETCH_STAGE_FAILURE_REASON,
-                            )
-                        })
-                        .collect();
-                    if !unsent_outcomes.is_empty() {
-                        let _ = outcome_tx.send(unsent_outcomes).await;
-                    }
-                }
+            if !retry_outcomes.is_empty() {
+                let _ = outcome_tx.send(retry_outcomes).await;
             }
+            false
         }
     }
+}
+
+fn collect_pending_retry_outcomes(
+    unsent_fetched: Vec<FetchedKc>,
+    accumulated: &mut Vec<KcToSync>,
+    in_flight_keys_by_batch: &HashMap<u64, Vec<QueueKcKey>>,
+) -> Vec<QueueOutcome> {
+    let mut seen = HashSet::new();
+    let mut outcomes = Vec::new();
+
+    for key in unsent_fetched
+        .into_iter()
+        .map(|kc| kc.key)
+        .chain(accumulated.drain(..).map(|kc| kc.key))
+        .chain(
+            in_flight_keys_by_batch
+                .values()
+                .flat_map(|keys| keys.iter().cloned()),
+        )
+    {
+        if seen.insert(key.clone()) {
+            outcomes.push(QueueOutcome::retry_with_pending_error(
+                key,
+                FETCH_STAGE_FAILURE_REASON,
+            ));
+        }
+    }
+
+    outcomes
 }
 
 fn estimate_asset_count(token_ids: &TokenIds) -> u64 {

@@ -132,6 +132,7 @@ fn dkg_sync() -> DkgSyncConfig {
             stage_channel_message_buffer: 4,
             filter_max_kc_per_chunk: 32,
             fetch_max_kc_per_batch: 128,
+            fetch_batch_concurrency: 1,
             fetch_peer_fanout_concurrency: 3,
             fetch_max_ka_per_batch: 16_384,
             insert_kc_concurrency: 8,
@@ -242,6 +243,7 @@ fn network(bootstrap: Vec<String>) -> NetworkManagerConfig {
         port: 9000,
         bootstrap,
         external_ip: None,
+        connection_timeout_secs: 3,
         idle_connection_timeout_secs: 300,
     }
 }

@@ -30,6 +30,10 @@ pub(crate) struct DkgSyncQueueProcessorConfig {
     pub stage_channel_message_buffer: usize,
     pub filter_max_kc_per_chunk: usize,
     pub fetch_max_kc_per_batch: usize,
+    /// Number of fetch batches processed concurrently.
+    ///
+    /// `1` preserves previous behavior (sequential fetch batches).
+    pub fetch_batch_concurrency: usize,
     pub fetch_peer_fanout_concurrency: usize,
     pub fetch_max_ka_per_batch: u64,
     pub insert_kc_concurrency: usize,
