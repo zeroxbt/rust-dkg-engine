@@ -168,14 +168,17 @@ impl DiscoveryWorker {
         }
 
         if active_range.is_none() {
-            let deployment_block = self
-                .resolve_deployment_block(
+            let deployment_block = if cursor > 0 {
+                None
+            } else {
+                self.resolve_deployment_block(
                     blockchain_id,
                     contract_address,
                     &contract_addr_str,
                     target_tip,
                 )
-                .await?;
+                .await?
+            };
 
             // Query only one gap range when we need to pick a new active range.
             let oldest_gap = self
