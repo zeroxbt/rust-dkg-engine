@@ -6,10 +6,7 @@ use crate::{
     config::Config,
     controllers::{
         http_api_controller::HttpApiDeps,
-        rpc_controller::{
-            BatchGetRpcControllerDeps, GetRpcControllerDeps, PublishFinalityRpcControllerDeps,
-            PublishStoreRpcControllerDeps, RpcRouterDeps,
-        },
+        rpc_controller::RpcRouterDeps,
         {self},
     },
     managers::Managers,
@@ -24,18 +21,7 @@ pub(crate) fn build_controllers(
     controllers::initialize(
         &config.controllers,
         RpcRouterDeps {
-            publish_store: PublishStoreRpcControllerDeps {
-                command_scheduler: command_scheduler.clone(),
-            },
-            get: GetRpcControllerDeps {
-                command_scheduler: command_scheduler.clone(),
-            },
-            publish_finality: PublishFinalityRpcControllerDeps {
-                command_scheduler: command_scheduler.clone(),
-            },
-            batch_get: BatchGetRpcControllerDeps {
-                command_scheduler: command_scheduler.clone(),
-            },
+            command_scheduler: command_scheduler.clone(),
         },
         HttpApiDeps {
             command_scheduler: command_scheduler.clone(),

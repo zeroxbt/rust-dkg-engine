@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use dkg_network::{
     BatchGetAck, BatchGetRequestData, FinalityAck, FinalityRequestData, GetAck, GetRequestData,
     ImmediateResponse, InboundDecision, InboundRequest, NetworkEventHandler,
@@ -9,56 +7,183 @@ use dkg_network::{
 use dkg_observability as observability;
 
 use super::{PeerRateLimiter, RpcConfig, deps::RpcRouterDeps};
-use crate::controllers::rpc_controller::v1::{
-    batch_get::BatchGetRpcController, get::GetRpcController,
-    publish_finality::PublishFinalityRpcController, publish_store::PublishStoreRpcController,
+use crate::commands::{
+    executor::CommandExecutionRequest,
+    operations::{
+        batch_get::handle_batch_get_request::HandleBatchGetRequestCommandData,
+        get::handle_get_request::HandleGetRequestCommandData,
+        publish::{
+            finality::handle_publish_finality_request::HandlePublishFinalityRequestCommandData,
+            store::handle_publish_store_request::HandlePublishStoreRequestCommandData,
+        },
+    },
+    registry::Command,
+    scheduler::CommandScheduler,
 };
 
 pub(crate) struct RpcRouter {
-    store_controller: Arc<PublishStoreRpcController>,
-    get_controller: Arc<GetRpcController>,
-    finality_controller: Arc<PublishFinalityRpcController>,
-    batch_get_controller: Arc<BatchGetRpcController>,
-    peer_rate_limiter: Arc<PeerRateLimiter>,
+    command_scheduler: CommandScheduler,
+    peer_rate_limiter: PeerRateLimiter,
 }
 
 impl RpcRouter {
     pub(crate) fn new(deps: RpcRouterDeps, config: &RpcConfig) -> Self {
         RpcRouter {
-            store_controller: Arc::new(PublishStoreRpcController::new(deps.publish_store)),
-            get_controller: Arc::new(GetRpcController::new(deps.get)),
-            finality_controller: Arc::new(PublishFinalityRpcController::new(deps.publish_finality)),
-            batch_get_controller: Arc::new(BatchGetRpcController::new(deps.batch_get)),
-            peer_rate_limiter: Arc::new(PeerRateLimiter::new(config.rate_limiter.clone())),
+            command_scheduler: deps.command_scheduler,
+            peer_rate_limiter: PeerRateLimiter::new(config.rate_limiter.clone()),
         }
     }
 
-    fn store_busy_response(
+    fn busy_response<T>(
+        response_handle: ResponseHandle<T>,
+        operation_id: uuid::Uuid,
+        error_message: &'static str,
+    ) -> ImmediateResponse<T> {
+        ImmediateResponse::busy(response_handle, operation_id, error_message)
+    }
+
+    fn route_inbound_request<TReq, TAck>(
+        &self,
+        protocol: &'static str,
+        request: InboundRequest<TReq>,
+        response_handle: ResponseHandle<TAck>,
+        schedule: impl FnOnce(
+            &Self,
+            InboundRequest<TReq>,
+            ResponseHandle<TAck>,
+        ) -> Option<ResponseHandle<TAck>>,
+    ) -> InboundDecision<TAck> {
+        let operation_id = request.operation_id();
+
+        if !self.peer_rate_limiter.check(request.peer_id()) {
+            observability::record_network_inbound_request(protocol, "rate_limited");
+            return InboundDecision::RespondNow(Self::busy_response(
+                response_handle,
+                operation_id,
+                "Rate limited",
+            ));
+        }
+
+        if let Some(response_handle) = schedule(self, request, response_handle) {
+            observability::record_network_inbound_request(protocol, "scheduler_rejected");
+            return InboundDecision::RespondNow(Self::busy_response(
+                response_handle,
+                operation_id,
+                "Busy",
+            ));
+        }
+
+        observability::record_network_inbound_request(protocol, "scheduled");
+        InboundDecision::Scheduled
+    }
+
+    fn schedule_store_request(
+        &self,
+        request: InboundRequest<StoreRequestData>,
         response_handle: ResponseHandle<StoreAck>,
-        operation_id: uuid::Uuid,
-    ) -> ImmediateResponse<StoreAck> {
-        ImmediateResponse::busy(response_handle, operation_id, "Rate limited")
+    ) -> Option<ResponseHandle<StoreAck>> {
+        tracing::trace!(
+            operation_id = %request.operation_id(),
+            dataset_root = %request.data().dataset_root(),
+            peer = %request.peer_id(),
+            "Store request received"
+        );
+
+        let command = Command::HandlePublishStoreRequest(
+            HandlePublishStoreRequestCommandData::new(request, response_handle),
+        );
+        match self
+            .command_scheduler
+            .try_schedule(CommandExecutionRequest::new(command))
+        {
+            Ok(()) => None,
+            Err(request) => match request.into_command() {
+                Command::HandlePublishStoreRequest(command) => Some(command.response_handle),
+                _ => unreachable!("unexpected rejected command type"),
+            },
+        }
     }
 
-    fn get_busy_response(
+    fn schedule_get_request(
+        &self,
+        request: InboundRequest<GetRequestData>,
         response_handle: ResponseHandle<GetAck>,
-        operation_id: uuid::Uuid,
-    ) -> ImmediateResponse<GetAck> {
-        ImmediateResponse::busy(response_handle, operation_id, "Rate limited")
+    ) -> Option<ResponseHandle<GetAck>> {
+        tracing::trace!(
+            operation_id = %request.operation_id(),
+            ual = %request.data().ual(),
+            peer = %request.peer_id(),
+            "Get request received"
+        );
+
+        let command =
+            Command::HandleGetRequest(HandleGetRequestCommandData::new(request, response_handle));
+        match self
+            .command_scheduler
+            .try_schedule(CommandExecutionRequest::new(command))
+        {
+            Ok(()) => None,
+            Err(request) => match request.into_command() {
+                Command::HandleGetRequest(command) => Some(command.response_handle),
+                _ => unreachable!("unexpected rejected command type"),
+            },
+        }
     }
 
-    fn finality_busy_response(
+    fn schedule_finality_request(
+        &self,
+        request: InboundRequest<FinalityRequestData>,
         response_handle: ResponseHandle<FinalityAck>,
-        operation_id: uuid::Uuid,
-    ) -> ImmediateResponse<FinalityAck> {
-        ImmediateResponse::busy(response_handle, operation_id, "Rate limited")
+    ) -> Option<ResponseHandle<FinalityAck>> {
+        tracing::trace!(
+            operation_id = %request.operation_id(),
+            publish_operation_id = %request.data().publish_operation_id(),
+            ual = %request.data().ual(),
+            peer = %request.peer_id(),
+            "Finality request received"
+        );
+
+        let command = Command::HandlePublishFinalityRequest(
+            HandlePublishFinalityRequestCommandData::new(request, response_handle),
+        );
+        match self
+            .command_scheduler
+            .try_schedule(CommandExecutionRequest::new(command))
+        {
+            Ok(()) => None,
+            Err(request) => match request.into_command() {
+                Command::HandlePublishFinalityRequest(command) => Some(command.response_handle),
+                _ => unreachable!("unexpected rejected command type"),
+            },
+        }
     }
 
-    fn batch_get_busy_response(
+    fn schedule_batch_get_request(
+        &self,
+        request: InboundRequest<BatchGetRequestData>,
         response_handle: ResponseHandle<BatchGetAck>,
-        operation_id: uuid::Uuid,
-    ) -> ImmediateResponse<BatchGetAck> {
-        ImmediateResponse::busy(response_handle, operation_id, "Rate limited")
+    ) -> Option<ResponseHandle<BatchGetAck>> {
+        tracing::trace!(
+            operation_id = %request.operation_id(),
+            ual_count = request.data().uals().len(),
+            peer = %request.peer_id(),
+            "Batch get request received"
+        );
+
+        let command = Command::HandleBatchGetRequest(HandleBatchGetRequestCommandData::new(
+            request,
+            response_handle,
+        ));
+        match self
+            .command_scheduler
+            .try_schedule(CommandExecutionRequest::new(command))
+        {
+            Ok(()) => None,
+            Err(request) => match request.into_command() {
+                Command::HandleBatchGetRequest(command) => Some(command.response_handle),
+                _ => unreachable!("unexpected rejected command type"),
+            },
+        }
     }
 }
 
@@ -72,26 +197,12 @@ impl NetworkEventHandler for RpcRouter {
         request: InboundRequest<StoreRequestData>,
         response_handle: ResponseHandle<StoreAck>,
     ) -> InboundDecision<StoreAck> {
-        let operation_id = request.operation_id();
-        if !self.peer_rate_limiter.check(request.peer_id()) {
-            observability::record_network_inbound_request(PROTOCOL_NAME_STORE, "rate_limited");
-            return InboundDecision::RespondNow(Self::store_busy_response(
-                response_handle,
-                operation_id,
-            ));
-        }
-        if let Some(response_handle) = self
-            .store_controller
-            .handle_request(request, response_handle)
-        {
-            observability::record_network_inbound_request(PROTOCOL_NAME_STORE, "controller_busy");
-            return InboundDecision::RespondNow(Self::store_busy_response(
-                response_handle,
-                operation_id,
-            ));
-        }
-        observability::record_network_inbound_request(PROTOCOL_NAME_STORE, "scheduled");
-        InboundDecision::Scheduled
+        self.route_inbound_request(
+            PROTOCOL_NAME_STORE,
+            request,
+            response_handle,
+            Self::schedule_store_request,
+        )
     }
 
     fn on_get_request(
@@ -99,24 +210,12 @@ impl NetworkEventHandler for RpcRouter {
         request: InboundRequest<GetRequestData>,
         response_handle: ResponseHandle<GetAck>,
     ) -> InboundDecision<GetAck> {
-        let operation_id = request.operation_id();
-        if !self.peer_rate_limiter.check(request.peer_id()) {
-            observability::record_network_inbound_request(PROTOCOL_NAME_GET, "rate_limited");
-            return InboundDecision::RespondNow(Self::get_busy_response(
-                response_handle,
-                operation_id,
-            ));
-        }
-        if let Some(response_handle) = self.get_controller.handle_request(request, response_handle)
-        {
-            observability::record_network_inbound_request(PROTOCOL_NAME_GET, "controller_busy");
-            return InboundDecision::RespondNow(Self::get_busy_response(
-                response_handle,
-                operation_id,
-            ));
-        }
-        observability::record_network_inbound_request(PROTOCOL_NAME_GET, "scheduled");
-        InboundDecision::Scheduled
+        self.route_inbound_request(
+            PROTOCOL_NAME_GET,
+            request,
+            response_handle,
+            Self::schedule_get_request,
+        )
     }
 
     fn on_finality_request(
@@ -124,29 +223,12 @@ impl NetworkEventHandler for RpcRouter {
         request: InboundRequest<FinalityRequestData>,
         response_handle: ResponseHandle<FinalityAck>,
     ) -> InboundDecision<FinalityAck> {
-        let operation_id = request.operation_id();
-        if !self.peer_rate_limiter.check(request.peer_id()) {
-            observability::record_network_inbound_request(PROTOCOL_NAME_FINALITY, "rate_limited");
-            return InboundDecision::RespondNow(Self::finality_busy_response(
-                response_handle,
-                operation_id,
-            ));
-        }
-        if let Some(response_handle) = self
-            .finality_controller
-            .handle_request(request, response_handle)
-        {
-            observability::record_network_inbound_request(
-                PROTOCOL_NAME_FINALITY,
-                "controller_busy",
-            );
-            return InboundDecision::RespondNow(Self::finality_busy_response(
-                response_handle,
-                operation_id,
-            ));
-        }
-        observability::record_network_inbound_request(PROTOCOL_NAME_FINALITY, "scheduled");
-        InboundDecision::Scheduled
+        self.route_inbound_request(
+            PROTOCOL_NAME_FINALITY,
+            request,
+            response_handle,
+            Self::schedule_finality_request,
+        )
     }
 
     fn on_batch_get_request(
@@ -154,28 +236,11 @@ impl NetworkEventHandler for RpcRouter {
         request: InboundRequest<BatchGetRequestData>,
         response_handle: ResponseHandle<BatchGetAck>,
     ) -> InboundDecision<BatchGetAck> {
-        let operation_id = request.operation_id();
-        if !self.peer_rate_limiter.check(request.peer_id()) {
-            observability::record_network_inbound_request(PROTOCOL_NAME_BATCH_GET, "rate_limited");
-            return InboundDecision::RespondNow(Self::batch_get_busy_response(
-                response_handle,
-                operation_id,
-            ));
-        }
-        if let Some(response_handle) = self
-            .batch_get_controller
-            .handle_request(request, response_handle)
-        {
-            observability::record_network_inbound_request(
-                PROTOCOL_NAME_BATCH_GET,
-                "controller_busy",
-            );
-            return InboundDecision::RespondNow(Self::batch_get_busy_response(
-                response_handle,
-                operation_id,
-            ));
-        }
-        observability::record_network_inbound_request(PROTOCOL_NAME_BATCH_GET, "scheduled");
-        InboundDecision::Scheduled
+        self.route_inbound_request(
+            PROTOCOL_NAME_BATCH_GET,
+            request,
+            response_handle,
+            Self::schedule_batch_get_request,
+        )
     }
 }
