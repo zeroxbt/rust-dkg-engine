@@ -24,7 +24,7 @@ use crate::{
         get_assertion::{network_fetch, resolve_token_ids},
         group_and_sort_public_triples,
     },
-    node_state::PeerRegistry,
+    peer_registry::PeerRegistry,
     tasks::periodic::{
         PeriodicTasksDeps, registry::BlockchainPeriodicTask, runner::run_with_shutdown,
     },

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use dkg_blockchain::BlockchainId;
 
-use crate::{commands::scheduler::CommandScheduler, node_state::PeerRegistry, tasks::periodic};
+use crate::{commands::scheduler::CommandScheduler, peer_registry::PeerRegistry, tasks::periodic};
 
 pub(crate) struct RuntimeDeps {
     pub(crate) command_scheduler: CommandScheduler,

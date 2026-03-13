@@ -8,7 +8,7 @@ use dkg_repository::{KcChainMetadataRepository, KcProjectionRepository, KcSyncRe
 use crate::{
     application::{AssertionValidation, KcMaterializationService, TripleStoreAssertions},
     commands::scheduler::CommandScheduler,
-    node_state::PeerRegistry,
+    peer_registry::PeerRegistry,
 };
 
 #[derive(Clone)]

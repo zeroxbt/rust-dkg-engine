@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use dkg_network::{FinalityAck, FinalityRequestData, InboundRequest, ResponseHandle};
 
-use super::inbound_request::store_channel_and_try_schedule;
 use crate::{
     commands::{
         executor::CommandExecutionRequest,
@@ -10,18 +7,15 @@ use crate::{
         registry::Command, scheduler::CommandScheduler,
     },
     controllers::rpc_controller::PublishFinalityRpcControllerDeps,
-    node_state::ResponseChannels,
 };
 
 pub(crate) struct PublishFinalityRpcController {
-    response_channels: Arc<ResponseChannels<FinalityAck>>,
     command_scheduler: CommandScheduler,
 }
 
 impl PublishFinalityRpcController {
     pub(crate) fn new(deps: PublishFinalityRpcControllerDeps) -> Self {
         Self {
-            response_channels: deps.finality_response_channels,
             command_scheduler: deps.command_scheduler,
         }
     }
@@ -48,15 +42,22 @@ impl PublishFinalityRpcController {
             "Finality request received"
         );
 
-        let command_data =
-            HandlePublishFinalityRequestCommandData::new(operation_id, data, remote_peer_id);
-        store_channel_and_try_schedule(
-            &self.response_channels,
-            &self.command_scheduler,
-            &remote_peer_id,
+        let command_data = HandlePublishFinalityRequestCommandData::new(
             operation_id,
+            data,
+            remote_peer_id,
             channel,
-            CommandExecutionRequest::new(Command::HandlePublishFinalityRequest(command_data)),
-        )
+        );
+        match self
+            .command_scheduler
+            .try_schedule(CommandExecutionRequest::new(
+                Command::HandlePublishFinalityRequest(command_data),
+            )) {
+            Ok(()) => None,
+            Err(request) => match request.into_command() {
+                Command::HandlePublishFinalityRequest(command) => Some(command.response),
+                _ => unreachable!("unexpected rejected command type"),
+            },
+        }
     }
 }

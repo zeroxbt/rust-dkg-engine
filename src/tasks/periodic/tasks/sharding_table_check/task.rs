@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use super::ShardingTableCheckDeps;
 use crate::{
     error::NodeError,
-    node_state::PeerRegistry,
+    peer_registry::PeerRegistry,
     tasks::periodic::{
         PeriodicTasksDeps, registry::BlockchainPeriodicTask, runner::run_with_shutdown,
     },

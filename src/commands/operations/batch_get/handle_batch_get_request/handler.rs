@@ -11,15 +11,15 @@ use uuid::Uuid;
 use crate::{
     application::{TripleStoreAssertions, UAL_MAX_LIMIT},
     commands::{HandleBatchGetRequestDeps, executor::CommandOutcome, registry::CommandHandler},
-    node_state::{PeerRegistry, ResponseChannels},
+    peer_registry::PeerRegistry,
 };
 
 /// Command data for handling incoming batch get requests.
-#[derive(Clone)]
 pub(crate) struct HandleBatchGetRequestCommandData {
     pub operation_id: Uuid,
     pub request: BatchGetRequestData,
     pub remote_peer_id: PeerId,
+    pub response: ResponseHandle<BatchGetAck>,
 }
 
 impl HandleBatchGetRequestCommandData {
@@ -27,11 +27,13 @@ impl HandleBatchGetRequestCommandData {
         operation_id: Uuid,
         request: BatchGetRequestData,
         remote_peer_id: PeerId,
+        response: ResponseHandle<BatchGetAck>,
     ) -> Self {
         Self {
             operation_id,
             request,
             remote_peer_id,
+            response,
         }
     }
 }
@@ -40,7 +42,6 @@ pub(crate) struct HandleBatchGetRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
     triple_store_assertions: Arc<TripleStoreAssertions>,
     peer_registry: Arc<PeerRegistry>,
-    response_channels: Arc<ResponseChannels<BatchGetAck>>,
 }
 
 impl HandleBatchGetRequestCommandHandler {
@@ -49,7 +50,6 @@ impl HandleBatchGetRequestCommandHandler {
             network_manager: deps.network_manager,
             triple_store_assertions: deps.triple_store_assertions,
             peer_registry: deps.peer_registry,
-            response_channels: deps.batch_get_response_channels,
         }
     }
 
@@ -115,26 +115,16 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             invalid_ual_count = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, data: &HandleBatchGetRequestCommandData) -> CommandOutcome {
-        let operation_id = data.operation_id;
-        let include_metadata = data.request.include_metadata();
-        let uals_source = data.request.uals_shared();
-        let token_ids_map = data.request.token_ids_shared();
-        let remote_peer_id = &data.remote_peer_id;
-
-        // Retrieve the response channel
-        let Some(channel) = self
-            .response_channels
-            .retrieve(remote_peer_id, operation_id)
-        else {
-            tracing::warn!(
-                operation_id = %operation_id,
-                peer = %remote_peer_id,
-                "Response channel not found; request may have expired"
-            );
-            return CommandOutcome::Completed;
-        };
-
+    async fn execute(&self, data: HandleBatchGetRequestCommandData) -> CommandOutcome {
+        let HandleBatchGetRequestCommandData {
+            operation_id,
+            request,
+            remote_peer_id: _remote_peer_id,
+            response: channel,
+        } = data;
+        let include_metadata = request.include_metadata();
+        let uals_source = request.uals_shared();
+        let token_ids_map = request.token_ids_shared();
         // Apply UAL limit after deduplication
         let mut seen_uals = HashSet::new();
         let mut uals = Vec::new();

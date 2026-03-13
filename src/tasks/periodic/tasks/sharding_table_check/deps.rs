@@ -3,7 +3,7 @@ use std::sync::Arc;
 use dkg_blockchain::BlockchainManager;
 use dkg_network::NetworkManager;
 
-use crate::node_state::PeerRegistry;
+use crate::peer_registry::PeerRegistry;
 
 #[derive(Clone)]
 pub(crate) struct ShardingTableCheckDeps {

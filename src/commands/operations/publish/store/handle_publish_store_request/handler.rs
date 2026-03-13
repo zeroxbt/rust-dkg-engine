@@ -10,16 +10,16 @@ use uuid::Uuid;
 use crate::{
     application::signature,
     commands::{HandlePublishStoreRequestDeps, executor::CommandOutcome, registry::CommandHandler},
-    node_state::{PeerRegistry, ResponseChannels},
+    peer_registry::PeerRegistry,
 };
 
 /// Command data for handling incoming publish store requests.
 /// Dataset is passed inline; channel is retrieved from session manager.
-#[derive(Clone)]
 pub(crate) struct HandlePublishStoreRequestCommandData {
     pub operation_id: Uuid,
     pub request: StoreRequestData,
     pub remote_peer_id: PeerId,
+    pub response: ResponseHandle<StoreAck>,
 }
 
 impl HandlePublishStoreRequestCommandData {
@@ -27,11 +27,13 @@ impl HandlePublishStoreRequestCommandData {
         operation_id: Uuid,
         request: StoreRequestData,
         remote_peer_id: PeerId,
+        response: ResponseHandle<StoreAck>,
     ) -> Self {
         Self {
             operation_id,
             request,
             remote_peer_id,
+            response,
         }
     }
 }
@@ -40,7 +42,6 @@ pub(crate) struct HandlePublishStoreRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
     blockchain_manager: Arc<BlockchainManager>,
     peer_registry: Arc<PeerRegistry>,
-    response_channels: Arc<ResponseChannels<StoreAck>>,
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 }
 
@@ -50,7 +51,6 @@ impl HandlePublishStoreRequestCommandHandler {
             network_manager: deps.network_manager,
             blockchain_manager: deps.blockchain_manager,
             peer_registry: deps.peer_registry,
-            response_channels: deps.store_response_channels,
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
         }
     }
@@ -117,27 +117,19 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             remote_peer = %data.remote_peer_id,
         )
     )]
-    async fn execute(&self, data: &HandlePublishStoreRequestCommandData) -> CommandOutcome {
-        let operation_id = data.operation_id;
-        let blockchain: BlockchainId = data.request.blockchain().clone();
-        let dataset_root = data.request.dataset_root().to_string();
-        let dataset_public = data.request.dataset().to_vec();
-        let remote_peer_id = &data.remote_peer_id;
+    async fn execute(&self, data: HandlePublishStoreRequestCommandData) -> CommandOutcome {
+        let HandlePublishStoreRequestCommandData {
+            operation_id,
+            request,
+            remote_peer_id,
+            response: channel,
+        } = data;
+        let blockchain: BlockchainId = request.blockchain().clone();
+        let dataset_root = request.dataset_root().to_string();
+        let dataset_public = request.dataset().to_vec();
+        let remote_peer_id = &remote_peer_id;
         tracing::Span::current().record("blockchain", tracing::field::display(&blockchain));
         tracing::Span::current().record("dataset_root", tracing::field::display(&dataset_root));
-
-        // Retrieve the response channel
-        let Some(channel) = self
-            .response_channels
-            .retrieve(remote_peer_id, operation_id)
-        else {
-            tracing::warn!(
-                operation_id = %operation_id,
-                peer = %remote_peer_id,
-                "No cached response channel found. Channel may have expired."
-            );
-            return CommandOutcome::Completed;
-        };
 
         // Validate that *this node* is in the shard for the given blockchain.
         // (The sender being in shard is not the relevant check here.)

@@ -6,7 +6,7 @@ use dkg_repository::ProofChallengeRepository;
 
 use crate::{
     application::{AssertionValidation, TripleStoreAssertions},
-    node_state::PeerRegistry,
+    peer_registry::PeerRegistry,
 };
 
 #[derive(Clone)]

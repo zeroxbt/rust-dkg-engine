@@ -13,12 +13,12 @@ use crate::{
         scheduler::CommandScheduler,
     },
     managers::Managers,
-    node_state::NodeState,
+    peer_registry::PeerRegistry,
 };
 
 pub(crate) fn build_command_executor(
     managers: &Managers,
-    node_state: &NodeState,
+    peer_registry: &Arc<PeerRegistry>,
     application: &ApplicationDeps,
     command_scheduler: &CommandScheduler,
     command_rx: mpsc::Receiver<CommandExecutionRequest>,
@@ -32,7 +32,7 @@ pub(crate) fn build_command_executor(
     let command_resolver = CommandResolver::new(CommandResolverDeps {
         send_publish_store_requests: SendPublishStoreRequestsDeps {
             network_manager: Arc::clone(&managers.network),
-            peer_registry: Arc::clone(&node_state.peer_registry),
+            peer_registry: Arc::clone(peer_registry),
             blockchain_manager: Arc::clone(&managers.blockchain),
             publish_store_operation_tracking: Arc::clone(
                 &application.publish_store_operation_tracking,
@@ -42,8 +42,7 @@ pub(crate) fn build_command_executor(
         handle_publish_store_request: HandlePublishStoreRequestDeps {
             network_manager: Arc::clone(&managers.network),
             blockchain_manager: Arc::clone(&managers.blockchain),
-            peer_registry: Arc::clone(&node_state.peer_registry),
-            store_response_channels: Arc::clone(&node_state.store_response_channels),
+            peer_registry: Arc::clone(peer_registry),
             publish_tmp_dataset_store: Arc::clone(&publish_tmp_dataset_store),
         },
         send_publish_finality_request: SendPublishFinalityRequestDeps {
@@ -58,7 +57,6 @@ pub(crate) fn build_command_executor(
         handle_publish_finality_request: HandlePublishFinalityRequestDeps {
             finality_status_repository,
             network_manager: Arc::clone(&managers.network),
-            finality_response_channels: Arc::clone(&node_state.finality_response_channels),
         },
         send_get_requests: SendGetRequestsDeps {
             get_operation_tracking: Arc::clone(&application.get_operation_tracking),
@@ -67,15 +65,13 @@ pub(crate) fn build_command_executor(
         handle_get_request: HandleGetRequestDeps {
             network_manager: Arc::clone(&managers.network),
             triple_store_assertions: Arc::clone(&application.triple_store_assertions),
-            peer_registry: Arc::clone(&node_state.peer_registry),
-            get_response_channels: Arc::clone(&node_state.get_response_channels),
+            peer_registry: Arc::clone(peer_registry),
             blockchain_manager: Arc::clone(&managers.blockchain),
         },
         handle_batch_get_request: HandleBatchGetRequestDeps {
             network_manager: Arc::clone(&managers.network),
             triple_store_assertions: Arc::clone(&application.triple_store_assertions),
-            peer_registry: Arc::clone(&node_state.peer_registry),
-            batch_get_response_channels: Arc::clone(&node_state.batch_get_response_channels),
+            peer_registry: Arc::clone(peer_registry),
         },
     });
 

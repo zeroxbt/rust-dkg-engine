@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use dkg_network::{BatchGetAck, BatchGetRequestData, InboundRequest, ResponseHandle};
 
-use super::inbound_request::store_channel_and_try_schedule;
 use crate::{
     commands::{
         executor::CommandExecutionRequest,
@@ -10,18 +7,15 @@ use crate::{
         registry::Command, scheduler::CommandScheduler,
     },
     controllers::rpc_controller::BatchGetRpcControllerDeps,
-    node_state::ResponseChannels,
 };
 
 pub(crate) struct BatchGetRpcController {
-    response_channels: Arc<ResponseChannels<BatchGetAck>>,
     command_scheduler: CommandScheduler,
 }
 
 impl BatchGetRpcController {
     pub(crate) fn new(deps: BatchGetRpcControllerDeps) -> Self {
         Self {
-            response_channels: deps.batch_get_response_channels,
             command_scheduler: deps.command_scheduler,
         }
     }
@@ -51,14 +45,17 @@ impl BatchGetRpcController {
             operation_id,
             data,
             remote_peer_id,
-        ));
-        store_channel_and_try_schedule(
-            &self.response_channels,
-            &self.command_scheduler,
-            &remote_peer_id,
-            operation_id,
             channel,
-            CommandExecutionRequest::new(command),
-        )
+        ));
+        match self
+            .command_scheduler
+            .try_schedule(CommandExecutionRequest::new(command))
+        {
+            Ok(()) => None,
+            Err(request) => match request.into_command() {
+                Command::HandleBatchGetRequest(command) => Some(command.response),
+                _ => unreachable!("unexpected rejected command type"),
+            },
+        }
     }
 }

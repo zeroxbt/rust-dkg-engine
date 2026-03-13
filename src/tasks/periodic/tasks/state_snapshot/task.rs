@@ -13,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{StateSnapshotConfig, StateSnapshotDeps};
 use crate::{
-    node_state::PeerRegistry,
+    peer_registry::PeerRegistry,
     tasks::periodic::{PeriodicTasksDeps, registry::GlobalPeriodicTask, runner::run_with_shutdown},
 };
 

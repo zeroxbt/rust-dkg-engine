@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use dkg_network::{GetAck, GetRequestData, InboundRequest, ResponseHandle};
 
-use super::inbound_request::store_channel_and_try_schedule;
 use crate::{
     commands::{
         executor::CommandExecutionRequest,
@@ -10,18 +7,15 @@ use crate::{
         scheduler::CommandScheduler,
     },
     controllers::rpc_controller::GetRpcControllerDeps,
-    node_state::ResponseChannels,
 };
 
 pub(crate) struct GetRpcController {
-    response_channels: Arc<ResponseChannels<GetAck>>,
     command_scheduler: CommandScheduler,
 }
 
 impl GetRpcController {
     pub(crate) fn new(deps: GetRpcControllerDeps) -> Self {
         Self {
-            response_channels: deps.get_response_channels,
             command_scheduler: deps.command_scheduler,
         }
     }
@@ -51,14 +45,17 @@ impl GetRpcController {
             operation_id,
             data,
             remote_peer_id,
-        ));
-        store_channel_and_try_schedule(
-            &self.response_channels,
-            &self.command_scheduler,
-            &remote_peer_id,
-            operation_id,
             channel,
-            CommandExecutionRequest::new(command),
-        )
+        ));
+        match self
+            .command_scheduler
+            .try_schedule(CommandExecutionRequest::new(command))
+        {
+            Ok(()) => None,
+            Err(request) => match request.into_command() {
+                Command::HandleGetRequest(command) => Some(command.response),
+                _ => unreachable!("unexpected rejected command type"),
+            },
+        }
     }
 }

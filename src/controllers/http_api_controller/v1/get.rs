@@ -50,9 +50,10 @@ impl GetHttpApiController {
                     req.content_type,
                 ));
 
-                if !context
+                if context
                     .command_scheduler
                     .try_schedule(CommandExecutionRequest::new(command))
+                    .is_err()
                 {
                     if let Err(e) = context
                         .get_operation_tracking

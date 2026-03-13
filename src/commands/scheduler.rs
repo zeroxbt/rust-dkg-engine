@@ -84,10 +84,13 @@ impl CommandScheduler {
 
     /// Try to schedule a command without blocking.
     ///
-    /// Returns `true` if the command was accepted, `false` if the channel is full
-    /// or shutdown is in progress. Callers should respond with Busy when this
-    /// returns `false`.
-    pub(crate) fn try_schedule(&self, request: CommandExecutionRequest) -> bool {
+    /// Returns `Ok(())` if the command was accepted, otherwise returns the
+    /// original request so callers can recover owned payloads such as
+    /// inbound response handles and respond immediately.
+    pub(crate) fn try_schedule(
+        &self,
+        request: CommandExecutionRequest,
+    ) -> Result<(), CommandExecutionRequest> {
         if self.shutdown.is_cancelled() {
             observability::record_command_total(request.command().name(), "rejected_shutdown");
             self.record_queue_saturation();
@@ -95,13 +98,13 @@ impl CommandScheduler {
                 command = %request.command().name(),
                 "Shutdown in progress, not scheduling command"
             );
-            return false;
+            return Err(request);
         }
 
         match self.tx.try_send(request) {
             Ok(()) => {
                 self.record_queue_saturation();
-                true
+                Ok(())
             }
             Err(mpsc::error::TrySendError::Full(request)) => {
                 observability::record_command_total(
@@ -110,7 +113,7 @@ impl CommandScheduler {
                 );
                 self.record_queue_saturation();
                 tracing::warn!("Command queue full, rejecting command");
-                false
+                Err(request)
             }
             Err(mpsc::error::TrySendError::Closed(request)) => {
                 observability::record_command_total(
@@ -120,7 +123,7 @@ impl CommandScheduler {
                 observability::record_command_queue_depth(0);
                 observability::record_command_queue_fill_ratio(0.0);
                 tracing::error!("Command channel closed");
-                false
+                Err(request)
             }
         }
     }

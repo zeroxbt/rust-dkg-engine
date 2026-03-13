@@ -14,8 +14,8 @@ use uuid::Uuid;
 use crate::{
     application::{OperationTracking as GenericOperationService, signature},
     commands::{SendPublishStoreRequestsDeps, executor::CommandOutcome, registry::CommandHandler},
-    node_state::PeerRegistry,
     operations::PublishStoreOperation,
+    peer_registry::PeerRegistry,
 };
 
 /// Maximum number of in-flight peer requests for this operation.
@@ -88,7 +88,8 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             peer_count = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, data: &SendPublishStoreRequestsCommandData) -> CommandOutcome {
+    async fn execute(&self, data: SendPublishStoreRequestsCommandData) -> CommandOutcome {
+        let data = &data;
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;
         let dataset_root = &data.dataset_root;

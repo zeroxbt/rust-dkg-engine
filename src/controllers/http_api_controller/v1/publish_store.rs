@@ -54,9 +54,10 @@ impl PublishStoreHttpApiController {
                         req.dataset,
                     ));
 
-                if !context
+                if context
                     .command_scheduler
                     .try_schedule(CommandExecutionRequest::new(command))
+                    .is_err()
                 {
                     if let Err(e) = context
                         .publish_store_operation_tracking

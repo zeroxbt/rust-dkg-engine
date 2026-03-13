@@ -43,7 +43,6 @@ macro_rules! command_registry {
             }
         ),+ $(,)?
     ) => {
-        #[derive(Clone)]
         pub(crate) enum Command {
             $( $variant($data), )+
         }
@@ -79,7 +78,7 @@ macro_rules! command_registry {
                 }
             }
 
-            pub(crate) async fn execute(&self, command: &Command) -> CommandOutcome {
+            pub(crate) async fn execute(&self, command: Command) -> CommandOutcome {
                 match command {
                     $( Command::$variant(data) => self.$field.execute(data).await, )+
                 }
@@ -89,7 +88,7 @@ macro_rules! command_registry {
 }
 
 pub(crate) trait CommandHandler<D: Send + Sync + 'static>: Send + Sync {
-    fn execute(&self, data: &D) -> impl std::future::Future<Output = CommandOutcome> + Send;
+    fn execute(&self, data: D) -> impl std::future::Future<Output = CommandOutcome> + Send;
 }
 
 // Command registry: operation commands only.

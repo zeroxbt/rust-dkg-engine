@@ -1,7 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
 use dkg_key_value_store::PublishTmpDatasetStore;
-use dkg_network::{BatchGetAck, FinalityAck, GetAck, StoreAck};
 use dkg_repository::{FinalityStatusRepository, OperationRepository, ProofChallengeRepository};
 use tokio_util::sync::CancellationToken;
 
@@ -12,7 +11,6 @@ use super::{
 };
 use crate::{
     application::OperationTracking,
-    node_state::ResponseChannels,
     operations::{GetOperation, PublishStoreOperation},
     tasks::periodic::{PeriodicTasksDeps, registry::GlobalPeriodicTask, runner::run_with_shutdown},
 };
@@ -24,10 +22,6 @@ pub(crate) struct CleanupTask {
     publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
     publish_operation_tracking: Arc<OperationTracking<PublishStoreOperation>>,
     get_operation_tracking: Arc<OperationTracking<GetOperation>>,
-    store_response_channels: Arc<ResponseChannels<StoreAck>>,
-    get_response_channels: Arc<ResponseChannels<GetAck>>,
-    finality_response_channels: Arc<ResponseChannels<FinalityAck>>,
-    batch_get_response_channels: Arc<ResponseChannels<BatchGetAck>>,
     config: CleanupConfig,
 }
 
@@ -40,10 +34,6 @@ impl CleanupTask {
             publish_tmp_dataset_store: deps.publish_tmp_dataset_store,
             publish_operation_tracking: deps.publish_operation_tracking,
             get_operation_tracking: deps.get_operation_tracking,
-            store_response_channels: deps.store_response_channels,
-            get_response_channels: deps.get_response_channels,
-            finality_response_channels: deps.finality_response_channels,
-            batch_get_response_channels: deps.batch_get_response_channels,
             config,
         }
     }
@@ -131,22 +121,7 @@ impl CleanupTask {
             }
         }
 
-        let removed_response_channels = self.cleanup_response_channels();
-        if removed_response_channels > 0 {
-            tracing::info!(
-                removed = removed_response_channels,
-                "Cleaned up expired network response channels"
-            );
-        }
-
         interval
-    }
-
-    fn cleanup_response_channels(&self) -> usize {
-        self.store_response_channels.cleanup_expired()
-            + self.get_response_channels.cleanup_expired()
-            + self.finality_response_channels.cleanup_expired()
-            + self.batch_get_response_channels.cleanup_expired()
     }
 }
 

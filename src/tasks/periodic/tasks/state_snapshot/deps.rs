@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use dkg_repository::{KcChainMetadataRepository, KcProjectionRepository, KcSyncRepository};
 
-use crate::node_state::PeerRegistry;
+use crate::peer_registry::PeerRegistry;
 
 #[derive(Clone)]
 pub(crate) struct StateSnapshotDeps {

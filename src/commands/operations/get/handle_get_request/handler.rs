@@ -9,23 +9,29 @@ use uuid::Uuid;
 use crate::{
     application::{TripleStoreAssertions, paranet},
     commands::{HandleGetRequestDeps, executor::CommandOutcome, registry::CommandHandler},
-    node_state::{PeerRegistry, ResponseChannels},
+    peer_registry::PeerRegistry,
 };
 
 /// Command data for handling incoming get requests.
-#[derive(Clone)]
 pub(crate) struct HandleGetRequestCommandData {
     pub operation_id: Uuid,
     pub request: GetRequestData,
     pub remote_peer_id: PeerId,
+    pub response: ResponseHandle<GetAck>,
 }
 
 impl HandleGetRequestCommandData {
-    pub(crate) fn new(operation_id: Uuid, request: GetRequestData, remote_peer_id: PeerId) -> Self {
+    pub(crate) fn new(
+        operation_id: Uuid,
+        request: GetRequestData,
+        remote_peer_id: PeerId,
+        response: ResponseHandle<GetAck>,
+    ) -> Self {
         Self {
             operation_id,
             request,
             remote_peer_id,
+            response,
         }
     }
 }
@@ -34,7 +40,6 @@ pub(crate) struct HandleGetRequestCommandHandler {
     pub(super) network_manager: Arc<NetworkManager>,
     triple_store_assertions: Arc<TripleStoreAssertions>,
     peer_registry: Arc<PeerRegistry>,
-    response_channels: Arc<ResponseChannels<GetAck>>,
     pub(super) blockchain_manager: Arc<BlockchainManager>,
 }
 
@@ -44,7 +49,6 @@ impl HandleGetRequestCommandHandler {
             network_manager: deps.network_manager,
             triple_store_assertions: deps.triple_store_assertions,
             peer_registry: deps.peer_registry,
-            response_channels: deps.get_response_channels,
             blockchain_manager: deps.blockchain_manager,
         }
     }
@@ -111,31 +115,23 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             effective_visibility = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, data: &HandleGetRequestCommandData) -> CommandOutcome {
-        let operation_id = data.operation_id;
-        let ual = data.request.ual().to_string();
-        let token_ids = data.request.token_ids_shared();
-        let include_metadata = data.request.include_metadata();
-        let paranet_ual = data.request.paranet_ual_shared();
-        let remote_peer_id = &data.remote_peer_id;
+    async fn execute(&self, data: HandleGetRequestCommandData) -> CommandOutcome {
+        let HandleGetRequestCommandData {
+            operation_id,
+            request,
+            remote_peer_id,
+            response: channel,
+        } = data;
+        let ual = request.ual().to_string();
+        let token_ids = request.token_ids_shared();
+        let include_metadata = request.include_metadata();
+        let paranet_ual = request.paranet_ual_shared();
+        let remote_peer_id = &remote_peer_id;
         tracing::Span::current().record("ual", tracing::field::display(&ual));
         tracing::Span::current().record(
             "paranet",
             tracing::field::debug(&paranet_ual.as_deref().map(String::as_str)),
         );
-
-        // Retrieve the response channel
-        let Some(channel) = self
-            .response_channels
-            .retrieve(remote_peer_id, operation_id)
-        else {
-            tracing::warn!(
-                operation_id = %operation_id,
-                peer = %remote_peer_id,
-                "Response channel not found; request may have expired"
-            );
-            return CommandOutcome::Completed;
-        };
 
         // Parse the UAL
         let parsed_ual = match parse_ual(&ual) {

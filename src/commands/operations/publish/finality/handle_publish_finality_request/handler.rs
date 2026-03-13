@@ -5,16 +5,12 @@ use dkg_repository::FinalityStatusRepository;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::{
-    commands::{
-        HandlePublishFinalityRequestDeps, executor::CommandOutcome, registry::CommandHandler,
-    },
-    node_state::ResponseChannels,
+use crate::commands::{
+    HandlePublishFinalityRequestDeps, executor::CommandOutcome, registry::CommandHandler,
 };
 
 /// Command data for handling incoming publish finality requests from storage nodes.
 /// This runs on the publisher node when a storage node confirms it has stored the data.
-#[derive(Clone)]
 pub(crate) struct HandlePublishFinalityRequestCommandData {
     /// The operation ID for this finality request
     pub operation_id: Uuid,
@@ -22,6 +18,7 @@ pub(crate) struct HandlePublishFinalityRequestCommandData {
     pub request: FinalityRequestData,
     /// The peer ID of the storage node sending the finality request
     pub remote_peer_id: PeerId,
+    pub response: ResponseHandle<FinalityAck>,
 }
 
 impl HandlePublishFinalityRequestCommandData {
@@ -29,11 +26,13 @@ impl HandlePublishFinalityRequestCommandData {
         operation_id: Uuid,
         request: FinalityRequestData,
         remote_peer_id: PeerId,
+        response: ResponseHandle<FinalityAck>,
     ) -> Self {
         Self {
             operation_id,
             request,
             remote_peer_id,
+            response,
         }
     }
 }
@@ -41,7 +40,6 @@ impl HandlePublishFinalityRequestCommandData {
 pub(crate) struct HandlePublishFinalityRequestCommandHandler {
     finality_status_repository: FinalityStatusRepository,
     pub(super) network_manager: Arc<NetworkManager>,
-    response_channels: Arc<ResponseChannels<FinalityAck>>,
 }
 
 impl HandlePublishFinalityRequestCommandHandler {
@@ -49,7 +47,6 @@ impl HandlePublishFinalityRequestCommandHandler {
         Self {
             finality_status_repository: deps.finality_status_repository,
             network_manager: deps.network_manager,
-            response_channels: deps.finality_response_channels,
         }
     }
 
@@ -117,29 +114,21 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
             remote_peer = %data.remote_peer_id,
         )
     )]
-    async fn execute(&self, data: &HandlePublishFinalityRequestCommandData) -> CommandOutcome {
-        let publish_finality_operation_id = data.operation_id;
-        let ual = data.request.ual().to_string();
-        let publish_store_operation_id = data.request.publish_operation_id().to_string();
-        let remote_peer_id = &data.remote_peer_id;
+    async fn execute(&self, data: HandlePublishFinalityRequestCommandData) -> CommandOutcome {
+        let HandlePublishFinalityRequestCommandData {
+            operation_id: publish_finality_operation_id,
+            request,
+            remote_peer_id,
+            response: channel,
+        } = data;
+        let ual = request.ual().to_string();
+        let publish_store_operation_id = request.publish_operation_id().to_string();
+        let remote_peer_id = &remote_peer_id;
         tracing::Span::current().record(
             "publish_operation_id",
             tracing::field::display(&publish_store_operation_id),
         );
         tracing::Span::current().record("ual", tracing::field::display(&ual));
-
-        // Retrieve the response channel
-        let Some(channel) = self
-            .response_channels
-            .retrieve(remote_peer_id, publish_finality_operation_id)
-        else {
-            tracing::warn!(
-                operation_id = %publish_finality_operation_id,
-                peer = %remote_peer_id,
-                "Response channel not found; finality request may have expired"
-            );
-            return CommandOutcome::Completed;
-        };
 
         // Parse the publish operation ID
         let publish_store_operation_id = match Uuid::parse_str(&publish_store_operation_id) {

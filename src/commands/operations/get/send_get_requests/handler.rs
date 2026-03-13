@@ -66,7 +66,8 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             include_metadata = data.include_metadata,
         )
     )]
-    async fn execute(&self, data: &SendGetRequestsCommandData) -> CommandOutcome {
+    async fn execute(&self, data: SendGetRequestsCommandData) -> CommandOutcome {
+        let data = &data;
         let operation_id = data.operation_id;
 
         let fetch_request = GetAssertionInput {

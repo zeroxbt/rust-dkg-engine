@@ -10,7 +10,7 @@ use crate::{
     controllers::{
         http_api_controller::router::HttpApiRouter, rpc_controller::rpc_router::RpcRouter,
     },
-    node_state::PeerRegistry,
+    peer_registry::PeerRegistry,
     tasks::{
         dkg_sync,
         periodic::{self, PeriodicTasksConfig},

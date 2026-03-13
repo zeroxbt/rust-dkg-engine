@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use dkg_network::{InboundRequest, ResponseHandle, StoreAck, StoreRequestData};
 
-use super::inbound_request::store_channel_and_try_schedule;
 use crate::{
     commands::{
         executor::CommandExecutionRequest,
@@ -10,18 +7,15 @@ use crate::{
         registry::Command, scheduler::CommandScheduler,
     },
     controllers::rpc_controller::PublishStoreRpcControllerDeps,
-    node_state::ResponseChannels,
 };
 
 pub(crate) struct PublishStoreRpcController {
-    response_channels: Arc<ResponseChannels<StoreAck>>,
     command_scheduler: CommandScheduler,
 }
 
 impl PublishStoreRpcController {
     pub(crate) fn new(deps: PublishStoreRpcControllerDeps) -> Self {
         Self {
-            response_channels: deps.store_response_channels,
             command_scheduler: deps.command_scheduler,
         }
     }
@@ -48,15 +42,17 @@ impl PublishStoreRpcController {
         );
 
         let command = Command::HandlePublishStoreRequest(
-            HandlePublishStoreRequestCommandData::new(operation_id, data, remote_peer_id),
+            HandlePublishStoreRequestCommandData::new(operation_id, data, remote_peer_id, channel),
         );
-        store_channel_and_try_schedule(
-            &self.response_channels,
-            &self.command_scheduler,
-            &remote_peer_id,
-            operation_id,
-            channel,
-            CommandExecutionRequest::new(command),
-        )
+        match self
+            .command_scheduler
+            .try_schedule(CommandExecutionRequest::new(command))
+        {
+            Ok(()) => None,
+            Err(request) => match request.into_command() {
+                Command::HandlePublishStoreRequest(command) => Some(command.response),
+                _ => unreachable!("unexpected rejected command type"),
+            },
+        }
     }
 }

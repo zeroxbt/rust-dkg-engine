@@ -1,30 +1,22 @@
-use std::sync::Arc;
-
-use dkg_network::{BatchGetAck, FinalityAck, GetAck, StoreAck};
-
-use crate::{commands::scheduler::CommandScheduler, node_state::ResponseChannels};
+use crate::commands::scheduler::CommandScheduler;
 
 #[derive(Clone)]
 pub(crate) struct PublishStoreRpcControllerDeps {
-    pub(crate) store_response_channels: Arc<ResponseChannels<StoreAck>>,
     pub(crate) command_scheduler: CommandScheduler,
 }
 
 #[derive(Clone)]
 pub(crate) struct GetRpcControllerDeps {
-    pub(crate) get_response_channels: Arc<ResponseChannels<GetAck>>,
     pub(crate) command_scheduler: CommandScheduler,
 }
 
 #[derive(Clone)]
 pub(crate) struct PublishFinalityRpcControllerDeps {
-    pub(crate) finality_response_channels: Arc<ResponseChannels<FinalityAck>>,
     pub(crate) command_scheduler: CommandScheduler,
 }
 
 #[derive(Clone)]
 pub(crate) struct BatchGetRpcControllerDeps {
-    pub(crate) batch_get_response_channels: Arc<ResponseChannels<BatchGetAck>>,
     pub(crate) command_scheduler: CommandScheduler,
 }
 

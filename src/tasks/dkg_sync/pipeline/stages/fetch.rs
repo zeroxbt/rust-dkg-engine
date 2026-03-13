@@ -23,7 +23,7 @@ use tracing::instrument;
 
 use crate::{
     application::{AssertionValidation, UAL_MAX_LIMIT},
-    node_state::PeerRegistry,
+    peer_registry::PeerRegistry,
     tasks::dkg_sync::pipeline::types::{FetchedKc, KcToSync, QueueKcKey, QueueOutcome},
 };
 

@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{AssertionValidation, TripleStoreAssertions, paranet},
-    node_state::PeerRegistry,
+    peer_registry::PeerRegistry,
 };
 
 #[derive(Debug, Clone, Copy)]

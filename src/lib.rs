@@ -6,8 +6,8 @@ mod controllers;
 mod error;
 mod logger;
 mod managers;
-mod node_state;
 mod operations;
+mod peer_registry;
 mod runtime;
 mod tasks;
 
@@ -24,7 +24,7 @@ pub async fn run() {
     let bootstrap::CoreBootstrap {
         config,
         managers,
-        node_state,
+        peer_registry,
         application,
         command_scheduler,
         command_rx,
@@ -45,40 +45,35 @@ pub async fn run() {
     // Seed peer registry with sharding tables before commands start
     seed_sharding_tables(
         &managers.blockchain,
-        &node_state.peer_registry,
+        &peer_registry,
         managers.network.peer_id(),
     )
     .await;
 
     // Load persisted peer addresses and inject into Kademlia routing table.
     // This must happen after sharding table seeding so dial_peers knows who to connect to.
-    bootstrap::hydrate_persisted_peer_addresses(&managers, &node_state.peer_registry).await;
+    bootstrap::hydrate_persisted_peer_addresses(&managers, &peer_registry).await;
     let periodic_tasks_deps = bootstrap::build_periodic_tasks_deps(
         &managers,
-        &node_state,
+        &peer_registry,
         &application,
         &command_scheduler,
     );
     let command_executor = bootstrap::build_command_executor(
         &managers,
-        &node_state,
+        &peer_registry,
         &application,
         &command_scheduler,
         command_rx,
     );
-    let controllers = bootstrap::build_controllers(
-        &config,
-        &managers,
-        &node_state,
-        &application,
-        &command_scheduler,
-    );
+    let controllers =
+        bootstrap::build_controllers(&config, &managers, &application, &command_scheduler);
 
     runtime::run(
         runtime::RuntimeDeps {
             command_scheduler,
             network_manager: Arc::clone(&managers.network),
-            peer_registry: Arc::clone(&node_state.peer_registry),
+            peer_registry: Arc::clone(&peer_registry),
             periodic_tasks_deps,
             blockchain_ids,
         },

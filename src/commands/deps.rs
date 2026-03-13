@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
 use dkg_key_value_store::PublishTmpDatasetStore;
-use dkg_network::{BatchGetAck, FinalityAck, GetAck, NetworkManager, StoreAck};
+use dkg_network::NetworkManager;
 use dkg_repository::{
     FinalityStatusRepository, KcProjectionRepository, OperationRepository,
     TriplesInsertCountRepository,
@@ -12,8 +12,8 @@ use crate::{
     application::{
         GetAssertionUseCase, KcMaterializationService, OperationTracking, TripleStoreAssertions,
     },
-    node_state::{PeerRegistry, ResponseChannels},
     operations::{GetOperation, PublishStoreOperation},
+    peer_registry::PeerRegistry,
 };
 
 #[derive(Clone)]
@@ -30,7 +30,6 @@ pub(crate) struct HandlePublishStoreRequestDeps {
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
     pub(crate) peer_registry: Arc<PeerRegistry>,
-    pub(crate) store_response_channels: Arc<ResponseChannels<StoreAck>>,
     pub(crate) publish_tmp_dataset_store: Arc<PublishTmpDatasetStore>,
 }
 
@@ -49,7 +48,6 @@ pub(crate) struct SendPublishFinalityRequestDeps {
 pub(crate) struct HandlePublishFinalityRequestDeps {
     pub(crate) finality_status_repository: FinalityStatusRepository,
     pub(crate) network_manager: Arc<NetworkManager>,
-    pub(crate) finality_response_channels: Arc<ResponseChannels<FinalityAck>>,
 }
 
 #[derive(Clone)]
@@ -63,7 +61,6 @@ pub(crate) struct HandleGetRequestDeps {
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
     pub(crate) peer_registry: Arc<PeerRegistry>,
-    pub(crate) get_response_channels: Arc<ResponseChannels<GetAck>>,
     pub(crate) blockchain_manager: Arc<BlockchainManager>,
 }
 
@@ -72,5 +69,4 @@ pub(crate) struct HandleBatchGetRequestDeps {
     pub(crate) network_manager: Arc<NetworkManager>,
     pub(crate) triple_store_assertions: Arc<TripleStoreAssertions>,
     pub(crate) peer_registry: Arc<PeerRegistry>,
-    pub(crate) batch_get_response_channels: Arc<ResponseChannels<BatchGetAck>>,
 }

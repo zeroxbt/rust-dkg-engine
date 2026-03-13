@@ -13,13 +13,11 @@ use crate::{
         {self},
     },
     managers::Managers,
-    node_state::NodeState,
 };
 
 pub(crate) fn build_controllers(
     config: &Config,
     managers: &Managers,
-    node_state: &NodeState,
     application: &ApplicationDeps,
     command_scheduler: &CommandScheduler,
 ) -> controllers::Controllers {
@@ -27,19 +25,15 @@ pub(crate) fn build_controllers(
         &config.controllers,
         RpcRouterDeps {
             publish_store: PublishStoreRpcControllerDeps {
-                store_response_channels: Arc::clone(&node_state.store_response_channels),
                 command_scheduler: command_scheduler.clone(),
             },
             get: GetRpcControllerDeps {
-                get_response_channels: Arc::clone(&node_state.get_response_channels),
                 command_scheduler: command_scheduler.clone(),
             },
             publish_finality: PublishFinalityRpcControllerDeps {
-                finality_response_channels: Arc::clone(&node_state.finality_response_channels),
                 command_scheduler: command_scheduler.clone(),
             },
             batch_get: BatchGetRpcControllerDeps {
-                batch_get_response_channels: Arc::clone(&node_state.batch_get_response_channels),
                 command_scheduler: command_scheduler.clone(),
             },
         },

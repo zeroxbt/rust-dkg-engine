@@ -5,7 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::SavePeerAddressesDeps;
 use crate::{
-    node_state::PeerRegistry,
+    peer_registry::PeerRegistry,
     tasks::periodic::{PeriodicTasksDeps, registry::GlobalPeriodicTask, runner::run_with_shutdown},
 };
 

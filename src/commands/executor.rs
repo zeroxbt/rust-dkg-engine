@@ -19,7 +19,6 @@ pub(crate) enum CommandOutcome {
     Completed,
 }
 
-#[derive(Clone)]
 pub(crate) struct CommandExecutionRequest {
     command: Command,
     created_at: i64,
@@ -36,6 +35,10 @@ impl CommandExecutionRequest {
     /// Returns a reference to the command.
     pub(crate) fn command(&self) -> &Command {
         &self.command
+    }
+
+    pub(crate) fn into_command(self) -> Command {
+        self.command
     }
 
     pub(crate) fn is_expired(&self) -> bool {
@@ -144,7 +147,7 @@ impl CommandExecutor {
             return;
         }
 
-        let _outcome = command_resolver.execute(request.command()).await;
+        let _outcome = command_resolver.execute(request.into_command()).await;
         tracing::trace!(command = %command_name, "Command completed");
         observability::record_command_total(command_name, "completed");
         observability::record_command_execution_delay(command_name, "completed", execution_delay);
