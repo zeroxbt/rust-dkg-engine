@@ -12,9 +12,7 @@ use super::ShardingTableCheckDeps;
 use crate::{
     error::NodeError,
     peer_registry::PeerRegistry,
-    tasks::periodic::{
-        PeriodicTasksDeps, registry::BlockchainPeriodicTask, runner::run_with_shutdown,
-    },
+    tasks::periodic::{PeriodicTasksDeps, registry::PeriodicTask, runner::run_with_shutdown},
 };
 
 /// Interval between sharding table synchronization checks (10 seconds)
@@ -347,9 +345,9 @@ impl ShardingTableCheckTask {
         })
     }
 
-    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
+    pub(crate) async fn run(self, blockchain_id: BlockchainId, shutdown: CancellationToken) {
         run_with_shutdown("sharding_table_check", shutdown, || {
-            self.execute(blockchain_id)
+            self.execute(&blockchain_id)
         })
         .await;
     }
@@ -392,14 +390,17 @@ impl ShardingTableCheckTask {
     }
 }
 
-impl BlockchainPeriodicTask for ShardingTableCheckTask {
-    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
+impl PeriodicTask for ShardingTableCheckTask {
+    type Config = ();
+    type Context = BlockchainId;
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
         Self::new(deps.sharding_table_check.clone())
     }
 
     fn run_task(
         self,
-        blockchain_id: &BlockchainId,
+        blockchain_id: Self::Context,
         shutdown: CancellationToken,
     ) -> impl std::future::Future<Output = ()> + Send {
         Self::run(self, blockchain_id, shutdown)

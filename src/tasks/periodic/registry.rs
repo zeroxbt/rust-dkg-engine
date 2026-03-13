@@ -1,81 +1,33 @@
 use std::{future::Future, sync::Arc};
 
-use dkg_blockchain::BlockchainId;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use super::deps::PeriodicTasksDeps;
 
-pub(crate) trait GlobalPeriodicTask: Send + 'static {
+pub(crate) trait PeriodicTask: Send + 'static {
     type Config: Send + 'static;
-
-    fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self;
-
-    fn run_task(self, shutdown: CancellationToken) -> impl Future<Output = ()> + Send;
-}
-
-pub(crate) trait BlockchainPeriodicTask: Send + 'static {
-    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self;
-
-    fn run_task(
-        self,
-        blockchain_id: &BlockchainId,
-        shutdown: CancellationToken,
-    ) -> impl Future<Output = ()> + Send;
-}
-
-pub(crate) trait ConfiguredBlockchainPeriodicTask: Send + 'static {
-    type Config: Send + 'static;
+    type Context: Send + 'static;
 
     fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self;
 
     fn run_task(
         self,
-        blockchain_id: &BlockchainId,
+        context: Self::Context,
         shutdown: CancellationToken,
     ) -> impl Future<Output = ()> + Send;
 }
 
-pub(crate) fn spawn_global_task<T: GlobalPeriodicTask>(
+pub(crate) fn spawn_task<T: PeriodicTask>(
     set: &mut JoinSet<()>,
     deps: &Arc<PeriodicTasksDeps>,
     shutdown: &CancellationToken,
     config: T::Config,
+    context: T::Context,
 ) {
     let deps = Arc::clone(deps);
     let shutdown = shutdown.clone();
     set.spawn(async move {
-        T::from_deps(deps, config).run_task(shutdown).await;
-    });
-}
-
-pub(crate) fn spawn_blockchain_task<T: BlockchainPeriodicTask>(
-    set: &mut JoinSet<()>,
-    deps: &Arc<PeriodicTasksDeps>,
-    shutdown: &CancellationToken,
-    blockchain_id: &BlockchainId,
-) {
-    let deps = Arc::clone(deps);
-    let shutdown = shutdown.clone();
-    let blockchain_id = blockchain_id.clone();
-    set.spawn(async move {
-        T::from_deps(deps).run_task(&blockchain_id, shutdown).await;
-    });
-}
-
-pub(crate) fn spawn_configured_blockchain_task<T: ConfiguredBlockchainPeriodicTask>(
-    set: &mut JoinSet<()>,
-    deps: &Arc<PeriodicTasksDeps>,
-    shutdown: &CancellationToken,
-    blockchain_id: &BlockchainId,
-    config: T::Config,
-) {
-    let deps = Arc::clone(deps);
-    let shutdown = shutdown.clone();
-    let blockchain_id = blockchain_id.clone();
-    set.spawn(async move {
-        T::from_deps(deps, config)
-            .run_task(&blockchain_id, shutdown)
-            .await;
+        T::from_deps(deps, config).run_task(context, shutdown).await;
     });
 }

@@ -12,7 +12,7 @@ use super::{
 use crate::{
     application::OperationTracking,
     operations::{GetOperation, PublishStoreOperation},
-    tasks::periodic::{PeriodicTasksDeps, registry::GlobalPeriodicTask, runner::run_with_shutdown},
+    tasks::periodic::{PeriodicTasksDeps, registry::PeriodicTask, runner::run_with_shutdown},
 };
 
 pub(crate) struct CleanupTask {
@@ -125,14 +125,19 @@ impl CleanupTask {
     }
 }
 
-impl GlobalPeriodicTask for CleanupTask {
+impl PeriodicTask for CleanupTask {
     type Config = CleanupConfig;
+    type Context = ();
 
     fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
         Self::new(deps.cleanup.clone(), config)
     }
 
-    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
+    fn run_task(
+        self,
+        _context: Self::Context,
+        shutdown: CancellationToken,
+    ) -> impl std::future::Future<Output = ()> + Send {
         Self::run(self, shutdown)
     }
 }

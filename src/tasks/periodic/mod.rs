@@ -33,7 +33,7 @@ use tasks::{
 };
 use tokio_util::sync::CancellationToken;
 
-use self::registry::{spawn_blockchain_task, spawn_configured_blockchain_task, spawn_global_task};
+use self::registry::spawn_task;
 use crate::tasks::dkg_sync::DkgSyncConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,22 +46,6 @@ pub(crate) struct PeriodicTasksConfig {
     pub kc_reconciliation: KcReconciliationConfig,
     pub paranet_sync: ParanetSyncConfig,
     pub proving: ProvingConfig,
-}
-
-macro_rules! spawn_registered_global_tasks {
-    ($set:expr, $deps:expr, $shutdown:expr, $( $task:ty => $config:expr ),+ $(,)? ) => {
-        $(
-            spawn_global_task::<$task>($set, $deps, $shutdown, $config);
-        )+
-    };
-}
-
-macro_rules! spawn_registered_blockchain_tasks {
-    ($set:expr, $deps:expr, $shutdown:expr, $blockchain_id:expr, $( $task:ty ),+ $(,)? ) => {
-        $(
-            spawn_blockchain_task::<$task>($set, $deps, $shutdown, $blockchain_id);
-        )+
-    };
 }
 
 /// Spawn all periodic tasks and wait for them to complete.
@@ -96,18 +80,13 @@ pub(crate) async fn run(
     let state_snapshot_enabled = metrics_enabled;
 
     // Global periodic tasks
-    spawn_registered_global_tasks!(
-        &mut set,
-        &deps,
-        &shutdown,
-        DialPeersTask => (),
-        SavePeerAddressesTask => (),
-    );
+    spawn_task::<DialPeersTask>(&mut set, &deps, &shutdown, (), ());
+    spawn_task::<SavePeerAddressesTask>(&mut set, &deps, &shutdown, (), ());
     if cleanup_enabled {
-        spawn_global_task::<CleanupTask>(&mut set, &deps, &shutdown, cleanup_config);
+        spawn_task::<CleanupTask>(&mut set, &deps, &shutdown, cleanup_config, ());
     }
     if state_snapshot_enabled {
-        spawn_global_task::<StateSnapshotTask>(
+        spawn_task::<StateSnapshotTask>(
             &mut set,
             &deps,
             &shutdown,
@@ -116,6 +95,7 @@ pub(crate) async fn run(
                 blockchain_ids: blockchain_ids.clone(),
                 max_retry_attempts: dkg_sync_config.queue_processor.max_retry_attempts,
             },
+            (),
         );
     }
 
@@ -124,44 +104,38 @@ pub(crate) async fn run(
         let reorg_buffer_blocks = reorg_buffer_blocks.max(1);
 
         if paranet_sync_enabled {
-            spawn_configured_blockchain_task::<ParanetSyncTask>(
+            spawn_task::<ParanetSyncTask>(
                 &mut set,
                 &deps,
                 &shutdown,
-                &blockchain_id,
                 paranet_sync_config.clone(),
+                blockchain_id.clone(),
             );
         }
 
         if kc_reconciliation_enabled {
-            spawn_configured_blockchain_task::<KcReconciliationTask>(
+            spawn_task::<KcReconciliationTask>(
                 &mut set,
                 &deps,
                 &shutdown,
-                &blockchain_id,
                 kc_reconciliation_config.clone(),
+                blockchain_id.clone(),
             );
         }
 
-        spawn_configured_blockchain_task::<BlockchainAdminEventsTask>(
+        spawn_task::<BlockchainAdminEventsTask>(
             &mut set,
             &deps,
             &shutdown,
-            &blockchain_id,
             (blockchain_admin_events_config.clone(), reorg_buffer_blocks),
+            blockchain_id.clone(),
         );
 
-        spawn_registered_blockchain_tasks!(
-            &mut set,
-            &deps,
-            &shutdown,
-            &blockchain_id,
-            ShardingTableCheckTask,
-            ClaimRewardsTask,
-        );
+        spawn_task::<ShardingTableCheckTask>(&mut set, &deps, &shutdown, (), blockchain_id.clone());
+        spawn_task::<ClaimRewardsTask>(&mut set, &deps, &shutdown, (), blockchain_id.clone());
 
         if proving_config.enabled {
-            spawn_blockchain_task::<ProvingTask>(&mut set, &deps, &shutdown, &blockchain_id);
+            spawn_task::<ProvingTask>(&mut set, &deps, &shutdown, (), blockchain_id.clone());
         }
     }
 

@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     peer_registry::PeerRegistry,
-    tasks::periodic::{PeriodicTasksDeps, registry::GlobalPeriodicTask, runner::run_with_shutdown},
+    tasks::periodic::{PeriodicTasksDeps, registry::PeriodicTask, runner::run_with_shutdown},
 };
 
 const DIAL_PEERS_PERIOD: Duration = Duration::from_secs(30);
@@ -187,14 +187,19 @@ impl DialPeersTask {
     }
 }
 
-impl GlobalPeriodicTask for DialPeersTask {
+impl PeriodicTask for DialPeersTask {
     type Config = ();
+    type Context = ();
 
     fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
         Self::new(deps.dial_peers.clone())
     }
 
-    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
+    fn run_task(
+        self,
+        _context: Self::Context,
+        shutdown: CancellationToken,
+    ) -> impl std::future::Future<Output = ()> + Send {
         Self::run(self, shutdown)
     }
 }

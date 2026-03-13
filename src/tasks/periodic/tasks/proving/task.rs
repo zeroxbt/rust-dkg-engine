@@ -25,9 +25,7 @@ use crate::{
         group_and_sort_public_triples,
     },
     peer_registry::PeerRegistry,
-    tasks::periodic::{
-        PeriodicTasksDeps, registry::BlockchainPeriodicTask, runner::run_with_shutdown,
-    },
+    tasks::periodic::{PeriodicTasksDeps, registry::PeriodicTask, runner::run_with_shutdown},
 };
 
 pub(crate) struct ProvingTask {
@@ -131,8 +129,8 @@ impl ProvingTask {
         None
     }
 
-    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
-        run_with_shutdown("proving", shutdown, || self.execute(blockchain_id)).await;
+    pub(crate) async fn run(self, blockchain_id: BlockchainId, shutdown: CancellationToken) {
+        run_with_shutdown("proving", shutdown, || self.execute(&blockchain_id)).await;
     }
 
     #[tracing::instrument(name = "periodic_tasks.proving", skip(self,))]
@@ -607,14 +605,17 @@ impl ProvingTask {
     }
 }
 
-impl BlockchainPeriodicTask for ProvingTask {
-    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
+impl PeriodicTask for ProvingTask {
+    type Config = ();
+    type Context = BlockchainId;
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
         Self::new(deps.proving.clone())
     }
 
     fn run_task(
         self,
-        blockchain_id: &BlockchainId,
+        blockchain_id: Self::Context,
         shutdown: CancellationToken,
     ) -> impl std::future::Future<Output = ()> + Send {
         Self::run(self, blockchain_id, shutdown)

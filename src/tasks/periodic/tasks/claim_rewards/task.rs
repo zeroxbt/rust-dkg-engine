@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::ClaimRewardsDeps;
 use crate::tasks::periodic::{
-    PeriodicTasksDeps, registry::BlockchainPeriodicTask, runner::run_with_shutdown,
+    PeriodicTasksDeps, registry::PeriodicTask, runner::run_with_shutdown,
 };
 
 /// Interval between claim rewards cycles (1 hour).
@@ -32,8 +32,8 @@ impl ClaimRewardsTask {
         }
     }
 
-    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
-        run_with_shutdown("claim_rewards", shutdown, || self.execute(blockchain_id)).await;
+    pub(crate) async fn run(self, blockchain_id: BlockchainId, shutdown: CancellationToken) {
+        run_with_shutdown("claim_rewards", shutdown, || self.execute(&blockchain_id)).await;
     }
 
     #[tracing::instrument(name = "periodic_tasks.claim_rewards", skip(self))]
@@ -257,14 +257,17 @@ impl ClaimRewardsTask {
     }
 }
 
-impl BlockchainPeriodicTask for ClaimRewardsTask {
-    fn from_deps(deps: Arc<PeriodicTasksDeps>) -> Self {
+impl PeriodicTask for ClaimRewardsTask {
+    type Config = ();
+    type Context = BlockchainId;
+
+    fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
         Self::new(deps.claim_rewards.clone())
     }
 
     fn run_task(
         self,
-        blockchain_id: &BlockchainId,
+        blockchain_id: Self::Context,
         shutdown: CancellationToken,
     ) -> impl std::future::Future<Output = ()> + Send {
         Self::run(self, blockchain_id, shutdown)

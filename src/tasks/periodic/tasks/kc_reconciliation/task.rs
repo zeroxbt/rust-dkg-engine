@@ -10,9 +10,7 @@ use super::{
 };
 use crate::{
     application::TripleStoreAssertions,
-    tasks::periodic::{
-        PeriodicTasksDeps, registry::ConfiguredBlockchainPeriodicTask, runner::run_with_shutdown,
-    },
+    tasks::periodic::{PeriodicTasksDeps, registry::PeriodicTask, runner::run_with_shutdown},
 };
 
 pub(crate) struct KcReconciliationTask {
@@ -34,9 +32,9 @@ impl KcReconciliationTask {
         }
     }
 
-    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
+    pub(crate) async fn run(self, blockchain_id: BlockchainId, shutdown: CancellationToken) {
         run_with_shutdown("kc_reconciliation", shutdown, || {
-            self.execute(blockchain_id)
+            self.execute(&blockchain_id)
         })
         .await;
     }
@@ -229,8 +227,9 @@ impl KcReconciliationTask {
     }
 }
 
-impl ConfiguredBlockchainPeriodicTask for KcReconciliationTask {
+impl PeriodicTask for KcReconciliationTask {
     type Config = KcReconciliationConfig;
+    type Context = BlockchainId;
 
     fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
         Self::new(deps.kc_reconciliation.clone(), config)
@@ -238,7 +237,7 @@ impl ConfiguredBlockchainPeriodicTask for KcReconciliationTask {
 
     fn run_task(
         self,
-        blockchain_id: &BlockchainId,
+        blockchain_id: Self::Context,
         shutdown: CancellationToken,
     ) -> impl std::future::Future<Output = ()> + Send {
         Self::run(self, blockchain_id, shutdown)

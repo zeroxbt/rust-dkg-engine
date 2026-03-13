@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 use super::SavePeerAddressesDeps;
 use crate::{
     peer_registry::PeerRegistry,
-    tasks::periodic::{PeriodicTasksDeps, registry::GlobalPeriodicTask, runner::run_with_shutdown},
+    tasks::periodic::{PeriodicTasksDeps, registry::PeriodicTask, runner::run_with_shutdown},
 };
 
 const SAVE_PEER_ADDRESSES_PERIOD: Duration = Duration::from_secs(60);
@@ -57,14 +57,19 @@ impl SavePeerAddressesTask {
     }
 }
 
-impl GlobalPeriodicTask for SavePeerAddressesTask {
+impl PeriodicTask for SavePeerAddressesTask {
     type Config = ();
+    type Context = ();
 
     fn from_deps(deps: Arc<PeriodicTasksDeps>, _config: Self::Config) -> Self {
         Self::new(deps.save_peer_addresses.clone())
     }
 
-    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
+    fn run_task(
+        self,
+        _context: Self::Context,
+        shutdown: CancellationToken,
+    ) -> impl std::future::Future<Output = ()> + Send {
         Self::run(self, shutdown)
     }
 }

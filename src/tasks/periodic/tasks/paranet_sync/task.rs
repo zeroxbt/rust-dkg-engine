@@ -11,9 +11,7 @@ use uuid::Uuid;
 use super::{ParanetSyncConfig, ParanetSyncDeps};
 use crate::{
     application::{AssertionSource, GetAssertionInput},
-    tasks::periodic::{
-        PeriodicTasksDeps, registry::ConfiguredBlockchainPeriodicTask, runner::run_with_shutdown,
-    },
+    tasks::periodic::{PeriodicTasksDeps, registry::PeriodicTask, runner::run_with_shutdown},
 };
 
 pub(crate) struct ParanetSyncTask {
@@ -26,8 +24,8 @@ impl ParanetSyncTask {
         Self { config, deps }
     }
 
-    pub(crate) async fn run(self, blockchain_id: &BlockchainId, shutdown: CancellationToken) {
-        run_with_shutdown("paranet_sync", shutdown, || self.execute(blockchain_id)).await;
+    pub(crate) async fn run(self, blockchain_id: BlockchainId, shutdown: CancellationToken) {
+        run_with_shutdown("paranet_sync", shutdown, || self.execute(&blockchain_id)).await;
     }
 
     #[tracing::instrument(name = "periodic_tasks.paranet_sync", skip(self), fields(blockchain_id = %blockchain_id))]
@@ -484,8 +482,9 @@ impl ParanetSyncTask {
     }
 }
 
-impl ConfiguredBlockchainPeriodicTask for ParanetSyncTask {
+impl PeriodicTask for ParanetSyncTask {
     type Config = ParanetSyncConfig;
+    type Context = BlockchainId;
 
     fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
         Self::new(deps.paranet_sync.clone(), config)
@@ -493,7 +492,7 @@ impl ConfiguredBlockchainPeriodicTask for ParanetSyncTask {
 
     fn run_task(
         self,
-        blockchain_id: &BlockchainId,
+        blockchain_id: Self::Context,
         shutdown: CancellationToken,
     ) -> impl std::future::Future<Output = ()> + Send {
         Self::run(self, blockchain_id, shutdown)

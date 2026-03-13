@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 use super::{StateSnapshotConfig, StateSnapshotDeps};
 use crate::{
     peer_registry::PeerRegistry,
-    tasks::periodic::{PeriodicTasksDeps, registry::GlobalPeriodicTask, runner::run_with_shutdown},
+    tasks::periodic::{PeriodicTasksDeps, registry::PeriodicTask, runner::run_with_shutdown},
 };
 
 pub(crate) struct StateSnapshotTask {
@@ -301,14 +301,19 @@ impl StateSnapshotTask {
     }
 }
 
-impl GlobalPeriodicTask for StateSnapshotTask {
+impl PeriodicTask for StateSnapshotTask {
     type Config = StateSnapshotConfig;
+    type Context = ();
 
     fn from_deps(deps: Arc<PeriodicTasksDeps>, config: Self::Config) -> Self {
         Self::new(deps.state_snapshot.clone(), config)
     }
 
-    fn run_task(self, shutdown: CancellationToken) -> impl std::future::Future<Output = ()> + Send {
+    fn run_task(
+        self,
+        _context: Self::Context,
+        shutdown: CancellationToken,
+    ) -> impl std::future::Future<Output = ()> + Send {
         Self::run(self, shutdown)
     }
 }
