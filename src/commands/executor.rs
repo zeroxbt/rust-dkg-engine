@@ -1,6 +1,5 @@
 use std::{sync::Arc, time::Instant};
 
-use chrono::Utc;
 use dkg_observability as observability;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::mpsc;
@@ -21,14 +20,14 @@ pub(crate) enum CommandOutcome {
 
 pub(crate) struct CommandExecutionRequest {
     command: Command,
-    created_at: i64,
+    created_at: Instant,
 }
 
 impl CommandExecutionRequest {
     pub(crate) fn new(command: Command) -> Self {
         Self {
             command,
-            created_at: Utc::now().timestamp_millis(),
+            created_at: Instant::now(),
         }
     }
 
@@ -46,9 +45,7 @@ impl CommandExecutionRequest {
     }
 
     pub(crate) fn execution_delay(&self) -> std::time::Duration {
-        let now = Utc::now().timestamp_millis();
-        let elapsed_ms = (now - self.created_at).max(0) as u64;
-        std::time::Duration::from_millis(elapsed_ms)
+        self.created_at.elapsed()
     }
 }
 
