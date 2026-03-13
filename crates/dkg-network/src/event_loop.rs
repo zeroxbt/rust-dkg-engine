@@ -3,7 +3,7 @@
 //! This is the internal implementation that handles all network events.
 //! It receives actions from NetworkManager handles and processes swarm events.
 
-use std::{collections::HashSet, time::Instant};
+use std::time::Instant;
 
 use dkg_observability as observability;
 use libp2p::{
@@ -247,16 +247,6 @@ fn strip_p2p_protocol(addr: &Multiaddr) -> Multiaddr {
         .collect()
 }
 
-fn parse_peer_id_from_multiaddr(addr: &Multiaddr) -> Option<PeerId> {
-    addr.iter().find_map(|proto| {
-        if let Protocol::P2p(peer_id) = proto {
-            Some(peer_id)
-        } else {
-            None
-        }
-    })
-}
-
 fn dial_peer_if_needed(swarm: &mut Swarm<NodeBehaviour>, peer: PeerId) {
     if *swarm.local_peer_id() == peer {
         tracing::trace!(%peer, "skipping self dial");
@@ -284,18 +274,9 @@ pub struct NetworkEventLoop {
     pending_get: PendingRequests<GetResponseData>,
     pending_finality: PendingRequests<FinalityResponseData>,
     pending_batch_get: PendingRequests<BatchGetResponseData>,
-    bootstrap_peers: HashSet<PeerId>,
-    kad_allowed_peers: HashSet<PeerId>,
 }
 
 impl NetworkEventLoop {
-    fn refresh_kad_query_allowlist(&mut self) {
-        self.swarm
-            .behaviour_mut()
-            .kad
-            .set_query_peer_allowlist(self.kad_allowed_peers.iter().copied());
-    }
-
     fn action_channel_fill_ratio(depth: usize) -> f64 {
         (depth as f64 / ACTION_CHANNEL_CAPACITY as f64).clamp(0.0, 1.0)
     }
@@ -319,16 +300,7 @@ impl NetworkEventLoop {
         observability::record_network_pending_requests(FinalityProtocol::NAME, 0);
         observability::record_network_pending_requests(BatchGetProtocol::NAME, 0);
 
-        let mut bootstrap_peers: HashSet<PeerId> = config
-            .bootstrap
-            .iter()
-            .filter_map(|addr| addr.parse::<Multiaddr>().ok())
-            .filter_map(|addr| parse_peer_id_from_multiaddr(&addr))
-            .collect();
-        bootstrap_peers.remove(swarm.local_peer_id());
-        let kad_allowed_peers = bootstrap_peers.clone();
-
-        let mut this = Self {
+        Self {
             swarm,
             control_rx,
             data_rx,
@@ -339,12 +311,7 @@ impl NetworkEventLoop {
             pending_get: PendingRequests::new(),
             pending_finality: PendingRequests::new(),
             pending_batch_get: PendingRequests::new(),
-            bootstrap_peers,
-            kad_allowed_peers,
-        };
-
-        this.refresh_kad_query_allowlist();
-        this
+        }
     }
 
     /// Starts listening on the configured port.
@@ -592,17 +559,12 @@ impl NetworkEventLoop {
                         protocols: info.protocols,
                         listen_addrs: info.listen_addrs,
                     };
-                    if self.kad_allowed_peers.contains(&peer_id) {
-                        for addr in identify_info.listen_addrs.iter() {
-                            let addr = strip_p2p_protocol(addr);
-                            self.swarm.behaviour_mut().kad.add_address(&peer_id, addr);
-                        }
-                    } else {
-                        observability::record_network_peer_event(
-                            "identify_received",
-                            "ignored_non_allowed",
-                        );
+
+                    for addr in identify_info.listen_addrs.iter() {
+                        let addr = strip_p2p_protocol(addr);
+                        self.swarm.behaviour_mut().kad.add_address(&peer_id, addr);
                     }
+
                     let _ = self.peer_event_tx.send(PeerEvent::IdentifyReceived {
                         peer_id,
                         info: identify_info,
@@ -622,14 +584,8 @@ impl NetworkEventLoop {
                                     target,
                                     found: true,
                                 });
-                                if self.kad_allowed_peers.contains(&target) {
-                                    dial_peer_if_needed(&mut self.swarm, target);
-                                } else {
-                                    observability::record_network_peer_event(
-                                        "kad_lookup",
-                                        "found_ignored_non_allowed",
-                                    );
-                                }
+
+                                dial_peer_if_needed(&mut self.swarm, target);
                             } else {
                                 observability::record_network_peer_event("kad_lookup", "not_found");
                                 let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
@@ -647,14 +603,8 @@ impl NetworkEventLoop {
                                     target,
                                     found: true,
                                 });
-                                if self.kad_allowed_peers.contains(&target) {
-                                    dial_peer_if_needed(&mut self.swarm, target);
-                                } else {
-                                    observability::record_network_peer_event(
-                                        "kad_lookup",
-                                        "found_ignored_non_allowed",
-                                    );
-                                }
+
+                                dial_peer_if_needed(&mut self.swarm, target);
                             } else {
                                 observability::record_network_peer_event("kad_lookup", "not_found");
                                 let _ = self.peer_event_tx.send(PeerEvent::KadLookup {
@@ -697,10 +647,8 @@ impl NetworkEventLoop {
                     if peer == local_peer {
                         continue;
                     }
-                    self.kad_allowed_peers.insert(peer);
                     find_targets.push(peer);
                 }
-                self.refresh_kad_query_allowlist();
                 for peer in find_targets {
                     self.swarm.behaviour_mut().kad.get_closest_peers(peer);
                 }
@@ -716,50 +664,16 @@ impl NetworkEventLoop {
                     if *peer_id == local_peer {
                         continue;
                     }
-                    self.kad_allowed_peers.insert(*peer_id);
                     for addr in addrs {
                         let addr = strip_p2p_protocol(addr);
                         self.swarm.behaviour_mut().kad.add_address(peer_id, addr);
                         total_addrs += 1;
                     }
                 }
-                self.refresh_kad_query_allowlist();
                 tracing::info!(
                     peers = addresses.len(),
                     addresses = total_addrs,
                     "Added persisted peer addresses to Kademlia"
-                );
-            }
-            NetworkControlAction::SyncKadAllowedPeers { peers } => {
-                let local_peer = *self.swarm.local_peer_id();
-                let mut target_allowed = self.bootstrap_peers.clone();
-                target_allowed.extend(peers);
-                target_allowed.remove(&local_peer);
-
-                let to_remove: Vec<PeerId> = self
-                    .kad_allowed_peers
-                    .difference(&target_allowed)
-                    .copied()
-                    .collect();
-
-                for peer_id in &to_remove {
-                    self.kad_allowed_peers.remove(peer_id);
-                    self.swarm.behaviour_mut().kad.remove_peer(peer_id);
-                }
-
-                let mut added = 0usize;
-                for peer_id in target_allowed {
-                    if self.kad_allowed_peers.insert(peer_id) {
-                        added += 1;
-                    }
-                }
-                self.refresh_kad_query_allowlist();
-
-                tracing::debug!(
-                    allowed = self.kad_allowed_peers.len(),
-                    removed = to_remove.len(),
-                    added,
-                    "Reconciled Kademlia allowed peers"
                 );
             }
         }
