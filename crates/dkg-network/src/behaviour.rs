@@ -11,7 +11,6 @@ use libp2p::{
     swarm::NetworkBehaviour,
     tcp,
 };
-use tracing::info;
 
 use super::{
     NetworkError, NetworkManagerConfig,
@@ -67,7 +66,7 @@ pub fn build_swarm(
     let public_key = key.public();
     let local_peer_id = PeerId::from(&public_key);
 
-    info!("Network ID is {}", local_peer_id.to_base58());
+    tracing::info!("Network ID is {}", local_peer_id.to_base58());
 
     // Create base protocols
     // 1. Kademlia DHT
@@ -209,7 +208,7 @@ pub fn build_swarm(
                         source: e,
                     })?;
                 swarm.add_external_address(external_addr.clone());
-                info!(
+                tracing::info!(
                     "Added external address for NAT traversal: {}",
                     external_addr
                 );
