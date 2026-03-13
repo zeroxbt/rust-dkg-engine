@@ -22,27 +22,23 @@ impl PublishStoreRpcController {
 
     /// Handle an inbound publish store request.
     ///
-    /// Returns `None` on success (channel stored for the command handler).
-    /// Returns `Some(channel)` if the command queue is full — caller should
+    /// Returns `None` on success (response handle stored for the command handler).
+    /// Returns `Some(response_handle)` if the command queue is full — caller should
     /// send a Busy response.
     pub(crate) fn handle_request(
         &self,
         request: InboundRequest<StoreRequestData>,
-        channel: ResponseHandle<StoreAck>,
+        response_handle: ResponseHandle<StoreAck>,
     ) -> Option<ResponseHandle<StoreAck>> {
-        let operation_id = request.operation_id();
-        let remote_peer_id = *request.peer_id();
-        let data = request.into_data();
-
         tracing::trace!(
-            operation_id = %operation_id,
-            dataset_root = %data.dataset_root(),
-            peer = %remote_peer_id,
+            operation_id = %request.operation_id(),
+            dataset_root = %request.data().dataset_root(),
+            peer = %request.peer_id(),
             "Store request received"
         );
 
         let command = Command::HandlePublishStoreRequest(
-            HandlePublishStoreRequestCommandData::new(operation_id, data, remote_peer_id, channel),
+            HandlePublishStoreRequestCommandData::new(request, response_handle),
         );
         match self
             .command_scheduler
@@ -50,7 +46,7 @@ impl PublishStoreRpcController {
         {
             Ok(()) => None,
             Err(request) => match request.into_command() {
-                Command::HandlePublishStoreRequest(command) => Some(command.response),
+                Command::HandlePublishStoreRequest(command) => Some(command.response_handle),
                 _ => unreachable!("unexpected rejected command type"),
             },
         }

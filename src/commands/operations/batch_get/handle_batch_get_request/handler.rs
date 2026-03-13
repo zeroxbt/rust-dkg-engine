@@ -4,7 +4,9 @@ use std::{
 };
 
 use dkg_domain::{Assertion, ParsedUal, TokenIds, Visibility, parse_ual};
-use dkg_network::{BatchGetAck, BatchGetRequestData, NetworkManager, PeerId, ResponseHandle};
+use dkg_network::{
+    BatchGetAck, BatchGetRequestData, InboundRequest, NetworkManager, ResponseHandle,
+};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -16,24 +18,18 @@ use crate::{
 
 /// Command data for handling incoming batch get requests.
 pub(crate) struct HandleBatchGetRequestCommandData {
-    pub operation_id: Uuid,
-    pub request: BatchGetRequestData,
-    pub remote_peer_id: PeerId,
-    pub response: ResponseHandle<BatchGetAck>,
+    pub request: InboundRequest<BatchGetRequestData>,
+    pub response_handle: ResponseHandle<BatchGetAck>,
 }
 
 impl HandleBatchGetRequestCommandData {
     pub(crate) fn new(
-        operation_id: Uuid,
-        request: BatchGetRequestData,
-        remote_peer_id: PeerId,
-        response: ResponseHandle<BatchGetAck>,
+        request: InboundRequest<BatchGetRequestData>,
+        response_handle: ResponseHandle<BatchGetAck>,
     ) -> Self {
         Self {
-            operation_id,
             request,
-            remote_peer_id,
-            response,
+            response_handle,
         }
     }
 }
@@ -55,7 +51,7 @@ impl HandleBatchGetRequestCommandHandler {
 
     pub(crate) async fn send_ack(
         &self,
-        channel: ResponseHandle<BatchGetAck>,
+        response_handle: ResponseHandle<BatchGetAck>,
         operation_id: Uuid,
         assertions: HashMap<String, Assertion>,
         metadata: HashMap<String, Vec<String>>,
@@ -63,7 +59,7 @@ impl HandleBatchGetRequestCommandHandler {
         if let Err(e) = self
             .network_manager
             .send_batch_get_ack(
-                channel,
+                response_handle,
                 operation_id,
                 BatchGetAck {
                     assertions,
@@ -82,13 +78,13 @@ impl HandleBatchGetRequestCommandHandler {
 
     pub(crate) async fn send_nack(
         &self,
-        channel: ResponseHandle<BatchGetAck>,
+        response_handle: ResponseHandle<BatchGetAck>,
         operation_id: Uuid,
         message: impl Into<String>,
     ) {
         if let Err(e) = self
             .network_manager
-            .send_batch_get_nack(channel, operation_id, message)
+            .send_batch_get_nack(response_handle, operation_id, message)
             .await
         {
             tracing::error!(
@@ -105,11 +101,11 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
         name = "op.batch_get.recv",
         skip(self, data),
         fields(
-            operation_id = %data.operation_id,
+            operation_id = %data.request.operation_id(),
             protocol = "batch_get",
             direction = "recv",
-            remote_peer = %data.remote_peer_id,
-            include_metadata = data.request.include_metadata(),
+            remote_peer = %data.request.peer_id(),
+            include_metadata = data.request.data().include_metadata(),
             ual_count = tracing::field::Empty,
             valid_ual_count = tracing::field::Empty,
             invalid_ual_count = tracing::field::Empty,
@@ -117,11 +113,10 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
     )]
     async fn execute(&self, data: HandleBatchGetRequestCommandData) -> CommandOutcome {
         let HandleBatchGetRequestCommandData {
-            operation_id,
             request,
-            remote_peer_id: _remote_peer_id,
-            response: channel,
+            response_handle,
         } = data;
+        let (operation_id, _remote_peer_id, request) = request.into_parts();
         let include_metadata = request.include_metadata();
         let uals_source = request.uals_shared();
         let token_ids_map = request.token_ids_shared();
@@ -198,7 +193,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
                     blockchain = %blockchain,
                     "Local node not found in shard - sending NACK"
                 );
-                self.send_nack(channel, operation_id, "Local node not in shard")
+                self.send_nack(response_handle, operation_id, "Local node not in shard")
                     .await;
                 return CommandOutcome::Completed;
             }
@@ -220,7 +215,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
                     "Batch get query failed"
                 );
                 self.send_nack(
-                    channel,
+                    response_handle,
                     operation_id,
                     format!("Triple store query failed: {}", e),
                 )
@@ -246,7 +241,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             "Batch-get request handled"
         );
 
-        self.send_ack(channel, operation_id, assertions, metadata)
+        self.send_ack(response_handle, operation_id, assertions, metadata)
             .await;
 
         CommandOutcome::Completed

@@ -22,32 +22,23 @@ impl PublishFinalityRpcController {
 
     /// Handle an inbound publish finality request.
     ///
-    /// Returns `None` on success (channel stored for the command handler).
-    /// Returns `Some(channel)` if the command queue is full — caller should
+    /// Returns `None` on success (response handle stored for the command handler).
+    /// Returns `Some(response_handle)` if the command queue is full — caller should
     /// send a Busy response.
     pub(crate) fn handle_request(
         &self,
         request: InboundRequest<FinalityRequestData>,
-        channel: ResponseHandle<FinalityAck>,
+        response_handle: ResponseHandle<FinalityAck>,
     ) -> Option<ResponseHandle<FinalityAck>> {
-        let operation_id = request.operation_id();
-        let remote_peer_id = *request.peer_id();
-        let data = request.into_data();
-
         tracing::trace!(
-            operation_id = %operation_id,
-            publish_operation_id = %data.publish_operation_id(),
-            ual = %data.ual(),
-            peer = %remote_peer_id,
+            operation_id = %request.operation_id(),
+            publish_operation_id = %request.data().publish_operation_id(),
+            ual = %request.data().ual(),
+            peer = %request.peer_id(),
             "Finality request received"
         );
 
-        let command_data = HandlePublishFinalityRequestCommandData::new(
-            operation_id,
-            data,
-            remote_peer_id,
-            channel,
-        );
+        let command_data = HandlePublishFinalityRequestCommandData::new(request, response_handle);
         match self
             .command_scheduler
             .try_schedule(CommandExecutionRequest::new(
@@ -55,7 +46,7 @@ impl PublishFinalityRpcController {
             )) {
             Ok(()) => None,
             Err(request) => match request.into_command() {
-                Command::HandlePublishFinalityRequest(command) => Some(command.response),
+                Command::HandlePublishFinalityRequest(command) => Some(command.response_handle),
                 _ => unreachable!("unexpected rejected command type"),
             },
         }

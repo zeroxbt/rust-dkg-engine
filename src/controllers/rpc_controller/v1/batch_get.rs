@@ -22,30 +22,24 @@ impl BatchGetRpcController {
 
     /// Handle an inbound batch get request.
     ///
-    /// Returns `None` on success (channel stored for the command handler).
-    /// Returns `Some(channel)` if the command queue is full — caller should
+    /// Returns `None` on success (response handle stored for the command handler).
+    /// Returns `Some(response_handle)` if the command queue is full — caller should
     /// send a Busy response.
     pub(crate) fn handle_request(
         &self,
         request: InboundRequest<BatchGetRequestData>,
-        channel: ResponseHandle<BatchGetAck>,
+        response_handle: ResponseHandle<BatchGetAck>,
     ) -> Option<ResponseHandle<BatchGetAck>> {
-        let operation_id = request.operation_id();
-        let remote_peer_id = *request.peer_id();
-        let data = request.into_data();
-
         tracing::trace!(
-            operation_id = %operation_id,
-            ual_count = data.uals().len(),
-            peer = %remote_peer_id,
+            operation_id = %request.operation_id(),
+            ual_count = request.data().uals().len(),
+            peer = %request.peer_id(),
             "Batch get request received"
         );
 
         let command = Command::HandleBatchGetRequest(HandleBatchGetRequestCommandData::new(
-            operation_id,
-            data,
-            remote_peer_id,
-            channel,
+            request,
+            response_handle,
         ));
         match self
             .command_scheduler
@@ -53,7 +47,7 @@ impl BatchGetRpcController {
         {
             Ok(()) => None,
             Err(request) => match request.into_command() {
-                Command::HandleBatchGetRequest(command) => Some(command.response),
+                Command::HandleBatchGetRequest(command) => Some(command.response_handle),
                 _ => unreachable!("unexpected rejected command type"),
             },
         }

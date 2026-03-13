@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use dkg_blockchain::BlockchainManager;
 use dkg_domain::{Assertion, parse_ual};
-use dkg_network::{GetAck, GetRequestData, NetworkManager, PeerId, ResponseHandle};
+use dkg_network::{GetAck, GetRequestData, InboundRequest, NetworkManager, ResponseHandle};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -14,24 +14,18 @@ use crate::{
 
 /// Command data for handling incoming get requests.
 pub(crate) struct HandleGetRequestCommandData {
-    pub operation_id: Uuid,
-    pub request: GetRequestData,
-    pub remote_peer_id: PeerId,
-    pub response: ResponseHandle<GetAck>,
+    pub request: InboundRequest<GetRequestData>,
+    pub response_handle: ResponseHandle<GetAck>,
 }
 
 impl HandleGetRequestCommandData {
     pub(crate) fn new(
-        operation_id: Uuid,
-        request: GetRequestData,
-        remote_peer_id: PeerId,
-        response: ResponseHandle<GetAck>,
+        request: InboundRequest<GetRequestData>,
+        response_handle: ResponseHandle<GetAck>,
     ) -> Self {
         Self {
-            operation_id,
             request,
-            remote_peer_id,
-            response,
+            response_handle,
         }
     }
 }
@@ -55,13 +49,13 @@ impl HandleGetRequestCommandHandler {
 
     pub(crate) async fn send_nack(
         &self,
-        channel: ResponseHandle<GetAck>,
+        response_handle: ResponseHandle<GetAck>,
         operation_id: Uuid,
         error_message: &str,
     ) {
         if let Err(e) = self
             .network_manager
-            .send_get_nack(channel, operation_id, error_message)
+            .send_get_nack(response_handle, operation_id, error_message)
             .await
         {
             tracing::error!(
@@ -74,7 +68,7 @@ impl HandleGetRequestCommandHandler {
 
     pub(crate) async fn send_ack(
         &self,
-        channel: ResponseHandle<GetAck>,
+        response_handle: ResponseHandle<GetAck>,
         operation_id: Uuid,
         assertion: Assertion,
         metadata: Option<Vec<String>>,
@@ -82,7 +76,7 @@ impl HandleGetRequestCommandHandler {
         if let Err(e) = self
             .network_manager
             .send_get_ack(
-                channel,
+                response_handle,
                 operation_id,
                 GetAck {
                     assertion,
@@ -105,23 +99,22 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
         name = "op.get.recv",
         skip(self, data),
         fields(
-            operation_id = %data.operation_id,
+            operation_id = %data.request.operation_id(),
             protocol = "get",
             direction = "recv",
             ual = tracing::field::Empty,
-            remote_peer = %data.remote_peer_id,
-            include_metadata = data.request.include_metadata(),
+            remote_peer = %data.request.peer_id(),
+            include_metadata = data.request.data().include_metadata(),
             paranet = tracing::field::Empty,
             effective_visibility = tracing::field::Empty,
         )
     )]
     async fn execute(&self, data: HandleGetRequestCommandData) -> CommandOutcome {
         let HandleGetRequestCommandData {
-            operation_id,
             request,
-            remote_peer_id,
-            response: channel,
+            response_handle,
         } = data;
+        let (operation_id, remote_peer_id, request) = request.into_parts();
         let ual = request.ual().to_string();
         let token_ids = request.token_ids_shared();
         let include_metadata = request.include_metadata();
@@ -143,8 +136,12 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
                     error = %e,
                     "Failed to parse UAL - sending NACK"
                 );
-                self.send_nack(channel, operation_id, &format!("Invalid UAL: {}", e))
-                    .await;
+                self.send_nack(
+                    response_handle,
+                    operation_id,
+                    &format!("Invalid UAL: {}", e),
+                )
+                .await;
                 return CommandOutcome::Completed;
             }
         };
@@ -162,7 +159,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
                 blockchain = %blockchain,
                 "Local node not found in shard - sending NACK"
             );
-            self.send_nack(channel, operation_id, "Local node not in shard")
+            self.send_nack(response_handle, operation_id, "Local node not in shard")
                 .await;
             return CommandOutcome::Completed;
         }
@@ -196,12 +193,17 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
 
         match query_result {
             Ok(Some(result)) if result.assertion.has_data() => {
-                self.send_ack(channel, operation_id, result.assertion, result.metadata)
-                    .await;
+                self.send_ack(
+                    response_handle,
+                    operation_id,
+                    result.assertion,
+                    result.metadata,
+                )
+                .await;
             }
             Ok(_) => {
                 self.send_nack(
-                    channel,
+                    response_handle,
                     operation_id,
                     &format!("Unable to find assertion {}", ual),
                 )
@@ -215,7 +217,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
                     "Triple store query failed; sending NACK"
                 );
                 self.send_nack(
-                    channel,
+                    response_handle,
                     operation_id,
                     &format!("Triple store query failed: {}", e),
                 )

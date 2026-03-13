@@ -3,7 +3,7 @@ use std::sync::Arc;
 use dkg_blockchain::{BlockchainId, BlockchainManager};
 use dkg_domain::{Assertion, SignatureComponents};
 use dkg_key_value_store::{PublishTmpDataset, PublishTmpDatasetStore};
-use dkg_network::{NetworkManager, PeerId, ResponseHandle, StoreAck, StoreRequestData};
+use dkg_network::{InboundRequest, NetworkManager, ResponseHandle, StoreAck, StoreRequestData};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -14,26 +14,20 @@ use crate::{
 };
 
 /// Command data for handling incoming publish store requests.
-/// Dataset is passed inline; channel is retrieved from session manager.
+/// Dataset is passed inline; response handle is owned by the command.
 pub(crate) struct HandlePublishStoreRequestCommandData {
-    pub operation_id: Uuid,
-    pub request: StoreRequestData,
-    pub remote_peer_id: PeerId,
-    pub response: ResponseHandle<StoreAck>,
+    pub request: InboundRequest<StoreRequestData>,
+    pub response_handle: ResponseHandle<StoreAck>,
 }
 
 impl HandlePublishStoreRequestCommandData {
     pub(crate) fn new(
-        operation_id: Uuid,
-        request: StoreRequestData,
-        remote_peer_id: PeerId,
-        response: ResponseHandle<StoreAck>,
+        request: InboundRequest<StoreRequestData>,
+        response_handle: ResponseHandle<StoreAck>,
     ) -> Self {
         Self {
-            operation_id,
             request,
-            remote_peer_id,
-            response,
+            response_handle,
         }
     }
 }
@@ -57,13 +51,13 @@ impl HandlePublishStoreRequestCommandHandler {
 
     pub(crate) async fn send_nack(
         &self,
-        channel: ResponseHandle<StoreAck>,
+        response_handle: ResponseHandle<StoreAck>,
         operation_id: Uuid,
         error_message: &str,
     ) {
         if let Err(e) = self
             .network_manager
-            .send_store_nack(channel, operation_id, error_message)
+            .send_store_nack(response_handle, operation_id, error_message)
             .await
         {
             tracing::error!(
@@ -76,7 +70,7 @@ impl HandlePublishStoreRequestCommandHandler {
 
     pub(crate) async fn send_ack(
         &self,
-        channel: ResponseHandle<StoreAck>,
+        response_handle: ResponseHandle<StoreAck>,
         operation_id: Uuid,
         identity_id: u128,
         signature: SignatureComponents,
@@ -84,7 +78,7 @@ impl HandlePublishStoreRequestCommandHandler {
         if let Err(e) = self
             .network_manager
             .send_store_ack(
-                channel,
+                response_handle,
                 operation_id,
                 StoreAck {
                     identity_id,
@@ -109,21 +103,20 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
         name = "op.publish_store.recv",
         skip(self, data),
         fields(
-            operation_id = %data.operation_id,
+            operation_id = %data.request.operation_id(),
             protocol = "publish_store",
             direction = "recv",
             blockchain = tracing::field::Empty,
             dataset_root = tracing::field::Empty,
-            remote_peer = %data.remote_peer_id,
+            remote_peer = %data.request.peer_id(),
         )
     )]
     async fn execute(&self, data: HandlePublishStoreRequestCommandData) -> CommandOutcome {
         let HandlePublishStoreRequestCommandData {
-            operation_id,
             request,
-            remote_peer_id,
-            response: channel,
+            response_handle,
         } = data;
+        let (operation_id, remote_peer_id, request) = request.into_parts();
         let blockchain: BlockchainId = request.blockchain().clone();
         let dataset_root = request.dataset_root().to_string();
         let dataset_public = request.dataset().to_vec();
@@ -145,7 +138,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
                 "Local node not found in shard - sending NACK"
             );
 
-            self.send_nack(channel, operation_id, "Local node not in shard")
+            self.send_nack(response_handle, operation_id, "Local node not in shard")
                 .await;
 
             return CommandOutcome::Completed;
@@ -161,7 +154,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
                 "Dataset root mismatch - sending NACK"
             );
             self.send_nack(
-                channel,
+                response_handle,
                 operation_id,
                 &format!(
                     "Dataset root validation failed. Received dataset root: {}; Calculated dataset root: {}",
@@ -181,8 +174,12 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             dataset_root = %dataset_root,
             "Dataset root missing '0x' prefix - sending NACK"
             );
-            self.send_nack(channel, operation_id, "Dataset root missing '0x' prefix")
-                .await;
+            self.send_nack(
+                response_handle,
+                operation_id,
+                "Dataset root missing '0x' prefix",
+            )
+            .await;
 
             return CommandOutcome::Completed;
         };
@@ -202,7 +199,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
                     "Failed to sign message - sending NACK"
                 );
                 self.send_nack(
-                    channel,
+                    response_handle,
                     operation_id,
                     &format!("Failed to sign message: {}", e),
                 )
@@ -228,7 +225,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
                 "Failed to store dataset in publish tmp dataset store - sending NACK"
             );
             self.send_nack(
-                channel,
+                response_handle,
                 operation_id,
                 &format!("Failed to store dataset: {}", e),
             )
@@ -241,7 +238,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             "Store request validated; sending ACK response"
         );
 
-        self.send_ack(channel, operation_id, identity_id, signature)
+        self.send_ack(response_handle, operation_id, identity_id, signature)
             .await;
 
         CommandOutcome::Completed

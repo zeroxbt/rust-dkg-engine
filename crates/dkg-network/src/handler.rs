@@ -41,6 +41,11 @@ impl<T> InboundRequest<T> {
     pub fn into_data(self) -> T {
         self.data
     }
+
+    /// Consumes the request and returns its parts.
+    pub fn into_parts(self) -> (Uuid, PeerId, T) {
+        (self.operation_id, self.peer_id, self.data)
+    }
 }
 
 /// Opaque handle for sending a response to an inbound request.

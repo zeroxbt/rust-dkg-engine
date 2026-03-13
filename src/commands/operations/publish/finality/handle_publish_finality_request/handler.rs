@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use dkg_network::{FinalityAck, FinalityRequestData, NetworkManager, PeerId, ResponseHandle};
+use dkg_network::{
+    FinalityAck, FinalityRequestData, InboundRequest, NetworkManager, ResponseHandle,
+};
 use dkg_repository::FinalityStatusRepository;
 use tracing::instrument;
 use uuid::Uuid;
@@ -12,27 +14,19 @@ use crate::commands::{
 /// Command data for handling incoming publish finality requests from storage nodes.
 /// This runs on the publisher node when a storage node confirms it has stored the data.
 pub(crate) struct HandlePublishFinalityRequestCommandData {
-    /// The operation ID for this finality request
-    pub operation_id: Uuid,
     /// Inbound finality request payload.
-    pub request: FinalityRequestData,
-    /// The peer ID of the storage node sending the finality request
-    pub remote_peer_id: PeerId,
-    pub response: ResponseHandle<FinalityAck>,
+    pub request: InboundRequest<FinalityRequestData>,
+    pub response_handle: ResponseHandle<FinalityAck>,
 }
 
 impl HandlePublishFinalityRequestCommandData {
     pub(crate) fn new(
-        operation_id: Uuid,
-        request: FinalityRequestData,
-        remote_peer_id: PeerId,
-        response: ResponseHandle<FinalityAck>,
+        request: InboundRequest<FinalityRequestData>,
+        response_handle: ResponseHandle<FinalityAck>,
     ) -> Self {
         Self {
-            operation_id,
             request,
-            remote_peer_id,
-            response,
+            response_handle,
         }
     }
 }
@@ -52,14 +46,14 @@ impl HandlePublishFinalityRequestCommandHandler {
 
     pub(crate) async fn send_ack(
         &self,
-        channel: ResponseHandle<FinalityAck>,
+        response_handle: ResponseHandle<FinalityAck>,
         operation_id: Uuid,
         ual: &str,
     ) {
         if let Err(e) = self
             .network_manager
             .send_finality_ack(
-                channel,
+                response_handle,
                 operation_id,
                 FinalityAck {
                     message: format!("Acknowledged storing of {}", ual),
@@ -77,14 +71,14 @@ impl HandlePublishFinalityRequestCommandHandler {
 
     pub(crate) async fn send_nack(
         &self,
-        channel: ResponseHandle<FinalityAck>,
+        response_handle: ResponseHandle<FinalityAck>,
         operation_id: Uuid,
         ual: &str,
     ) {
         if let Err(e) = self
             .network_manager
             .send_finality_nack(
-                channel,
+                response_handle,
                 operation_id,
                 format!("Failed to acknowledge storing of {}", ual),
             )
@@ -106,21 +100,20 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
         name = "op.publish_finality.recv",
         skip(self, data),
         fields(
-            operation_id = %data.operation_id,
+            operation_id = %data.request.operation_id(),
             protocol = "publish_finality",
             direction = "recv",
             publish_operation_id = tracing::field::Empty,
             ual = tracing::field::Empty,
-            remote_peer = %data.remote_peer_id,
+            remote_peer = %data.request.peer_id(),
         )
     )]
     async fn execute(&self, data: HandlePublishFinalityRequestCommandData) -> CommandOutcome {
         let HandlePublishFinalityRequestCommandData {
-            operation_id: publish_finality_operation_id,
             request,
-            remote_peer_id,
-            response: channel,
+            response_handle,
         } = data;
+        let (publish_finality_operation_id, remote_peer_id, request) = request.into_parts();
         let ual = request.ual().to_string();
         let publish_store_operation_id = request.publish_operation_id().to_string();
         let remote_peer_id = &remote_peer_id;
@@ -140,7 +133,7 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
                     error = %e,
                     "Failed to parse publish_operation_id as UUID"
                 );
-                self.send_nack(channel, publish_finality_operation_id, &ual)
+                self.send_nack(response_handle, publish_finality_operation_id, &ual)
                     .await;
                 return CommandOutcome::Completed;
             }
@@ -164,12 +157,12 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
                 error = %e,
                 "Failed to save finality ack"
             );
-            self.send_nack(channel, publish_finality_operation_id, &ual)
+            self.send_nack(response_handle, publish_finality_operation_id, &ual)
                 .await;
             return CommandOutcome::Completed;
         }
 
-        self.send_ack(channel, publish_finality_operation_id, &ual)
+        self.send_ack(response_handle, publish_finality_operation_id, &ual)
             .await;
 
         tracing::info!("Finality request handled");
