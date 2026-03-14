@@ -8,9 +8,11 @@ impl EvmChain {
         contract_name: String,
         contract_address: Address,
     ) -> Result<(), BlockchainError> {
-        let contract_name = contract_name
-            .parse::<ContractName>()
-            .map_err(|err| BlockchainError::Custom(err.to_string()))?;
+        let contract_name = contract_name.parse::<ContractName>().map_err(|_| {
+            BlockchainError::InvalidContractName {
+                name: contract_name.clone(),
+            }
+        })?;
 
         let provider = self.provider().await;
         let mut contracts = self.contracts_mut().await;

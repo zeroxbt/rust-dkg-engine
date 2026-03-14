@@ -161,6 +161,7 @@ fn classify_error(error: &TripleStoreError) -> &'static str {
         TripleStoreError::Backend { .. } => "backend_other",
         TripleStoreError::ConnectionFailed { .. } => "connection_failed",
         TripleStoreError::ParseError { .. } => "parse_error",
+        TripleStoreError::RdfGrouping { .. } => "rdf_grouping",
         TripleStoreError::InvalidQuery { .. } => "invalid_query",
         TripleStoreError::Other(_) => "other",
     }

@@ -119,17 +119,21 @@ impl Contracts {
         &self,
     ) -> Result<&ParanetsRegistry::ParanetsRegistryInstance<BlockchainProvider>, BlockchainError>
     {
-        self.paranets_registry.as_ref().ok_or_else(|| {
-            BlockchainError::Custom("ParanetsRegistry contract is not initialized".to_string())
-        })
+        self.paranets_registry
+            .as_ref()
+            .ok_or_else(|| BlockchainError::ContractNotInitialized {
+                contract: ContractName::ParanetsRegistry.to_string(),
+            })
     }
 
     pub fn paranet(
         &self,
     ) -> Result<&Paranet::ParanetInstance<BlockchainProvider>, BlockchainError> {
-        self.paranet.as_ref().ok_or_else(|| {
-            BlockchainError::Custom("Paranet contract is not initialized".to_string())
-        })
+        self.paranet
+            .as_ref()
+            .ok_or_else(|| BlockchainError::ContractNotInitialized {
+                contract: ContractName::Paranet.to_string(),
+            })
     }
 
     pub fn multicall3(&self) -> &Multicall3::Multicall3Instance<BlockchainProvider> {
@@ -165,10 +169,8 @@ impl Contracts {
                 .keys()
                 .next()
                 .copied()
-                .ok_or_else(|| {
-                    BlockchainError::Custom(
-                        "No KnowledgeCollectionStorage contracts initialized".to_string(),
-                    )
+                .ok_or_else(|| BlockchainError::ContractInstancesMissing {
+                    contract: ContractName::KnowledgeCollectionStorage.to_string(),
                 }),
             ContractName::Token => Ok(*self.token.address()),
             ContractName::Chronos => Ok(*self.chronos.address()),
@@ -176,17 +178,15 @@ impl Contracts {
                 .paranet
                 .as_ref()
                 .map(|paranet| *paranet.address())
-                .ok_or_else(|| {
-                    BlockchainError::Custom("Paranet contract is not initialized".to_string())
+                .ok_or_else(|| BlockchainError::ContractNotInitialized {
+                    contract: ContractName::Paranet.to_string(),
                 }),
             ContractName::ParanetsRegistry => self
                 .paranets_registry
                 .as_ref()
                 .map(|registry| *registry.address())
-                .ok_or_else(|| {
-                    BlockchainError::Custom(
-                        "ParanetsRegistry contract is not initialized".to_string(),
-                    )
+                .ok_or_else(|| BlockchainError::ContractNotInitialized {
+                    contract: ContractName::ParanetsRegistry.to_string(),
                 }),
             ContractName::RandomSampling => Ok(*self.random_sampling.address()),
             ContractName::RandomSamplingStorage => Ok(*self.random_sampling_storage.address()),

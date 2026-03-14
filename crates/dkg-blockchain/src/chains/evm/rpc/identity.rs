@@ -47,9 +47,7 @@ impl EvmChain {
 
         let node_name = config.node_name();
         if node_name.is_empty() {
-            return Err(BlockchainError::Custom(
-                "Missing node_name in blockchain configuration".to_string(),
-            ));
+            return Err(BlockchainError::MissingConfig { field: "node_name" });
         }
 
         let admin_wallet = config

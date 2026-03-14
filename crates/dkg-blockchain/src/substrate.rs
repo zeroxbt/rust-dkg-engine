@@ -39,13 +39,13 @@ async fn check_evm_account_mapping(
 ) -> Result<bool, BlockchainError> {
     // Parse the EVM address (20 bytes)
     let address_hex = evm_address.strip_prefix("0x").unwrap_or(evm_address);
-    let address_bytes: [u8; 20] = hex::decode(address_hex)
-        .map_err(|e| BlockchainError::Custom(format!("Invalid EVM address: {}", e)))?
-        .try_into()
-        .map_err(|_| BlockchainError::Custom("EVM address must be 20 bytes".to_string()))?;
-
-    // Try connecting to each endpoint until one succeeds
-    let mut last_error = None;
+    let address_bytes: [u8; 20] =
+        hex::decode(address_hex)?
+            .try_into()
+            .map_err(|_| BlockchainError::InvalidChainValue {
+                field: "EVM address".to_string(),
+                value: "expected 20 bytes".to_string(),
+            })?;
 
     for endpoint in rpc_endpoints {
         tracing::debug!("Trying Substrate RPC endpoint: {}", endpoint);
@@ -54,25 +54,29 @@ async fn check_evm_account_mapping(
             Ok(client) => client,
             Err(e) => {
                 tracing::warn!("Failed to connect to Substrate RPC {}: {}", endpoint, e);
-                last_error = Some(e);
                 continue;
             }
         };
 
-        let result: Result<bool, String> = async {
+        let result: Result<bool, BlockchainError> = async {
             let client = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client)
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|error| BlockchainError::SubstrateRpc {
+                    endpoint: endpoint.clone(),
+                    reason: format!("failed to create client: {error}"),
+                })?;
 
             let block_ref = client
                 .backend()
                 .latest_finalized_block_ref()
                 .await
-                .map_err(|e| format!("Failed to get latest block: {}", e))?;
+                .map_err(|error| BlockchainError::SubstrateRpc {
+                    endpoint: endpoint.clone(),
+                    reason: format!("failed to get latest block: {error}"),
+                })?;
 
             let metadata = client.metadata();
-            let (pallet_name, storage_name) = resolve_evm_accounts_storage_names(&metadata)
-                .map_err(|e| format!("Failed to resolve evmAccounts storage: {}", e))?;
+            let (pallet_name, storage_name) = resolve_evm_accounts_storage_names(&metadata)?;
 
             let storage_query = subxt::dynamic::storage(
                 &pallet_name,
@@ -85,7 +89,10 @@ async fn check_evm_account_mapping(
                 .at(block_ref.hash())
                 .fetch(&storage_query)
                 .await
-                .map_err(|e| format!("Failed to query storage: {}", e))?;
+                .map_err(|error| BlockchainError::SubstrateRpc {
+                    endpoint: endpoint.clone(),
+                    reason: format!("failed to query storage: {error}"),
+                })?;
 
             Ok(storage_result.is_some())
         }
@@ -98,61 +105,82 @@ async fn check_evm_account_mapping(
             }
             Err(e) => {
                 tracing::warn!("Failed to connect to Substrate RPC {}: {}", endpoint, e);
-                last_error = Some(e);
             }
         }
     }
 
-    Err(BlockchainError::Custom(format!(
-        "Failed to connect to any Substrate RPC endpoint: {}",
-        last_error.unwrap_or_else(|| "no endpoints provided".to_string())
-    )))
+    Err(BlockchainError::RpcConnectionFailed {
+        attempts: rpc_endpoints.len(),
+    })
 }
 
-fn resolve_evm_accounts_storage_names(metadata: &Metadata) -> Result<(String, String), String> {
+fn resolve_evm_accounts_storage_names(
+    metadata: &Metadata,
+) -> Result<(String, String), BlockchainError> {
     let pallet = metadata
         .pallets()
         .find(|pallet| pallet.name().eq_ignore_ascii_case("evmaccounts"))
-        .ok_or_else(|| "pallet 'EvmAccounts' not found in metadata".to_string())?;
+        .ok_or_else(|| BlockchainError::SubstrateMetadata {
+            reason: "pallet 'EvmAccounts' not found in metadata".to_string(),
+        })?;
 
     let storage = pallet
         .storage()
-        .ok_or_else(|| format!("pallet '{}' does not expose storage entries", pallet.name()))?;
+        .ok_or_else(|| BlockchainError::SubstrateMetadata {
+            reason: format!("pallet '{}' does not expose storage entries", pallet.name()),
+        })?;
 
     let entry = storage
         .entries()
         .iter()
         .find(|entry| entry.name().eq_ignore_ascii_case("accounts"))
-        .ok_or_else(|| {
-            format!(
+        .ok_or_else(|| BlockchainError::SubstrateMetadata {
+            reason: format!(
                 "storage entry 'Accounts' not found in pallet '{}'",
                 pallet.name()
-            )
+            ),
         })?;
 
     Ok((pallet.name().to_string(), entry.name().to_string()))
 }
 
-async fn build_rpc_client(endpoint: &str) -> Result<RpcClient, String> {
-    let url = Url::parse(endpoint).map_err(|e| format!("Invalid URL: {}", e))?;
+async fn build_rpc_client(endpoint: &str) -> Result<RpcClient, BlockchainError> {
+    let url = Url::parse(endpoint).map_err(|error| BlockchainError::SubstrateRpc {
+        endpoint: endpoint.to_string(),
+        reason: format!("invalid URL: {error}"),
+    })?;
 
     match url.scheme() {
-        "wss" => RpcClient::from_url(endpoint)
-            .await
-            .map_err(|e| e.to_string()),
+        "wss" => {
+            RpcClient::from_url(endpoint)
+                .await
+                .map_err(|error| BlockchainError::SubstrateRpc {
+                    endpoint: endpoint.to_string(),
+                    reason: format!("failed to connect to secure RPC: {error}"),
+                })
+        }
         "ws" => RpcClient::from_insecure_url(endpoint)
             .await
-            .map_err(|e| e.to_string()),
+            .map_err(|error| BlockchainError::SubstrateRpc {
+                endpoint: endpoint.to_string(),
+                reason: format!("failed to connect to insecure RPC: {error}"),
+            }),
         "https" | "http" => {
-            let client = HttpClientBuilder::default()
-                .build(url)
-                .map_err(|e| e.to_string())?;
+            let client = HttpClientBuilder::default().build(url).map_err(|error| {
+                BlockchainError::SubstrateRpc {
+                    endpoint: endpoint.to_string(),
+                    reason: format!("failed to build HTTP client: {error}"),
+                }
+            })?;
             Ok(RpcClient::new(HttpRpcClient::new(client)))
         }
-        _ => Err(format!(
-            "Unsupported Substrate RPC URL scheme (expected ws/wss or http/https): {}",
-            endpoint
-        )),
+        _ => Err(BlockchainError::SubstrateRpc {
+            endpoint: endpoint.to_string(),
+            reason: format!(
+                "unsupported URL scheme '{}' (expected ws/wss or http/https)",
+                url.scheme()
+            ),
+        }),
     }
 }
 
@@ -242,7 +270,12 @@ pub async fn validate_evm_wallets(
 
 // Re-export hex for internal use
 mod hex {
-    pub fn decode(s: &str) -> Result<Vec<u8>, String> {
-        alloy::primitives::hex::decode(s).map_err(|e| e.to_string())
+    use crate::error::BlockchainError;
+
+    pub fn decode(s: &str) -> Result<Vec<u8>, BlockchainError> {
+        alloy::primitives::hex::decode(s).map_err(|error| BlockchainError::HexDecode {
+            context: "invalid EVM address".to_string(),
+            source: error,
+        })
     }
 }

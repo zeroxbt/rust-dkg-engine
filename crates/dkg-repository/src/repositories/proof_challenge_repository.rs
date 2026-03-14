@@ -134,11 +134,10 @@ impl ProofChallengeRepository {
                 .one(self.conn.as_ref())
                 .await?
                 .map(Self::to_entry)
-                .ok_or_else(|| {
-                    crate::error::RepositoryError::NotFound(format!(
-                        "Challenge {}:{}:{}",
-                        blockchain_id, epoch, proof_period_start_block
-                    ))
+                .ok_or_else(|| crate::error::RepositoryError::ProofChallengeNotFound {
+                    blockchain_id: blockchain_id.to_string(),
+                    epoch,
+                    proof_period_start_block,
                 })
         }
         .await;

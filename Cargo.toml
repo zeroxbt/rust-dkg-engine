@@ -43,6 +43,7 @@ validator = { workspace = true }
 validator_derive = { workspace = true }
 figment = { version = "0.10", features = ["toml"] }
 thiserror = { workspace = true }
+anyhow = "1.0.100"
 dashmap = "6.1.0"
 rustls = { version = "0.23.36", default-features = false, features = [
     "ring",

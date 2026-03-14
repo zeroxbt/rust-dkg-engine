@@ -169,9 +169,7 @@ impl OperationRepository {
             let existing = Entity::find_by_id(operation_id.to_string())
                 .one(self.conn.as_ref())
                 .await?
-                .ok_or_else(|| {
-                    RepositoryError::NotFound(format!("Operation {} not found", operation_id))
-                })?;
+                .ok_or(RepositoryError::OperationNotFound { operation_id })?;
 
             let mut active_model: operations::ActiveModel = existing.into();
 

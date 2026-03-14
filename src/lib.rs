@@ -13,13 +13,18 @@ mod tasks;
 
 use std::sync::Arc;
 
+pub use error::NodeError;
 use tasks::periodic::seed_sharding_tables;
 
-pub async fn run() {
+pub async fn run() -> Result<(), NodeError> {
     // Install rustls crypto provider before any TLS connections
     rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("Failed to install rustls crypto provider");
+        .map_err(|error| {
+            NodeError::Other(format!(
+                "Failed to install rustls crypto provider: {error:?}"
+            ))
+        })?;
 
     let bootstrap::CoreBootstrap {
         config,
@@ -30,16 +35,13 @@ pub async fn run() {
         command_rx,
         mut network_event_loop,
         blockchain_ids,
-    } = bootstrap::build_core().await;
+    } = bootstrap::build_core().await?;
 
     // Start listening before spawning the network task
-    if let Err(error) = network_event_loop.start_listening() {
-        tracing::error!("Failed to start swarm listener: {}", error);
-        return;
-    }
+    network_event_loop.start_listening()?;
 
     if config::is_dev_env() {
-        initialize_dev_environment(&managers.blockchain).await;
+        initialize_dev_environment(&managers.blockchain).await?;
     }
 
     // Seed peer registry with sharding tables before commands start
@@ -86,27 +88,28 @@ pub async fn run() {
         config.telemetry.metrics.enabled,
     )
     .await;
+
+    Ok(())
 }
 
-async fn initialize_dev_environment(blockchain_manager: &Arc<dkg_blockchain::BlockchainManager>) {
+async fn initialize_dev_environment(
+    blockchain_manager: &Arc<dkg_blockchain::BlockchainManager>,
+) -> Result<(), NodeError> {
     use dkg_blockchain::parse_ether_to_u128;
 
     tracing::info!("Initializing dev environment: setting stake and ask...");
 
     // 50,000 tokens for stake
-    let stake_wei: u128 = parse_ether_to_u128("50000").expect("Failed to parse stake amount");
+    let stake_wei: u128 = parse_ether_to_u128("50000")?;
     // 0.2 tokens for ask
-    let ask_wei: u128 = parse_ether_to_u128("0.2").expect("Failed to parse ask amount");
+    let ask_wei: u128 = parse_ether_to_u128("0.2")?;
 
     for blockchain_id in blockchain_manager.get_blockchain_ids() {
-        if let Err(e) = blockchain_manager.set_stake(blockchain_id, stake_wei).await {
-            tracing::error!("Failed to set stake for {}: {}", blockchain_id, e);
-            panic!("set-stake did not complete successfully: {}", e);
-        }
-
-        if let Err(e) = blockchain_manager.set_ask(blockchain_id, ask_wei).await {
-            tracing::error!("Failed to set ask for {}: {}", blockchain_id, e);
-            panic!("set-ask did not complete successfully: {}", e);
-        }
+        blockchain_manager
+            .set_stake(blockchain_id, stake_wei)
+            .await?;
+        blockchain_manager.set_ask(blockchain_id, ask_wei).await?;
     }
+
+    Ok(())
 }

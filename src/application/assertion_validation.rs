@@ -3,15 +3,18 @@ use std::sync::Arc;
 use dkg_blockchain::BlockchainManager;
 use dkg_domain::{Assertion, ParsedUal, Visibility};
 use dkg_triple_store::{
-    PRIVATE_HASH_SUBJECT_PREFIX, PRIVATE_MERKLE_ROOT, compare_js_default_string_order,
-    extract_quoted_string, group_triples_by_subject,
+    PRIVATE_HASH_SUBJECT_PREFIX, PRIVATE_MERKLE_ROOT, RdfGroupingError,
+    compare_js_default_string_order, extract_quoted_string, group_triples_by_subject,
 };
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 enum AssertionValidationError {
-    #[error("Failed to calculate public merkle root: {reason}")]
-    PublicMerkleRootCalculation { reason: String },
+    #[error("Failed to group public triples for merkle root calculation: {source}")]
+    PublicMerkleRootGrouping {
+        #[source]
+        source: RdfGroupingError,
+    },
     #[error("Failed to get on-chain merkle root: {source}")]
     OnChainMerkleRootFetch {
         #[source]
@@ -218,7 +221,7 @@ impl AssertionValidation {
         // matches JS behavior and on-chain roots.
         let normalized = Self::normalize_public_triples(public_triples);
         let sorted_flat = group_and_sort_public_triples(&normalized)
-            .map_err(|reason| AssertionValidationError::PublicMerkleRootCalculation { reason })?;
+            .map_err(|source| AssertionValidationError::PublicMerkleRootGrouping { source })?;
         Ok(dkg_domain::calculate_merkle_root(&sorted_flat))
     }
 
@@ -336,7 +339,9 @@ impl AssertionValidation {
 /// This is the core sorting step shared by Merkle root calculation (validation) and Merkle proof
 /// preparation (proving). Callers are responsible for any normalization (e.g. splitting
 /// multi-line entries) before passing triples here.
-pub(crate) fn group_and_sort_public_triples(triples: &[String]) -> Result<Vec<String>, String> {
+pub(crate) fn group_and_sort_public_triples(
+    triples: &[String],
+) -> Result<Vec<String>, RdfGroupingError> {
     let private_hash_prefix = format!("<{}", PRIVATE_HASH_SUBJECT_PREFIX);
 
     let mut filtered_public: Vec<&str> = Vec::new();

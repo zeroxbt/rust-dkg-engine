@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub(crate) enum ConfigError {
+pub enum ConfigError {
     #[error("Configuration loading failed: {0}")]
     LoadError(#[source] Box<figment::Error>),
 

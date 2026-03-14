@@ -21,6 +21,7 @@ pub use signature::SignatureComponents;
 pub use token_ids::TokenIds;
 pub use ual::{ParsedUal, UalParseError, derive_ual, parse_ual};
 pub use validation::{
-    MerkleProofResult, calculate_assertion_size, calculate_merkle_proof, calculate_merkle_root,
+    MerkleProofError, MerkleProofResult, calculate_assertion_size, calculate_merkle_proof,
+    calculate_merkle_root,
 };
 pub use visibility::Visibility;

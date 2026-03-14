@@ -17,6 +17,7 @@ use crate::{
             },
         },
     },
+    error::NodeError,
     operations::{GetOperation, OperationKind, PublishStoreOperation, PublishStoreOperationResult},
 };
 
@@ -135,13 +136,12 @@ impl OperationResultHttpApiController {
     async fn get_signatures(
         context: &OperationResultHttpApiControllerDeps,
         operation_id: Uuid,
-    ) -> Result<(Option<SignatureData>, Vec<SignatureData>), String> {
+    ) -> Result<(Option<SignatureData>, Vec<SignatureData>), NodeError> {
         // Get result from redb via publish operation service
         let result: Option<PublishStoreOperationResult> = context
             .publish_store_operation_tracking
             .get_result(operation_id)
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
 
         match result {
             Some(publish_result) => {

@@ -1,5 +1,14 @@
 use alloy::primitives::{hex, keccak256};
 use sha2::{Digest, Sha256};
+use thiserror::Error;
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum ParseEtherAmountError {
+    #[error("invalid ether amount '{amount}': {reason}")]
+    InvalidAmount { amount: String, reason: String },
+    #[error("ether amount '{amount}' is too large to fit into u128 wei")]
+    AmountTooLarge { amount: String },
+}
 
 pub fn to_hex_string(data: impl AsRef<[u8]>) -> String {
     hex::encode(data)
@@ -26,7 +35,16 @@ pub fn sha256_hex(input: &[u8]) -> String {
     to_hex_string(digest)
 }
 
-pub fn parse_ether_to_u128(amount: &str) -> Result<u128, String> {
-    let wei = alloy::primitives::utils::parse_ether(amount).map_err(|e| e.to_string())?;
-    wei.try_into().map_err(|_| "Amount too large".to_string())
+pub fn parse_ether_to_u128(amount: &str) -> Result<u128, ParseEtherAmountError> {
+    let wei = alloy::primitives::utils::parse_ether(amount).map_err(|error| {
+        ParseEtherAmountError::InvalidAmount {
+            amount: amount.to_string(),
+            reason: error.to_string(),
+        }
+    })?;
+
+    wei.try_into()
+        .map_err(|_| ParseEtherAmountError::AmountTooLarge {
+            amount: amount.to_string(),
+        })
 }

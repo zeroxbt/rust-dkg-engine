@@ -32,11 +32,8 @@ pub(crate) fn is_dev_env() -> bool {
     matches!(current_env(), "development")
 }
 
-pub(crate) fn initialize_configuration() -> Config {
-    load_configuration().unwrap_or_else(|error| {
-        tracing::error!(error = %error, "Failed to load configuration");
-        panic!("Failed to load configuration: {error}");
-    })
+pub(crate) fn initialize_configuration() -> Result<Config, ConfigError> {
+    load_configuration()
 }
 
 fn load_configuration() -> Result<Config, ConfigError> {

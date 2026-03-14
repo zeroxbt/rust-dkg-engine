@@ -23,8 +23,9 @@ pub use config::{
 use error::{Result, TripleStoreError};
 pub use metadata::{MetadataAsset, MetadataTriples};
 pub use rdf::{
-    compare_js_default_string_order, extract_datetime_as_unix, extract_quoted_integer,
-    extract_quoted_string, extract_subject, group_triples_by_subject, parse_metadata_from_triples,
+    RdfGroupingError, compare_js_default_string_order, extract_datetime_as_unix,
+    extract_quoted_integer, extract_quoted_string, extract_subject, group_triples_by_subject,
+    parse_metadata_from_triples,
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 pub use types::GraphVisibility;

@@ -24,14 +24,16 @@ pub(crate) fn build_knowledge_assets(
     }
 
     let mut public_ka_triples_grouped =
-        group_triples_by_subject(&filtered_public).map_err(|error| {
-            TripleStoreError::ParseError {
-                reason: format!("Failed to group public triples by parsed subject: {error}"),
+        group_triples_by_subject(&filtered_public).map_err(|source| {
+            TripleStoreError::RdfGrouping {
+                context: "public triples",
+                source,
             }
         })?;
     public_ka_triples_grouped.extend(group_triples_by_subject(&private_hash_triples).map_err(
-        |error| TripleStoreError::ParseError {
-            reason: format!("Failed to group private-hash triples by parsed subject: {error}"),
+        |source| TripleStoreError::RdfGrouping {
+            context: "private-hash triples",
+            source,
         },
     )?);
 
@@ -59,9 +61,10 @@ pub(crate) fn build_knowledge_assets(
     {
         let normalized_private = normalize_triple_lines(private_triples);
         let private_ka_triples_grouped =
-            group_triples_by_subject(&normalized_private).map_err(|error| {
-                TripleStoreError::ParseError {
-                    reason: format!("Failed to group private triples by parsed subject: {error}"),
+            group_triples_by_subject(&normalized_private).map_err(|source| {
+                TripleStoreError::RdfGrouping {
+                    context: "private triples",
+                    source,
                 }
             })?;
 

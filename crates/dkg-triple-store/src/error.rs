@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use crate::rdf::RdfGroupingError;
+
 /// Triple store specific errors
 #[derive(Error, Debug)]
 pub enum TripleStoreError {
@@ -26,6 +28,14 @@ pub enum TripleStoreError {
     /// Failed to parse response
     #[error("Failed to parse response: {reason}")]
     ParseError { reason: String },
+
+    /// Failed to group RDF triples
+    #[error("Failed to group RDF triples for {context}: {source}")]
+    RdfGrouping {
+        context: &'static str,
+        #[source]
+        source: RdfGroupingError,
+    },
 
     /// Invalid SPARQL query
     #[error("Invalid SPARQL query: {reason}")]

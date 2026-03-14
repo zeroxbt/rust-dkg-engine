@@ -2,10 +2,18 @@ use thiserror::Error;
 
 /// Top-level application error that composes all subsystem errors
 #[derive(Error, Debug)]
-pub(crate) enum NodeError {
+pub enum NodeError {
+    /// Configuration-related errors
+    #[error("Configuration error: {0}")]
+    Config(#[from] crate::config::ConfigError),
+
     /// Blockchain-related errors
     #[error("Blockchain error: {0}")]
     Blockchain(#[from] dkg_blockchain::BlockchainError),
+
+    /// Ether amount parsing errors
+    #[error("Ether amount parsing error: {0}")]
+    ParseEtherAmount(#[from] dkg_blockchain::ParseEtherAmountError),
 
     /// Network-related errors
     #[error("Network error: {0}")]
@@ -22,6 +30,10 @@ pub(crate) enum NodeError {
     /// Key-value result store errors
     #[error("Result store error: {0}")]
     ResultStore(#[from] dkg_key_value_store::ResultStoreError),
+
+    /// Key-value store errors
+    #[error("Key-value store error: {0}")]
+    KeyValueStore(#[from] dkg_key_value_store::KeyValueStoreError),
 
     /// I/O errors
     #[error("I/O error: {0}")]

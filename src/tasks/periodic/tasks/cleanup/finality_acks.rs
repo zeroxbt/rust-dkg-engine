@@ -1,13 +1,13 @@
 use std::time::Duration;
 
 use chrono::Utc;
-use dkg_repository::FinalityStatusRepository;
+use dkg_repository::{FinalityStatusRepository, error::RepositoryError};
 
 pub(crate) async fn cleanup_finality_acks(
     finality_status_repository: &FinalityStatusRepository,
     ttl: Duration,
     batch_size: usize,
-) -> Result<usize, String> {
+) -> Result<usize, RepositoryError> {
     if batch_size == 0 {
         return Ok(0);
     }
@@ -19,17 +19,13 @@ pub(crate) async fn cleanup_finality_acks(
     loop {
         let ids = finality_status_repository
             .find_ids_older_than(cutoff, batch_size as u64)
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
 
         if ids.is_empty() {
             break;
         }
 
-        let removed_rows = finality_status_repository
-            .delete_by_ids(&ids)
-            .await
-            .map_err(|e| e.to_string())?;
+        let removed_rows = finality_status_repository.delete_by_ids(&ids).await?;
 
         total_removed = total_removed.saturating_add(removed_rows as usize);
 

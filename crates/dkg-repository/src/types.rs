@@ -38,6 +38,10 @@ pub struct KcProjectionDesiredStateParseError(pub u8);
 #[error("invalid KC projection actual state value: {0}")]
 pub struct KcProjectionActualStateParseError(pub u8);
 
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+#[error("'{0}' is not a valid operation status")]
+pub struct OperationStatusParseError(pub String);
+
 /// Public DTO for paranet knowledge collection sync queue entries.
 ///
 /// This type is intentionally decoupled from SeaORM model internals so
@@ -60,7 +64,7 @@ pub struct OperationRecord {
 
 impl OperationRecord {
     /// Parse the status string into an OperationStatus enum.
-    pub fn operation_status(&self) -> Result<OperationStatus, String> {
+    pub fn operation_status(&self) -> Result<OperationStatus, OperationStatusParseError> {
         OperationStatus::from_str(&self.status)
     }
 }
@@ -217,16 +221,15 @@ impl std::fmt::Display for OperationStatus {
 
 /// Parse from database string representation.
 ///
-/// Unknown values default to `InProgress`.
 impl FromStr for OperationStatus {
-    type Err = String;
+    type Err = OperationStatusParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "IN_PROGRESS" => Ok(Self::InProgress),
             "COMPLETED" => Ok(Self::Completed),
             "FAILED" => Ok(Self::Failed),
-            _ => Err(format!("'{}' is not a valid operation status", s)),
+            _ => Err(OperationStatusParseError(s.to_string())),
         }
     }
 }

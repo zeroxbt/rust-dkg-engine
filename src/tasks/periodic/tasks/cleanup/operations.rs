@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use chrono::Utc;
-use dkg_repository::{OperationRepository, OperationStatus};
+use dkg_repository::{OperationRepository, OperationStatus, error::RepositoryError};
 use uuid::Uuid;
 
 use crate::{
@@ -15,7 +15,7 @@ pub(crate) async fn cleanup_operations(
     get_results: &OperationTracking<GetOperation>,
     ttl: Duration,
     batch_size: usize,
-) -> Result<usize, String> {
+) -> Result<usize, RepositoryError> {
     if batch_size == 0 {
         return Ok(0);
     }
@@ -28,8 +28,7 @@ pub(crate) async fn cleanup_operations(
     loop {
         let ids = operation_repository
             .find_ids_by_status_older_than(&statuses, cutoff, batch_size as u64)
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
 
         if ids.is_empty() {
             break;
@@ -37,10 +36,7 @@ pub(crate) async fn cleanup_operations(
 
         remove_results(publish_store_results, get_results, &ids).await;
 
-        let removed_rows = operation_repository
-            .delete_by_ids(&ids)
-            .await
-            .map_err(|e| e.to_string())?;
+        let removed_rows = operation_repository.delete_by_ids(&ids).await?;
 
         total_removed = total_removed.saturating_add(removed_rows as usize);
 

@@ -25,4 +25,6 @@ pub use dkg_domain::BlockchainId;
 pub use error::BlockchainError;
 pub use manager::BlockchainManager;
 pub use multicall::{MulticallBatch, MulticallRequest, MulticallResult, encoders};
-pub use utils::{keccak256_encode_packed, parse_ether_to_u128, sha256_hex, to_hex_string};
+pub use utils::{
+    ParseEtherAmountError, keccak256_encode_packed, parse_ether_to_u128, sha256_hex, to_hex_string,
+};

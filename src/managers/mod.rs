@@ -9,7 +9,7 @@ use dkg_network::{Keypair, NetworkEventLoop, NetworkManager};
 use dkg_repository::RepositoryManager;
 use dkg_triple_store::TripleStoreManager;
 
-use crate::config::AppPaths;
+use crate::{config::AppPaths, error::NodeError};
 
 /// Container for all initialized managers.
 pub(crate) struct Managers {
@@ -28,37 +28,24 @@ pub(crate) async fn initialize(
     config: &ManagersConfig,
     paths: &AppPaths,
     network_key: Keypair,
-) -> (Managers, NetworkEventLoop) {
+) -> Result<(Managers, NetworkEventLoop), NodeError> {
     // NetworkManager::connect returns (handle, service) tuple
-    let (network_handle, network_service) = NetworkManager::connect(&config.network, network_key)
-        .expect("Failed to initialize network manager");
+    let (network_handle, network_service) = NetworkManager::connect(&config.network, network_key)?;
     let network = Arc::new(network_handle);
 
-    let repository = Arc::new(
-        RepositoryManager::connect(&config.repository)
-            .await
-            .expect("Failed to initialize repository manager"),
-    );
+    let repository = Arc::new(RepositoryManager::connect(&config.repository).await?);
 
-    let mut blockchain_manager = BlockchainManager::connect(&config.blockchain)
-        .await
-        .expect("Failed to initialize blockchain manager");
+    let mut blockchain_manager = BlockchainManager::connect(&config.blockchain).await?;
     blockchain_manager
         .initialize_identities(&network.peer_id().to_base58())
-        .await
-        .expect("Failed to initialize blockchain identities");
+        .await?;
     let blockchain = Arc::new(blockchain_manager);
 
-    let triple_store = Arc::new(
-        TripleStoreManager::connect(&config.triple_store, &paths.triple_store)
-            .await
-            .expect("Failed to initialize triple store manager"),
-    );
+    let triple_store =
+        Arc::new(TripleStoreManager::connect(&config.triple_store, &paths.triple_store).await?);
 
     let key_value_store = Arc::new(
-        KeyValueStoreManager::connect(&paths.key_value_store, &config.key_value_store)
-            .await
-            .expect("Failed to initialize key-value store manager"),
+        KeyValueStoreManager::connect(&paths.key_value_store, &config.key_value_store).await?,
     );
 
     let managers = Managers {
@@ -69,5 +56,5 @@ pub(crate) async fn initialize(
         key_value_store,
     };
 
-    (managers, network_service)
+    Ok((managers, network_service))
 }

@@ -22,8 +22,9 @@ impl EvmChain {
                 registry.paranetExists(paranet_id).call().await
             })
             .await
-            .map_err(|e| {
-                BlockchainError::Custom(format!("Failed to check paranet exists: {}", e))
+            .map_err(|error| BlockchainError::RpcCallFailed {
+                operation: "check paranet exists".to_string(),
+                reason: error.to_string(),
             })?;
 
         Ok(exists)
@@ -43,15 +44,14 @@ impl EvmChain {
                 registry.getNodesAccessPolicy(paranet_id).call().await
             })
             .await
-            .map_err(|e| {
-                BlockchainError::Custom(format!("Failed to get nodes access policy: {}", e))
+            .map_err(|error| BlockchainError::RpcCallFailed {
+                operation: "get paranet nodes access policy".to_string(),
+                reason: error.to_string(),
             })?;
 
-        AccessPolicy::try_from(policy).map_err(|err| {
-            BlockchainError::Custom(format!(
-                "Invalid nodes access policy returned from chain: {}",
-                err
-            ))
+        AccessPolicy::try_from(policy).map_err(|error| BlockchainError::InvalidChainValue {
+            field: "paranet nodes access policy".to_string(),
+            value: error.to_string(),
         })
     }
 
@@ -69,8 +69,9 @@ impl EvmChain {
                 registry.getPermissionedNodes(paranet_id).call().await
             })
             .await
-            .map_err(|e| {
-                BlockchainError::Custom(format!("Failed to get permissioned nodes: {}", e))
+            .map_err(|error| BlockchainError::RpcCallFailed {
+                operation: "get permissioned paranet nodes".to_string(),
+                reason: error.to_string(),
             })?;
 
         Ok(nodes)
@@ -94,11 +95,9 @@ impl EvmChain {
                     .await
             })
             .await
-            .map_err(|e| {
-                BlockchainError::Custom(format!(
-                    "Failed to check knowledge collection registration: {}",
-                    e
-                ))
+            .map_err(|error| BlockchainError::RpcCallFailed {
+                operation: "check paranet knowledge collection registration".to_string(),
+                reason: error.to_string(),
             })?;
 
         Ok(registered)
@@ -121,16 +120,16 @@ impl EvmChain {
                     .await
             })
             .await
-            .map_err(|e| {
-                BlockchainError::Custom(format!(
-                    "Failed to get paranet knowledge collection count: {}",
-                    e
-                ))
+            .map_err(|error| BlockchainError::RpcCallFailed {
+                operation: "get paranet knowledge collection count".to_string(),
+                reason: error.to_string(),
             })?;
 
-        count.try_into().map_err(|_| {
-            BlockchainError::Custom("Paranet knowledge collection count overflow".to_string())
-        })
+        count
+            .try_into()
+            .map_err(|_| BlockchainError::ValueOverflow {
+                field: "paranet knowledge collection count".to_string(),
+            })
     }
 
     /// Get knowledge collection locators from a paranet with pagination.
@@ -156,20 +155,18 @@ impl EvmChain {
                     .await
             })
             .await
-            .map_err(|e| {
-                BlockchainError::Custom(format!(
-                    "Failed to get paranet knowledge collection locators: {}",
-                    e
-                ))
+            .map_err(|error| BlockchainError::RpcCallFailed {
+                operation: "get paranet knowledge collection locators".to_string(),
+                reason: error.to_string(),
             })?;
 
         let mut result = Vec::with_capacity(locators.len());
         for locator in locators {
-            let knowledge_collection_token_id: u128 =
-                locator.knowledgeCollectionTokenId.try_into().map_err(|_| {
-                    BlockchainError::Custom(
-                        "Paranet knowledge collection token ID overflow".to_string(),
-                    )
+            let knowledge_collection_token_id: u128 = locator
+                .knowledgeCollectionTokenId
+                .try_into()
+                .map_err(|_| BlockchainError::ValueOverflow {
+                    field: "paranet knowledge collection token ID".to_string(),
                 })?;
 
             result.push(ParanetKcLocator {

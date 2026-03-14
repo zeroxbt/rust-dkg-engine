@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use dkg_network::{NetworkManager, PeerId};
+use dkg_network::{NetworkError, NetworkManager, PeerId};
 use dkg_observability as observability;
 use tokio_util::sync::CancellationToken;
 
@@ -35,12 +35,8 @@ impl DialPeersTask {
     async fn get_connected_shard_peers(
         &self,
         shard_peers: &HashSet<PeerId>,
-    ) -> Result<HashSet<PeerId>, String> {
-        let connected = self
-            .network_manager
-            .connected_peers()
-            .await
-            .map_err(|e| format!("failed to get connected peers: {}", e))?;
+    ) -> Result<HashSet<PeerId>, NetworkError> {
+        let connected = self.network_manager.connected_peers().await?;
 
         Ok(connected
             .into_iter()

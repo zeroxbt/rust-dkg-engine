@@ -309,9 +309,11 @@ impl KcChainMetadataRepository {
             .await?;
 
         if update_result.rows_affected == 0 {
-            return Err(RepositoryError::NotFound(format!(
-                "missing kc_chain_state_metadata row for blockchain_id={blockchain_id}, contract_address={contract_address}, kc_id={kc_id}"
-            )));
+            return Err(RepositoryError::KcChainStateMetadataNotFound {
+                blockchain_id: blockchain_id.to_string(),
+                contract_address: contract_address.to_string(),
+                kc_id,
+            });
         }
 
         Ok(())

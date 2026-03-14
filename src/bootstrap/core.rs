@@ -8,6 +8,7 @@ use crate::{
     bootstrap::{ApplicationDeps, build_application},
     commands::{executor::CommandExecutionRequest, scheduler::CommandScheduler},
     config::{self, AppPaths, Config},
+    error::NodeError,
     managers::{self, Managers},
     peer_registry::PeerRegistry,
 };
@@ -23,20 +24,18 @@ pub(crate) struct CoreBootstrap {
     pub(crate) blockchain_ids: Vec<BlockchainId>,
 }
 
-pub(crate) async fn build_core() -> CoreBootstrap {
-    let config = Arc::new(config::initialize_configuration());
+pub(crate) async fn build_core() -> Result<CoreBootstrap, NodeError> {
+    let config = Arc::new(config::initialize_configuration()?);
     crate::logger::initialize(&config.logger);
     display_rust_dkg_engine_ascii_art();
     crate::logger::initialize_metrics(&config.telemetry);
 
     let paths = AppPaths::from_root(&config.app_data_path);
-    let network_key = KeyManager::load_or_generate(&paths.network_key)
-        .await
-        .expect("Failed to load or generate network identity key");
+    let network_key = KeyManager::load_or_generate(&paths.network_key).await?;
 
     let (command_scheduler, command_rx) = CommandScheduler::channel();
     let (managers, network_event_loop) =
-        managers::initialize(&config.managers, &paths, network_key).await;
+        managers::initialize(&config.managers, &paths, network_key).await?;
 
     let peer_registry = Arc::new(PeerRegistry::new());
     let application = build_application(&managers, &peer_registry);
@@ -47,7 +46,7 @@ pub(crate) async fn build_core() -> CoreBootstrap {
         .cloned()
         .collect();
 
-    CoreBootstrap {
+    Ok(CoreBootstrap {
         config,
         managers,
         peer_registry,
@@ -56,7 +55,7 @@ pub(crate) async fn build_core() -> CoreBootstrap {
         command_rx,
         network_event_loop,
         blockchain_ids,
-    }
+    })
 }
 
 fn display_rust_dkg_engine_ascii_art() {

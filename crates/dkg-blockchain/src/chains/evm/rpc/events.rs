@@ -138,23 +138,21 @@ impl EvmChain {
                     .await
             })
             .await
-            .map_err(|e| {
-                BlockchainError::Custom(format!(
-                    "Failed to get block {} timestamp: {}",
-                    block_number, e
-                ))
+            .map_err(|error| BlockchainError::BlockData {
+                block_number,
+                reason: error.to_string(),
             })?;
 
         let Some(block) = block else {
             return Ok(None);
         };
 
-        let timestamp_value = block.get("timestamp").ok_or_else(|| {
-            BlockchainError::Custom(format!(
-                "Failed to parse block {} timestamp: missing `timestamp` field",
-                block_number
-            ))
-        })?;
+        let timestamp_value = block
+            .get("timestamp")
+            .ok_or_else(|| BlockchainError::BlockData {
+                block_number,
+                reason: "missing `timestamp` field".to_string(),
+            })?;
 
         if let Some(ts) = timestamp_value.as_u64() {
             return Ok(Some(ts));
@@ -169,10 +167,10 @@ impl EvmChain {
             }
         }
 
-        Err(BlockchainError::Custom(format!(
-            "Failed to parse block {} timestamp: unsupported value {}",
-            block_number, timestamp_value
-        )))
+        Err(BlockchainError::BlockData {
+            block_number,
+            reason: format!("unsupported timestamp value {timestamp_value}"),
+        })
     }
 
     /// Get the sender address of a transaction by its hash.
@@ -186,7 +184,10 @@ impl EvmChain {
                 provider.get_transaction_by_hash(tx_hash).await
             })
             .await
-            .map_err(|e| BlockchainError::Custom(format!("Failed to get transaction: {}", e)))?;
+            .map_err(|error| BlockchainError::TransactionLookup {
+                tx_hash: format!("{tx_hash:#x}"),
+                reason: error.to_string(),
+            })?;
 
         Ok(tx.map(|t| t.inner.signer()))
     }
@@ -299,11 +300,9 @@ impl EvmChain {
             })
             .await
             .map(|bytes| !bytes.is_empty())
-            .map_err(|err| {
-                BlockchainError::Custom(format!(
-                    "Failed to resolve code at block {}: {}",
-                    block_number, err
-                ))
+            .map_err(|error| BlockchainError::CodeLookup {
+                block_number,
+                reason: error.to_string(),
             })
         };
 

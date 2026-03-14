@@ -1,13 +1,13 @@
 use std::time::Duration;
 
 use chrono::Utc;
-use dkg_repository::ProofChallengeRepository;
+use dkg_repository::{ProofChallengeRepository, error::RepositoryError};
 
 pub(crate) async fn cleanup_proof_challenges(
     proof_challenge_repository: &ProofChallengeRepository,
     ttl: Duration,
     batch_size: usize,
-) -> Result<usize, String> {
+) -> Result<usize, RepositoryError> {
     if batch_size == 0 {
         return Ok(0);
     }
@@ -19,17 +19,13 @@ pub(crate) async fn cleanup_proof_challenges(
     loop {
         let entries = proof_challenge_repository
             .find_expired(cutoff, batch_size as u64)
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
 
         if entries.is_empty() {
             break;
         }
 
-        let removed_rows = proof_challenge_repository
-            .delete_by_keys(&entries)
-            .await
-            .map_err(|e| e.to_string())?;
+        let removed_rows = proof_challenge_repository.delete_by_keys(&entries).await?;
 
         total_removed = total_removed.saturating_add(removed_rows as usize);
 

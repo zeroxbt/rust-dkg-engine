@@ -1,6 +1,7 @@
 use alloy::primitives::{B256, U256, hex, keccak256};
 #[cfg(test)]
 use alloy::sol_types::SolValue;
+use thiserror::Error;
 
 const CHUNK_SIZE: usize = 32;
 
@@ -28,25 +29,36 @@ pub struct MerkleProofResult {
     pub proof: Vec<B256>,
 }
 
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum MerkleProofError {
+    #[error("No chunks to prove")]
+    EmptyInput,
+    #[error("Chunk index {chunk_index} out of range, only {chunk_count} chunks exist")]
+    ChunkIndexOutOfRange {
+        chunk_index: usize,
+        chunk_count: usize,
+    },
+}
+
 /// Calculate Merkle proof for a specific chunk.
 ///
 /// Returns the chunk content and proof path, or an error if chunk_index is out of range.
 pub fn calculate_merkle_proof(
     quads: &[String],
     chunk_index: usize,
-) -> Result<MerkleProofResult, String> {
+) -> Result<MerkleProofResult, MerkleProofError> {
     let concatenated = concatenate_quads(quads);
     let bytes = concatenated.as_bytes();
     if bytes.is_empty() {
-        return Err("No chunks to prove".to_string());
+        return Err(MerkleProofError::EmptyInput);
     }
 
     let chunk_count = bytes.len().div_ceil(CHUNK_SIZE);
     if chunk_index >= chunk_count {
-        return Err(format!(
-            "Chunk index {} out of range, only {} chunks exist",
-            chunk_index, chunk_count
-        ));
+        return Err(MerkleProofError::ChunkIndexOutOfRange {
+            chunk_index,
+            chunk_count,
+        });
     }
 
     let leaves: Vec<B256> = (0..chunk_count)

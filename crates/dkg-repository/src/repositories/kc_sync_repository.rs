@@ -1168,18 +1168,18 @@ impl KcSyncRepository {
     }
 
     fn u64_to_i64(value: u64, field: &'static str) -> Result<i64> {
-        i64::try_from(value).map_err(|_| {
-            crate::error::RepositoryError::SyncMetadata(format!(
-                "{field} value {value} exceeds i64 range"
-            ))
+        i64::try_from(value).map_err(|_| crate::error::RepositoryError::SyncMetadataOverflow {
+            field,
+            value,
+            target_type: "i64",
         })
     }
 
     fn u64_to_u32(value: u64, field: &'static str) -> Result<u32> {
-        u32::try_from(value).map_err(|_| {
-            crate::error::RepositoryError::SyncMetadata(format!(
-                "{field} value {value} exceeds u32 range"
-            ))
+        u32::try_from(value).map_err(|_| crate::error::RepositoryError::SyncMetadataOverflow {
+            field,
+            value,
+            target_type: "u32",
         })
     }
 

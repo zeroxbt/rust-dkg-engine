@@ -25,6 +25,9 @@ pub enum BlockchainError {
     #[error("Blockchain '{blockchain_id}' not found")]
     BlockchainNotFound { blockchain_id: String },
 
+    #[error("Invalid contract name: {name}")]
+    InvalidContractName { name: String },
+
     #[error("Failed to get logs: {reason}")]
     GetLogs {
         reason: String,
@@ -77,6 +80,39 @@ pub enum BlockchainError {
     #[error("Contract initialization failed: {reason}")]
     ContractInit { reason: String },
 
+    #[error("Missing configuration value: {field}")]
+    MissingConfig { field: &'static str },
+
+    #[error("Contract '{contract}' is not initialized")]
+    ContractNotInitialized { contract: String },
+
+    #[error("Contract '{contract}' has no initialized instances")]
+    ContractInstancesMissing { contract: String },
+
+    #[error("RPC call failed for {operation}: {reason}")]
+    RpcCallFailed { operation: String, reason: String },
+
+    #[error("Invalid chain value for {field}: {value}")]
+    InvalidChainValue { field: String, value: String },
+
+    #[error("Value overflow for {field}")]
+    ValueOverflow { field: String },
+
+    #[error("Failed to load block {block_number} data: {reason}")]
+    BlockData { block_number: u64, reason: String },
+
+    #[error("Failed to look up transaction {tx_hash}: {reason}")]
+    TransactionLookup { tx_hash: String, reason: String },
+
+    #[error("Failed to resolve contract code at block {block_number}: {reason}")]
+    CodeLookup { block_number: u64, reason: String },
+
+    #[error("Substrate RPC error for endpoint '{endpoint}': {reason}")]
+    SubstrateRpc { endpoint: String, reason: String },
+
+    #[error("Substrate metadata error: {reason}")]
+    SubstrateMetadata { reason: String },
+
     #[error("Failed to initialize blockchain '{blockchain_id}': {source}")]
     BlockchainInitialization {
         blockchain_id: String,
@@ -104,9 +140,6 @@ pub enum BlockchainError {
         "Invalid blockchain_id format '{blockchain_id}': expected 'chaintype:chainid' (e.g., 'hardhat:31337')"
     )]
     InvalidBlockchainId { blockchain_id: String },
-
-    #[error("{0}")]
-    Custom(String),
 }
 
 impl BlockchainError {

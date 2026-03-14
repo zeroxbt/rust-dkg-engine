@@ -7,8 +7,21 @@ use oxigraph::{
     io::{RdfFormat, RdfParser, RdfSerializer},
     model::{NamedOrBlankNode, Quad},
 };
+use thiserror::Error;
 
 use super::query::predicates;
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum RdfGroupingError {
+    #[error("failed to parse triple for grouping: {reason}")]
+    ParseTriple { reason: String },
+    #[error("failed to serialize quad: {reason}")]
+    SerializeQuad { reason: String },
+    #[error("failed to finish quad serialization: {reason}")]
+    FinishSerialization { reason: String },
+    #[error("serialized quad is not valid UTF-8: {reason}")]
+    InvalidUtf8 { reason: String },
+}
 
 /// Extracts the subject from an RDF line (N-Triples/N-Quads).
 ///
@@ -43,7 +56,9 @@ pub fn extract_subject(triple: &str) -> Option<&str> {
 ///
 /// This is closer to JS `groupNquadsBySubject` behavior, which parses RDF quads
 /// and then serializes each quad back before sorting/hashing.
-pub fn group_triples_by_subject<T: AsRef<str>>(triples: &[T]) -> Result<Vec<Vec<String>>, String> {
+pub fn group_triples_by_subject<T: AsRef<str>>(
+    triples: &[T],
+) -> Result<Vec<Vec<String>>, RdfGroupingError> {
     let mut groups: Vec<(String, Vec<String>)> = Vec::new();
     let mut subject_to_index: HashMap<String, usize> = HashMap::new();
     let parser = RdfParser::from_format(RdfFormat::NQuads).lenient();
@@ -61,7 +76,9 @@ pub fn group_triples_by_subject<T: AsRef<str>>(triples: &[T]) -> Result<Vec<Vec<
     }
 
     for parsed in parser.for_reader(joined.as_bytes()) {
-        let quad = parsed.map_err(|e| format!("Failed to parse triple for grouping: {}", e))?;
+        let quad = parsed.map_err(|error| RdfGroupingError::ParseTriple {
+            reason: error.to_string(),
+        })?;
         let subject_key = subject_key_from_quad(&quad);
         let quad_string = serialize_quad_nquads(&quad)?;
 
@@ -85,16 +102,21 @@ fn subject_key_from_quad(quad: &Quad) -> String {
     }
 }
 
-fn serialize_quad_nquads(quad: &Quad) -> Result<String, String> {
+fn serialize_quad_nquads(quad: &Quad) -> Result<String, RdfGroupingError> {
     let mut serializer = RdfSerializer::from_format(RdfFormat::NQuads).for_writer(Vec::new());
     serializer
         .serialize_quad(quad)
-        .map_err(|e| format!("Failed to serialize quad: {}", e))?;
+        .map_err(|error| RdfGroupingError::SerializeQuad {
+            reason: error.to_string(),
+        })?;
     let bytes = serializer
         .finish()
-        .map_err(|e| format!("Failed to finish quad serialization: {}", e))?;
-    let text = String::from_utf8(bytes)
-        .map_err(|e| format!("Serialized quad is not valid UTF-8: {}", e))?;
+        .map_err(|error| RdfGroupingError::FinishSerialization {
+            reason: error.to_string(),
+        })?;
+    let text = String::from_utf8(bytes).map_err(|error| RdfGroupingError::InvalidUtf8 {
+        reason: error.to_string(),
+    })?;
     Ok(text.trim_end_matches(['\n', '\r']).to_string())
 }
 

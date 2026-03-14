@@ -230,10 +230,9 @@ impl BlockchainAdminEventsTask {
                         .await?
                 } else {
                     let contract_address: Address = contract_address_str.parse().map_err(|_| {
-                        BlockchainError::Custom(format!(
-                            "Invalid contract address: {}",
-                            contract_address_str
-                        ))
+                        BlockchainError::InvalidAddress {
+                            address: contract_address_str.clone(),
+                        }
                     })?;
                     self.blockchain_manager
                         .get_event_logs_for_address(

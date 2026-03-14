@@ -37,11 +37,9 @@ impl EvmChain {
                     .await
             })
             .await
-            .map_err(|e| {
-                BlockchainError::Custom(format!(
-                    "Failed to get knowledge collection publisher from {:?}: {}",
-                    contract_address, e
-                ))
+            .map_err(|error| BlockchainError::RpcCallFailed {
+                operation: format!("get knowledge collection publisher from {contract_address:?}"),
+                reason: error.to_string(),
             })?;
 
         // If publisher is zero address, the collection doesn't exist
@@ -80,21 +78,23 @@ impl EvmChain {
                     .await
             })
             .await
-            .map_err(|e| {
-                BlockchainError::Custom(format!(
-                    "Failed to get knowledge assets range from {:?}: {}",
-                    contract_address, e
-                ))
+            .map_err(|error| BlockchainError::RpcCallFailed {
+                operation: format!("get knowledge assets range from {contract_address:?}"),
+                reason: error.to_string(),
             })?;
 
         let start_token_id = result
             ._0
             .try_into()
-            .map_err(|_| BlockchainError::Custom("Start token ID overflow".to_string()))?;
+            .map_err(|_| BlockchainError::ValueOverflow {
+                field: "knowledge asset range start token ID".to_string(),
+            })?;
         let end_token_id = result
             ._1
             .try_into()
-            .map_err(|_| BlockchainError::Custom("End token ID overflow".to_string()))?;
+            .map_err(|_| BlockchainError::ValueOverflow {
+                field: "knowledge asset range end token ID".to_string(),
+            })?;
         let burned: Vec<u64> = result
             ._2
             .into_iter()
@@ -137,11 +137,11 @@ impl EvmChain {
                     .await
             })
             .await
-            .map_err(|e| {
-                BlockchainError::Custom(format!(
-                    "Failed to get knowledge collection merkle root from {:?}: {}",
-                    contract_address, e
-                ))
+            .map_err(|error| BlockchainError::RpcCallFailed {
+                operation: format!(
+                    "get knowledge collection merkle root from {contract_address:?}"
+                ),
+                reason: error.to_string(),
             })?;
 
         // If merkle root is zero, the collection doesn't exist
@@ -177,16 +177,16 @@ impl EvmChain {
                 kc_storage.getLatestKnowledgeCollectionId().call().await
             })
             .await
-            .map_err(|e| {
-                BlockchainError::Custom(format!(
-                    "Failed to get latest knowledge collection ID from {:?}: {}",
-                    contract_address, e
-                ))
+            .map_err(|error| BlockchainError::RpcCallFailed {
+                operation: format!("get latest knowledge collection ID from {contract_address:?}"),
+                reason: error.to_string(),
             })?;
 
-        latest_id.try_into().map_err(|_| {
-            BlockchainError::Custom("Latest knowledge collection ID overflow".to_string())
-        })
+        latest_id
+            .try_into()
+            .map_err(|_| BlockchainError::ValueOverflow {
+                field: "latest knowledge collection ID".to_string(),
+            })
     }
 
     /// Get the current epoch from the Chronos contract.
@@ -198,10 +198,15 @@ impl EvmChain {
                 chronos.getCurrentEpoch().call().await
             })
             .await
-            .map_err(|e| BlockchainError::Custom(format!("Failed to get current epoch: {}", e)))?;
+            .map_err(|error| BlockchainError::RpcCallFailed {
+                operation: "get current epoch".to_string(),
+                reason: error.to_string(),
+            })?;
 
         current_epoch
             .try_into()
-            .map_err(|_| BlockchainError::Custom("Current epoch overflow".to_string()))
+            .map_err(|_| BlockchainError::ValueOverflow {
+                field: "current epoch".to_string(),
+            })
     }
 }
