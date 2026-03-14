@@ -2,6 +2,7 @@ use alloy::hex;
 use dkg_domain::SignatureComponents;
 
 use crate::{
+    ContractName,
     chains::evm::{
         EvmChain,
         contracts::{Staking, Token},
@@ -104,7 +105,7 @@ impl EvmChain {
             Err(err) => {
                 tracing::error!("Token approval failed: {:?}", err);
                 return Err(BlockchainError::TransactionFailed {
-                    contract: "Token".to_string(),
+                    contract: ContractName::Token.to_string(),
                     function: "increaseAllowance".to_string(),
                     reason: format!("{:?}", err),
                 });
@@ -131,7 +132,7 @@ impl EvmChain {
             Err(err) => {
                 tracing::error!("Staking failed: {:?}", err);
                 Err(BlockchainError::TransactionFailed {
-                    contract: "Staking".to_string(),
+                    contract: ContractName::Staking.to_string(),
                     function: "stake".to_string(),
                     reason: format!("{:?}", err),
                 })

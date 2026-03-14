@@ -295,14 +295,20 @@ enum BlockchainKind {
 impl BlockchainConfigKey {
     fn expected_blockchain_id(&self) -> BlockchainId {
         match self {
-            BlockchainConfigKey::Hardhat131337 => "hardhat1:31337".into(),
-            BlockchainConfigKey::Hardhat231337 => "hardhat2:31337".into(),
-            BlockchainConfigKey::Otp2043 => "otp:2043".into(),
-            BlockchainConfigKey::Otp20430 => "otp:20430".into(),
-            BlockchainConfigKey::Gnosis100 => "gnosis:100".into(),
-            BlockchainConfigKey::Gnosis10200 => "gnosis:10200".into(),
-            BlockchainConfigKey::Base8453 => "base:8453".into(),
-            BlockchainConfigKey::Base84532 => "base:84532".into(),
+            BlockchainConfigKey::Hardhat131337 => {
+                "hardhat1:31337".parse().expect("valid blockchain id")
+            }
+            BlockchainConfigKey::Hardhat231337 => {
+                "hardhat2:31337".parse().expect("valid blockchain id")
+            }
+            BlockchainConfigKey::Otp2043 => "otp:2043".parse().expect("valid blockchain id"),
+            BlockchainConfigKey::Otp20430 => "otp:20430".parse().expect("valid blockchain id"),
+            BlockchainConfigKey::Gnosis100 => "gnosis:100".parse().expect("valid blockchain id"),
+            BlockchainConfigKey::Gnosis10200 => {
+                "gnosis:10200".parse().expect("valid blockchain id")
+            }
+            BlockchainConfigKey::Base8453 => "base:8453".parse().expect("valid blockchain id"),
+            BlockchainConfigKey::Base84532 => "base:84532".parse().expect("valid blockchain id"),
         }
     }
 
@@ -431,7 +437,7 @@ mod tests {
     fn sample_raw(max_rpc_requests_per_second: Option<u32>) -> BlockchainConfigRaw {
         BlockchainConfigRaw {
             enabled: true,
-            blockchain_id: BlockchainId::from("hardhat:31337"),
+            blockchain_id: "hardhat:31337".parse().unwrap(),
             evm_operational_wallet_private_key: Some(
                 "449bf49be49946f2160d288a56e820adc5808806d558f33a2412783a61aad3d7".to_string(),
             ),

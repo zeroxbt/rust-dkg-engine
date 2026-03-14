@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use dkg_network::ResponseHandle;
+
 use super::operations::{
     batch_get::handle_batch_get_request::{
         HandleBatchGetRequestCommandData, HandleBatchGetRequestCommandHandler,
@@ -61,6 +63,17 @@ macro_rules! command_registry {
                     Self::$variant(data)
                 }
             }
+
+            impl TryFrom<Command> for $data {
+                type Error = Command;
+
+                fn try_from(command: Command) -> Result<Self, Self::Error> {
+                    match command {
+                        Command::$variant(data) => Ok(data),
+                        other => Err(other),
+                    }
+                }
+            }
         )+
 
         pub(crate) struct CommandResolver {
@@ -87,8 +100,17 @@ macro_rules! command_registry {
     };
 }
 
-pub(crate) trait CommandHandler<D: Send + Sync + 'static>: Send + Sync {
-    fn execute(&self, data: D) -> impl std::future::Future<Output = CommandOutcome> + Send;
+pub(crate) trait CommandHandler: Send + Sync {
+    type Data: Send + Sync + 'static;
+
+    fn execute(&self, data: Self::Data)
+    -> impl std::future::Future<Output = CommandOutcome> + Send;
+}
+
+pub(crate) trait InboundCommandData<Ack>:
+    Into<Command> + TryFrom<Command, Error = Command> + Send + Sync + 'static
+{
+    fn into_response_handle(self) -> ResponseHandle<Ack>;
 }
 
 // Command registry: operation commands only.

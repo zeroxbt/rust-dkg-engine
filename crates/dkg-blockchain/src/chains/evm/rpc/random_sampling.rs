@@ -1,6 +1,7 @@
 use alloy::primitives::{Address, FixedBytes, U256};
 
 use crate::{
+    ContractName,
     chains::evm::{EvmChain, error_decode::decode_contract_error},
     error::BlockchainError,
 };
@@ -65,7 +66,7 @@ impl EvmChain {
 
                 tracing::warn!("Create challenge failed: {:?}", err);
                 Err(BlockchainError::TransactionFailed {
-                    contract: "RandomSampling".to_string(),
+                    contract: ContractName::RandomSampling.to_string(),
                     function: "createChallenge".to_string(),
                     reason: err_str,
                 })
@@ -158,7 +159,7 @@ impl EvmChain {
 
                 tracing::warn!(reason = %reason, raw_error = %raw_error, "Submit proof failed");
                 Err(BlockchainError::TransactionFailed {
-                    contract: "RandomSampling".to_string(),
+                    contract: ContractName::RandomSampling.to_string(),
                     function: "submitProof".to_string(),
                     reason,
                 })

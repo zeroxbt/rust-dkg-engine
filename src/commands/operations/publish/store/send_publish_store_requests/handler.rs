@@ -71,9 +71,9 @@ impl SendPublishStoreRequestsCommandHandler {
     }
 }
 
-impl CommandHandler<SendPublishStoreRequestsCommandData>
-    for SendPublishStoreRequestsCommandHandler
-{
+impl CommandHandler for SendPublishStoreRequestsCommandHandler {
+    type Data = SendPublishStoreRequestsCommandData;
+
     #[instrument(
         name = "op.publish_store.send",
         skip(self, data),
@@ -88,7 +88,7 @@ impl CommandHandler<SendPublishStoreRequestsCommandData>
             peer_count = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, data: SendPublishStoreRequestsCommandData) -> CommandOutcome {
+    async fn execute(&self, data: Self::Data) -> CommandOutcome {
         let data = &data;
         let operation_id = data.operation_id;
         let blockchain = &data.blockchain;

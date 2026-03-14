@@ -53,8 +53,8 @@ impl KcProjectionRepository {
                 blockchain_id: ActiveValue::Set(blockchain_id.to_string()),
                 contract_address: ActiveValue::Set(contract_address.to_string()),
                 kc_id: ActiveValue::Set(kc_id),
-                desired_state: ActiveValue::Set(KcProjectionDesiredState::Present.as_u8()),
-                actual_state: ActiveValue::Set(KcProjectionActualState::Unknown.as_u8()),
+                desired_state: ActiveValue::Set(u8::from(KcProjectionDesiredState::Present)),
+                actual_state: ActiveValue::Set(u8::from(KcProjectionActualState::Unknown)),
                 last_synced_at: ActiveValue::Set(None),
                 last_error: ActiveValue::Set(None),
                 created_at: ActiveValue::Set(now),
@@ -123,7 +123,7 @@ impl KcProjectionRepository {
         let result = ProjectionEntity::update_many()
             .col_expr(
                 ProjectionColumn::ActualState,
-                Expr::value(KcProjectionActualState::Present.as_u8()),
+                Expr::value(u8::from(KcProjectionActualState::Present)),
             )
             .col_expr(ProjectionColumn::LastSyncedAt, Expr::value(Some(now)))
             .col_expr(ProjectionColumn::LastError, Expr::value(None::<String>))
@@ -193,7 +193,7 @@ impl KcProjectionRepository {
         let result = ProjectionEntity::update_many()
             .col_expr(
                 ProjectionColumn::ActualState,
-                Expr::value(KcProjectionActualState::Pending.as_u8()),
+                Expr::value(u8::from(KcProjectionActualState::Pending)),
             )
             .col_expr(
                 ProjectionColumn::LastError,
@@ -203,7 +203,7 @@ impl KcProjectionRepository {
             .filter(ProjectionColumn::BlockchainId.eq(blockchain_id))
             .filter(ProjectionColumn::ContractAddress.eq(contract_address))
             // Do not downgrade already-materialized rows back to pending.
-            .filter(ProjectionColumn::ActualState.ne(KcProjectionActualState::Present.as_u8()))
+            .filter(ProjectionColumn::ActualState.ne(u8::from(KcProjectionActualState::Present)))
             .filter(ProjectionColumn::KcId.is_in(kc_ids.to_vec()))
             .exec(self.conn.as_ref())
             .await
@@ -257,7 +257,7 @@ impl KcProjectionRepository {
         let result = ProjectionEntity::update_many()
             .col_expr(
                 ProjectionColumn::ActualState,
-                Expr::value(KcProjectionActualState::Failed.as_u8()),
+                Expr::value(u8::from(KcProjectionActualState::Failed)),
             )
             .col_expr(
                 ProjectionColumn::LastError,
@@ -318,13 +318,13 @@ impl KcProjectionRepository {
         let result = ProjectionEntity::update_many()
             .col_expr(
                 ProjectionColumn::ActualState,
-                Expr::value(KcProjectionActualState::Unknown.as_u8()),
+                Expr::value(u8::from(KcProjectionActualState::Unknown)),
             )
             .col_expr(ProjectionColumn::LastError, Expr::value(None::<String>))
             .col_expr(ProjectionColumn::UpdatedAt, Expr::value(now))
             .filter(ProjectionColumn::BlockchainId.eq(blockchain_id))
             .filter(ProjectionColumn::ContractAddress.eq(contract_address))
-            .filter(ProjectionColumn::ActualState.eq(KcProjectionActualState::Pending.as_u8()))
+            .filter(ProjectionColumn::ActualState.eq(u8::from(KcProjectionActualState::Pending)))
             .filter(ProjectionColumn::KcId.is_in(kc_ids.to_vec()))
             .exec(self.conn.as_ref())
             .await
@@ -389,8 +389,8 @@ impl KcProjectionRepository {
 
         let result: Result<Vec<(String, u64)>> = ProjectionEntity::find()
             .filter(ProjectionColumn::BlockchainId.eq(blockchain_id))
-            .filter(ProjectionColumn::DesiredState.eq(KcProjectionDesiredState::Present.as_u8()))
-            .filter(ProjectionColumn::ActualState.eq(KcProjectionActualState::Unknown.as_u8()))
+            .filter(ProjectionColumn::DesiredState.eq(u8::from(KcProjectionDesiredState::Present)))
+            .filter(ProjectionColumn::ActualState.eq(u8::from(KcProjectionActualState::Unknown)))
             .order_by_asc(ProjectionColumn::UpdatedAt)
             .order_by_asc(ProjectionColumn::ContractAddress)
             .order_by_asc(ProjectionColumn::KcId)
@@ -474,10 +474,11 @@ impl KcProjectionRepository {
             )
             .and_where(Expr::col((p.clone(), blockchain)).eq(blockchain_id))
             .and_where(
-                Expr::col((p.clone(), desired_state)).eq(KcProjectionDesiredState::Present.as_u8()),
+                Expr::col((p.clone(), desired_state))
+                    .eq(u8::from(KcProjectionDesiredState::Present)),
             )
             .and_where(
-                Expr::col((p.clone(), actual_state)).eq(KcProjectionActualState::Pending.as_u8()),
+                Expr::col((p.clone(), actual_state)).eq(u8::from(KcProjectionActualState::Pending)),
             )
             .and_where(Expr::col((q.clone(), kc_id.clone())).is_null())
             .order_by((p.clone(), updated_at), Order::Asc)
@@ -532,8 +533,8 @@ impl KcProjectionRepository {
 
         let query = ProjectionEntity::find()
             .filter(ProjectionColumn::BlockchainId.eq(blockchain_id))
-            .filter(ProjectionColumn::DesiredState.eq(KcProjectionDesiredState::Present.as_u8()))
-            .filter(ProjectionColumn::ActualState.eq(actual_state.as_u8()));
+            .filter(ProjectionColumn::DesiredState.eq(u8::from(KcProjectionDesiredState::Present)))
+            .filter(ProjectionColumn::ActualState.eq(u8::from(actual_state)));
 
         let result = query.count(self.conn.as_ref()).await.map_err(Into::into);
 

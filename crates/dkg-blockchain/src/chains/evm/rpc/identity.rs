@@ -4,6 +4,7 @@ use alloy::{
 };
 
 use crate::{
+    ContractName,
     chains::evm::{EvmChain, contracts::Profile, error_decode::decode_contract_error},
     error::BlockchainError,
 };
@@ -184,7 +185,7 @@ impl EvmChain {
                         err
                     );
                     Err(BlockchainError::TransactionFailed {
-                        contract: "Profile".to_string(),
+                        contract: ContractName::Profile.to_string(),
                         function: "updateAsk".to_string(),
                         reason: decoded_error.unwrap_or_else(|| format!("{:?}", err)),
                     })

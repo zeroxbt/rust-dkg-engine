@@ -52,7 +52,9 @@ impl SendGetRequestsCommandHandler {
     }
 }
 
-impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandler {
+impl CommandHandler for SendGetRequestsCommandHandler {
+    type Data = SendGetRequestsCommandData;
+
     #[instrument(
         name = "op.get.send",
         skip(self, data),
@@ -66,7 +68,7 @@ impl CommandHandler<SendGetRequestsCommandData> for SendGetRequestsCommandHandle
             include_metadata = data.include_metadata,
         )
     )]
-    async fn execute(&self, data: SendGetRequestsCommandData) -> CommandOutcome {
+    async fn execute(&self, data: Self::Data) -> CommandOutcome {
         let data = &data;
         let operation_id = data.operation_id;
 

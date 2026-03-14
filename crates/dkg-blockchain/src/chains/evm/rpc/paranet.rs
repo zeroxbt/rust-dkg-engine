@@ -47,7 +47,12 @@ impl EvmChain {
                 BlockchainError::Custom(format!("Failed to get nodes access policy: {}", e))
             })?;
 
-        Ok(AccessPolicy::from(policy))
+        AccessPolicy::try_from(policy).map_err(|err| {
+            BlockchainError::Custom(format!(
+                "Invalid nodes access policy returned from chain: {}",
+                err
+            ))
+        })
     }
 
     /// Get the list of permissioned nodes for a paranet.

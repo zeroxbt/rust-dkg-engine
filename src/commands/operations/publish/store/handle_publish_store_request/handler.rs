@@ -9,7 +9,11 @@ use uuid::Uuid;
 
 use crate::{
     application::signature,
-    commands::{HandlePublishStoreRequestDeps, executor::CommandOutcome, registry::CommandHandler},
+    commands::{
+        HandlePublishStoreRequestDeps,
+        executor::CommandOutcome,
+        registry::{CommandHandler, InboundCommandData},
+    },
     peer_registry::PeerRegistry,
 };
 
@@ -29,6 +33,12 @@ impl HandlePublishStoreRequestCommandData {
             request,
             response_handle,
         }
+    }
+}
+
+impl InboundCommandData<StoreAck> for HandlePublishStoreRequestCommandData {
+    fn into_response_handle(self) -> ResponseHandle<StoreAck> {
+        self.response_handle
     }
 }
 
@@ -96,9 +106,9 @@ impl HandlePublishStoreRequestCommandHandler {
     }
 }
 
-impl CommandHandler<HandlePublishStoreRequestCommandData>
-    for HandlePublishStoreRequestCommandHandler
-{
+impl CommandHandler for HandlePublishStoreRequestCommandHandler {
+    type Data = HandlePublishStoreRequestCommandData;
+
     #[instrument(
         name = "op.publish_store.recv",
         skip(self, data),
@@ -111,7 +121,7 @@ impl CommandHandler<HandlePublishStoreRequestCommandData>
             remote_peer = %data.request.peer_id(),
         )
     )]
-    async fn execute(&self, data: HandlePublishStoreRequestCommandData) -> CommandOutcome {
+    async fn execute(&self, data: Self::Data) -> CommandOutcome {
         let HandlePublishStoreRequestCommandData {
             request,
             response_handle,

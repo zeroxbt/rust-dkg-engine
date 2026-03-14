@@ -158,6 +158,7 @@ impl Contracts {
             ContractName::Staking => Ok(*self.staking.address()),
             ContractName::DelegatorsInfo => Ok(*self.delegators_info.address()),
             ContractName::Profile => Ok(*self.profile.address()),
+            ContractName::IdentityStorage => Ok(*self.identity_storage.address()),
             ContractName::ParametersStorage => Ok(*self.parameters_storage.address()),
             ContractName::KnowledgeCollectionStorage => self
                 .knowledge_collection_storages
@@ -169,6 +170,8 @@ impl Contracts {
                         "No KnowledgeCollectionStorage contracts initialized".to_string(),
                     )
                 }),
+            ContractName::Token => Ok(*self.token.address()),
+            ContractName::Chronos => Ok(*self.chronos.address()),
             ContractName::Paranet => self
                 .paranet
                 .as_ref()
@@ -185,6 +188,8 @@ impl Contracts {
                         "ParanetsRegistry contract is not initialized".to_string(),
                     )
                 }),
+            ContractName::RandomSampling => Ok(*self.random_sampling.address()),
+            ContractName::RandomSamplingStorage => Ok(*self.random_sampling_storage.address()),
         }
     }
 
@@ -210,6 +215,9 @@ impl Contracts {
             ContractName::Profile => {
                 self.profile = Profile::new(contract_address, provider.clone())
             }
+            ContractName::IdentityStorage => {
+                self.identity_storage = IdentityStorage::new(contract_address, provider.clone())
+            }
             ContractName::ShardingTable => {
                 self.sharding_table = ShardingTable::new(contract_address, provider.clone())
             }
@@ -222,6 +230,12 @@ impl Contracts {
             }
             ContractName::Staking => {
                 self.staking = Staking::new(contract_address, provider.clone());
+            }
+            ContractName::Token => {
+                self.token = Token::new(contract_address, provider.clone());
+            }
+            ContractName::Chronos => {
+                self.chronos = Chronos::new(contract_address, provider.clone());
             }
             ContractName::ParametersStorage => {
                 self.parameters_storage =
@@ -253,10 +267,29 @@ impl Contracts {
             ContractName::Paranet => {
                 self.paranet = Some(Paranet::new(contract_address, provider.clone()));
             }
+            ContractName::RandomSampling => {
+                self.random_sampling = RandomSampling::new(contract_address, provider.clone());
+            }
+            ContractName::RandomSamplingStorage => {
+                self.random_sampling_storage =
+                    RandomSamplingStorage::new(contract_address, provider.clone());
+            }
         };
 
         Ok(())
     }
+}
+
+async fn resolve_contract_address(
+    hub: &Hub::HubInstance<BlockchainProvider>,
+    contract_name: ContractName,
+) -> Result<Address, alloy::contract::Error> {
+    Ok(Address::from(
+        hub.getContractAddress(contract_name.to_string())
+            .call()
+            .await?
+            .0,
+    ))
 }
 
 pub async fn initialize_contracts(
@@ -303,88 +336,43 @@ pub async fn initialize_contracts(
         hub: hub.clone(),
         knowledge_collection_storages,
         staking: Staking::new(
-            Address::from(
-                hub.getContractAddress("Staking".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::Staking).await?,
             provider.clone(),
         ),
         identity_storage: IdentityStorage::new(
-            Address::from(
-                hub.getContractAddress("IdentityStorage".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::IdentityStorage).await?,
             provider.clone(),
         ),
         parameters_storage: ParametersStorage::new(
-            Address::from(
-                hub.getContractAddress("ParametersStorage".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::ParametersStorage).await?,
             provider.clone(),
         ),
         profile: Profile::new(
-            Address::from(
-                hub.getContractAddress("Profile".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::Profile).await?,
             provider.clone(),
         ),
         sharding_table: ShardingTable::new(
-            Address::from(
-                hub.getContractAddress("ShardingTable".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::ShardingTable).await?,
             provider.clone(),
         ),
         sharding_table_storage: ShardingTableStorage::new(
-            Address::from(
-                hub.getContractAddress("ShardingTableStorage".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::ShardingTableStorage).await?,
             provider.clone(),
         ),
         token: Token::new(
-            Address::from(hub.getContractAddress("Token".to_string()).call().await?.0),
+            resolve_contract_address(&hub, ContractName::Token).await?,
             provider.clone(),
         ),
         chronos: Chronos::new(
-            Address::from(
-                hub.getContractAddress("Chronos".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::Chronos).await?,
             provider.clone(),
         ),
         paranet: Some(Paranet::new(
-            Address::from(
-                hub.getContractAddress("Paranet".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::Paranet).await?,
             provider.clone(),
         )),
         paranets_registry: Some(ParanetsRegistry::new(
-            Address::from(
-                hub.getContractAddress("ParanetsRegistry".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::ParanetsRegistry).await?,
             provider.clone(),
         )),
         multicall3: Multicall3::new(
@@ -403,30 +391,15 @@ pub async fn initialize_contracts(
             provider.clone(),
         ),
         random_sampling: RandomSampling::new(
-            Address::from(
-                hub.getContractAddress("RandomSampling".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::RandomSampling).await?,
             provider.clone(),
         ),
         random_sampling_storage: RandomSamplingStorage::new(
-            Address::from(
-                hub.getContractAddress("RandomSamplingStorage".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::RandomSamplingStorage).await?,
             provider.clone(),
         ),
         delegators_info: DelegatorsInfo::new(
-            Address::from(
-                hub.getContractAddress("DelegatorsInfo".to_string())
-                    .call()
-                    .await?
-                    .0,
-            ),
+            resolve_contract_address(&hub, ContractName::DelegatorsInfo).await?,
             provider.clone(),
         ),
     })

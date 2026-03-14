@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use thiserror::Error;
+
 /// Operation status for tracking publish/get operation polling.
 ///
 /// Used by the operation repository to track publish/get polling lifecycles.
@@ -19,12 +21,6 @@ pub enum KcProjectionDesiredState {
     Present = 1,
 }
 
-impl KcProjectionDesiredState {
-    pub fn as_u8(self) -> u8 {
-        self as u8
-    }
-}
-
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KcProjectionActualState {
@@ -34,11 +30,13 @@ pub enum KcProjectionActualState {
     Pending = 3,
 }
 
-impl KcProjectionActualState {
-    pub fn as_u8(self) -> u8 {
-        self as u8
-    }
-}
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[error("invalid KC projection desired state value: {0}")]
+pub struct KcProjectionDesiredStateParseError(pub u8);
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[error("invalid KC projection actual state value: {0}")]
+pub struct KcProjectionActualStateParseError(pub u8);
 
 /// Public DTO for paranet knowledge collection sync queue entries.
 ///
@@ -170,6 +168,43 @@ impl OperationStatus {
             Self::InProgress => "IN_PROGRESS",
             Self::Completed => "COMPLETED",
             Self::Failed => "FAILED",
+        }
+    }
+}
+
+impl From<KcProjectionDesiredState> for u8 {
+    fn from(value: KcProjectionDesiredState) -> Self {
+        value as u8
+    }
+}
+
+impl TryFrom<u8> for KcProjectionDesiredState {
+    type Error = KcProjectionDesiredStateParseError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::Present),
+            _ => Err(KcProjectionDesiredStateParseError(value)),
+        }
+    }
+}
+
+impl From<KcProjectionActualState> for u8 {
+    fn from(value: KcProjectionActualState) -> Self {
+        value as u8
+    }
+}
+
+impl TryFrom<u8> for KcProjectionActualState {
+    type Error = KcProjectionActualStateParseError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Unknown),
+            1 => Ok(Self::Present),
+            2 => Ok(Self::Failed),
+            3 => Ok(Self::Pending),
+            _ => Err(KcProjectionActualStateParseError(value)),
         }
     }
 }

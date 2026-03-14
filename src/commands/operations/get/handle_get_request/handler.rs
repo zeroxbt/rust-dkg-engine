@@ -8,7 +8,11 @@ use uuid::Uuid;
 
 use crate::{
     application::{TripleStoreAssertions, paranet},
-    commands::{HandleGetRequestDeps, executor::CommandOutcome, registry::CommandHandler},
+    commands::{
+        HandleGetRequestDeps,
+        executor::CommandOutcome,
+        registry::{CommandHandler, InboundCommandData},
+    },
     peer_registry::PeerRegistry,
 };
 
@@ -27,6 +31,12 @@ impl HandleGetRequestCommandData {
             request,
             response_handle,
         }
+    }
+}
+
+impl InboundCommandData<GetAck> for HandleGetRequestCommandData {
+    fn into_response_handle(self) -> ResponseHandle<GetAck> {
+        self.response_handle
     }
 }
 
@@ -94,7 +104,9 @@ impl HandleGetRequestCommandHandler {
     }
 }
 
-impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHandler {
+impl CommandHandler for HandleGetRequestCommandHandler {
+    type Data = HandleGetRequestCommandData;
+
     #[instrument(
         name = "op.get.recv",
         skip(self, data),
@@ -109,7 +121,7 @@ impl CommandHandler<HandleGetRequestCommandData> for HandleGetRequestCommandHand
             effective_visibility = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, data: HandleGetRequestCommandData) -> CommandOutcome {
+    async fn execute(&self, data: Self::Data) -> CommandOutcome {
         let HandleGetRequestCommandData {
             request,
             response_handle,

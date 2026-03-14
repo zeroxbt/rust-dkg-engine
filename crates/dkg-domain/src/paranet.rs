@@ -2,6 +2,7 @@ use alloy::{
     primitives::{Address, B256, U256, keccak256},
     sol_types::SolValue,
 };
+use thiserror::Error;
 
 /// Access policy for paranet nodes (matches on-chain enum).
 /// OPEN = 0: Any node can participate
@@ -13,11 +14,18 @@ pub enum AccessPolicy {
     Permissioned = 1,
 }
 
-impl From<u8> for AccessPolicy {
-    fn from(value: u8) -> Self {
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[error("invalid access policy value: {0}")]
+pub struct AccessPolicyParseError(pub u8);
+
+impl TryFrom<u8> for AccessPolicy {
+    type Error = AccessPolicyParseError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            1 => AccessPolicy::Permissioned,
-            _ => AccessPolicy::Open,
+            0 => Ok(AccessPolicy::Open),
+            1 => Ok(AccessPolicy::Permissioned),
+            _ => Err(AccessPolicyParseError(value)),
         }
     }
 }

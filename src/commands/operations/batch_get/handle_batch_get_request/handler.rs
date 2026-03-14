@@ -12,7 +12,11 @@ use uuid::Uuid;
 
 use crate::{
     application::{TripleStoreAssertions, UAL_MAX_LIMIT},
-    commands::{HandleBatchGetRequestDeps, executor::CommandOutcome, registry::CommandHandler},
+    commands::{
+        HandleBatchGetRequestDeps,
+        executor::CommandOutcome,
+        registry::{CommandHandler, InboundCommandData},
+    },
     peer_registry::PeerRegistry,
 };
 
@@ -31,6 +35,12 @@ impl HandleBatchGetRequestCommandData {
             request,
             response_handle,
         }
+    }
+}
+
+impl InboundCommandData<BatchGetAck> for HandleBatchGetRequestCommandData {
+    fn into_response_handle(self) -> ResponseHandle<BatchGetAck> {
+        self.response_handle
     }
 }
 
@@ -96,7 +106,9 @@ impl HandleBatchGetRequestCommandHandler {
     }
 }
 
-impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestCommandHandler {
+impl CommandHandler for HandleBatchGetRequestCommandHandler {
+    type Data = HandleBatchGetRequestCommandData;
+
     #[instrument(
         name = "op.batch_get.recv",
         skip(self, data),
@@ -111,7 +123,7 @@ impl CommandHandler<HandleBatchGetRequestCommandData> for HandleBatchGetRequestC
             invalid_ual_count = tracing::field::Empty,
         )
     )]
-    async fn execute(&self, data: HandleBatchGetRequestCommandData) -> CommandOutcome {
+    async fn execute(&self, data: Self::Data) -> CommandOutcome {
         let HandleBatchGetRequestCommandData {
             request,
             response_handle,

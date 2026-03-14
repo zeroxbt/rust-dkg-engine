@@ -1,6 +1,6 @@
 use alloy::primitives::{Address, U256, Uint};
 
-use crate::{chains::evm::EvmChain, error::BlockchainError};
+use crate::{ContractName, chains::evm::EvmChain, error::BlockchainError};
 
 impl EvmChain {
     pub async fn get_delegators(&self, identity_id: u128) -> Result<Vec<Address>, BlockchainError> {
@@ -80,7 +80,7 @@ impl EvmChain {
                 Ok(())
             }
             Err(err) => Err(BlockchainError::TransactionFailed {
-                contract: "Staking".to_string(),
+                contract: ContractName::Staking.to_string(),
                 function: "batchClaimDelegatorRewards".to_string(),
                 reason: format!("{:?}", err),
             }),

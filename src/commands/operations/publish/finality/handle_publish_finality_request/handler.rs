@@ -8,7 +8,9 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::commands::{
-    HandlePublishFinalityRequestDeps, executor::CommandOutcome, registry::CommandHandler,
+    HandlePublishFinalityRequestDeps,
+    executor::CommandOutcome,
+    registry::{CommandHandler, InboundCommandData},
 };
 
 /// Command data for handling incoming publish finality requests from storage nodes.
@@ -28,6 +30,12 @@ impl HandlePublishFinalityRequestCommandData {
             request,
             response_handle,
         }
+    }
+}
+
+impl InboundCommandData<FinalityAck> for HandlePublishFinalityRequestCommandData {
+    fn into_response_handle(self) -> ResponseHandle<FinalityAck> {
+        self.response_handle
     }
 }
 
@@ -93,9 +101,9 @@ impl HandlePublishFinalityRequestCommandHandler {
     }
 }
 
-impl CommandHandler<HandlePublishFinalityRequestCommandData>
-    for HandlePublishFinalityRequestCommandHandler
-{
+impl CommandHandler for HandlePublishFinalityRequestCommandHandler {
+    type Data = HandlePublishFinalityRequestCommandData;
+
     #[instrument(
         name = "op.publish_finality.recv",
         skip(self, data),
@@ -108,7 +116,7 @@ impl CommandHandler<HandlePublishFinalityRequestCommandData>
             remote_peer = %data.request.peer_id(),
         )
     )]
-    async fn execute(&self, data: HandlePublishFinalityRequestCommandData) -> CommandOutcome {
+    async fn execute(&self, data: Self::Data) -> CommandOutcome {
         let HandlePublishFinalityRequestCommandData {
             request,
             response_handle,

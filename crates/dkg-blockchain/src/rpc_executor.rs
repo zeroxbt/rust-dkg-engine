@@ -29,7 +29,7 @@ impl RetryPolicy {
     }
 }
 
-pub trait RetryableError: std::fmt::Display {
+pub trait RetryableError: std::error::Error + Send + Sync + 'static {
     fn is_retryable(&self) -> bool;
     fn backoff_hint(&self) -> Option<Duration> {
         None

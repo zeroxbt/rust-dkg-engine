@@ -11,10 +11,11 @@ mod visibility;
 
 pub use address::canonical_evm_address;
 pub use assertion::Assertion;
-pub use blockchain_id::BlockchainId;
+pub use blockchain_id::{BlockchainId, BlockchainIdParseError};
 pub use kc::{KnowledgeAsset, KnowledgeCollectionMetadata};
 pub use paranet::{
-    AccessPolicy, ParanetKcLocator, construct_knowledge_collection_onchain_id, construct_paranet_id,
+    AccessPolicy, AccessPolicyParseError, ParanetKcLocator,
+    construct_knowledge_collection_onchain_id, construct_paranet_id,
 };
 pub use signature::SignatureComponents;
 pub use token_ids::TokenIds;

@@ -698,10 +698,11 @@ impl KcSyncRepository {
             )
             .and_where(Expr::col((q.clone(), blockchain)).eq(blockchain_id))
             .and_where(
-                Expr::col((p.clone(), desired_state)).eq(KcProjectionDesiredState::Present.as_u8()),
+                Expr::col((p.clone(), desired_state))
+                    .eq(u8::from(KcProjectionDesiredState::Present)),
             )
             .and_where(
-                Expr::col((p.clone(), actual_state)).eq(KcProjectionActualState::Present.as_u8()),
+                Expr::col((p.clone(), actual_state)).eq(u8::from(KcProjectionActualState::Present)),
             )
             .order_by((q.clone(), created_at), Order::Asc)
             .order_by((q.clone(), contract), Order::Asc)

@@ -136,9 +136,9 @@ impl SendPublishFinalityRequestCommandHandler {
     }
 }
 
-impl CommandHandler<SendPublishFinalityRequestCommandData>
-    for SendPublishFinalityRequestCommandHandler
-{
+impl CommandHandler for SendPublishFinalityRequestCommandHandler {
+    type Data = SendPublishFinalityRequestCommandData;
+
     #[instrument(
         name = "op.publish_finality.send",
         skip(self, data),
@@ -152,7 +152,7 @@ impl CommandHandler<SendPublishFinalityRequestCommandData>
             block_number = data.metadata.block_number(),
         )
     )]
-    async fn execute(&self, data: SendPublishFinalityRequestCommandData) -> CommandOutcome {
+    async fn execute(&self, data: Self::Data) -> CommandOutcome {
         let data = &data;
         // Generate a new operation ID for the finality request
         let operation_id = Uuid::new_v4();

@@ -46,7 +46,7 @@ fn record_codec_error(
 /// - ...
 ///
 /// This codec reads all chunks, concatenates the data chunks, then deserializes.
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct JsCompatCodec<Req, Resp> {
     _marker: PhantomData<(Req, Resp)>,
 }
@@ -56,6 +56,12 @@ impl<Req, Resp> JsCompatCodec<Req, Resp> {
         Self {
             _marker: PhantomData,
         }
+    }
+}
+
+impl<Req, Resp> Clone for JsCompatCodec<Req, Resp> {
+    fn clone(&self) -> Self {
+        Self::new()
     }
 }
 

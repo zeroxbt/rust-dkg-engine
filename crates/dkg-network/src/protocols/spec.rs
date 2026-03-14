@@ -40,10 +40,10 @@ pub trait ProtocolSpec: Send + Sync + 'static {
     const TIMEOUT: Duration;
 
     /// Request data type sent to peers.
-    type RequestData: Serialize + DeserializeOwned + Send + Clone;
+    type RequestData: Serialize + DeserializeOwned + Send;
 
     /// ACK payload type received in successful responses.
-    type Ack: Serialize + DeserializeOwned + Send + Clone;
+    type Ack: Serialize + DeserializeOwned + Send;
 }
 
 /// Type alias for what callers receive from `send_*_request` methods.

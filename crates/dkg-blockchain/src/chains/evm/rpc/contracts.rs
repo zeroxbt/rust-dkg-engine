@@ -10,7 +10,7 @@ impl EvmChain {
     ) -> Result<(), BlockchainError> {
         let contract_name = contract_name
             .parse::<ContractName>()
-            .map_err(BlockchainError::Custom)?;
+            .map_err(|err| BlockchainError::Custom(err.to_string()))?;
 
         let provider = self.provider().await;
         let mut contracts = self.contracts_mut().await;

@@ -300,7 +300,7 @@ fn development() -> ConfigRaw {
                     BlockchainConfigKey::Hardhat131337,
                     BlockchainConfigRaw {
                         enabled: true,
-                        blockchain_id: "hardhat1:31337".into(),
+                        blockchain_id: "hardhat1:31337".parse().unwrap(),
                         hub_contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
                             .to_string(),
                         rpc_endpoints: vec!["http://localhost:8545".to_string()],
@@ -320,7 +320,7 @@ fn development() -> ConfigRaw {
                     BlockchainConfigKey::Hardhat231337,
                     BlockchainConfigRaw {
                         enabled: false,
-                        blockchain_id: "hardhat2:31337".into(),
+                        blockchain_id: "hardhat2:31337".parse().unwrap(),
                         hub_contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
                             .to_string(),
                         rpc_endpoints: vec!["http://localhost:9545".to_string()],
@@ -363,7 +363,7 @@ fn testnet() -> ConfigRaw {
                     BlockchainConfigKey::Otp20430,
                     BlockchainConfigRaw {
                         enabled: false,
-                        blockchain_id: "otp:20430".into(),
+                        blockchain_id: "otp:20430".parse().unwrap(),
                         hub_contract_address: "0xe233b5b78853a62b1e11ebe88bf083e25b0a57a6"
                             .to_string(),
                         rpc_endpoints: vec![
@@ -386,7 +386,7 @@ fn testnet() -> ConfigRaw {
                     BlockchainConfigKey::Gnosis10200,
                     BlockchainConfigRaw {
                         enabled: false,
-                        blockchain_id: "gnosis:10200".into(),
+                        blockchain_id: "gnosis:10200".parse().unwrap(),
                         hub_contract_address: "0x2c08AC4B630c009F709521e56Ac385A6af70650f"
                             .to_string(),
                         rpc_endpoints: vec!["https://rpc.chiadochain.net".to_string()],
@@ -406,7 +406,7 @@ fn testnet() -> ConfigRaw {
                     BlockchainConfigKey::Base84532,
                     BlockchainConfigRaw {
                         enabled: false,
-                        blockchain_id: "base:84532".into(),
+                        blockchain_id: "base:84532".parse().unwrap(),
                         hub_contract_address: "0xf21CE8f8b01548D97DCFb36869f1ccB0814a4e05"
                             .to_string(),
                         rpc_endpoints: vec!["https://sepolia.base.org".to_string()],
@@ -454,7 +454,7 @@ fn mainnet() -> ConfigRaw {
                     BlockchainConfigKey::Otp2043,
                     BlockchainConfigRaw {
                         enabled: false,
-                        blockchain_id: "otp:2043".into(),
+                        blockchain_id: "otp:2043".parse().unwrap(),
                         hub_contract_address: "0x0957e25BD33034948abc28204ddA54b6E1142D6F"
                             .to_string(),
                         rpc_endpoints: vec![
@@ -478,7 +478,7 @@ fn mainnet() -> ConfigRaw {
                     BlockchainConfigKey::Gnosis100,
                     BlockchainConfigRaw {
                         enabled: false,
-                        blockchain_id: "gnosis:100".into(),
+                        blockchain_id: "gnosis:100".parse().unwrap(),
                         hub_contract_address: "0x882D0BF07F956b1b94BBfe9E77F47c6fc7D4EC8f"
                             .to_string(),
                         rpc_endpoints: vec![],
@@ -498,7 +498,7 @@ fn mainnet() -> ConfigRaw {
                     BlockchainConfigKey::Base8453,
                     BlockchainConfigRaw {
                         enabled: false,
-                        blockchain_id: "base:8453".into(),
+                        blockchain_id: "base:8453".parse().unwrap(),
                         hub_contract_address: "0x99Aa571fD5e681c2D27ee08A7b7989DB02541d13"
                             .to_string(),
                         rpc_endpoints: vec![],

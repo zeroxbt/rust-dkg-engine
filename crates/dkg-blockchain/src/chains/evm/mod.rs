@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr, time::Instant};
+use std::{collections::HashMap, fmt, str::FromStr, time::Instant};
 
 use alloy::{
     contract::{CallBuilder, CallDecoder, Error as ContractError},
@@ -6,6 +6,7 @@ use alloy::{
     providers::PendingTransactionBuilder,
     rpc::types::TransactionReceipt,
 };
+use thiserror::Error;
 use tokio::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
@@ -41,7 +42,7 @@ pub use rpc::random_sampling::{NodeChallenge, ProofPeriodStatus};
 
 const GAS_ESTIMATE_MULTIPLIER: f64 = 1.2;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ContractName {
     Hub,
     ShardingTable,
@@ -49,10 +50,15 @@ pub enum ContractName {
     Staking,
     DelegatorsInfo,
     Profile,
+    IdentityStorage,
     ParametersStorage,
     KnowledgeCollectionStorage,
+    Token,
+    Chronos,
     Paranet,
     ParanetsRegistry,
+    RandomSampling,
+    RandomSamplingStorage,
 }
 
 impl ContractName {
@@ -64,16 +70,31 @@ impl ContractName {
             ContractName::Staking => "Staking",
             ContractName::DelegatorsInfo => "DelegatorsInfo",
             ContractName::Profile => "Profile",
+            ContractName::IdentityStorage => "IdentityStorage",
             ContractName::ParametersStorage => "ParametersStorage",
             ContractName::KnowledgeCollectionStorage => "KnowledgeCollectionStorage",
+            ContractName::Token => "Token",
+            ContractName::Chronos => "Chronos",
             ContractName::Paranet => "Paranet",
             ContractName::ParanetsRegistry => "ParanetsRegistry",
+            ContractName::RandomSampling => "RandomSampling",
+            ContractName::RandomSamplingStorage => "RandomSamplingStorage",
         }
     }
 }
 
+impl fmt::Display for ContractName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+#[error("'{0}' is not a valid contract name")]
+pub struct ContractNameParseError(pub String);
+
 impl FromStr for ContractName {
-    type Err = String;
+    type Err = ContractNameParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -83,11 +104,16 @@ impl FromStr for ContractName {
             "Staking" => Ok(ContractName::Staking),
             "DelegatorsInfo" => Ok(ContractName::DelegatorsInfo),
             "Profile" => Ok(ContractName::Profile),
+            "IdentityStorage" => Ok(ContractName::IdentityStorage),
             "ParametersStorage" => Ok(ContractName::ParametersStorage),
             "KnowledgeCollectionStorage" => Ok(ContractName::KnowledgeCollectionStorage),
+            "Token" => Ok(ContractName::Token),
+            "Chronos" => Ok(ContractName::Chronos),
             "Paranet" => Ok(ContractName::Paranet),
             "ParanetsRegistry" => Ok(ContractName::ParanetsRegistry),
-            _ => Err(format!("'{}' is not a valid contract name", s)),
+            "RandomSampling" => Ok(ContractName::RandomSampling),
+            "RandomSamplingStorage" => Ok(ContractName::RandomSamplingStorage),
+            _ => Err(ContractNameParseError(s.to_string())),
         }
     }
 }

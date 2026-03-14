@@ -17,7 +17,7 @@ use crate::commands::{
             store::handle_publish_store_request::HandlePublishStoreRequestCommandData,
         },
     },
-    registry::Command,
+    registry::InboundCommandData,
     scheduler::CommandScheduler,
 };
 
@@ -89,19 +89,10 @@ impl RpcRouter {
             "Store request received"
         );
 
-        let command = Command::HandlePublishStoreRequest(
-            HandlePublishStoreRequestCommandData::new(request, response_handle),
-        );
-        match self
-            .command_scheduler
-            .try_schedule(CommandExecutionRequest::new(command))
-        {
-            Ok(()) => None,
-            Err(request) => match request.into_command() {
-                Command::HandlePublishStoreRequest(command) => Some(command.response_handle),
-                _ => unreachable!("unexpected rejected command type"),
-            },
-        }
+        self.try_schedule_inbound_command(HandlePublishStoreRequestCommandData::new(
+            request,
+            response_handle,
+        ))
     }
 
     fn schedule_get_request(
@@ -116,18 +107,10 @@ impl RpcRouter {
             "Get request received"
         );
 
-        let command =
-            Command::HandleGetRequest(HandleGetRequestCommandData::new(request, response_handle));
-        match self
-            .command_scheduler
-            .try_schedule(CommandExecutionRequest::new(command))
-        {
-            Ok(()) => None,
-            Err(request) => match request.into_command() {
-                Command::HandleGetRequest(command) => Some(command.response_handle),
-                _ => unreachable!("unexpected rejected command type"),
-            },
-        }
+        self.try_schedule_inbound_command(HandleGetRequestCommandData::new(
+            request,
+            response_handle,
+        ))
     }
 
     fn schedule_finality_request(
@@ -143,19 +126,10 @@ impl RpcRouter {
             "Finality request received"
         );
 
-        let command = Command::HandlePublishFinalityRequest(
-            HandlePublishFinalityRequestCommandData::new(request, response_handle),
-        );
-        match self
-            .command_scheduler
-            .try_schedule(CommandExecutionRequest::new(command))
-        {
-            Ok(()) => None,
-            Err(request) => match request.into_command() {
-                Command::HandlePublishFinalityRequest(command) => Some(command.response_handle),
-                _ => unreachable!("unexpected rejected command type"),
-            },
-        }
+        self.try_schedule_inbound_command(HandlePublishFinalityRequestCommandData::new(
+            request,
+            response_handle,
+        ))
     }
 
     fn schedule_batch_get_request(
@@ -170,18 +144,24 @@ impl RpcRouter {
             "Batch get request received"
         );
 
-        let command = Command::HandleBatchGetRequest(HandleBatchGetRequestCommandData::new(
+        self.try_schedule_inbound_command(HandleBatchGetRequestCommandData::new(
             request,
             response_handle,
-        ));
+        ))
+    }
+
+    fn try_schedule_inbound_command<D, Ack>(&self, data: D) -> Option<ResponseHandle<Ack>>
+    where
+        D: InboundCommandData<Ack>,
+    {
         match self
             .command_scheduler
-            .try_schedule(CommandExecutionRequest::new(command))
+            .try_schedule(CommandExecutionRequest::new(data.into()))
         {
             Ok(()) => None,
-            Err(request) => match request.into_command() {
-                Command::HandleBatchGetRequest(command) => Some(command.response_handle),
-                _ => unreachable!("unexpected rejected command type"),
+            Err(request) => match D::try_from(request.into_command()) {
+                Ok(data) => Some(data.into_response_handle()),
+                Err(_) => unreachable!("unexpected rejected command type"),
             },
         }
     }
