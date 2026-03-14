@@ -150,9 +150,9 @@ impl RpcRouter {
         ))
     }
 
-    fn try_schedule_inbound_command<D, Ack>(&self, data: D) -> Option<ResponseHandle<Ack>>
+    fn try_schedule_inbound_command<D>(&self, data: D) -> Option<ResponseHandle<D::Ack>>
     where
-        D: InboundCommandData<Ack>,
+        D: InboundCommandData,
     {
         match self
             .command_scheduler

@@ -107,10 +107,12 @@ pub(crate) trait CommandHandler: Send + Sync {
     -> impl std::future::Future<Output = CommandOutcome> + Send;
 }
 
-pub(crate) trait InboundCommandData<Ack>:
+pub(crate) trait InboundCommandData:
     Into<Command> + TryFrom<Command, Error = Command> + Send + Sync + 'static
 {
-    fn into_response_handle(self) -> ResponseHandle<Ack>;
+    type Ack;
+
+    fn into_response_handle(self) -> ResponseHandle<Self::Ack>;
 }
 
 // Command registry: operation commands only.

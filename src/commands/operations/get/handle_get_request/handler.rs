@@ -34,8 +34,10 @@ impl HandleGetRequestCommandData {
     }
 }
 
-impl InboundCommandData<GetAck> for HandleGetRequestCommandData {
-    fn into_response_handle(self) -> ResponseHandle<GetAck> {
+impl InboundCommandData for HandleGetRequestCommandData {
+    type Ack = GetAck;
+
+    fn into_response_handle(self) -> ResponseHandle<Self::Ack> {
         self.response_handle
     }
 }

@@ -33,8 +33,10 @@ impl HandlePublishFinalityRequestCommandData {
     }
 }
 
-impl InboundCommandData<FinalityAck> for HandlePublishFinalityRequestCommandData {
-    fn into_response_handle(self) -> ResponseHandle<FinalityAck> {
+impl InboundCommandData for HandlePublishFinalityRequestCommandData {
+    type Ack = FinalityAck;
+
+    fn into_response_handle(self) -> ResponseHandle<Self::Ack> {
         self.response_handle
     }
 }

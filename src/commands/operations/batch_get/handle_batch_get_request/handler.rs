@@ -38,8 +38,10 @@ impl HandleBatchGetRequestCommandData {
     }
 }
 
-impl InboundCommandData<BatchGetAck> for HandleBatchGetRequestCommandData {
-    fn into_response_handle(self) -> ResponseHandle<BatchGetAck> {
+impl InboundCommandData for HandleBatchGetRequestCommandData {
+    type Ack = BatchGetAck;
+
+    fn into_response_handle(self) -> ResponseHandle<Self::Ack> {
         self.response_handle
     }
 }

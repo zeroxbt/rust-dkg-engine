@@ -36,8 +36,10 @@ impl HandlePublishStoreRequestCommandData {
     }
 }
 
-impl InboundCommandData<StoreAck> for HandlePublishStoreRequestCommandData {
-    fn into_response_handle(self) -> ResponseHandle<StoreAck> {
+impl InboundCommandData for HandlePublishStoreRequestCommandData {
+    type Ack = StoreAck;
+
+    fn into_response_handle(self) -> ResponseHandle<Self::Ack> {
         self.response_handle
     }
 }
