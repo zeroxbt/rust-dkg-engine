@@ -11,11 +11,11 @@ pub(super) struct ShutdownContext {
     pub(super) network_manager: Arc<dkg_network::NetworkManager>,
     pub(super) graceful_shutdown: GracefulShutdownConfig,
     pub(super) dkg_sync_shutdown: CancellationToken,
-    pub(super) dkg_sync_handle: JoinHandle<()>,
+    pub(super) dkg_sync_handle: Option<JoinHandle<()>>,
     pub(super) periodic_shutdown: CancellationToken,
-    pub(super) periodic_handle: JoinHandle<()>,
-    pub(super) execute_commands_task: JoinHandle<()>,
-    pub(super) network_event_loop_task: JoinHandle<()>,
+    pub(super) periodic_handle: Option<JoinHandle<()>>,
+    pub(super) execute_commands_task: Option<JoinHandle<()>>,
+    pub(super) network_event_loop_task: Option<JoinHandle<()>>,
     pub(super) peer_registry_shutdown: CancellationToken,
     pub(super) peer_registry_task: JoinHandle<()>,
     pub(super) http_shutdown_tx: tokio::sync::oneshot::Sender<()>,
@@ -42,11 +42,11 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
         network_manager,
         graceful_shutdown,
         dkg_sync_shutdown,
-        mut dkg_sync_handle,
+        dkg_sync_handle,
         periodic_shutdown,
-        mut periodic_handle,
-        mut execute_commands_task,
-        mut network_event_loop_task,
+        periodic_handle,
+        execute_commands_task,
+        network_event_loop_task,
         peer_registry_shutdown,
         mut peer_registry_task,
         http_shutdown_tx,
@@ -83,18 +83,13 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     periodic_shutdown.cancel();
 
     // Step 3: Wait for DKG sync and periodic tasks to finish current iteration and exit
-    wait_for_shutdown_task(
-        "dkg_sync",
-        periodic_shutdown_timeout,
-        &mut dkg_sync_handle,
-        true,
-    )
-    .await;
+    wait_for_optional_shutdown_task("dkg_sync", periodic_shutdown_timeout, dkg_sync_handle, true)
+        .await;
 
-    wait_for_shutdown_task(
+    wait_for_optional_shutdown_task(
         "periodic_tasks",
         periodic_shutdown_timeout,
-        &mut periodic_handle,
+        periodic_handle,
         true,
     )
     .await;
@@ -103,10 +98,10 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     command_scheduler.shutdown();
 
     // Step 5: Wait for command executor to drain pending commands
-    wait_for_shutdown_task(
+    wait_for_optional_shutdown_task(
         "command_executor",
         command_executor_shutdown_timeout,
-        &mut execute_commands_task,
+        execute_commands_task,
         true,
     )
     .await;
@@ -115,10 +110,10 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
     network_manager.shutdown();
 
     // Step 7: Wait for network manager to exit
-    wait_for_shutdown_task(
+    wait_for_optional_shutdown_task(
         "network_event_loop",
         network_shutdown_timeout,
-        &mut network_event_loop_task,
+        network_event_loop_task,
         true,
     )
     .await;
@@ -144,6 +139,23 @@ pub(super) async fn graceful_shutdown(context: ShutdownContext) {
 
     // Step 10: Shutdown complete
     tracing::info!("Shutdown complete");
+}
+
+async fn wait_for_optional_shutdown_task(
+    task: &str,
+    timeout: Duration,
+    handle: Option<JoinHandle<()>>,
+    abort_on_timeout: bool,
+) {
+    let Some(mut handle) = handle else {
+        tracing::warn!(
+            task,
+            "Shutdown task already exited before coordinated shutdown"
+        );
+        return;
+    };
+
+    wait_for_shutdown_task(task, timeout, &mut handle, abort_on_timeout).await;
 }
 
 async fn wait_for_shutdown_task(

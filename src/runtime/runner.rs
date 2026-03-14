@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use dkg_network::{NetworkEventLoop, PeerEvent};
-use tokio::{select, signal::unix::SignalKind, sync::broadcast};
+use tokio::{select, signal::unix::SignalKind, sync::broadcast, task::JoinError};
 use tokio_util::sync::CancellationToken;
 
 use super::{RuntimeConfig, RuntimeDeps, shutdown};
@@ -16,6 +16,14 @@ use crate::{
         periodic::{self, PeriodicTasksConfig},
     },
 };
+
+enum ShutdownTrigger {
+    Signal,
+    CriticalTaskExited {
+        task: &'static str,
+        result: Result<(), JoinError>,
+    },
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
@@ -43,32 +51,35 @@ pub(crate) async fn run(
     let (http_shutdown_tx, http_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
     // Spawn command executor task (executor is consumed)
-    let execute_commands_task = tokio::task::spawn(async move { command_executor.run().await });
+    let mut execute_commands_task =
+        Some(tokio::task::spawn(
+            async move { command_executor.run().await },
+        ));
 
     let periodic_shutdown = CancellationToken::new();
     let dkg_sync_shutdown = CancellationToken::new();
-    let dkg_sync_handle = tokio::task::spawn(dkg_sync::run(
+    let mut dkg_sync_handle = Some(tokio::task::spawn(dkg_sync::run(
         deps.periodic_tasks_deps.dkg_sync.clone(),
         deps.blockchain_ids.clone(),
         periodic_tasks_config.dkg_sync.clone(),
         periodic_tasks_config.reorg_buffer_blocks.max(1),
         dkg_sync_shutdown.clone(),
-    ));
+    )));
 
-    let periodic_handle = tokio::task::spawn(periodic::run(
+    let mut periodic_handle = Some(tokio::task::spawn(periodic::run(
         Arc::clone(&deps.periodic_tasks_deps),
         deps.blockchain_ids.clone(),
         periodic_tasks_config,
         metrics_enabled,
         periodic_shutdown.clone(),
-    ));
+    )));
 
     // Spawn network service event loop task with RPC router as the event handler
-    let network_event_loop_task = tokio::task::spawn(async move {
+    let mut network_event_loop_task = Some(tokio::task::spawn(async move {
         // Run the network service event loop with the RPC router handling events
         // The service is consumed here (runs until action channel closes)
         network_event_loop.run(&rpc_router).await;
-    });
+    }));
 
     // Spawn HTTP API task if enabled
     let handle_http_events_task = tokio::task::spawn(async move {
@@ -82,8 +93,29 @@ pub(crate) async fn run(
         }
     });
 
-    // Wait for shutdown signal (SIGINT or SIGTERM)
-    wait_for_shutdown_signal().await;
+    let shutdown_trigger = select! {
+        _ = wait_for_shutdown_signal() => ShutdownTrigger::Signal,
+        result = execute_commands_task.as_mut().expect("command executor task initialized") => {
+            let _ = execute_commands_task.take();
+            ShutdownTrigger::CriticalTaskExited { task: "command_executor", result }
+        }
+        result = dkg_sync_handle.as_mut().expect("dkg sync task initialized") => {
+            let _ = dkg_sync_handle.take();
+            ShutdownTrigger::CriticalTaskExited { task: "dkg_sync", result }
+        }
+        result = periodic_handle.as_mut().expect("periodic task runner initialized") => {
+            let _ = periodic_handle.take();
+            ShutdownTrigger::CriticalTaskExited { task: "periodic_tasks", result }
+        }
+        result = network_event_loop_task.as_mut().expect("network event loop task initialized") => {
+            let _ = network_event_loop_task.take();
+            ShutdownTrigger::CriticalTaskExited { task: "network_event_loop", result }
+        }
+    };
+
+    if let ShutdownTrigger::CriticalTaskExited { task, result } = &shutdown_trigger {
+        log_critical_task_exit(task, result);
+    }
 
     shutdown::graceful_shutdown(shutdown::ShutdownContext {
         command_scheduler,
@@ -101,6 +133,24 @@ pub(crate) async fn run(
         handle_http_events_task,
     })
     .await;
+}
+
+fn log_critical_task_exit(task: &str, result: &Result<(), JoinError>) {
+    match result {
+        Ok(()) => tracing::error!(
+            task,
+            "Critical task exited unexpectedly; initiating shutdown"
+        ),
+        Err(error) if error.is_panic() => {
+            tracing::error!(task, error = ?error, "Critical task panicked; initiating shutdown")
+        }
+        Err(error) if error.is_cancelled() => {
+            tracing::warn!(task, error = ?error, "Critical task was cancelled; initiating shutdown")
+        }
+        Err(error) => {
+            tracing::error!(task, error = ?error, "Critical task failed; initiating shutdown")
+        }
+    }
 }
 
 async fn run_peer_registry_updater(
