@@ -492,9 +492,7 @@ impl TripleStoreAssertions {
                     return Some((parsed_ual.clone(), token_ids.clone()));
                 }
 
-                let Some(_) = Self::first_non_burned_token_id(token_ids) else {
-                    return None;
-                };
+                let _ = Self::first_non_burned_token_id(token_ids)?;
                 let kc_ual = parsed_ual.to_ual_string();
                 existing_kcs
                     .contains(&kc_ual)

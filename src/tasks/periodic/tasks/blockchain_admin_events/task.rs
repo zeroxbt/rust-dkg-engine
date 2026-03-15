@@ -237,7 +237,7 @@ impl BlockchainAdminEventsTask {
                     self.blockchain_manager
                         .get_event_logs_for_address(
                             blockchain_id,
-                            contract_name.clone(),
+                            *contract_name,
                             contract_address,
                             events_to_filter,
                             from_block,

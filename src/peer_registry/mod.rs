@@ -568,9 +568,15 @@ mod tests {
 
     const TEST_BLOCKCHAIN: &str = "test:chain";
 
+    fn test_blockchain() -> BlockchainId {
+        TEST_BLOCKCHAIN
+            .parse()
+            .expect("test blockchain id should parse")
+    }
+
     /// Helper: register a peer in the registry via shard membership.
     fn register_peer(registry: &PeerRegistry, peer: PeerId) {
-        let blockchain: BlockchainId = TEST_BLOCKCHAIN.parse().unwrap();
+        let blockchain = test_blockchain();
         registry.set_shard_membership(&blockchain, &[peer]);
     }
 
@@ -737,7 +743,7 @@ mod tests {
     #[test]
     fn test_apply_peer_event_updates_identify() {
         let registry = PeerRegistry::new();
-        let blockchain: BlockchainId = TEST_BLOCKCHAIN.parse().unwrap();
+        let blockchain = test_blockchain();
         let peer = PeerId::random();
         register_peer(&registry, peer);
 
@@ -757,7 +763,7 @@ mod tests {
     #[test]
     fn test_apply_peer_event_updates_latency_and_discovery() {
         let registry = PeerRegistry::new();
-        let blockchain: BlockchainId = TEST_BLOCKCHAIN.parse().unwrap();
+        let blockchain = test_blockchain();
         let peer = PeerId::random();
         register_peer(&registry, peer);
         assert!(registry.is_peer_in_shard(&blockchain, &peer));
@@ -785,7 +791,7 @@ mod tests {
     #[test]
     fn invalid_protocol_string_does_not_panic() {
         let registry = PeerRegistry::new();
-        let blockchain: BlockchainId = TEST_BLOCKCHAIN.parse().unwrap();
+        let blockchain = test_blockchain();
         let peer = PeerId::random();
         register_peer(&registry, peer);
 

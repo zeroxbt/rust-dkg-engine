@@ -90,7 +90,7 @@ impl CommandScheduler {
     pub(crate) fn try_schedule(
         &self,
         request: CommandExecutionRequest,
-    ) -> Result<(), CommandExecutionRequest> {
+    ) -> Result<(), Box<CommandExecutionRequest>> {
         if self.shutdown.is_cancelled() {
             observability::record_command_total(request.command().name(), "rejected_shutdown");
             self.record_queue_saturation();
@@ -98,7 +98,7 @@ impl CommandScheduler {
                 command = %request.command().name(),
                 "Shutdown in progress, not scheduling command"
             );
-            return Err(request);
+            return Err(Box::new(request));
         }
 
         match self.tx.try_send(request) {
@@ -113,7 +113,7 @@ impl CommandScheduler {
                 );
                 self.record_queue_saturation();
                 tracing::warn!("Command queue full, rejecting command");
-                Err(request)
+                Err(Box::new(request))
             }
             Err(mpsc::error::TrySendError::Closed(request)) => {
                 observability::record_command_total(
@@ -123,7 +123,7 @@ impl CommandScheduler {
                 observability::record_command_queue_depth(0);
                 observability::record_command_queue_fill_ratio(0.0);
                 tracing::error!("Command channel closed");
-                Err(request)
+                Err(Box::new(request))
             }
         }
     }

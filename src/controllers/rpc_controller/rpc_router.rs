@@ -159,7 +159,7 @@ impl RpcRouter {
             .try_schedule(CommandExecutionRequest::new(data.into()))
         {
             Ok(()) => None,
-            Err(request) => match D::try_from(request.into_command()) {
+            Err(request) => match D::try_from((*request).into_command()) {
                 Ok(data) => Some(data.into_response_handle()),
                 Err(_) => unreachable!("unexpected rejected command type"),
             },

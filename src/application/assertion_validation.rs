@@ -410,9 +410,7 @@ mod tests {
         }
 
         let mut grouped = group_triples_by_subject(&filtered_public).map_err(|e| e.to_string())?;
-        grouped.extend(
-            group_triples_by_subject(&private_hash_triples).map_err(|e| e.to_string())?,
-        );
+        grouped.extend(group_triples_by_subject(&private_hash_triples).map_err(|e| e.to_string())?);
 
         Ok(grouped
             .iter()

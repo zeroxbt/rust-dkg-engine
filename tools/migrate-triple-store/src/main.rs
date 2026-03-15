@@ -227,7 +227,9 @@ async fn main() -> anyhow::Result<()> {
     let blockchain = args
         .blockchain_id
         .parse::<BlockchainId>()
-        .map_err(|error| anyhow::anyhow!("Invalid blockchain id {}: {}", args.blockchain_id, error))?;
+        .map_err(|error| {
+            anyhow::anyhow!("Invalid blockchain id {}: {}", args.blockchain_id, error)
+        })?;
     let contract: Address = args
         .contract_address
         .parse()

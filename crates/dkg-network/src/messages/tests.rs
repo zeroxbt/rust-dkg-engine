@@ -133,9 +133,7 @@ fn get_request_serializes_required_fields() {
     let request = RequestMessage::protocol_request(
         sample_operation_id(),
         GetRequestData::new(
-            "otp:2043"
-                .parse()
-                .expect("test blockchain id should parse"),
+            "otp:2043".parse().expect("test blockchain id should parse"),
             "0xabc".to_string(),
             42,
             Some(7),
@@ -386,9 +384,7 @@ fn finality_request_serializes_required_fields() {
         FinalityRequestData::new(
             sample_ual(),
             "22222222-2222-2222-2222-222222222222".to_string(),
-            "otp:2043"
-                .parse()
-                .expect("test blockchain id should parse"),
+            "otp:2043".parse().expect("test blockchain id should parse"),
         ),
     );
 

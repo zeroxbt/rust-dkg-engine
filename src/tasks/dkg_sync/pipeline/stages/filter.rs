@@ -80,15 +80,15 @@ pub(crate) async fn run_filter_stage(
 
             let to_sync_count = to_sync.len();
             let mut to_sync_send_failed = None;
-            if to_sync_count > 0 {
-                if let Err(send_error) = tx.send(to_sync).await {
-                    tracing::warn!(
-                        blockchain_id = %blockchain_id,
-                        to_sync_count,
-                        "Filter: fetch stage receiver dropped, requeueing unsent KCs"
-                    );
-                    to_sync_send_failed = Some(send_error.0);
-                }
+            if to_sync_count > 0
+                && let Err(send_error) = tx.send(to_sync).await
+            {
+                tracing::warn!(
+                    blockchain_id = %blockchain_id,
+                    to_sync_count,
+                    "Filter: fetch stage receiver dropped, requeueing unsent KCs"
+                );
+                to_sync_send_failed = Some(send_error.0);
             }
             let unsent_to_sync_count = to_sync_send_failed
                 .as_ref()
