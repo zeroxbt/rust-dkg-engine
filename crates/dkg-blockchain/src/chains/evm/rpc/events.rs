@@ -204,7 +204,7 @@ impl EvmChain {
         drop(contracts);
 
         self.get_event_logs_for_address(
-            contract_name.clone(),
+            *contract_name,
             address,
             event_signatures,
             from_block,
@@ -269,7 +269,7 @@ impl EvmChain {
 
             for log in &logs {
                 if log.topic0().is_some() {
-                    all_events.push(ContractLog::new(contract_name.clone(), log.clone()));
+                    all_events.push(ContractLog::new(contract_name, log.clone()));
                 }
             }
 

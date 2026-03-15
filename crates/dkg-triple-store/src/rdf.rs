@@ -356,7 +356,7 @@ mod tests {
         for parsed in parser.for_reader(joined.as_bytes()) {
             let quad = parsed.map_err(|e| format!("Failed to parse triple for grouping: {}", e))?;
             let subject_key = subject_key_from_quad(&quad);
-            let quad_string = serialize_quad_nquads(&quad)?;
+            let quad_string = serialize_quad_nquads(&quad).map_err(|e| e.to_string())?;
 
             if let Some(&idx) = subject_to_index.get(&subject_key) {
                 groups[idx].1.push(quad_string);

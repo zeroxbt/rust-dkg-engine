@@ -224,7 +224,10 @@ async fn main() -> anyhow::Result<()> {
     println!("MySQL connected");
 
     // Parse blockchain/contract for UAL derivation
-    let blockchain = BlockchainId::from(args.blockchain_id.as_str());
+    let blockchain = args
+        .blockchain_id
+        .parse::<BlockchainId>()
+        .map_err(|error| anyhow::anyhow!("Invalid blockchain id {}: {}", args.blockchain_id, error))?;
     let contract: Address = args
         .contract_address
         .parse()

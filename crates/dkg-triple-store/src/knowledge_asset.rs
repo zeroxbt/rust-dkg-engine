@@ -130,10 +130,8 @@ impl TripleStoreManager {
                             named_graphs.join("\n        ")
                         );
 
-                        let rdf_lines = self
-                            .backend_construct(&query, self.config.timeouts.query_timeout())
-                            .await?;
-                        rdf_lines
+                        self.backend_construct(&query, self.config.timeouts.query_timeout())
+                            .await?
                     };
 
                     Ok::<Vec<String>, crate::error::TripleStoreError>(page_lines)
