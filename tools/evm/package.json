@@ -10,10 +10,9 @@
         "compile-contracts": "npm explore dkg-evm-module -- npm run compile"
     },
     "dependencies": {
-        "dkg-evm-module": "git+https://github.com/OriginTrail/dkg-evm-module.git#1088476e13c3c8b46f087f45cdea103959f2135c"
+        "dkg-evm-module": "git+https://github.com/OriginTrail/dkg-evm-module.git#4593134d92a9b6f67a2db3d9c34fdb2f54f4132d"
     },
     "devDependencies": {
         "kill-port": "^2.0.1"
     }
 }
-
