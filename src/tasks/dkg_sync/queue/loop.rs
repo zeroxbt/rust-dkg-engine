@@ -2,8 +2,7 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use dkg_blockchain::BlockchainId;
 use dkg_observability as observability;
-use tokio::sync::mpsc::error::TryRecvError;
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::{Notify, mpsc, mpsc::error::TryRecvError};
 use tokio_util::sync::CancellationToken;
 
 use super::{dispatcher, outcomes};

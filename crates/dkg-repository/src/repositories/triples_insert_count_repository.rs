@@ -1,10 +1,9 @@
 use std::{sync::Arc, time::Instant};
 
+use dkg_observability::record_repository_query;
 use sea_orm::{
     ActiveModelTrait, DatabaseConnection, EntityTrait, QuerySelect, Set, TransactionTrait,
 };
-
-use dkg_observability::record_repository_query;
 
 use crate::{
     error::RepositoryError,

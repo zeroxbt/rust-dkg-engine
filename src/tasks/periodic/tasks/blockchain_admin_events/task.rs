@@ -1,8 +1,10 @@
 //! Blockchain admin events periodic task implementation.
 
 use std::{
-    sync::Arc,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant},
 };
 

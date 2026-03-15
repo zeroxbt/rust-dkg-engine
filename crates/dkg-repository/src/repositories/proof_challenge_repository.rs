@@ -1,12 +1,11 @@
 use std::{sync::Arc, time::Instant};
 
 use chrono::Utc;
+use dkg_observability::record_repository_query;
 use sea_orm::{
     ActiveValue, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect,
 };
-
-use dkg_observability::record_repository_query;
 
 use crate::{
     error::Result,

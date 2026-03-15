@@ -220,7 +220,6 @@ impl std::fmt::Display for OperationStatus {
 }
 
 /// Parse from database string representation.
-///
 impl FromStr for OperationStatus {
     type Err = OperationStatusParseError;
 
